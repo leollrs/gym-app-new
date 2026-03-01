@@ -1,0 +1,23 @@
+// Canonical muscle region definitions used by BodyDiagram
+
+export const BODY_REGION_DEFINITIONS = [
+  { id: 'upper_chest', label: 'Upper Chest',  group: 'Front torso',        emphasis: 'primary'   },
+  { id: 'mid_chest',   label: 'Mid Chest',    group: 'Front torso',        emphasis: 'primary'   },
+  { id: 'front_delts', label: 'Front Delts',  group: 'Shoulders and arms', emphasis: 'primary'   },
+  { id: 'side_delts',  label: 'Side Delts',   group: 'Shoulders and arms', emphasis: 'primary'   },
+  { id: 'biceps',      label: 'Biceps',       group: 'Shoulders and arms', emphasis: 'secondary' },
+  { id: 'forearms',    label: 'Forearms',     group: 'Shoulders and arms', emphasis: 'secondary' },
+  { id: 'abs',         label: 'Abs',          group: 'Front torso',        emphasis: 'secondary' },
+  { id: 'obliques',    label: 'Obliques',     group: 'Front torso',        emphasis: 'secondary' },
+  { id: 'quads',       label: 'Quads',        group: 'Lower body',         emphasis: 'primary'   },
+  { id: 'adductors',   label: 'Adductors',    group: 'Lower body',         emphasis: 'secondary' },
+  { id: 'calves',      label: 'Calves',       group: 'Lower body',         emphasis: 'secondary' },
+  { id: 'traps',       label: 'Traps',        group: 'Back torso',         emphasis: 'secondary' },
+  { id: 'rear_delts',  label: 'Rear Delts',   group: 'Shoulders and arms', emphasis: 'secondary' },
+  { id: 'upper_back',  label: 'Upper Back',   group: 'Back torso',         emphasis: 'primary'   },
+  { id: 'lats',        label: 'Lats',         group: 'Back torso',         emphasis: 'primary'   },
+  { id: 'triceps',     label: 'Triceps',      group: 'Shoulders and arms', emphasis: 'secondary' },
+  { id: 'lower_back',  label: 'Lower Back',   group: 'Back torso',         emphasis: 'primary'   },
+  { id: 'glutes',      label: 'Glutes',       group: 'Lower body',         emphasis: 'primary'   },
+  { id: 'hamstrings',  label: 'Hamstrings',   group: 'Lower body',         emphasis: 'primary'   },
+];

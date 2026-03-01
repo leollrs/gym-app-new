@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, X, ChevronDown, Dumbbell, Info } from 'lucide-react';
 import { exercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
+import BodyDiagram from '../components/BodyDiagram';
 
 // Simplified palette — no purple/pink/neon
 const MUSCLE_COLORS = {
@@ -71,6 +72,16 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
             <span>Reps: <span className="text-[#E5E7EB] font-medium">{exercise.defaultReps}</span></span>
             <span>Category: <span className="text-[#E5E7EB] font-medium">{exercise.category}</span></span>
           </div>
+          {exercise.primaryRegions?.length > 0 && (
+            <div className="mt-4">
+              <BodyDiagram
+                compact
+                title="Muscles worked"
+                primaryRegions={exercise.primaryRegions}
+                secondaryRegions={exercise.secondaryRegions ?? []}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
