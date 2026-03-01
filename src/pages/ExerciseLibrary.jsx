@@ -198,10 +198,10 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [] }) => 
 
 // Full-page wrapper (used when navigating to /exercises)
 export const ExerciseLibraryPage = () => (
-  <div className="container main-content pb-24 md:pb-8">
+  <div className="container main-content animate-fade-in pb-24 md:pb-8">
     <header className="mb-6">
-      <h1 className="text-h2 font-bold mb-1">Exercise Library</h1>
-      <p className="text-muted text-small">{exercises.length} exercises across all muscle groups</p>
+      <h1 className="text-[24px] font-bold text-white">Exercise Library</h1>
+      <p className="text-[13px] text-slate-500 mt-0.5">{exercises.length} exercises across all muscle groups</p>
     </header>
     <ExerciseLibrary />
   </div>

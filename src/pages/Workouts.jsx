@@ -51,18 +51,13 @@ const Workouts = () => {
   };
 
   return (
-    <div className="animate-fade-in pb-24 md:pb-10">
+    <div className="container main-content animate-fade-in pb-24 md:pb-8">
 
-      {/* Hero header */}
-      <div className="relative overflow-hidden mb-6">
-        <div className="absolute inset-0 bg-gradient-to-b from-violet-900/15 via-blue-900/8 to-transparent pointer-events-none" />
-        <div className="container relative pt-7 pb-5">
-          <h1 className="text-[24px] font-bold text-white leading-tight">Workouts</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">Your routines and gym programs.</p>
-        </div>
-      </div>
-
-      <div className="container">
+      {/* Page header */}
+      <header className="mb-6">
+        <h1 className="text-[24px] font-bold text-white">Workouts</h1>
+        <p className="text-[13px] text-slate-500 mt-0.5">Your routines and gym programs.</p>
+      </header>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3 mb-6">
@@ -207,7 +202,6 @@ const Workouts = () => {
         </div>
       )}
 
-      </div>{/* /container */}
     </div>
   );
 };

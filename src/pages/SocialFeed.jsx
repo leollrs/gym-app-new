@@ -17,23 +17,18 @@ const SocialFeed = () => {
   };
 
   return (
-    <div className="animate-fade-in pb-24 md:pb-10">
+    <div className="container main-content animate-fade-in pb-24 md:pb-8">
 
-      {/* Hero header */}
-      <div className="relative overflow-hidden mb-6">
-        <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/15 via-blue-900/8 to-transparent pointer-events-none" />
-        <div className="container relative pt-7 pb-5 flex justify-between items-center">
-          <div>
-            <h1 className="text-[24px] font-bold text-white leading-tight">Social</h1>
-            <p className="text-[13px] text-slate-500 mt-0.5">What your gym friends are lifting.</p>
-          </div>
-          <button className="flex items-center gap-2 text-[13px] font-semibold text-white bg-white/6 hover:bg-white/10 border border-white/8 px-3.5 py-2 rounded-xl transition-colors cursor-pointer">
-            <UserPlus size={15} /> Add Friend
-          </button>
+      {/* Page header */}
+      <header className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-[24px] font-bold text-white">Social</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">What your gym friends are lifting.</p>
         </div>
-      </div>
-
-      <div className="container">
+        <button className="flex items-center gap-2 text-[13px] font-semibold text-white bg-white/6 hover:bg-white/10 border border-white/8 px-3.5 py-2 rounded-xl transition-colors cursor-pointer">
+          <UserPlus size={15} /> Add Friend
+        </button>
+      </header>
 
       <div className="max-w-xl mx-auto flex flex-col gap-4">
 
@@ -99,7 +94,6 @@ const SocialFeed = () => {
         <p className="text-center text-[13px] text-slate-600 py-6">You're all caught up!</p>
       </div>
 
-      </div>{/* /container */}
     </div>
   );
 };

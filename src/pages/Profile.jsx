@@ -60,12 +60,10 @@ const Profile = () => {
   const prGroups = groupPRsByCategory(personalRecords);
 
   return (
-    <div className="animate-fade-in pb-24 md:pb-8">
+    <div className="container main-content animate-fade-in pb-24 md:pb-8">
 
-      {/* Hero header */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/30 via-violet-900/10 to-transparent" />
-        <div className="relative container max-w-2xl mx-auto px-4 pt-8 pb-6">
+      {/* Profile header */}
+      <div className="mb-7">
 
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-4">
@@ -103,11 +101,10 @@ const Profile = () => {
             <StatBlock label="Total Volume"  value={`${(currentUser.stats.totalVolumeLbs / 1000000).toFixed(2)}M`} sub="lbs lifted" icon={TrendingUp} color="text-emerald-400 bg-emerald-500/10" />
             <StatBlock label="Records"       value={Object.keys(personalRecords).length}                  icon={Trophy}    color="text-amber-400 bg-amber-500/10" />
           </div>
-        </div>
       </div>
 
       {/* Tabs */}
-      <div className="container max-w-2xl mx-auto px-4">
+      <div>
         <div className="flex border-b border-white/8 mb-6">
           {[
             { key: 'prs',          label: 'PRs' },
