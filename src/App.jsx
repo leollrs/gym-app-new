@@ -19,7 +19,7 @@ const TVDisplay = () => (
 
 function App() {
   return (
-    <div className="app-wrapper bg-slate-900 text-slate-50 min-h-screen">
+    <div className="app-wrapper">
       <Navigation />
 
       <Routes>

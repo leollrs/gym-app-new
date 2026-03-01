@@ -45,7 +45,7 @@ const groupPRsByCategory = (prs) => {
 };
 
 const StatBlock = ({ label, value, sub, icon: Icon, color }) => (
-  <div className="bg-[#1C1C1E]/60 rounded-2xl p-4 border border-white/5">
+  <div className="bg-[#131929] rounded-2xl p-4 border border-white/5">
     <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${color}`}>
       <Icon size={18} />
     </div>
@@ -136,7 +136,7 @@ const Profile = () => {
                 <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">{group}</h3>
                 <div className="flex flex-col gap-2">
                   {prs.map(pr => (
-                    <div key={pr.id} className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3">
+                    <div key={pr.id} className="bg-[#131929] rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3">
                       <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
                         <Trophy size={18} className="text-amber-400" />
                       </div>
@@ -168,7 +168,7 @@ const Profile = () => {
                 key={a.id}
                 className={`rounded-2xl border p-4 flex flex-col items-center text-center gap-2 ${
                   a.unlocked
-                    ? 'bg-[#1C1C1E]/60 border-white/8'
+                    ? 'bg-[#131929] border-white/8'
                     : 'bg-white/[0.02] border-white/5 opacity-45'
                 }`}
               >
@@ -194,7 +194,7 @@ const Profile = () => {
           <div className="flex flex-col gap-5 animate-fade-in">
             <div>
               <h3 className="text-[13px] font-bold text-slate-300 mb-3">Weekly Volume</h3>
-              <div className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 p-4 h-52">
+              <div className="bg-[#131929] rounded-2xl border border-white/5 p-4 h-52">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <defs>
@@ -217,7 +217,7 @@ const Profile = () => {
 
             <div>
               <h3 className="text-[13px] font-bold text-slate-300 mb-3">Muscle Group Balance (this month)</h3>
-              <div className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 p-4 flex flex-col gap-3">
+              <div className="bg-[#131929] rounded-2xl border border-white/5 p-4 flex flex-col gap-3">
                 {[
                   { muscle: 'Back',      sets: 38 },
                   { muscle: 'Chest',     sets: 32 },

@@ -51,13 +51,18 @@ const Workouts = () => {
   };
 
   return (
-    <div className="container main-content animate-fade-in pb-24 md:pb-8">
+    <div className="animate-fade-in pb-24 md:pb-10">
 
-      {/* Header */}
-      <header className="mb-6">
-        <h1 className="text-[26px] font-bold text-white mb-0.5">Workouts</h1>
-        <p className="text-[14px] text-slate-400">Your routines and gym programs.</p>
-      </header>
+      {/* Hero header */}
+      <div className="relative overflow-hidden mb-6">
+        <div className="absolute inset-0 bg-gradient-to-b from-violet-900/15 via-blue-900/8 to-transparent pointer-events-none" />
+        <div className="container relative pt-7 pb-5">
+          <h1 className="text-[24px] font-bold text-white leading-tight">Workouts</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">Your routines and gym programs.</p>
+        </div>
+      </div>
+
+      <div className="container">
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3 mb-6">
@@ -83,7 +88,7 @@ const Workouts = () => {
 
       {/* Create Routine form */}
       {isCreating && (
-        <div className="bg-[#1C2333]/90 border border-blue-500/30 rounded-2xl p-4 mb-6 animate-fade-in">
+        <div className="bg-[#161e35] border border-blue-500/30 rounded-2xl p-4 mb-6 animate-fade-in">
           <div className="flex items-center justify-between mb-3">
             <p className="font-semibold text-white text-[15px]">Name your routine</p>
             <button onClick={() => setIsCreating(false)} className="text-slate-500 hover:text-white transition-colors cursor-pointer">
@@ -130,7 +135,7 @@ const Workouts = () => {
           {routines.map(workout => (
             <div
               key={workout.id}
-              className="bg-[#1C2333]/80 backdrop-blur-md rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3.5 hover:border-white/10 transition-colors"
+              className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3.5 hover:border-white/10 transition-colors"
             >
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
                 <Dumbbell size={18} className="text-blue-400" />
@@ -176,7 +181,7 @@ const Workouts = () => {
       {activeTab === 'gym-programs' && (
         <div className="flex flex-col gap-3 animate-fade-in">
           {mockGymPrograms.map(prog => (
-            <div key={prog.id} className="bg-[#1C2333]/80 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden">
+            <div key={prog.id} className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden">
               {/* Card top gradient band */}
               <div className={`h-2 w-full bg-gradient-to-r ${prog.color}`} />
 
@@ -201,6 +206,8 @@ const Workouts = () => {
           ))}
         </div>
       )}
+
+      </div>{/* /container */}
     </div>
   );
 };

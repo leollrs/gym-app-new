@@ -20,7 +20,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
   const colorClass = MUSCLE_COLORS[exercise.muscle] || 'text-blue-400 bg-blue-500/10';
 
   return (
-    <div className="bg-[#1C1C1E]/60 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-white/10">
+    <div className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-white/10">
       <div
         className="flex items-center gap-4 p-4 cursor-pointer"
         onClick={() => setExpanded(e => !e)}
@@ -113,7 +113,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [] }) => 
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search exercises…"
-          className="w-full bg-[#1C1C1E]/80 border border-white/8 rounded-xl pl-9 pr-9 py-2.5 text-[15px] text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+          className="w-full bg-[#0e1420] border border-white/8 rounded-xl pl-9 pr-9 py-2.5 text-[15px] text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
         />
         {query && (
           <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors">

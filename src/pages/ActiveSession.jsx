@@ -286,7 +286,7 @@ const ActiveSession = () => {
           const hasPR = sets.some(s => s.isPR);
 
           return (
-            <div key={exercise.id} className="bg-[#1C1C1E]/60 backdrop-blur-md rounded-3xl overflow-hidden border border-white/5 shadow-lg">
+            <div key={exercise.id} className="bg-[#131929] backdrop-blur-md rounded-3xl overflow-hidden border border-white/5 shadow-lg">
               <div className="px-5 pt-5 pb-3 flex justify-between items-start">
                 <div>
                   <h2 className="font-semibold text-[20px] text-white tracking-tight leading-tight mb-1 flex items-center gap-2">
