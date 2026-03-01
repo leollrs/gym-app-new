@@ -2,77 +2,89 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Dumbbell, Activity, User, Tv, BookOpen } from 'lucide-react';
 
-const Navigation = () => {
-  return (
-    <>
-      {/* Desktop Top Navigation */}
-      <nav className="hidden md:block sticky top-0 z-50 border-b border-white/5 bg-[#0A0D14]/80 backdrop-blur-2xl">
-        <div className="container flex justify-between items-center py-4">
-          <div className="text-[22px] font-bold flex items-center gap-0 tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
-            <span className="text-gradient">Iron</span><span className="text-white">Forge</span>
-          </div>
-          <div className="flex gap-6 items-center">
-            {[
-              { to: '/',         icon: Home,     label: 'Dashboard', end: true },
-              { to: '/workouts', icon: Dumbbell, label: 'Workouts' },
-              { to: '/exercises',icon: BookOpen, label: 'Exercises' },
-              { to: '/social',   icon: Activity, label: 'Social' },
-              { to: '/profile',  icon: User,     label: 'Profile' },
-            ].map(({ to, icon: Icon, label, end }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 text-[14px] font-medium transition-colors px-1 py-0.5 ${
-                    isActive ? 'text-white' : 'text-slate-500 hover:text-slate-200'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
-                    {label}
-                  </>
-                )}
-              </NavLink>
-            ))}
-            <NavLink
-              to="/tv-display"
-              className="ml-2 flex items-center gap-1.5 text-[13px] font-medium text-amber-500/70 hover:text-amber-400 transition-colors border border-amber-500/20 px-3 py-1.5 rounded-lg"
-            >
-              <Tv size={14} /> Gym TV
-            </NavLink>
-          </div>
-        </div>
-      </nav>
+const NAV_ITEMS = [
+  { to: '/',          icon: Home,     label: 'Dashboard', end: true },
+  { to: '/workouts',  icon: Dumbbell, label: 'Workouts' },
+  { to: '/exercises', icon: BookOpen, label: 'Exercises' },
+  { to: '/social',    icon: Activity, label: 'Social' },
+  { to: '/profile',   icon: User,     label: 'Profile' },
+];
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0A0D14]/90 backdrop-blur-2xl border-t border-white/8 flex justify-around items-center pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2.5 px-2">
-        {[
-          { to: '/',          icon: Home,     label: 'Home',      end: true },
-          { to: '/workouts',  icon: Dumbbell, label: 'Workouts' },
-          { to: '/exercises', icon: BookOpen, label: 'Exercises' },
-          { to: '/social',    icon: Activity, label: 'Social' },
-          { to: '/profile',   icon: User,     label: 'Profile' },
-        ].map(({ to, icon: Icon, label, end }) => (
+const Navigation = () => (
+  <>
+    {/* Desktop Top Navigation */}
+    <nav className="hidden md:block sticky top-0 z-50 border-b border-white/6 bg-[#03050A]/90 backdrop-blur-2xl">
+      <div className="container flex justify-between items-center py-3.5">
+
+        {/* Brand */}
+        <div
+          className="text-[21px] font-black tracking-tight text-gradient"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+        >
+          IronForge
+        </div>
+
+        {/* Links */}
+        <div className="flex items-center gap-1">
+          {NAV_ITEMS.map(({ to, icon: Icon, label, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                `relative flex items-center gap-1.5 text-[13px] font-semibold px-3 py-2 rounded-lg transition-colors ${
+                  isActive
+                    ? 'text-[#D4AF37]'
+                    : 'text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/4'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={15} strokeWidth={isActive ? 2.5 : 2} />
+                  {label}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-3 right-3 h-px bg-[#D4AF37] rounded-full opacity-70" />
+                  )}
+                </>
+              )}
+            </NavLink>
+          ))}
+
+          {/* Gym TV */}
           <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `flex flex-col items-center gap-1 px-2 transition-colors min-w-[44px] min-h-[44px] justify-center ${
-                isActive ? 'text-blue-400' : 'text-slate-600'
-              }`
-            }
+            to="/tv-display"
+            className="ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-[#D4AF37] border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 hover:bg-[#D4AF37]/5 px-3 py-1.5 rounded-lg transition-all"
           >
-            <Icon size={22} />
-            <span className="text-[10px] font-semibold">{label}</span>
+            <Tv size={13} /> Gym TV
           </NavLink>
-        ))}
-      </nav>
-    </>
-  );
-};
+        </div>
+      </div>
+    </nav>
+
+    {/* Mobile Bottom Navigation */}
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#05070B]/95 backdrop-blur-2xl border-t border-white/6 flex justify-around items-center pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2 px-1">
+      {NAV_ITEMS.map(({ to, icon: Icon, label, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className={({ isActive }) =>
+            `flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] min-h-[44px] justify-center ${
+              isActive ? 'text-[#D4AF37]' : 'text-[#4B5563] hover:text-[#9CA3AF]'
+            }`
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Icon size={21} strokeWidth={isActive ? 2.5 : 2} />
+              <span className="text-[10px] font-semibold tracking-wide">{label}</span>
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  </>
+);
 
 export default Navigation;

@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { currentUser, personalRecords, progressData } from '../mockDb';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell
 } from 'recharts';
 
 const ACHIEVEMENTS = [
@@ -17,20 +18,25 @@ const ACHIEVEMENTS = [
   { id: 'a6', label: 'PR Machine',     icon: Star,      unlocked: false, desc: 'Set 10 personal records' },
 ];
 
+// Simplified muscle palette — no purple/pink/neon
 const MUSCLE_COLORS = {
-  Back: '#3b82f6', Chest: '#f43f5e', Legs: '#10b981',
-  Shoulders: '#8b5cf6', Biceps: '#f59e0b', Triceps: '#f97316',
-  Core: '#06b6d4', Glutes: '#ec4899',
+  Back:      '#3B82F6',
+  Chest:     '#EF4444',
+  Legs:      '#10B981',
+  Shoulders: '#D4AF37',
+  Biceps:    '#F59E0B',
+  Triceps:   '#F97316',
+  Core:      '#60A5FA',
+  Glutes:    '#F97316',
 };
 
-// Group PRs by broad category
 const groupPRsByCategory = (prs) => {
   const map = {
     'Chest & Triceps': ['ex_bp', 'ex_idbp', 'ex_tpd'],
-    'Back': ['ex_dl', 'ex_bbr', 'ex_lp'],
-    'Shoulders': ['ex_ohp'],
-    'Biceps': ['ex_bbc'],
-    'Legs': ['ex_sq', 'ex_hth'],
+    'Back':            ['ex_dl', 'ex_bbr', 'ex_lp'],
+    'Shoulders':       ['ex_ohp'],
+    'Biceps':          ['ex_bbc'],
+    'Legs':            ['ex_sq', 'ex_hth'],
   };
   const result = {};
   Object.entries(map).forEach(([cat, ids]) => {
@@ -44,14 +50,12 @@ const groupPRsByCategory = (prs) => {
   return result;
 };
 
-const StatBlock = ({ label, value, sub, icon: Icon, color }) => (
-  <div className="bg-[#131929] rounded-2xl p-4 border border-white/5">
-    <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${color}`}>
-      <Icon size={18} />
-    </div>
-    <p className="text-[26px] font-bold text-white leading-none">{value}</p>
-    {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
-    <p className="text-[12px] text-slate-400 mt-1">{label}</p>
+/* ── Hero stat block ─────────────────────────────────────────────── */
+const HeroStat = ({ label, value, sub }) => (
+  <div className="flex flex-col items-center text-center py-4 px-3 border-r border-white/6 last:border-r-0">
+    <p className="text-[24px] font-black text-[#D4AF37] leading-none">{value}</p>
+    {sub && <p className="text-[10px] text-[#6B7280] mt-0.5">{sub}</p>}
+    <p className="text-[11px] text-[#9CA3AF] font-medium mt-1">{label}</p>
   </div>
 );
 
@@ -59,190 +63,210 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('prs');
   const prGroups = groupPRsByCategory(personalRecords);
 
+  const muscleData = [
+    { muscle: 'Back',      sets: 38 },
+    { muscle: 'Chest',     sets: 32 },
+    { muscle: 'Legs',      sets: 28 },
+    { muscle: 'Shoulders', sets: 22 },
+    { muscle: 'Biceps',    sets: 18 },
+    { muscle: 'Triceps',   sets: 16 },
+    { muscle: 'Core',      sets: 12 },
+    { muscle: 'Glutes',    sets: 10 },
+  ];
+
   return (
     <div className="container main-content animate-fade-in pb-24 md:pb-8">
 
-      {/* Profile header */}
-      <div className="mb-7">
+      {/* ── Profile header ─────────────────────────────────────────── */}
+      <div className="bg-[#0F172A] rounded-[14px] border border-white/6 mb-5 overflow-hidden">
 
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <img
-                  src={currentUser.avatarUrl}
-                  alt={currentUser.fullName}
-                  className="w-20 h-20 rounded-3xl border-2 border-blue-500/50 shadow-xl"
-                />
-                <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full border-2 border-[#0A0D14]">
-                  Lv.{currentUser.stats.level}
-                </div>
-              </div>
-              <div>
-                <h1 className="text-[22px] font-bold text-white leading-tight">{currentUser.fullName}</h1>
-                <p className="text-[14px] text-slate-400">@{currentUser.username}</p>
-                <p className="text-[12px] text-blue-400 mt-1 flex items-center gap-1">
-                  <Dumbbell size={12} /> {currentUser.homeGym}
-                </p>
+        {/* Identity row */}
+        <div className="flex items-start justify-between p-5 pb-4">
+          <div className="flex items-center gap-4">
+            <div className="relative flex-shrink-0">
+              <img
+                src={currentUser.avatarUrl}
+                alt={currentUser.fullName}
+                className="w-[68px] h-[68px] rounded-2xl border border-[#D4AF37]/30"
+              />
+              <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] text-black text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#0F172A] leading-none">
+                {currentUser.stats.level}
               </div>
             </div>
-            <button className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-white transition-colors bg-white/5 rounded-xl border border-white/8">
-              <Settings size={18} />
-            </button>
+            <div>
+              <h1 className="text-[20px] font-bold text-[#E5E7EB] leading-tight">{currentUser.fullName}</h1>
+              <p className="text-[13px] text-[#6B7280]">@{currentUser.username}</p>
+              <p className="text-[12px] text-[#D4AF37] mt-1 flex items-center gap-1 font-medium">
+                <Dumbbell size={11} /> {currentUser.homeGym}
+              </p>
+            </div>
           </div>
-
-          <p className="text-[12px] text-slate-500 flex items-center gap-1.5 mb-5">
-            <Calendar size={12} />
-            Member since {new Date(currentUser.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatBlock label="Workouts"      value={currentUser.stats.workoutsCompleted} icon={Dumbbell}  color="text-blue-400 bg-blue-500/10" />
-            <StatBlock label="Day Streak"    value={currentUser.stats.currentStreak} sub="days"           icon={Flame}     color="text-amber-400 bg-amber-500/10" />
-            <StatBlock label="Total Volume"  value={`${(currentUser.stats.totalVolumeLbs / 1000000).toFixed(2)}M`} sub="lbs lifted" icon={TrendingUp} color="text-emerald-400 bg-emerald-500/10" />
-            <StatBlock label="Records"       value={Object.keys(personalRecords).length}                  icon={Trophy}    color="text-amber-400 bg-amber-500/10" />
-          </div>
-      </div>
-
-      {/* Tabs */}
-      <div>
-        <div className="flex border-b border-white/8 mb-6">
-          {[
-            { key: 'prs',          label: 'PRs' },
-            { key: 'achievements', label: 'Achievements' },
-            { key: 'stats',        label: 'Volume Stats' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 py-3 text-[13px] font-semibold transition-colors border-b-2 -mb-px ${
-                activeTab === tab.key
-                  ? 'text-white border-blue-500'
-                  : 'text-slate-500 border-transparent hover:text-slate-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          <button className="w-9 h-9 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors bg-white/4 rounded-xl border border-white/8">
+            <Settings size={16} />
+          </button>
         </div>
 
-        {/* PR Tab */}
-        {activeTab === 'prs' && (
-          <div className="flex flex-col gap-5 animate-fade-in">
-            {Object.entries(prGroups).map(([group, prs]) => (
-              <section key={group}>
-                <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">{group}</h3>
-                <div className="flex flex-col gap-2">
-                  {prs.map(pr => (
-                    <div key={pr.id} className="bg-[#131929] rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                        <Trophy size={18} className="text-amber-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white font-semibold text-[14px] truncate">{pr.label}</p>
-                        <p className="text-slate-500 text-[12px]">
-                          {new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-white font-bold text-[18px]">
-                          {pr.weight} <span className="text-slate-500 text-[13px] font-normal">lbs</span>
-                        </p>
-                        <p className="text-slate-400 text-[12px]">× {pr.reps} reps</p>
-                      </div>
+        <p className="text-[11px] text-[#6B7280] flex items-center gap-1.5 px-5 pb-4">
+          <Calendar size={11} />
+          Member since {new Date(currentUser.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </p>
+
+        {/* Hero stats row */}
+        <div className="grid grid-cols-4 border-t border-white/6">
+          <HeroStat label="Workouts" value={currentUser.stats.workoutsCompleted} />
+          <HeroStat label="Streak"   value={currentUser.stats.currentStreak} sub="days" />
+          <HeroStat
+            label="Volume"
+            value={`${(currentUser.stats.totalVolumeLbs / 1000000).toFixed(2)}M`}
+            sub="lbs"
+          />
+          <HeroStat label="Records" value={Object.keys(personalRecords).length} />
+        </div>
+      </div>
+
+      {/* ── Tabs ───────────────────────────────────────────────────── */}
+      <div className="flex border-b border-white/8 mb-5">
+        {[
+          { key: 'prs',          label: 'Personal Records' },
+          { key: 'achievements', label: 'Achievements' },
+          { key: 'stats',        label: 'Volume Stats' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 py-3 text-[13px] font-semibold transition-colors border-b-2 -mb-px cursor-pointer ${
+              activeTab === tab.key
+                ? 'text-[#D4AF37] border-[#D4AF37]'
+                : 'text-[#6B7280] border-transparent hover:text-[#9CA3AF]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PR Tab ─────────────────────────────────────────────────── */}
+      {activeTab === 'prs' && (
+        <div className="flex flex-col gap-5 animate-fade-in">
+          {Object.entries(prGroups).map(([group, prs]) => (
+            <section key={group}>
+              <h3 className="section-label mb-2 px-0.5">{group}</h3>
+              <div className="flex flex-col gap-2">
+                {prs.map(pr => (
+                  <div key={pr.id} className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors flex items-center gap-4 px-4 py-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                      <Trophy size={16} className="text-[#D4AF37]" />
                     </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-
-        {/* Achievements Tab */}
-        {activeTab === 'achievements' && (
-          <div className="grid grid-cols-2 gap-3 animate-fade-in">
-            {ACHIEVEMENTS.map(a => (
-              <div
-                key={a.id}
-                className={`rounded-2xl border p-4 flex flex-col items-center text-center gap-2 ${
-                  a.unlocked
-                    ? 'bg-[#131929] border-white/8'
-                    : 'bg-white/[0.02] border-white/5 opacity-45'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                  a.unlocked ? 'bg-blue-500/15 text-blue-400' : 'bg-white/5 text-slate-600'
-                }`}>
-                  {a.unlocked ? <a.icon size={22} /> : <Lock size={20} />}
-                </div>
-                <div>
-                  <p className={`font-semibold text-[13px] ${a.unlocked ? 'text-white' : 'text-slate-500'}`}>{a.label}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{a.desc}</p>
-                </div>
-                {a.unlocked && (
-                  <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wide mt-1">Unlocked</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Stats Tab */}
-        {activeTab === 'stats' && (
-          <div className="flex flex-col gap-5 animate-fade-in">
-            <div>
-              <h3 className="text-[13px] font-bold text-slate-300 mb-3">Weekly Volume</h3>
-              <div className="bg-[#131929] rounded-2xl border border-white/5 p-4 h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                    <Tooltip
-                      cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }}
-                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px' }}
-                    />
-                    <Area type="monotone" dataKey="volume" stroke="#3b82f6" strokeWidth={2} fill="url(#volGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-[13px] font-bold text-slate-300 mb-3">Muscle Group Balance (this month)</h3>
-              <div className="bg-[#131929] rounded-2xl border border-white/5 p-4 flex flex-col gap-3">
-                {[
-                  { muscle: 'Back',      sets: 38 },
-                  { muscle: 'Chest',     sets: 32 },
-                  { muscle: 'Legs',      sets: 28 },
-                  { muscle: 'Shoulders', sets: 22 },
-                  { muscle: 'Biceps',    sets: 18 },
-                  { muscle: 'Triceps',   sets: 16 },
-                  { muscle: 'Core',      sets: 12 },
-                  { muscle: 'Glutes',    sets: 10 },
-                ].map(({ muscle, sets }) => (
-                  <div key={muscle} className="flex items-center gap-3">
-                    <div className="w-20 text-[12px] text-slate-400 text-right flex-shrink-0">{muscle}</div>
-                    <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${(sets / 38) * 100}%`, backgroundColor: MUSCLE_COLORS[muscle] || '#3b82f6' }}
-                      />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[#E5E7EB] font-semibold text-[14px] truncate">{pr.label}</p>
+                      <p className="text-[#6B7280] text-[12px]">
+                        {new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
                     </div>
-                    <div className="w-8 text-[12px] text-slate-500 text-right flex-shrink-0">{sets}</div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[#D4AF37] font-black text-[20px] leading-none">
+                        {pr.weight}
+                        <span className="text-[#6B7280] text-[12px] font-normal ml-1">lbs</span>
+                      </p>
+                      <p className="text-[#9CA3AF] text-[12px] mt-0.5">× {pr.reps} reps</p>
+                    </div>
                   </div>
                 ))}
               </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {/* ── Achievements Tab ───────────────────────────────────────── */}
+      {activeTab === 'achievements' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-in">
+          {ACHIEVEMENTS.map(a => (
+            <div
+              key={a.id}
+              className={`rounded-[14px] border p-4 flex flex-col items-center text-center gap-2.5 transition-colors ${
+                a.unlocked
+                  ? 'bg-[#0F172A] border-white/8 hover:border-white/15'
+                  : 'bg-[#0F172A]/50 border-white/4 opacity-40'
+              }`}
+            >
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+                a.unlocked ? 'bg-[#D4AF37]/12 text-[#D4AF37]' : 'bg-white/4 text-[#4B5563]'
+              }`}>
+                {a.unlocked ? <a.icon size={20} /> : <Lock size={18} />}
+              </div>
+              <div>
+                <p className={`font-semibold text-[13px] ${a.unlocked ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
+                  {a.label}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-0.5 leading-snug">{a.desc}</p>
+              </div>
+              {a.unlocked && (
+                <span className="text-[10px] text-[#D4AF37] font-bold uppercase tracking-wider">Unlocked</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Stats Tab ──────────────────────────────────────────────── */}
+      {activeTab === 'stats' && (
+        <div className="flex flex-col gap-5 animate-fade-in">
+
+          {/* Weekly Volume */}
+          <div>
+            <h3 className="text-[13px] font-semibold text-[#9CA3AF] mb-3">Weekly Volume</h3>
+            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-4 h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#D4AF37" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} />
+                  <Tooltip
+                    cursor={{ stroke: 'rgba(255,255,255,0.06)', strokeWidth: 1 }}
+                    contentStyle={{
+                      backgroundColor: '#111827',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Area type="monotone" dataKey="volume" stroke="#D4AF37" strokeWidth={2} fill="url(#volGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-        )}
 
-        <div className="h-8" />
-      </div>
+          {/* Muscle group balance */}
+          <div>
+            <h3 className="text-[13px] font-semibold text-[#9CA3AF] mb-3">Muscle Balance · This Month</h3>
+            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-4 flex flex-col gap-3">
+              {muscleData.map(({ muscle, sets }) => (
+                <div key={muscle} className="flex items-center gap-3">
+                  <div className="w-20 text-[12px] text-[#9CA3AF] text-right flex-shrink-0">{muscle}</div>
+                  <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${(sets / 38) * 100}%`,
+                        backgroundColor: MUSCLE_COLORS[muscle] || '#D4AF37',
+                      }}
+                    />
+                  </div>
+                  <div className="w-7 text-[12px] text-[#6B7280] text-right flex-shrink-0">{sets}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="h-6" />
     </div>
   );
 };

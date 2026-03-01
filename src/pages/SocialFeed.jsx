@@ -22,76 +22,87 @@ const SocialFeed = () => {
       {/* Page header */}
       <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-[24px] font-bold text-white">Social</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">What your gym friends are lifting.</p>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Social</h1>
+          <p className="text-[13px] text-[#6B7280] mt-0.5">What your gym is lifting.</p>
         </div>
-        <button className="flex items-center gap-2 text-[13px] font-semibold text-white bg-white/6 hover:bg-white/10 border border-white/8 px-3.5 py-2 rounded-xl transition-colors cursor-pointer">
-          <UserPlus size={15} /> Add Friend
+        <button className="flex items-center gap-2 text-[13px] font-semibold text-[#E5E7EB] btn-secondary px-3.5 py-2 rounded-xl transition-colors cursor-pointer">
+          <UserPlus size={14} /> Add Friend
         </button>
       </header>
 
-      <div className="max-w-xl mx-auto flex flex-col gap-4">
+      <div className="max-w-xl mx-auto flex flex-col gap-3">
 
-        {/* Post composer (static preview) */}
-        <div className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 flex gap-3 items-center p-4">
+        {/* Post composer */}
+        <div className="bg-[#0F172A] rounded-[14px] border border-white/6 flex gap-3 items-center p-4">
           <img
             src={currentUser.avatarUrl}
             alt={currentUser.username}
-            className="w-9 h-9 rounded-full flex-shrink-0"
+            className="w-10 h-10 rounded-full flex-shrink-0 border border-white/8"
           />
-          <div className="flex-1 bg-black/30 rounded-xl px-4 py-2.5 text-[14px] text-slate-500 cursor-text select-none">
+          <div className="flex-1 bg-[#05070B] rounded-xl px-4 py-2.5 text-[14px] text-[#4B5563] cursor-text select-none border border-white/6">
             Share a PR, workout, or photo…
           </div>
         </div>
 
         {/* Activity posts */}
         {activities.map(activity => (
-          <div key={activity.id} className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden">
-
+          <div
+            key={activity.id}
+            className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/10 transition-colors overflow-hidden"
+          >
             {/* Post header */}
             <div className="flex items-center gap-3 p-4 pb-3">
               <img
                 src={activity.avatarUrl}
                 alt={activity.username}
-                className="w-10 h-10 rounded-full flex-shrink-0"
+                className="w-11 h-11 rounded-full flex-shrink-0 border border-white/8"
               />
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold text-white">
+                <p className="text-[14px] font-semibold text-[#E5E7EB] leading-snug">
                   {activity.username}{' '}
-                  <span className="text-slate-400 font-normal">{activity.action}</span>
+                  <span className="text-[#9CA3AF] font-normal">{activity.action}</span>
                 </p>
-                <p className="text-[12px] text-slate-500 mt-0.5">{activity.time}</p>
+                <p className="text-[12px] text-[#6B7280] mt-0.5">{activity.time}</p>
               </div>
             </div>
 
-            {/* Post body */}
-            <div className="mx-4 mb-3 bg-black/25 rounded-xl px-4 py-3 border-l-4 border-blue-500">
-              <p className="text-[18px] font-bold text-white">{activity.detail}</p>
+            {/* Post body — gold accent border for PRs */}
+            <div className="mx-4 mb-3 bg-[#05070B]/60 rounded-xl px-4 py-3 border-l-[3px] border-l-[#D4AF37]">
+              <p className="text-[17px] font-bold text-[#E5E7EB] leading-snug"
+                dangerouslySetInnerHTML={{
+                  __html: activity.detail.replace(
+                    /(\d+\s*lbs?(?:\s*x\s*\d+)?|\d+\s*x\s*\d+)/gi,
+                    '<span style="color:#D4AF37">$1</span>'
+                  )
+                }}
+              />
             </div>
 
             {/* Interaction footer */}
-            <div className="flex items-center gap-5 px-4 py-3 border-t border-white/5">
+            <div className="flex items-center gap-4 px-4 py-3 border-t border-white/5">
               <button
                 onClick={() => handleToggleLike(activity.id)}
                 className={`flex items-center gap-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
-                  activity.hasLiked ? 'text-red-400' : 'text-slate-500 hover:text-white'
+                  activity.hasLiked ? 'text-red-400' : 'text-[#6B7280] hover:text-[#E5E7EB]'
                 }`}
               >
-                <Heart size={16} fill={activity.hasLiked ? 'currentColor' : 'none'} />
+                <Heart size={15} fill={activity.hasLiked ? 'currentColor' : 'none'} />
                 {activity.likes}
               </button>
-              <button className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 hover:text-white transition-colors cursor-pointer">
-                <MessageCircle size={16} />
+              <button className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] hover:text-[#E5E7EB] transition-colors cursor-pointer">
+                <MessageCircle size={15} />
                 {activity.comments}
               </button>
-              <button className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 hover:text-white transition-colors cursor-pointer ml-auto">
-                <Share2 size={16} />
+              <button className="flex items-center gap-1.5 text-[13px] font-medium text-[#6B7280] hover:text-[#E5E7EB] transition-colors cursor-pointer ml-auto">
+                <Share2 size={15} />
               </button>
             </div>
           </div>
         ))}
 
-        <p className="text-center text-[13px] text-slate-600 py-6">You're all caught up!</p>
+        <p className="text-center text-[12px] text-[#4B5563] py-5 tracking-wide">
+          — You're all caught up —
+        </p>
       </div>
 
     </div>
