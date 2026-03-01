@@ -63,21 +63,21 @@ const Workouts = () => {
       <div className="grid grid-cols-2 gap-3 mb-6">
         <button
           onClick={() => setIsCreating(true)}
-          className="flex items-center gap-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/50 rounded-2xl p-4 transition-all cursor-pointer text-left"
+          className="flex flex-col items-center justify-center gap-3 bg-[#111318] hover:bg-[#181c25] border border-white/6 rounded-2xl py-6 transition-all cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
-            <Plus size={20} className="text-white" />
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/15 flex items-center justify-center">
+            <Plus size={24} className="text-blue-400" />
           </div>
-          <span className="font-semibold text-white text-[15px]">New Routine</span>
+          <span className="font-semibold text-white text-[14px]">Create Routine</span>
         </button>
         <Link
           to="/exercises"
-          className="flex items-center gap-3 bg-white/5 hover:bg-white/8 border border-white/6 rounded-2xl p-4 transition-all cursor-pointer"
+          className="flex flex-col items-center justify-center gap-3 bg-[#111318] hover:bg-[#181c25] border border-white/6 rounded-2xl py-6 transition-all"
         >
-          <div className="w-10 h-10 rounded-xl bg-white/8 flex items-center justify-center flex-shrink-0">
-            <BookOpen size={20} className="text-slate-300" />
+          <div className="w-12 h-12 rounded-2xl bg-white/8 flex items-center justify-center">
+            <BookOpen size={24} className="text-slate-300" />
           </div>
-          <span className="font-semibold text-white text-[15px]">Exercises</span>
+          <span className="font-semibold text-white text-[14px]">Exercises</span>
         </Link>
       </div>
 
@@ -130,7 +130,7 @@ const Workouts = () => {
           {routines.map(workout => (
             <div
               key={workout.id}
-              className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3.5 hover:border-white/10 transition-colors"
+              className="bg-[#111318] rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3.5 hover:border-white/10 transition-colors"
             >
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
                 <Dumbbell size={18} className="text-blue-400" />
@@ -176,7 +176,7 @@ const Workouts = () => {
       {activeTab === 'gym-programs' && (
         <div className="flex flex-col gap-3 animate-fade-in">
           {mockGymPrograms.map(prog => (
-            <div key={prog.id} className="bg-[#131929] backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden">
+            <div key={prog.id} className="bg-[#111318] rounded-2xl border border-white/5 overflow-hidden">
               {/* Card top gradient band */}
               <div className={`h-2 w-full bg-gradient-to-r ${prog.color}`} />
 
