@@ -17,29 +17,30 @@ const SocialFeed = () => {
   };
 
   return (
-    <div className="container main-content animate-fade-in pb-24 md:pb-8">
+    <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-8 md:pt-12 pb-28 md:pb-12 animate-fade-in">
 
       {/* Page header */}
-      <header className="flex justify-between items-center mb-6">
+      <header className="flex justify-between items-center mb-10">
         <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Social</h1>
-          <p className="text-[13px] text-[#6B7280] mt-0.5">What your gym is lifting.</p>
+          <h1 className="text-[24px] font-bold text-[#E5E7EB]">Social</h1>
+          <p className="text-[13px] text-[#6B7280] mt-1">What your gym is lifting.</p>
         </div>
-        <button className="flex items-center gap-2 text-[13px] font-semibold text-[#E5E7EB] btn-secondary px-3.5 py-2 rounded-xl transition-colors cursor-pointer">
+        <button className="flex items-center gap-2 text-[13px] font-semibold text-[#E5E7EB] btn-secondary px-4 py-2.5 rounded-xl transition-colors cursor-pointer">
           <UserPlus size={14} /> Add Friend
         </button>
       </header>
 
-      <div className="max-w-xl mx-auto flex flex-col gap-3">
+      {/* Feed — narrower column for readability */}
+      <div className="max-w-[680px] mx-auto flex flex-col gap-5">
 
         {/* Post composer */}
-        <div className="bg-[#0F172A] rounded-[14px] border border-white/6 flex gap-3 items-center p-4">
+        <div className="bg-[#0F172A] rounded-[14px] border border-white/6 flex gap-4 items-center p-5">
           <img
             src={currentUser.avatarUrl}
             alt={currentUser.username}
-            className="w-10 h-10 rounded-full flex-shrink-0 border border-white/8"
+            className="w-11 h-11 rounded-full flex-shrink-0 border border-white/8"
           />
-          <div className="flex-1 bg-[#05070B] rounded-xl px-4 py-2.5 text-[14px] text-[#4B5563] cursor-text select-none border border-white/6">
+          <div className="flex-1 bg-[#05070B] rounded-xl px-4 py-3 text-[14px] text-[#4B5563] cursor-text select-none border border-white/6">
             Share a PR, workout, or photo…
           </div>
         </div>
@@ -51,7 +52,7 @@ const SocialFeed = () => {
             className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/10 transition-colors overflow-hidden"
           >
             {/* Post header */}
-            <div className="flex items-center gap-3 p-4 pb-3">
+            <div className="flex items-center gap-3.5 p-5 pb-4">
               <img
                 src={activity.avatarUrl}
                 alt={activity.username}
@@ -66,9 +67,10 @@ const SocialFeed = () => {
               </div>
             </div>
 
-            {/* Post body — gold accent border for PRs */}
-            <div className="mx-4 mb-3 bg-[#05070B]/60 rounded-xl px-4 py-3 border-l-[3px] border-l-[#D4AF37]">
-              <p className="text-[17px] font-bold text-[#E5E7EB] leading-snug"
+            {/* Post body */}
+            <div className="mx-5 mb-4 bg-[#05070B]/60 rounded-xl px-5 py-4 border-l-[3px] border-l-[#D4AF37]">
+              <p
+                className="text-[17px] font-bold text-[#E5E7EB] leading-snug"
                 dangerouslySetInnerHTML={{
                   __html: activity.detail.replace(
                     /(\d+\s*lbs?(?:\s*x\s*\d+)?|\d+\s*x\s*\d+)/gi,
@@ -79,7 +81,7 @@ const SocialFeed = () => {
             </div>
 
             {/* Interaction footer */}
-            <div className="flex items-center gap-4 px-4 py-3 border-t border-white/5">
+            <div className="flex items-center gap-5 px-5 py-3.5 border-t border-white/5">
               <button
                 onClick={() => handleToggleLike(activity.id)}
                 className={`flex items-center gap-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
@@ -100,7 +102,7 @@ const SocialFeed = () => {
           </div>
         ))}
 
-        <p className="text-center text-[12px] text-[#4B5563] py-5 tracking-wide">
+        <p className="text-center text-[12px] text-[#4B5563] py-6 tracking-wide">
           — You're all caught up —
         </p>
       </div>

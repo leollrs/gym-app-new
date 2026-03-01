@@ -58,13 +58,8 @@
   --shadow-glow: 0 0 16px var(--accent-gold-glow);
 }
 
-/* ── Reset ────────────────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
+/* ── Base ─────────────────────────────────────────────────────────── */
+/* Tailwind v4 Preflight already handles box-sizing, margin, padding reset */
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -130,6 +125,7 @@ button {
 .glass-card:hover { border-color: var(--border-strong); }
 
 /* ── Layout ───────────────────────────────────────────────────────── */
+/* .container kept for legacy use in TVDisplay / ActiveSession */
 .container {
   width: 100%;
   max-width: 1200px;
@@ -137,6 +133,7 @@ button {
   padding: 0 1.25rem;
 }
 
+/* Pages use explicit Tailwind utilities for padding instead of .main-content */
 .app-wrapper {
   display: flex;
   flex-direction: column;
@@ -147,8 +144,8 @@ button {
 
 .main-content {
   flex: 1;
-  padding-top: 1.75rem;
-  padding-bottom: 1.75rem;
+  padding-top: 2.5rem;
+  padding-bottom: 2.5rem;
 }
 
 /* ── Typography ───────────────────────────────────────────────────── */

@@ -245,7 +245,7 @@ const WorkoutBuilder = () => {
       <div className="container max-w-2xl mx-auto px-4 pt-6">
 
         {/* Summary bar */}
-        <div className="flex items-center gap-3 mb-5 text-[13px] text-[#6B7280]">
+        <div className="flex items-center gap-3 mb-8 text-[13px] text-[#6B7280]">
           <span className="flex items-center gap-1.5">
             <Dumbbell size={13} className="text-[#D4AF37]" />
             {routineExercises.length} exercise{routineExercises.length !== 1 ? 's' : ''}
@@ -258,7 +258,7 @@ const WorkoutBuilder = () => {
 
         {/* Exercise list */}
         {routineExercises.length > 0 ? (
-          <div className="flex flex-col gap-2.5 mb-5">
+          <div className="flex flex-col gap-4 mb-5">
             {routineExercises.map((item, index) => (
               <ExerciseRow
                 key={`${item.id}-${index}`}

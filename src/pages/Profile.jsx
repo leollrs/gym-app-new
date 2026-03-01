@@ -5,8 +5,7 @@ import {
 } from 'lucide-react';
 import { currentUser, personalRecords, progressData } from '../mockDb';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 
 const ACHIEVEMENTS = [
@@ -18,7 +17,6 @@ const ACHIEVEMENTS = [
   { id: 'a6', label: 'PR Machine',     icon: Star,      unlocked: false, desc: 'Set 10 personal records' },
 ];
 
-// Simplified muscle palette — no purple/pink/neon
 const MUSCLE_COLORS = {
   Back:      '#3B82F6',
   Chest:     '#EF4444',
@@ -52,10 +50,10 @@ const groupPRsByCategory = (prs) => {
 
 /* ── Hero stat block ─────────────────────────────────────────────── */
 const HeroStat = ({ label, value, sub }) => (
-  <div className="flex flex-col items-center text-center py-4 px-3 border-r border-white/6 last:border-r-0">
-    <p className="text-[24px] font-black text-[#D4AF37] leading-none">{value}</p>
+  <div className="flex flex-col items-center text-center py-5 px-3 border-r border-white/6 last:border-r-0">
+    <p className="text-[26px] font-black text-[#D4AF37] leading-none">{value}</p>
     {sub && <p className="text-[10px] text-[#6B7280] mt-0.5">{sub}</p>}
-    <p className="text-[11px] text-[#9CA3AF] font-medium mt-1">{label}</p>
+    <p className="text-[11px] text-[#9CA3AF] font-medium mt-1.5">{label}</p>
   </div>
 );
 
@@ -75,29 +73,29 @@ const Profile = () => {
   ];
 
   return (
-    <div className="container main-content animate-fade-in pb-24 md:pb-8">
+    <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-8 md:pt-12 pb-28 md:pb-12 animate-fade-in">
 
-      {/* ── Profile header ─────────────────────────────────────────── */}
-      <div className="bg-[#0F172A] rounded-[14px] border border-white/6 mb-5 overflow-hidden">
+      {/* ── Profile header card ────────────────────────────────────── */}
+      <div className="bg-[#0F172A] rounded-[14px] border border-white/6 mb-8 overflow-hidden">
 
         {/* Identity row */}
-        <div className="flex items-start justify-between p-5 pb-4">
+        <div className="flex items-start justify-between p-6 pb-5">
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
               <img
                 src={currentUser.avatarUrl}
                 alt={currentUser.fullName}
-                className="w-[68px] h-[68px] rounded-2xl border border-[#D4AF37]/30"
+                className="w-[72px] h-[72px] rounded-2xl border border-[#D4AF37]/30"
               />
               <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] text-black text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#0F172A] leading-none">
                 {currentUser.stats.level}
               </div>
             </div>
             <div>
-              <h1 className="text-[20px] font-bold text-[#E5E7EB] leading-tight">{currentUser.fullName}</h1>
-              <p className="text-[13px] text-[#6B7280]">@{currentUser.username}</p>
-              <p className="text-[12px] text-[#D4AF37] mt-1 flex items-center gap-1 font-medium">
-                <Dumbbell size={11} /> {currentUser.homeGym}
+              <h1 className="text-[21px] font-bold text-[#E5E7EB] leading-tight">{currentUser.fullName}</h1>
+              <p className="text-[13px] text-[#6B7280] mt-0.5">@{currentUser.username}</p>
+              <p className="text-[12px] text-[#D4AF37] mt-1.5 flex items-center gap-1 font-medium">
+                <Dumbbell size={12} /> {currentUser.homeGym}
               </p>
             </div>
           </div>
@@ -106,7 +104,7 @@ const Profile = () => {
           </button>
         </div>
 
-        <p className="text-[11px] text-[#6B7280] flex items-center gap-1.5 px-5 pb-4">
+        <p className="text-[11px] text-[#6B7280] flex items-center gap-1.5 px-6 pb-5">
           <Calendar size={11} />
           Member since {new Date(currentUser.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </p>
@@ -125,7 +123,7 @@ const Profile = () => {
       </div>
 
       {/* ── Tabs ───────────────────────────────────────────────────── */}
-      <div className="flex border-b border-white/8 mb-5">
+      <div className="flex border-b border-white/8 mb-8">
         {[
           { key: 'prs',          label: 'Personal Records' },
           { key: 'achievements', label: 'Achievements' },
@@ -134,7 +132,7 @@ const Profile = () => {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 py-3 text-[13px] font-semibold transition-colors border-b-2 -mb-px cursor-pointer ${
+            className={`flex-1 py-3.5 text-[13px] font-semibold transition-colors border-b-2 -mb-px cursor-pointer ${
               activeTab === tab.key
                 ? 'text-[#D4AF37] border-[#D4AF37]'
                 : 'text-[#6B7280] border-transparent hover:text-[#9CA3AF]'
@@ -147,24 +145,24 @@ const Profile = () => {
 
       {/* ── PR Tab ─────────────────────────────────────────────────── */}
       {activeTab === 'prs' && (
-        <div className="flex flex-col gap-5 animate-fade-in">
+        <div className="flex flex-col gap-8 animate-fade-in">
           {Object.entries(prGroups).map(([group, prs]) => (
             <section key={group}>
-              <h3 className="section-label mb-2 px-0.5">{group}</h3>
-              <div className="flex flex-col gap-2">
+              <h3 className="section-label mb-4">{group}</h3>
+              <div className="flex flex-col gap-3">
                 {prs.map(pr => (
-                  <div key={pr.id} className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors flex items-center gap-4 px-4 py-3.5">
-                    <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                      <Trophy size={16} className="text-[#D4AF37]" />
+                  <div key={pr.id} className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors flex items-center gap-4 px-5 py-4">
+                    <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                      <Trophy size={17} className="text-[#D4AF37]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[#E5E7EB] font-semibold text-[14px] truncate">{pr.label}</p>
-                      <p className="text-[#6B7280] text-[12px]">
+                      <p className="text-[#E5E7EB] font-semibold text-[15px] truncate">{pr.label}</p>
+                      <p className="text-[#6B7280] text-[12px] mt-0.5">
                         {new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-[#D4AF37] font-black text-[20px] leading-none">
+                      <p className="text-[#D4AF37] font-black text-[22px] leading-none">
                         {pr.weight}
                         <span className="text-[#6B7280] text-[12px] font-normal ml-1">lbs</span>
                       </p>
@@ -180,26 +178,26 @@ const Profile = () => {
 
       {/* ── Achievements Tab ───────────────────────────────────────── */}
       {activeTab === 'achievements' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-in">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 animate-fade-in">
           {ACHIEVEMENTS.map(a => (
             <div
               key={a.id}
-              className={`rounded-[14px] border p-4 flex flex-col items-center text-center gap-2.5 transition-colors ${
+              className={`rounded-[14px] border p-5 flex flex-col items-center text-center gap-3 transition-colors ${
                 a.unlocked
                   ? 'bg-[#0F172A] border-white/8 hover:border-white/15'
                   : 'bg-[#0F172A]/50 border-white/4 opacity-40'
               }`}
             >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
                 a.unlocked ? 'bg-[#D4AF37]/12 text-[#D4AF37]' : 'bg-white/4 text-[#4B5563]'
               }`}>
-                {a.unlocked ? <a.icon size={20} /> : <Lock size={18} />}
+                {a.unlocked ? <a.icon size={22} /> : <Lock size={20} />}
               </div>
               <div>
-                <p className={`font-semibold text-[13px] ${a.unlocked ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
+                <p className={`font-semibold text-[14px] ${a.unlocked ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
                   {a.label}
                 </p>
-                <p className="text-[11px] text-[#6B7280] mt-0.5 leading-snug">{a.desc}</p>
+                <p className="text-[12px] text-[#6B7280] mt-1 leading-snug">{a.desc}</p>
               </div>
               {a.unlocked && (
                 <span className="text-[10px] text-[#D4AF37] font-bold uppercase tracking-wider">Unlocked</span>
@@ -211,12 +209,12 @@ const Profile = () => {
 
       {/* ── Stats Tab ──────────────────────────────────────────────── */}
       {activeTab === 'stats' && (
-        <div className="flex flex-col gap-5 animate-fade-in">
+        <div className="flex flex-col gap-8 animate-fade-in">
 
           {/* Weekly Volume */}
           <div>
-            <h3 className="text-[13px] font-semibold text-[#9CA3AF] mb-3">Weekly Volume</h3>
-            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-4 h-52">
+            <h3 className="section-label mb-4">Weekly Volume</h3>
+            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-5 h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <defs>
@@ -244,10 +242,10 @@ const Profile = () => {
 
           {/* Muscle group balance */}
           <div>
-            <h3 className="text-[13px] font-semibold text-[#9CA3AF] mb-3">Muscle Balance · This Month</h3>
-            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-4 flex flex-col gap-3">
+            <h3 className="section-label mb-4">Muscle Balance · This Month</h3>
+            <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-5 flex flex-col gap-4">
               {muscleData.map(({ muscle, sets }) => (
-                <div key={muscle} className="flex items-center gap-3">
+                <div key={muscle} className="flex items-center gap-4">
                   <div className="w-20 text-[12px] text-[#9CA3AF] text-right flex-shrink-0">{muscle}</div>
                   <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
                     <div
@@ -266,7 +264,6 @@ const Profile = () => {
         </div>
       )}
 
-      <div className="h-6" />
     </div>
   );
 };
