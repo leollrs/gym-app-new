@@ -1,201 +1,198 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    currentUser,
-    announcements,
-    upcomingWorkouts,
-    progressData
+  currentUser, announcements, upcomingWorkouts, progressData
 } from '../mockDb';
 import {
-    Trophy,
-    Flame,
-    TrendingUp,
-    Calendar,
-    ChevronRight,
-    Bell,
-    Play
+  Trophy, Flame, TrendingUp, Calendar, ChevronRight, Bell, Play, Dumbbell, Megaphone
 } from 'lucide-react';
 import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-    Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 
 const StatCard = ({ icon: Icon, label, value, color }) => (
-    <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem' }}>
-        <div style={{
-            backgroundColor: `rgba(var(--${color}-rgb, 59, 130, 246), 0.1)`,
-            color: `var(--${color}, var(--accent-primary))`,
-            padding: '0.75rem',
-            borderRadius: 'var(--radius-md)'
-        }}>
-            <Icon size={24} />
-        </div>
-        <div>
-            <p className="text-small text-muted font-medium">{label}</p>
-            <p className="text-large font-bold">{value}</p>
-        </div>
+  <div className={`rounded-2xl p-4 border border-white/5 flex flex-col gap-3 cursor-default ${color}`}>
+    <Icon size={20} strokeWidth={2} />
+    <div>
+      <p className="text-[28px] font-bold text-white leading-none tracking-tight">{value}</p>
+      <p className="text-[12px] text-slate-400 mt-1 font-medium">{label}</p>
     </div>
+  </div>
 );
 
 const Dashboard = () => {
-    // Local state for interactive mockup testing
-    const [workoutsDone, setWorkoutsDone] = useState(currentUser.stats.workoutsCompleted);
-    const [volume, setVolume] = useState(currentUser.stats.totalVolumeLbs);
-    const [hasCompletedToday, setHasCompletedToday] = useState(false);
+  const [workoutsDone, setWorkoutsDone] = useState(currentUser.stats.workoutsCompleted);
+  const [volume, setVolume] = useState(currentUser.stats.totalVolumeLbs);
+  const [hasCompletedToday, setHasCompletedToday] = useState(false);
+  const [chartData, setChartData] = useState([...progressData]);
 
-    // Copy progress data so we can mutate it
-    const [chartData, setChartData] = useState([...progressData]);
+  const handleCompleteWorkout = () => {
+    if (hasCompletedToday) return;
+    const vol = 8500;
+    setWorkoutsDone(w => w + 1);
+    setVolume(v => v + vol);
+    setHasCompletedToday(true);
+    setChartData(prev => {
+      const next = [...prev];
+      next[2] = { day: 'Wed', volume: vol };
+      return next;
+    });
+  };
 
-    const handleCompleteWorkout = () => {
-        if (hasCompletedToday) return; // Prevent double clicking
+  return (
+    <div className="container main-content animate-fade-in pb-24 md:pb-8">
 
-        // Simulate completing "Heavy Lower Body" (approx 8500 lbs volume)
-        const workoutVolume = 8500;
-
-        setWorkoutsDone(prev => prev + 1);
-        setVolume(prev => prev + workoutVolume);
-        setHasCompletedToday(true);
-
-        // Add fake volume to "Today" (Assuming today is index 0 for mockup sake or just updating a day)
-        // Let's just update Wednesday which was 0
-        setChartData(prev => {
-            const newData = [...prev];
-            newData[2] = { day: 'Wed', volume: workoutVolume };
-            return newData;
-        });
-    };
-
-    return (
-        <div className="container main-content animate-fade-in pb-24 md:pb-8">
-            {/* Header Section */}
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <img
-                        src={currentUser.avatarUrl}
-                        alt="Profile"
-                        style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid var(--accent-primary)' }}
-                    />
-                    <div>
-                        <h1 className="text-h3 font-bold">Hey, {currentUser.username}</h1>
-                        <p className="text-small text-muted">{currentUser.homeGym} • Level {currentUser.stats.level}</p>
-                    </div>
-                </div>
-                <button className="glass" style={{ padding: '0.5rem', borderRadius: '50%', color: 'var(--text-primary)' }}>
-                    <Bell size={20} />
-                </button>
-            </header>
-
-            {/* Quick Stats Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                <StatCard icon={Flame} label="Day Streak" value={currentUser.stats.currentStreak} color="warning" />
-                <StatCard icon={Trophy} label="Workouts" value={workoutsDone} color="success" />
-                <StatCard icon={TrendingUp} label="Volume (lbs)" value={(volume / 1000).toFixed(1) + 'k'} color="accent-primary" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem', '@media (min-width: 768px)': { gridTemplateColumns: '2fr 1fr' } }}>
-
-                {/* Left Column (Main Content) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-
-                    {/* Active Routine / Next Workout */}
-                    <section>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h2 className="text-large font-bold">Up Next</h2>
-                            <a href="/workouts" className="text-small text-accent" style={{ display: 'flex', alignItems: 'center' }}>
-                                View Plan <ChevronRight size={16} />
-                            </a>
-                        </div>
-
-                        <div className="glass-card" style={{ position: 'relative', overflow: 'hidden', padding: '1.5rem' }}>
-                            <div style={{
-                                position: 'absolute', top: 0, right: 0, bottom: 0, left: '50%',
-                                background: 'radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 70%)',
-                                pointerEvents: 'none'
-                            }} />
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        <span style={{
-                                            background: hasCompletedToday ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                                            color: hasCompletedToday ? 'var(--success)' : 'var(--accent-secondary)',
-                                            padding: '0.2rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 600
-                                        }}>
-                                            {hasCompletedToday ? 'Completed' : upcomingWorkouts[0].date}
-                                        </span>
-                                        {!hasCompletedToday && (
-                                            <span className="text-small text-muted flex items-center gap-1">
-                                                <Calendar size={14} /> {upcomingWorkouts[0].duration}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <h3 className="text-h2 font-bold mb-1" style={{ opacity: hasCompletedToday ? 0.5 : 1 }}>
-                                        {upcomingWorkouts[0].name}
-                                    </h3>
-                                    <p className="text-muted text-small">{upcomingWorkouts[0].exercises} exercises • {upcomingWorkouts[0].type}</p>
-                                </div>
-
-                                <Link
-                                    to={`/session/${upcomingWorkouts[0].id}`}
-                                    className="btn-primary flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                                    style={{
-                                        borderRadius: '50%', width: '3.5rem', height: '3.5rem', padding: 0,
-                                        boxShadow: 'var(--shadow-glow)',
-                                        background: 'linear-gradient(135deg, var(--accent-primary), #2563eb)'
-                                    }}>
-                                    <Play size={24} fill="currentColor" style={{ marginLeft: '4px' }} />
-                                </Link>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Volume Chart */}
-                    <section>
-                        <h2 className="text-large font-bold mb-4">Volume This Week</h2>
-                        <div className="glass-card" style={{ height: '240px', padding: '1rem' }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
-                                        contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
-                                    />
-                                    <Bar dataKey="volume" radius={[4, 4, 0, 0]}>
-                                        {chartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.volume > 0 ? 'var(--accent-primary)' : 'transparent'} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </section>
-                </div>
-
-                {/* Right Column (Sidebar) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-
-                    {/* Gym Announcements */}
-                    <section>
-                        <h2 className="text-large font-bold mb-4">Gym News</h2>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            {announcements.map(ann => (
-                                <div key={ann.id} className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)', borderLeft: `3px solid ${ann.type === 'event' ? 'var(--warning)' : 'var(--accent-primary)'}` }}>
-                                    <h4 className="font-bold text-regular mb-1">{ann.title}</h4>
-                                    <p className="text-small text-muted line-clamp-2">{ann.message}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                </div>
-            </div>
+      {/* Header */}
+      <header className="flex justify-between items-center mb-7">
+        <div className="flex items-center gap-3">
+          <img
+            src={currentUser.avatarUrl}
+            alt="Profile"
+            className="w-12 h-12 rounded-2xl border-2 border-blue-500/40 shadow-lg"
+          />
+          <div>
+            <h1 className="text-[20px] font-bold text-white leading-tight">
+              Hey, {currentUser.fullName.split(' ')[0]} 👋
+            </h1>
+            <p className="text-[13px] text-slate-400">{currentUser.homeGym} · Lv.{currentUser.stats.level}</p>
+          </div>
         </div>
-    );
+        <button
+          aria-label="Notifications"
+          className="w-10 h-10 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+        >
+          <Bell size={18} />
+        </button>
+      </header>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-3 gap-3 mb-7">
+        <StatCard icon={Flame}      label="Day Streak" value={currentUser.stats.currentStreak}      color="bg-amber-500/10 text-amber-400" />
+        <StatCard icon={Trophy}     label="Workouts"   value={workoutsDone}                         color="bg-blue-500/10 text-blue-400" />
+        <StatCard icon={TrendingUp} label="Volume"     value={`${(volume / 1000).toFixed(0)}k`}     color="bg-emerald-500/10 text-emerald-400" />
+      </div>
+
+      {/* Main + Sidebar */}
+      <div className="flex flex-col gap-6 md:grid md:grid-cols-[1fr_300px]">
+
+        {/* Left column */}
+        <div className="flex flex-col gap-6">
+
+          {/* Up Next */}
+          <section>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">Up Next</h2>
+              <Link to="/workouts" className="text-[13px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5 transition-colors">
+                View all <ChevronRight size={14} />
+              </Link>
+            </div>
+
+            <div className="bg-[#1C2333]/80 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/8 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="p-5 relative flex justify-between items-center">
+                <div className="flex-1 min-w-0 pr-4">
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full mb-3 ${
+                    hasCompletedToday
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-blue-500/15 text-blue-400'
+                  }`}>
+                    <Calendar size={10} />
+                    {hasCompletedToday ? 'Done for today ✓' : upcomingWorkouts[0].date}
+                  </span>
+
+                  <h3 className="text-[22px] font-bold text-white leading-tight mb-1.5" style={{ opacity: hasCompletedToday ? 0.5 : 1 }}>
+                    {upcomingWorkouts[0].name}
+                  </h3>
+                  <p className="text-[13px] text-slate-400 flex items-center gap-2">
+                    <Dumbbell size={13} />
+                    {upcomingWorkouts[0].exercises} exercises · {upcomingWorkouts[0].duration}
+                  </p>
+                </div>
+
+                <Link
+                  to="/session/cw1"
+                  aria-label="Start workout"
+                  className="w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center text-white shadow-[0_0_24px_rgba(59,130,246,0.5)] transition-all hover:scale-105 active:scale-95 flex-shrink-0 cursor-pointer"
+                >
+                  <Play size={22} fill="currentColor" className="ml-0.5" />
+                </Link>
+              </div>
+
+              {!hasCompletedToday && (
+                <div className="px-5 pb-4">
+                  <button
+                    onClick={handleCompleteWorkout}
+                    className="w-full text-[13px] font-medium text-slate-500 hover:text-slate-300 py-2 rounded-xl border border-white/6 hover:bg-white/4 transition-all cursor-pointer"
+                  >
+                    Mark done without tracking
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Volume Chart */}
+          <section>
+            <h2 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-3">Volume This Week</h2>
+            <div className="bg-[#1C2333]/80 backdrop-blur-md rounded-2xl border border-white/5 p-4 h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+                  <XAxis
+                    dataKey="day" axisLine={false} tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 12 }}
+                  />
+                  <YAxis
+                    axisLine={false} tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                    tickFormatter={v => v >= 1000 ? `${v / 1000}k` : v}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                    contentStyle={{
+                      backgroundColor: '#1C2333',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px',
+                      fontSize: '13px',
+                    }}
+                    formatter={v => [`${v.toLocaleString()} lbs`, 'Volume']}
+                  />
+                  <Bar dataKey="volume" radius={[6, 6, 2, 2]} maxBarSize={40}>
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.volume > 0 ? '#3B82F6' : 'rgba(255,255,255,0.04)'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        </div>
+
+        {/* Sidebar */}
+        <div className="flex flex-col gap-6">
+          <section>
+            <h2 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-3">Gym News</h2>
+            <div className="flex flex-col gap-2">
+              {announcements.map(ann => (
+                <div key={ann.id} className="bg-[#1C2333]/80 backdrop-blur-md rounded-2xl border border-white/5 p-4 flex gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    ann.type === 'event' ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'
+                  }`}>
+                    {ann.type === 'event' ? <Trophy size={15} /> : <Megaphone size={15} />}
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-white mb-0.5">{ann.title}</p>
+                    <p className="text-[12px] text-slate-400 leading-snug">{ann.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  );
 };
 
 export default Dashboard;
