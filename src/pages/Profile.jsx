@@ -1,121 +1,253 @@
-import React from 'react';
-import { currentUser } from '../mockDb';
-import { Settings, Award, CalendarDays, Activity, Grid } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Trophy, Flame, Dumbbell, TrendingUp, Calendar,
+  Lock, Settings, BarChart2, Star
+} from 'lucide-react';
+import { currentUser, personalRecords, progressData } from '../mockDb';
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
+} from 'recharts';
 
-const mockAchievements = [
-    { id: 'ach1', title: 'First Steps', description: 'Log your first workout', date: '2023-11-16', icon: '🏃‍♂️', unlocked: true },
-    { id: 'ach2', title: 'Consistency King', description: 'Hit the gym 4 times in a week', date: '2024-01-10', icon: '👑', unlocked: true },
-    { id: 'ach3', title: 'Century Club', description: 'Log 100 workouts', date: '2025-05-22', icon: '💯', unlocked: true },
-    { id: 'ach4', title: '1-Ton Total Volume', description: 'Lift 2000 lbs in a single workout', date: '2025-08-14', icon: '🦍', unlocked: true },
-    { id: 'ach5', title: 'Early Bird', description: 'Workout before 6 AM 5 times', date: null, icon: '🌅', unlocked: false },
-    { id: 'ach6', title: 'Squat Master', description: 'Log a squat session 10 times in a month', date: null, icon: '🦵', unlocked: false }
+const ACHIEVEMENTS = [
+  { id: 'a1', label: 'First Workout',  icon: Dumbbell,  unlocked: true,  desc: 'Log your first session' },
+  { id: 'a2', label: '7-Day Streak',   icon: Flame,     unlocked: true,  desc: 'Train 7 days in a row' },
+  { id: 'a3', label: 'Century Club',   icon: Trophy,    unlocked: true,  desc: '100 workouts completed' },
+  { id: 'a4', label: 'Volume King',    icon: BarChart2, unlocked: true,  desc: '1M lbs total volume' },
+  { id: 'a5', label: '30-Day Streak',  icon: Flame,     unlocked: false, desc: 'Train 30 days in a row' },
+  { id: 'a6', label: 'PR Machine',     icon: Star,      unlocked: false, desc: 'Set 10 personal records' },
 ];
 
+const MUSCLE_COLORS = {
+  Back: '#3b82f6', Chest: '#f43f5e', Legs: '#10b981',
+  Shoulders: '#8b5cf6', Biceps: '#f59e0b', Triceps: '#f97316',
+  Core: '#06b6d4', Glutes: '#ec4899',
+};
+
+// Group PRs by broad category
+const groupPRsByCategory = (prs) => {
+  const map = {
+    'Chest & Triceps': ['ex_bp', 'ex_idbp', 'ex_tpd'],
+    'Back': ['ex_dl', 'ex_bbr', 'ex_lp'],
+    'Shoulders': ['ex_ohp'],
+    'Biceps': ['ex_bbc'],
+    'Legs': ['ex_sq', 'ex_hth'],
+  };
+  const result = {};
+  Object.entries(map).forEach(([cat, ids]) => {
+    ids.forEach(id => {
+      if (prs[id]) {
+        if (!result[cat]) result[cat] = [];
+        result[cat].push({ id, ...prs[id] });
+      }
+    });
+  });
+  return result;
+};
+
+const StatBlock = ({ label, value, sub, icon: Icon, color }) => (
+  <div className="bg-[#1C1C1E]/60 rounded-2xl p-4 border border-white/5">
+    <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${color}`}>
+      <Icon size={18} />
+    </div>
+    <p className="text-[26px] font-bold text-white leading-none">{value}</p>
+    {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
+    <p className="text-[12px] text-slate-400 mt-1">{label}</p>
+  </div>
+);
+
 const Profile = () => {
-    return (
-        <div className="container main-content animate-fade-in pb-24 md:pb-8">
+  const [activeTab, setActiveTab] = useState('prs');
+  const prGroups = groupPRsByCategory(personalRecords);
 
-            {/* Header / Top Section */}
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
-                <h1 className="text-h2 font-bold focus:outline-none">Profile</h1>
-                <button className="glass" style={{ padding: '0.5rem', borderRadius: '50%', color: 'var(--text-primary)' }}>
-                    <Settings size={20} />
-                </button>
-            </header>
+  return (
+    <div className="animate-fade-in pb-24 md:pb-8">
 
-            {/* User Info Card */}
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: '2rem', padding: '2rem 1.5rem' }}>
-                <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                    <img
-                        src={currentUser.avatarUrl}
-                        alt={currentUser.username}
-                        style={{ width: '96px', height: '96px', borderRadius: '50%', border: '4px solid var(--accent-primary)', padding: '2px' }}
-                    />
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '-4px',
-                        right: '-4px',
-                        background: 'var(--accent-primary)',
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: '0.75rem',
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: '1rem',
-                        border: '2px solid var(--bg-secondary)',
-                        boxShadow: 'var(--shadow-sm)'
-                    }}>
-                        Lvl {currentUser.stats.level}
-                    </div>
+      {/* Hero header */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/30 via-violet-900/10 to-transparent" />
+        <div className="relative container max-w-2xl mx-auto px-4 pt-8 pb-6">
+
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.fullName}
+                  className="w-20 h-20 rounded-3xl border-2 border-blue-500/50 shadow-xl"
+                />
+                <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full border-2 border-[#0A0D14]">
+                  Lv.{currentUser.stats.level}
                 </div>
-
-                <h2 className="text-h3 font-bold">{currentUser.fullName}</h2>
-                <p className="text-muted text-regular mb-1">@{currentUser.username}</p>
-                <p className="text-small text-accent font-medium mb-4 flex items-center gap-1">
-                    <CalendarDays size={14} /> Joined {currentUser.joinDate.split('-')[0]}
+              </div>
+              <div>
+                <h1 className="text-[22px] font-bold text-white leading-tight">{currentUser.fullName}</h1>
+                <p className="text-[14px] text-slate-400">@{currentUser.username}</p>
+                <p className="text-[12px] text-blue-400 mt-1 flex items-center gap-1">
+                  <Dumbbell size={12} /> {currentUser.homeGym}
                 </p>
+              </div>
+            </div>
+            <button className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-white transition-colors bg-white/5 rounded-xl border border-white/8">
+              <Settings size={18} />
+            </button>
+          </div>
 
-                {/* Global Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', width: '100%', marginTop: '1rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
-                    <div>
-                        <p className="text-large font-bold">{currentUser.stats.workoutsCompleted}</p>
-                        <p className="text-small text-muted flex items-center justify-center gap-1 mt-1"><Activity size={12} /> Workouts</p>
+          <p className="text-[12px] text-slate-500 flex items-center gap-1.5 mb-5">
+            <Calendar size={12} />
+            Member since {new Date(currentUser.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBlock label="Workouts"      value={currentUser.stats.workoutsCompleted} icon={Dumbbell}  color="text-blue-400 bg-blue-500/10" />
+            <StatBlock label="Day Streak"    value={currentUser.stats.currentStreak} sub="days"           icon={Flame}     color="text-amber-400 bg-amber-500/10" />
+            <StatBlock label="Total Volume"  value={`${(currentUser.stats.totalVolumeLbs / 1000000).toFixed(2)}M`} sub="lbs lifted" icon={TrendingUp} color="text-emerald-400 bg-emerald-500/10" />
+            <StatBlock label="Records"       value={Object.keys(personalRecords).length}                  icon={Trophy}    color="text-amber-400 bg-amber-500/10" />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="container max-w-2xl mx-auto px-4">
+        <div className="flex border-b border-white/8 mb-6">
+          {[
+            { key: 'prs',          label: 'PRs' },
+            { key: 'achievements', label: 'Achievements' },
+            { key: 'stats',        label: 'Volume Stats' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 py-3 text-[13px] font-semibold transition-colors border-b-2 -mb-px ${
+                activeTab === tab.key
+                  ? 'text-white border-blue-500'
+                  : 'text-slate-500 border-transparent hover:text-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* PR Tab */}
+        {activeTab === 'prs' && (
+          <div className="flex flex-col gap-5 animate-fade-in">
+            {Object.entries(prGroups).map(([group, prs]) => (
+              <section key={group}>
+                <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2 px-1">{group}</h3>
+                <div className="flex flex-col gap-2">
+                  {prs.map(pr => (
+                    <div key={pr.id} className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 flex items-center gap-4 px-4 py-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                        <Trophy size={18} className="text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-semibold text-[14px] truncate">{pr.label}</p>
+                        <p className="text-slate-500 text-[12px]">
+                          {new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-white font-bold text-[18px]">
+                          {pr.weight} <span className="text-slate-500 text-[13px] font-normal">lbs</span>
+                        </p>
+                        <p className="text-slate-400 text-[12px]">× {pr.reps} reps</p>
+                      </div>
                     </div>
-                    <div>
-                        <p className="text-large font-bold">4</p>
-                        <p className="text-small text-muted flex items-center justify-center gap-1 mt-1"><Award size={12} /> PRs</p>
-                    </div>
-                    <div>
-                        <p className="text-large font-bold">12</p>
-                        <p className="text-small text-muted flex items-center justify-center gap-1 mt-1"><Grid size={12} /> Badges</p>
-                    </div>
+                  ))}
                 </div>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {/* Achievements Tab */}
+        {activeTab === 'achievements' && (
+          <div className="grid grid-cols-2 gap-3 animate-fade-in">
+            {ACHIEVEMENTS.map(a => (
+              <div
+                key={a.id}
+                className={`rounded-2xl border p-4 flex flex-col items-center text-center gap-2 ${
+                  a.unlocked
+                    ? 'bg-[#1C1C1E]/60 border-white/8'
+                    : 'bg-white/[0.02] border-white/5 opacity-45'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                  a.unlocked ? 'bg-blue-500/15 text-blue-400' : 'bg-white/5 text-slate-600'
+                }`}>
+                  {a.unlocked ? <a.icon size={22} /> : <Lock size={20} />}
+                </div>
+                <div>
+                  <p className={`font-semibold text-[13px] ${a.unlocked ? 'text-white' : 'text-slate-500'}`}>{a.label}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{a.desc}</p>
+                </div>
+                {a.unlocked && (
+                  <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wide mt-1">Unlocked</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Stats Tab */}
+        {activeTab === 'stats' && (
+          <div className="flex flex-col gap-5 animate-fade-in">
+            <div>
+              <h3 className="text-[13px] font-bold text-slate-300 mb-3">Weekly Volume</h3>
+              <div className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 p-4 h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <Tooltip
+                      cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }}
+                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px' }}
+                    />
+                    <Area type="monotone" dataKey="volume" stroke="#3b82f6" strokeWidth={2} fill="url(#volGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* Achievements Section */}
-            <section>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 className="text-large font-bold">Achievements Hub</h3>
-                    <span className="text-small text-accent font-medium">4 / 6 Unlocked</span>
-                </div>
+            <div>
+              <h3 className="text-[13px] font-bold text-slate-300 mb-3">Muscle Group Balance (this month)</h3>
+              <div className="bg-[#1C1C1E]/60 rounded-2xl border border-white/5 p-4 flex flex-col gap-3">
+                {[
+                  { muscle: 'Back',      sets: 38 },
+                  { muscle: 'Chest',     sets: 32 },
+                  { muscle: 'Legs',      sets: 28 },
+                  { muscle: 'Shoulders', sets: 22 },
+                  { muscle: 'Biceps',    sets: 18 },
+                  { muscle: 'Triceps',   sets: 16 },
+                  { muscle: 'Core',      sets: 12 },
+                  { muscle: 'Glutes',    sets: 10 },
+                ].map(({ muscle, sets }) => (
+                  <div key={muscle} className="flex items-center gap-3">
+                    <div className="w-20 text-[12px] text-slate-400 text-right flex-shrink-0">{muscle}</div>
+                    <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${(sets / 38) * 100}%`, backgroundColor: MUSCLE_COLORS[muscle] || '#3b82f6' }}
+                      />
+                    </div>
+                    <div className="w-8 text-[12px] text-slate-500 text-right flex-shrink-0">{sets}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', '@media (min-width: 768px)': { gridTemplateColumns: 'repeat(2, 1fr)' } }}>
-                    {mockAchievements.map(ach => (
-                        <div key={ach.id} className="glass" style={{
-                            display: 'flex',
-                            gap: '1rem',
-                            alignItems: 'center',
-                            padding: '1.25rem',
-                            borderRadius: 'var(--radius-md)',
-                            opacity: ach.unlocked ? 1 : 0.5,
-                            filter: ach.unlocked ? 'none' : 'grayscale(100%)',
-                            transition: 'all 0.3s ease'
-                        }}>
-                            <div style={{
-                                background: ach.unlocked ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-tertiary)',
-                                width: '64px',
-                                height: '64px',
-                                minWidth: '64px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '2rem',
-                                border: ach.unlocked ? '2px solid var(--accent-primary)' : '2px dashed var(--border-color)'
-                            }}>
-                                {ach.icon}
-                            </div>
-                            <div>
-                                <h4 className="font-bold mb-0.5">{ach.title}</h4>
-                                <p className="text-small text-muted">{ach.description}</p>
-                                {ach.unlocked && <p className="text-small text-accent mt-1" style={{ fontSize: '0.7rem' }}>Unlocked • {ach.date}</p>}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-        </div>
-    );
+        <div className="h-8" />
+      </div>
+    </div>
+  );
 };
 
 export default Profile;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Dumbbell, Activity, User, Tv } from 'lucide-react';
+import { Home, Dumbbell, Activity, User, Tv, BookOpen } from 'lucide-react';
 
 const Navigation = () => {
     return (
@@ -12,11 +12,14 @@ const Navigation = () => {
                         <span className="text-gradient">Iron</span>Forge
                     </div>
                     <div className="flex gap-8 items-center">
-                        <NavLink to="/" className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
+                        <NavLink to="/" end className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
                             <Home size={18} /> Dashboard
                         </NavLink>
                         <NavLink to="/workouts" className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
                             <Dumbbell size={18} /> Workouts
+                        </NavLink>
+                        <NavLink to="/exercises" className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
+                            <BookOpen size={18} /> Exercises
                         </NavLink>
                         <NavLink to="/social" className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
                             <Activity size={18} /> Social
@@ -24,8 +27,6 @@ const Navigation = () => {
                         <NavLink to="/profile" className={({ isActive }) => `flex items-center gap-2 font-medium transition-colors ${isActive ? 'text-accent' : 'text-muted hover:text-white'}`}>
                             <User size={18} /> Profile
                         </NavLink>
-
-                        {/* Temporary Admin Link */}
                         <NavLink to="/tv-display" className="ml-4 flex items-center gap-2 font-medium text-warning hover:text-white transition-colors">
                             <Tv size={18} /> Gym TV
                         </NavLink>
@@ -35,13 +36,17 @@ const Navigation = () => {
 
             {/* Mobile Bottom Navigation */}
             <nav className="glass md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-around items-center border-t border-white/10 border-b-0 rounded-t-2xl pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 px-4">
-                <NavLink to="/" className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-accent' : 'text-muted'}`}>
+                <NavLink to="/" end className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-accent' : 'text-muted'}`}>
                     <Home size={24} />
                     <span className="text-[10px] font-medium">Home</span>
                 </NavLink>
                 <NavLink to="/workouts" className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-accent' : 'text-muted'}`}>
                     <Dumbbell size={24} />
                     <span className="text-[10px] font-medium">Workouts</span>
+                </NavLink>
+                <NavLink to="/exercises" className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-accent' : 'text-muted'}`}>
+                    <BookOpen size={22} />
+                    <span className="text-[10px] font-medium">Exercises</span>
                 </NavLink>
                 <NavLink to="/social" className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-accent' : 'text-muted'}`}>
                     <Activity size={24} />

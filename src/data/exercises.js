@@ -1,0 +1,93 @@
+// Exercise Library — canonical exercise database
+
+export const MUSCLE_GROUPS = [
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
+  'Legs', 'Glutes', 'Core', 'Calves', 'Full Body'
+];
+
+export const EQUIPMENT = [
+  'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Kettlebell', 'Resistance Band', 'Smith Machine'
+];
+
+export const CATEGORIES = ['Strength', 'Hypertrophy', 'Power', 'Endurance', 'Mobility'];
+
+export const exercises = [
+  // ── CHEST ──────────────────────────────────────────
+  { id: 'ex_bp',   name: 'Barbell Bench Press',       muscle: 'Chest',     equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '5', instructions: 'Lie flat, grip just outside shoulder width, lower bar to mid-chest, press up.' },
+  { id: 'ex_ibp',  name: 'Incline Barbell Press',     muscle: 'Chest',     equipment: 'Barbell',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '8-10', instructions: 'Set bench to 30-45°. Grip slightly narrower. Lower bar to upper chest.' },
+  { id: 'ex_dbp',  name: 'Dumbbell Bench Press',      muscle: 'Chest',     equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Neutral or pronated grip. Lower dumbbells to chest level with elbows at 75°.' },
+  { id: 'ex_idbp', name: 'Incline Dumbbell Press',    muscle: 'Chest',     equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Incline 30-45°. Same motion as flat dumbbell press, targeting upper chest.' },
+  { id: 'ex_cfly', name: 'Cable Fly',                 muscle: 'Chest',     equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Set cables at shoulder height. Bring handles together in a hugging motion.' },
+  { id: 'ex_dfly', name: 'Dumbbell Fly',              muscle: 'Chest',     equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Flat bench. Wide arc, slight elbow bend. Squeeze chest at top.' },
+  { id: 'ex_dips', name: 'Weighted Dips',             muscle: 'Chest',     equipment: 'Bodyweight', category: 'Strength',    defaultSets: 3, defaultReps: '8-12', instructions: 'Lean slightly forward to bias chest. Full ROM, lock out at top.' },
+
+  // ── BACK ───────────────────────────────────────────
+  { id: 'ex_dl',   name: 'Conventional Deadlift',     muscle: 'Back',      equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '3-5', instructions: 'Hip-width stance. Hinge, grip outside knees. Drive hips forward to lockout.' },
+  { id: 'ex_bbr',  name: 'Barbell Row',               muscle: 'Back',      equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '6-8', instructions: 'Hinge to ~45°. Pull bar to lower chest/navel. Keep elbows close.' },
+  { id: 'ex_pu',   name: 'Pull-Up',                   muscle: 'Back',      equipment: 'Bodyweight', category: 'Strength',    defaultSets: 4, defaultReps: '6-12', instructions: 'Shoulder-width overhand grip. Pull chest to bar, full hang at bottom.' },
+  { id: 'ex_lp',   name: 'Lat Pulldown',              muscle: 'Back',      equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Wide overhand grip. Pull bar to upper chest, elbows drive down.' },
+  { id: 'ex_cbr',  name: 'Cable Row',                 muscle: 'Back',      equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Sit upright. Pull handle to abdomen, squeeze shoulder blades.' },
+  { id: 'ex_dbr',  name: 'Dumbbell Row',              muscle: 'Back',      equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Knee and hand on bench. Pull dumbbell to hip, elbow close to body.' },
+  { id: 'ex_rdl',  name: 'Romanian Deadlift',         muscle: 'Back',      equipment: 'Barbell',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '8-10', instructions: 'Slight knee bend. Hinge at hips, bar slides down legs. Feel hamstring stretch.' },
+
+  // ── SHOULDERS ──────────────────────────────────────
+  { id: 'ex_ohp',  name: 'Overhead Press',            muscle: 'Shoulders', equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '5', instructions: 'Shoulder-width grip. Bar from clavicle, press overhead, lock out.' },
+  { id: 'ex_dbop', name: 'Dumbbell Shoulder Press',   muscle: 'Shoulders', equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Seated or standing. Press dumbbells overhead from shoulder height.' },
+  { id: 'ex_lr',   name: 'Lateral Raise',             muscle: 'Shoulders', equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '15-20', instructions: 'Slight elbow bend. Raise to shoulder height. Lead with elbows.' },
+  { id: 'ex_fr',   name: 'Front Raise',               muscle: 'Shoulders', equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Alternate arms. Raise to eye level with slight elbow bend.' },
+  { id: 'ex_rfly', name: 'Rear Delt Fly',             muscle: 'Shoulders', equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '15-20', instructions: 'Hinge to 45°. Raise dumbbells to sides, lead with elbows.' },
+  { id: 'ex_fcu',  name: 'Face Pull',                 muscle: 'Shoulders', equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '15-20', instructions: 'Cable at eye height. Pull to face with elbows flared, external rotate.' },
+
+  // ── BICEPS ─────────────────────────────────────────
+  { id: 'ex_bbc',  name: 'Barbell Curl',              muscle: 'Biceps',    equipment: 'Barbell',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '8-12', instructions: 'Shoulder-width underhand grip. Full ROM. No swinging.' },
+  { id: 'ex_dbc',  name: 'Dumbbell Curl',             muscle: 'Biceps',    equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Alternate or together. Supinate at the top. Full ROM.' },
+  { id: 'ex_hc',   name: 'Hammer Curl',               muscle: 'Biceps',    equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Neutral grip throughout. Targets brachialis and brachioradialis.' },
+  { id: 'ex_cc',   name: 'Cable Curl',                muscle: 'Biceps',    equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Constant tension. Use straight or EZ-bar attachment.' },
+  { id: 'ex_pcc',  name: 'Preacher Curl',             muscle: 'Biceps',    equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Isolates the bicep. Full stretch at bottom. Slow eccentric.' },
+
+  // ── TRICEPS ────────────────────────────────────────
+  { id: 'ex_tpd',  name: 'Tricep Pushdown',           muscle: 'Triceps',   equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Rope or bar attachment. Keep elbows at sides. Full extension.' },
+  { id: 'ex_ske',  name: 'Skull Crusher',             muscle: 'Triceps',   equipment: 'Barbell',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12', instructions: 'Flat bench. Lower bar to forehead, extend to lockout.' },
+  { id: 'ex_oe',   name: 'Overhead Tricep Extension', muscle: 'Triceps',   equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Both hands on one dumbbell. Lower behind head, extend fully.' },
+  { id: 'ex_cgp',  name: 'Close-Grip Bench Press',    muscle: 'Triceps',   equipment: 'Barbell',    category: 'Strength',    defaultSets: 3, defaultReps: '8-10', instructions: 'Hands 12-16" apart. Elbows tucked, lower to lower chest.' },
+
+  // ── LEGS ───────────────────────────────────────────
+  { id: 'ex_sq',   name: 'Barbell Back Squat',        muscle: 'Legs',      equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '5', instructions: 'High or low bar. Shoulder-width stance. Squat to parallel or below.' },
+  { id: 'ex_fsq',  name: 'Front Squat',               muscle: 'Legs',      equipment: 'Barbell',    category: 'Strength',    defaultSets: 3, defaultReps: '5-6', instructions: 'Bar on front delts. Stay upright. Knees track over toes.' },
+  { id: 'ex_lp_l', name: 'Leg Press',                 muscle: 'Legs',      equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 4, defaultReps: '10-15', instructions: 'Feet shoulder-width. Lower until 90° at knee. Full extension.' },
+  { id: 'ex_le',   name: 'Leg Extension',             muscle: 'Legs',      equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Isolates quads. Full extension, slow eccentric.' },
+  { id: 'ex_lc',   name: 'Leg Curl',                  muscle: 'Legs',      equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 3, defaultReps: '12-15', instructions: 'Lying or seated. Full ROM. Squeeze hamstrings at peak contraction.' },
+  { id: 'ex_lunge',name: 'Walking Lunge',             muscle: 'Legs',      equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '12 each', instructions: 'Step forward, lower back knee to just above ground. Keep torso upright.' },
+  { id: 'ex_bdl',  name: 'Bulgarian Split Squat',     muscle: 'Legs',      equipment: 'Dumbbell',   category: 'Hypertrophy', defaultSets: 3, defaultReps: '10-12 each', instructions: 'Rear foot elevated. Lower until front thigh is parallel. Control descent.' },
+
+  // ── GLUTES ─────────────────────────────────────────
+  { id: 'ex_hth',  name: 'Hip Thrust',                muscle: 'Glutes',    equipment: 'Barbell',    category: 'Strength',    defaultSets: 4, defaultReps: '8-12', instructions: 'Upper back on bench, bar on hip. Drive hips up, squeeze glutes at top.' },
+  { id: 'ex_kg',   name: 'Kettlebell Swing',          muscle: 'Glutes',    equipment: 'Kettlebell', category: 'Power',       defaultSets: 4, defaultReps: '15-20', instructions: 'Hip hinge, drive hips forward explosively. Bell floats to chest height.' },
+
+  // ── CORE ───────────────────────────────────────────
+  { id: 'ex_plank',name: 'Plank',                     muscle: 'Core',      equipment: 'Bodyweight', category: 'Endurance',   defaultSets: 3, defaultReps: '60s', instructions: 'Forearms on ground. Rigid straight body. Squeeze glutes and abs.' },
+  { id: 'ex_cr',   name: 'Cable Crunch',              muscle: 'Core',      equipment: 'Cable',      category: 'Hypertrophy', defaultSets: 3, defaultReps: '15-20', instructions: 'Kneel, rope behind head. Crunch down pulling elbows to knees.' },
+  { id: 'ex_llr',  name: 'Hanging Leg Raise',         muscle: 'Core',      equipment: 'Bodyweight', category: 'Strength',    defaultSets: 3, defaultReps: '12-15', instructions: 'Dead hang, raise legs to 90° or higher. Control descent.' },
+  { id: 'ex_abwh', name: 'Ab Wheel Rollout',          muscle: 'Core',      equipment: 'Bodyweight', category: 'Strength',    defaultSets: 3, defaultReps: '8-12', instructions: 'Kneel, roll forward keeping back flat. Pull back with abs, not hips.' },
+
+  // ── CALVES ─────────────────────────────────────────
+  { id: 'ex_scr',  name: 'Standing Calf Raise',       muscle: 'Calves',    equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 4, defaultReps: '15-20', instructions: 'Full ROM. Pause at bottom stretch. Squeeze at top.' },
+  { id: 'ex_secr', name: 'Seated Calf Raise',         muscle: 'Calves',    equipment: 'Machine',    category: 'Hypertrophy', defaultSets: 4, defaultReps: '15-20', instructions: 'Targets soleus. Same full ROM emphasis.' },
+];
+
+// Helper: get exercises by muscle group
+export const getByMuscle = (muscle) =>
+  muscle === 'All' ? exercises : exercises.filter(e => e.muscle === muscle);
+
+// Helper: search exercises
+export const searchExercises = (query) => {
+  const q = query.toLowerCase();
+  return exercises.filter(e =>
+    e.name.toLowerCase().includes(q) ||
+    e.muscle.toLowerCase().includes(q) ||
+    e.equipment.toLowerCase().includes(q)
+  );
+};
+
+// Helper: get exercise by id
+export const getExerciseById = (id) => exercises.find(e => e.id === id);

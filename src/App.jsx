@@ -6,13 +6,9 @@ import Navigation from './components/Navigation';
 import Workouts from './pages/Workouts';
 import SocialFeed from './pages/SocialFeed';
 import ActiveSession from './pages/ActiveSession';
-
-const Profile = () => (
-  <div className="container main-content animate-fade-in">
-    <h1 className="text-h1 text-gradient">Profile</h1>
-    <p className="text-muted">Manage your settings and achievements.</p>
-  </div>
-);
+import Profile from './pages/Profile';
+import WorkoutBuilder from './pages/WorkoutBuilder';
+import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 
 const TVDisplay = () => (
   <div className="container main-content animate-fade-in" style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
@@ -26,18 +22,22 @@ function App() {
     <div className="app-wrapper bg-slate-900 text-slate-50 min-h-screen">
       <Navigation />
 
-      {/* Main Routing */}
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/workouts" element={<Workouts />} />
-        <Route path="/social" element={<SocialFeed />} />
-        <Route path="/profile" element={<Profile />} />
+        {/* Main app */}
+        <Route path="/"          element={<Dashboard />} />
+        <Route path="/workouts"  element={<Workouts />} />
+        <Route path="/social"    element={<SocialFeed />} />
+        <Route path="/profile"   element={<Profile />} />
+        <Route path="/exercises" element={<ExerciseLibraryPage />} />
 
-        {/* Gym Admin/TV Routes */}
-        <Route path="/tv-display" element={<TVDisplay />} />
+        {/* Workout builder — edit a routine */}
+        <Route path="/workouts/:id/edit" element={<WorkoutBuilder />} />
 
-        {/* Fullscreen App Views */}
+        {/* Active session — fullscreen workout tracker */}
         <Route path="/session/:id" element={<ActiveSession />} />
+
+        {/* Gym TV */}
+        <Route path="/tv-display" element={<TVDisplay />} />
       </Routes>
     </div>
   );

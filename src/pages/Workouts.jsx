@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Plus, Search, Dumbbell, Clock, ChevronRight } from 'lucide-react';
+import { Play, Plus, Search, Dumbbell, Clock, ChevronRight, Pencil } from 'lucide-react';
 
 const mockCustomWorkouts = [
     { id: 'cw1', name: 'Push Day (Hypertrophy)', exercises: 7, lastPerformed: '2 days ago', isGymProgram: false },
@@ -127,9 +127,22 @@ const Workouts = () => {
                                         <span className="flex items-center gap-1"><Clock size={14} /> {workout.lastPerformed}</span>
                                     </div>
                                 </div>
-                                <Link to={`/session/${workout.id}`} className="btn-primary flex items-center justify-center gap-2 transition-transform hover:scale-105 active:scale-95" style={{ padding: '0.5rem 1rem' }}>
-                                    <Play size={16} fill="currentColor" /> Start
-                                </Link>
+                                <div className="flex items-center gap-2">
+                                    <Link
+                                        to={`/workouts/${workout.id}/edit`}
+                                        className="btn-secondary flex items-center justify-center gap-1.5 transition-transform hover:scale-105 active:scale-95"
+                                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}
+                                    >
+                                        <Pencil size={14} /> Edit
+                                    </Link>
+                                    <Link
+                                        to={`/session/${workout.id}`}
+                                        className="btn-primary flex items-center justify-center gap-2 transition-transform hover:scale-105 active:scale-95"
+                                        style={{ padding: '0.5rem 1rem' }}
+                                    >
+                                        <Play size={16} fill="currentColor" /> Start
+                                    </Link>
+                                </div>
                             </div>
                         ))}
                     </div>
