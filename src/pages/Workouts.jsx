@@ -175,25 +175,25 @@ const Workouts = () => {
             routines.map(routine => (
               <div
                 key={routine.id}
-                className="bg-[#0F172A] rounded-[14px] border border-white/6 flex items-center gap-4 px-5 py-4 hover:border-white/12 transition-colors"
+                className="bg-[#0F172A] rounded-[14px] border border-white/6 flex items-center gap-3 px-4 py-3.5 hover:border-white/12 transition-colors"
               >
-                <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/8 flex items-center justify-center flex-shrink-0">
-                  <Dumbbell size={18} className="text-[#D4AF37]" />
+                <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/8 flex items-center justify-center flex-shrink-0">
+                  <Dumbbell size={16} className="text-[#D4AF37]" />
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{routine.name}</p>
-                  <div className="flex items-center gap-3 mt-1 text-[12px] text-[#6B7280]">
+                  <div className="flex items-center gap-2 mt-0.5 text-[12px] text-[#6B7280]">
                     <span className="flex items-center gap-1">
-                      <Dumbbell size={11} /> {routine.exerciseCount} ex
+                      <Dumbbell size={10} /> {routine.exerciseCount} ex
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Clock size={11} /> {formatLastPerformed(routine.lastPerformedAt)}
+                    <span className="flex items-center gap-1 truncate">
+                      <Clock size={10} className="flex-shrink-0" /> {formatLastPerformed(routine.lastPerformedAt)}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleDelete(e, routine.id)}
                     disabled={deletingId === routine.id}
@@ -211,9 +211,11 @@ const Workouts = () => {
                   </Link>
                   <Link
                     to={`/session/${routine.id}`}
-                    className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-[#ffffff] text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+                    className="w-9 h-9 rounded-xl bg-[#D4AF37] hover:bg-[#E6C766] flex items-center justify-center flex-shrink-0 transition-colors cursor-pointer active:scale-95"
+                    style={{ boxShadow: '0 0 10px rgba(212,175,55,0.3)' }}
+                    aria-label="Start routine"
                   >
-                    <Play size={13} fill="white" stroke="white" strokeWidth={1.5} /> Start
+                    <Play size={14} fill="white" stroke="white" strokeWidth={1.5} />
                   </Link>
                 </div>
               </div>
