@@ -20,7 +20,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
       <div className="flex items-center gap-2 px-4 py-2.5">
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{exercise.name}</p>
-          <p className="text-[12px] text-[#6B7280] mt-0.5">{exercise.muscle} · {exercise.equipment}</p>
+          <p className="text-[12px] text-[#6B7280] mt-0.5 truncate">{exercise.muscle} · {exercise.equipment}</p>
         </div>
         <div className="flex items-center flex-shrink-0 -mr-1">
           <button
@@ -115,7 +115,7 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText }) => {
           >
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-[15px] text-[#E5E7EB] truncate">{ex.name}</p>
-              <p className="text-[12px] text-[#6B7280] mt-0.5">{ex.muscle} · {ex.equipment}</p>
+              <p className="text-[12px] text-[#6B7280] mt-0.5 truncate">{ex.muscle} · {ex.equipment}</p>
             </div>
             {added ? (
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg flex-shrink-0"
@@ -368,7 +368,7 @@ const WorkoutBuilder = () => {
         <button
           onClick={handleBack}
           disabled={saving}
-          className="text-[#D4AF37] hover:text-[#E6C766] transition-colors flex items-center -ml-1 disabled:opacity-50"
+          className="text-[#D4AF37] hover:text-[#E6C766] transition-colors flex items-center -ml-1 disabled:opacity-50 flex-shrink-0"
         >
           <ChevronLeft size={26} strokeWidth={2.5} />
           <span className="text-[16px] font-semibold -ml-0.5">Workouts</span>
@@ -385,7 +385,7 @@ const WorkoutBuilder = () => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`font-bold text-[14px] px-4 py-1.5 rounded-full transition-all disabled:opacity-50 ${
+          className={`font-bold text-[14px] px-4 py-1.5 rounded-full transition-all disabled:opacity-50 flex-shrink-0 ${
             saved
               ? 'bg-[#10B981] text-white'
               : 'bg-[#D4AF37] hover:bg-[#E6C766] text-black'
