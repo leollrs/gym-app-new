@@ -1,24 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  currentUser, announcements, upcomingWorkouts, progressData
-} from '../mockDb';
-import { Bell, Play, Dumbbell, ChevronRight } from 'lucide-react';
+import { Bell, Play, Dumbbell, ChevronRight, ExternalLink } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
-/* ── Stat card ─────────────────────────────────────────────────────── */
-const StatCard = ({ emoji, label, value }) => (
-  <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors p-5 flex flex-col">
-    <p className="text-[36px] font-black text-white leading-none tracking-tight">{value}</p>
-    <p className="text-[11px] text-[#6B7280] uppercase tracking-[0.15em] font-bold mt-3">
-      {emoji}&nbsp;{label}
-    </p>
-  </div>
-);
+/* ── Helpers ────────────────────────────────────────────────────────────────── */
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/* ── Gym News card ─────────────────────────────────────────────────── */
+// Build a 7-day volume chart (Sun–Sat of the current week)
+const buildWeekChart = (sessions) => {
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const buckets = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startOfWeek);
+    d.setDate(d.getDate() + i);
+    return { day: DAY_LABELS[i], date: d, volume: 0 };
+  });
+
+  sessions.forEach(s => {
+    const d = new Date(s.completed_at);
+    const dayIdx = d.getDay(); // 0=Sun
+    // Only include if within this calendar week
+    if (d >= startOfWeek && d < new Date(startOfWeek.getTime() + 7 * 86400000)) {
+      buckets[dayIdx].volume += parseFloat(s.total_volume_lbs) || 0;
+    }
+  });
+
+  return buckets.map(b => ({ day: b.day, volume: Math.round(b.volume) }));
+};
+
+// Compute current consecutive-day streak
+const computeStreak = (sessions) => {
+  const dates = new Set(
+    sessions.map(s => new Date(s.completed_at).toDateString())
+  );
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    if (dates.has(d.toDateString())) {
+      streak++;
+    } else if (i > 0) {
+      break;
+    }
+  }
+  return streak;
+};
+
+/* ── Stat card ──────────────────────────────────────────────────────────────── */
+const StatCard = ({ emoji, label, value, to }) => {
+  const inner = (
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors p-5 flex flex-col h-full">
+      <p className="text-[36px] font-black text-white leading-none tracking-tight">{value}</p>
+      <p className="text-[11px] text-[#6B7280] uppercase tracking-[0.15em] font-bold mt-3 flex items-center gap-1">
+        {emoji}&nbsp;{label}
+        {to && <ExternalLink size={10} className="opacity-40 ml-0.5" />}
+      </p>
+    </div>
+  );
+  return to ? <Link to={to} className="block">{inner}</Link> : inner;
+};
+
+/* ── Gym News card ──────────────────────────────────────────────────────────── */
 const AnnCard = ({ ann }) => (
   <div className={`bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px] ${
     ann.type === 'event' ? 'border-l-[#D4AF37]' : 'border-l-[#3B82F6]'
@@ -28,44 +78,105 @@ const AnnCard = ({ ann }) => (
   </div>
 );
 
-/* ── Main ──────────────────────────────────────────────────────────── */
+/* ── Main ───────────────────────────────────────────────────────────────────── */
 const Dashboard = () => {
-  const [workoutsDone, setWorkoutsDone] = useState(currentUser.stats.workoutsCompleted);
-  const [volume, setVolume]             = useState(currentUser.stats.totalVolumeLbs);
-  const [done, setDone]                 = useState(false);
-  const [chartData, setChartData]       = useState([...progressData]);
+  const { user, profile } = useAuth();
 
-  const handleMarkDone = () => {
-    if (done) return;
-    const vol = 8500;
-    setWorkoutsDone(w => w + 1);
-    setVolume(v => v + vol);
-    setDone(true);
-    setChartData(prev => {
-      const next = [...prev];
-      next[2] = { day: 'Wed', volume: vol };
-      return next;
-    });
-  };
+  const [stats, setStats]               = useState({ sessions: 0, streak: 0, volumeK: '0' });
+  const [chartData, setChartData]       = useState(
+    DAY_LABELS.map(day => ({ day, volume: 0 }))
+  );
+  const [nextRoutine, setNextRoutine]   = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading]           = useState(true);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const load = async () => {
+      setLoading(true);
+
+      // 1. Load all completed sessions (lightweight — just what we need for stats)
+      const { data: sessions } = await supabase
+        .from('workout_sessions')
+        .select('completed_at, total_volume_lbs, routine_id')
+        .eq('profile_id', user.id)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+
+      const allSessions = sessions || [];
+
+      const totalSessions = allSessions.length;
+      const totalVolume   = allSessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+      const streak        = computeStreak(allSessions);
+      const weekly        = buildWeekChart(allSessions);
+
+      setStats({
+        sessions: totalSessions,
+        streak,
+        volumeK: totalVolume >= 1000
+          ? `${(totalVolume / 1000).toFixed(0)}k`
+          : `${Math.round(totalVolume)}`,
+      });
+      setChartData(weekly);
+
+      // 2. Load first/most-recent routine for "Today's Workout"
+      const { data: routines } = await supabase
+        .from('routines')
+        .select('id, name, routine_exercises(id)')
+        .eq('created_by', user.id)
+        .eq('is_template', false)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (routines && routines.length > 0) {
+        setNextRoutine(routines[0]);
+      }
+
+      // 3. Load gym announcements
+      const { data: anns } = await supabase
+        .from('gym_announcements')
+        .select('id, title, message, announcement_type')
+        .eq('gym_id', profile.gym_id)
+        .eq('is_published', true)
+        .order('published_at', { ascending: false })
+        .limit(5);
+
+      setAnnouncements(anns || []);
+
+      setLoading(false);
+    };
+
+    load();
+  }, [user, profile]);
+
+  const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-8 md:pt-12 pb-28 md:pb-12 animate-fade-in">
 
-      {/* ── Greeting ──────────────────────────────────────────────── */}
+      {/* ── Greeting ────────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center mb-10">
         <div className="flex items-center gap-3.5">
-          <img
-            src={currentUser.avatarUrl}
-            alt="Profile"
-            className="w-11 h-11 rounded-xl border border-white/10"
-          />
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt="Profile"
+              className="w-11 h-11 rounded-xl border border-white/10 object-cover"
+            />
+          ) : (
+            <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 flex items-center justify-center">
+              <span className="text-[#D4AF37] font-bold text-[16px]">
+                {firstName[0]?.toUpperCase()}
+              </span>
+            </div>
+          )}
           <div>
             <h1 className="text-[20px] font-bold text-[#E5E7EB] leading-tight">
-              Hey, {currentUser.fullName.split(' ')[0]} 👋
+              Hey, {firstName} 👋
             </h1>
             <p className="text-[12px] text-[#6B7280] mt-0.5">
-              {currentUser.homeGym} ·{' '}
-              <span className="text-[#D4AF37]">Lv.{currentUser.stats.level}</span>
+              Let's get after it today
             </p>
           </div>
         </div>
@@ -77,7 +188,7 @@ const Dashboard = () => {
         </button>
       </div>
 
-      {/* ── TODAY'S WORKOUT — dominant primary card ────────────────── */}
+      {/* ── TODAY'S WORKOUT ─────────────────────────────────────────────── */}
       <section className="mb-10">
         <div className="flex justify-between items-center mb-4">
           <p className="section-label">Today's Workout</p>
@@ -89,61 +200,60 @@ const Dashboard = () => {
           </Link>
         </div>
 
-        <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/10 transition-colors overflow-hidden">
-          <div className="p-6 flex items-center gap-5">
-            <div className="flex-1 min-w-0">
-              <p className={`text-[11px] font-bold uppercase tracking-[0.13em] mb-2.5 ${
-                done ? 'text-[#10B981]' : 'text-[#D4AF37]'
-              }`}>
-                {done ? 'Done for today ✓' : `Today · ${upcomingWorkouts[0].duration}`}
-              </p>
-              <h2
-                className="text-[28px] font-black text-white leading-tight"
-                style={{ fontFamily: "'Barlow Condensed', sans-serif", opacity: done ? 0.4 : 1 }}
-              >
-                {upcomingWorkouts[0].name}
-              </h2>
-              <p className="text-[13px] text-[#6B7280] mt-2 flex items-center gap-1.5">
-                <Dumbbell size={13} className="text-[#4B5563]" />
-                {upcomingWorkouts[0].exercises} exercises
-              </p>
-            </div>
+        {loading ? (
+          <div className="bg-[#0F172A] rounded-[14px] border border-white/6 h-[120px] animate-pulse" />
+        ) : nextRoutine ? (
+          <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/10 transition-colors overflow-hidden">
+            <div className="p-6 flex items-center gap-5">
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.13em] mb-2.5 text-[#D4AF37]">
+                  Ready to go
+                </p>
+                <h2
+                  className="text-[28px] font-black text-white leading-tight"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  {nextRoutine.name}
+                </h2>
+                <p className="text-[13px] text-[#6B7280] mt-2 flex items-center gap-1.5">
+                  <Dumbbell size={13} className="text-[#4B5563]" />
+                  {nextRoutine.routine_exercises?.length ?? 0} exercises
+                </p>
+              </div>
 
+              <Link
+                to={`/session/${nextRoutine.id}`}
+                aria-label="Start workout"
+                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95 bg-[#D4AF37] text-black"
+                style={{ boxShadow: '0 0 24px rgba(212,175,55,0.35)' }}
+              >
+                <Play size={22} fill="currentColor" className="ml-0.5" />
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-6 text-center">
+            <Dumbbell size={32} className="mx-auto mb-3 text-[#4B5563]" />
+            <p className="text-[15px] font-semibold text-[#9CA3AF]">No routines yet</p>
+            <p className="text-[13px] text-[#6B7280] mt-1">Create your first routine to get started</p>
             <Link
-              to="/session/cw1"
-              aria-label="Start workout"
-              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95"
-              style={{
-                background: done ? '#111827' : '#D4AF37',
-                color: done ? '#6B7280' : '#000',
-                boxShadow: done ? 'none' : '0 0 24px rgba(212,175,55,0.35)',
-              }}
+              to="/workouts"
+              className="inline-block mt-4 bg-[#D4AF37] hover:bg-[#E6C766] text-black text-[13px] font-bold px-5 py-2.5 rounded-xl transition-colors"
             >
-              <Play size={22} fill="currentColor" className="ml-0.5" />
+              Create Routine
             </Link>
           </div>
-
-          {!done && (
-            <div className="px-6 pb-5 -mt-1">
-              <button
-                onClick={handleMarkDone}
-                className="w-full text-[12px] font-medium text-[#4B5563] hover:text-[#9CA3AF] py-3 rounded-xl border border-white/6 hover:border-white/10 hover:bg-white/3 transition-all"
-              >
-                Mark done without tracking
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </section>
 
-      {/* ── Stats row ─────────────────────────────────────────────── */}
+      {/* ── Stats row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-4 mb-10">
-        <StatCard emoji="🔥" label="Streak"   value={currentUser.stats.currentStreak} />
-        <StatCard emoji="🏋️" label="Workouts" value={workoutsDone} />
-        <StatCard emoji="📊" label="Volume"   value={`${(volume / 1000).toFixed(0)}k`} />
+        <StatCard emoji="🔥" label="Streak"   value={loading ? '—' : stats.streak} />
+        <StatCard emoji="🏋️" label="Workouts" value={loading ? '—' : stats.sessions} to="/workout-log" />
+        <StatCard emoji="📊" label="Volume"   value={loading ? '—' : stats.volumeK} />
       </div>
 
-      {/* ── Chart + Sidebar ───────────────────────────────────────── */}
+      {/* ── Chart + Sidebar ─────────────────────────────────────────────── */}
       <div className="flex flex-col gap-8 md:grid md:grid-cols-[1fr_288px]">
 
         {/* Volume Chart */}
@@ -186,12 +296,23 @@ const Dashboard = () => {
         <section>
           <div className="flex justify-between items-center mb-4">
             <p className="section-label">Gym News</p>
-            <button className="text-[12px] text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex items-center gap-0.5">
-              All <ChevronRight size={13} />
-            </button>
           </div>
           <div className="flex flex-col gap-3">
-            {announcements.map(ann => <AnnCard key={ann.id} ann={ann} />)}
+            {announcements.length > 0 ? (
+              announcements.map(ann => (
+                <AnnCard
+                  key={ann.id}
+                  ann={{
+                    ...ann,
+                    type: ann.announcement_type === 'event' ? 'event' : 'news',
+                  }}
+                />
+              ))
+            ) : (
+              <div className="bg-[#0F172A] rounded-[14px] border border-white/6 px-5 py-6 text-center">
+                <p className="text-[13px] text-[#4B5563]">No announcements from your gym yet.</p>
+              </div>
+            )}
           </div>
         </section>
 

@@ -1,123 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ChevronLeft, Plus, GripVertical, Trash2, Dumbbell,
+  ChevronLeft, Plus, Trash2, Dumbbell,
   ChevronRight, RotateCcw
 } from 'lucide-react';
 import ExerciseLibrary from './ExerciseLibrary';
 import { getExerciseById } from '../data/exercises';
-
-// Mock routine data — in production this would come from Supabase
-const MOCK_ROUTINES = {
-  cw1: {
-    id: 'cw1',
-    name: 'Push Day (Hypertrophy)',
-    exercises: [
-      { id: 'ex_bp',   sets: 4, reps: '8-10', restSeconds: 120 },
-      { id: 'ex_idbp', sets: 3, reps: '10-12', restSeconds: 90  },
-      { id: 'ex_tpd',  sets: 4, reps: '12-15', restSeconds: 60  },
-    ]
-  },
-  cw2: {
-    id: 'cw2',
-    name: 'Pull & Abs',
-    exercises: [
-      { id: 'ex_dl',  sets: 4, reps: '3-5',   restSeconds: 180 },
-      { id: 'ex_bbr', sets: 4, reps: '6-8',   restSeconds: 120 },
-      { id: 'ex_lp',  sets: 3, reps: '10-12', restSeconds: 90  },
-      { id: 'ex_llr', sets: 3, reps: '12-15', restSeconds: 60  },
-    ]
-  },
-  cw3: {
-    id: 'cw3',
-    name: 'Leg Day Annihilation',
-    exercises: [
-      { id: 'ex_sq',   sets: 5, reps: '5',     restSeconds: 180 },
-      { id: 'ex_lp_l', sets: 4, reps: '10-12', restSeconds: 120 },
-      { id: 'ex_lc',   sets: 3, reps: '12-15', restSeconds: 90  },
-      { id: 'ex_hth',  sets: 4, reps: '8-12',  restSeconds: 90  },
-      { id: 'ex_scr',  sets: 4, reps: '15-20', restSeconds: 60  },
-    ]
-  }
-};
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
-const ExerciseRow = ({ item, index, total, onChange, onRemove, onMoveUp, onMoveDown }) => {
-  const ex = getExerciseById(item.id);
-  if (!ex) return null;
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown }) => {
+  if (!exercise) return null;
 
   return (
     <div className="bg-[#0F172A] rounded-[14px] border border-white/6 overflow-hidden">
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-4 py-3.5">
-        <button className="text-[#4B5563] touch-none cursor-grab active:cursor-grabbing hover:text-[#9CA3AF] transition-colors">
-          <GripVertical size={17} />
-        </button>
+      {/* Top: name + reorder + delete — all 44px touch targets */}
+      <div className="flex items-center gap-2 px-4 py-2.5">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{ex.name}</p>
-          <p className="text-[12px] text-[#6B7280]">{ex.muscle} · {ex.equipment}</p>
+          <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{exercise.name}</p>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">{exercise.muscle} · {exercise.equipment}</p>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center flex-shrink-0 -mr-1">
           <button
             onClick={() => onMoveUp(index)}
             disabled={index === 0}
-            className="w-7 h-7 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-20 transition-colors"
+            className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-20 transition-colors active:scale-90"
           >
-            <ChevronLeft size={15} className="rotate-90" />
+            <ChevronLeft size={18} className="rotate-90" />
           </button>
           <button
             onClick={() => onMoveDown(index)}
             disabled={index === total - 1}
-            className="w-7 h-7 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-20 transition-colors"
+            className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-20 transition-colors active:scale-90"
           >
-            <ChevronRight size={15} className="rotate-90" />
+            <ChevronRight size={18} className="rotate-90" />
           </button>
           <button
             onClick={() => onRemove(index)}
-            className="w-7 h-7 flex items-center justify-center text-[#4B5563] hover:text-red-400 transition-colors ml-1"
+            className="w-11 h-11 flex items-center justify-center text-[#4B5563] hover:text-red-400 transition-colors active:scale-90"
           >
-            <Trash2 size={14} />
+            <Trash2 size={16} />
           </button>
         </div>
       </div>
 
-      {/* Config row */}
-      <div className="flex items-center gap-3 px-4 pb-3.5 border-t border-white/5 pt-3">
+      {/* Controls: sets / reps / rest */}
+      <div className="grid grid-cols-3 border-t border-white/5">
         {/* Sets */}
-        <div className="flex-1">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-1.5">Sets</p>
-          <div className="flex items-center gap-2">
+        <div className="px-3 py-3">
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Sets</p>
+          <div className="flex items-center justify-between">
             <button
               onClick={() => onChange(index, 'sets', Math.max(1, item.sets - 1))}
-              className="w-7 h-7 rounded-lg bg-white/5 text-[#E5E7EB] text-lg flex items-center justify-center hover:bg-white/10 transition-colors leading-none"
+              className="w-9 h-9 rounded-xl bg-white/5 text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/10 active:scale-90 transition-all leading-none"
             >−</button>
-            <span className="text-[#E5E7EB] font-bold text-[17px] w-6 text-center tabular-nums">{item.sets}</span>
+            <span className="text-[#E5E7EB] font-bold text-[18px] tabular-nums">{item.sets}</span>
             <button
               onClick={() => onChange(index, 'sets', Math.min(10, item.sets + 1))}
-              className="w-7 h-7 rounded-lg bg-white/5 text-[#E5E7EB] text-lg flex items-center justify-center hover:bg-white/10 transition-colors leading-none"
+              className="w-9 h-9 rounded-xl bg-white/5 text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/10 active:scale-90 transition-all leading-none"
             >+</button>
           </div>
         </div>
 
         {/* Reps */}
-        <div className="flex-1">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-1.5">Reps</p>
+        <div className="px-3 py-3 border-l border-r border-white/5">
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Reps</p>
           <input
             type="text"
+            inputMode="text"
             value={item.reps}
             onChange={e => onChange(index, 'reps', e.target.value)}
-            className="w-full bg-[#111827] border border-white/8 rounded-lg px-2 py-1.5 text-[#E5E7EB] text-[14px] font-semibold text-center focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+            className="w-full bg-[#111827] border border-white/8 rounded-xl px-2 py-2 text-[#E5E7EB] text-[14px] font-semibold text-center focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
           />
         </div>
 
         {/* Rest */}
-        <div className="flex-1">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-1.5">Rest</p>
+        <div className="px-3 py-3">
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Rest</p>
           <select
             value={item.restSeconds}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
-            className="w-full bg-[#111827] border border-white/8 rounded-lg px-2 py-1.5 text-[#E5E7EB] text-[13px] font-semibold focus:outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none text-center"
+            className="w-full bg-[#111827] border border-white/8 rounded-xl px-1 py-2 text-[#E5E7EB] text-[13px] font-semibold focus:outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none text-center"
           >
             {REST_OPTIONS.map(s => (
               <option key={s} value={s}>{s < 60 ? `${s}s` : `${s / 60}m`}</option>
@@ -129,17 +94,158 @@ const ExerciseRow = ({ item, index, total, onChange, onRemove, onMoveUp, onMoveD
   );
 };
 
+// Simple card list for Mine / Friends picker tabs
+const PickerList = ({ exercises, selectedIds, onSelect, emptyText }) => {
+  if (exercises.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <Dumbbell size={36} className="mx-auto mb-3 opacity-20 text-[#6B7280]" />
+        <p className="text-[14px] text-[#6B7280]">{emptyText}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {exercises.map(ex => {
+        const added = selectedIds.includes(ex.id);
+        return (
+          <div
+            key={ex.id}
+            className="bg-[#0F172A] rounded-[14px] border border-white/8 flex items-center gap-4 px-4 py-3.5"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-[15px] text-[#E5E7EB] truncate">{ex.name}</p>
+              <p className="text-[12px] text-[#6B7280] mt-0.5">{ex.muscle} · {ex.equipment}</p>
+            </div>
+            {added ? (
+              <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
+                Added
+              </span>
+            ) : (
+              <button
+                onClick={() => onSelect(ex)}
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
+                style={{ background: 'rgba(212,175,55,0.18)', border: '1.5px solid rgba(212,175,55,0.5)' }}
+              >
+                <Plus size={18} strokeWidth={2.5} style={{ color: '#D4AF37' }} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const WorkoutBuilder = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const [showLibrary, setShowLibrary] = useState(false);
+  const [pickerTab, setPickerTab]     = useState('library');
 
-  const raw = MOCK_ROUTINES[id] || { id, name: 'New Workout', exercises: [] };
-  const [name, setName] = useState(raw.name);
-  const [routineExercises, setRoutineExercises] = useState(
-    raw.exercises.map(e => ({ ...e }))
-  );
-  const [saved, setSaved] = useState(false);
+  const [name, setName]                       = useState('New Workout');
+  const [routineExercises, setRoutineExercises] = useState([]);
+  const [originalExercises, setOriginalExercises] = useState([]);
+  const [loading, setLoading]                 = useState(true);
+  const [saving, setSaving]                   = useState(false);
+  const [saved, setSaved]                     = useState(false);
+  const [error, setError]                     = useState('');
+  const [customExs, setCustomExs]             = useState([]);
+  const [friendIds, setFriendIds]             = useState(new Set());
+  const [savedIds, setSavedIds]               = useState(new Set());
+
+  // Load routine from DB
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data, error: err } = await supabase
+        .from('routines')
+        .select(`
+          id, name,
+          routine_exercises(id, exercise_id, position, target_sets, target_reps, rest_seconds)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (!err && data) {
+        setName(data.name);
+        const exs = (data.routine_exercises || [])
+          .sort((a, b) => a.position - b.position)
+          .map(re => ({
+            id:          re.exercise_id,
+            sets:        re.target_sets,
+            reps:        re.target_reps,
+            restSeconds: re.rest_seconds,
+          }));
+        setRoutineExercises(exs);
+        setOriginalExercises(exs);
+      }
+      setLoading(false);
+    };
+    load();
+  }, [id]);
+
+  // Load custom exercises + friend IDs so the picker can split into three sections
+  useEffect(() => {
+    if (!profile?.gym_id || !user) return;
+
+    supabase
+      .from('exercises')
+      .select('id, name, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, created_by')
+      .eq('gym_id', profile.gym_id)
+      .eq('is_active', true)
+      .then(({ data }) => {
+        if (data) {
+          setCustomExs(data.map(r => ({
+            id:               r.id,
+            name:             r.name,
+            muscle:           r.muscle_group,
+            equipment:        r.equipment,
+            category:         r.category,
+            defaultSets:      r.default_sets,
+            defaultReps:      r.default_reps,
+            restSeconds:      r.rest_seconds,
+            instructions:     r.instructions ?? '',
+            primaryRegions:   [],
+            secondaryRegions: [],
+            createdBy:        r.created_by,
+            isCustom:         true,
+          })));
+        }
+      });
+
+    supabase
+      .from('friendships')
+      .select('requester_id, addressee_id')
+      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+      .eq('status', 'accepted')
+      .then(({ data }) => {
+        if (data) {
+          setFriendIds(new Set(data.map(f =>
+            f.requester_id === user.id ? f.addressee_id : f.requester_id
+          )));
+        }
+      });
+
+    supabase
+      .from('user_saved_exercises')
+      .select('exercise_id')
+      .eq('user_id', user.id)
+      .then(({ data }) => {
+        if (data) setSavedIds(new Set(data.map(r => r.exercise_id)));
+      });
+  }, [profile?.gym_id, user?.id]);
+
+  // Resolve an exercise by ID — checks local library then custom exercises
+  const findExercise = (exerciseId) =>
+    getExerciseById(exerciseId) || customExs.find(e => e.id === exerciseId);
+
+  // Split custom exercises into mine vs friends for the picker tabs
+  // "Mine" = created by me OR saved by me
+  const myExs     = customExs.filter(e => e.createdBy === user?.id || savedIds.has(e.id));
+  const friendExs = customExs.filter(e => e.createdBy && e.createdBy !== user?.id && friendIds.has(e.createdBy) && !savedIds.has(e.id));
 
   const handleAdd = (exercise) => {
     setRoutineExercises(prev => [
@@ -177,21 +283,92 @@ const WorkoutBuilder = () => {
     });
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async ({ andExit = false } = {}) => {
+    setSaving(true);
+    setError('');
+    try {
+      // Update routine name
+      const { error: nameErr } = await supabase
+        .from('routines')
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (nameErr) throw nameErr;
+
+      // Delete all existing routine_exercises and re-insert in order
+      const { error: delErr } = await supabase
+        .from('routine_exercises')
+        .delete()
+        .eq('routine_id', id);
+      if (delErr) throw delErr;
+
+      if (routineExercises.length > 0) {
+        const rows = routineExercises.map((ex, i) => ({
+          routine_id:   id,
+          exercise_id:  ex.id,
+          position:     i + 1,
+          target_sets:  ex.sets,
+          target_reps:  ex.reps,
+          rest_seconds: ex.restSeconds,
+        }));
+        const { error: insErr } = await supabase
+          .from('routine_exercises')
+          .insert(rows);
+        if (insErr) throw insErr;
+      }
+
+      setOriginalExercises([...routineExercises]);
+
+      if (andExit) {
+        navigate('/workouts');
+      } else {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch (err) {
+      setError(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBack = async () => {
+    // If nothing changed, just navigate back
+    const isDirty =
+      routineExercises.length !== originalExercises.length ||
+      routineExercises.some((ex, i) => {
+        const orig = originalExercises[i];
+        return !orig || ex.id !== orig.id || ex.sets !== orig.sets ||
+               ex.reps !== orig.reps || ex.restSeconds !== orig.restSeconds;
+      });
+
+    if (!isDirty) {
+      navigate('/workouts');
+      return;
+    }
+
+    // Save then exit
+    await handleSave({ andExit: true });
   };
 
   const selectedIds = routineExercises.map(e => e.id);
 
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-[#05070B] z-[90] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 bg-[#05070B] z-[90] overflow-y-auto pb-32 animate-fade-in">
+    <div className="fixed inset-0 bg-[#05070B] z-[90] overflow-y-auto pb-[200px] md:pb-16 animate-fade-in">
 
       {/* Header */}
       <header className="sticky top-0 z-10 px-4 py-3.5 border-b border-white/6 flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-2xl">
         <button
-          onClick={() => navigate(-1)}
-          className="text-[#D4AF37] hover:text-[#E6C766] transition-colors flex items-center -ml-1"
+          onClick={handleBack}
+          disabled={saving}
+          className="text-[#D4AF37] hover:text-[#E6C766] transition-colors flex items-center -ml-1 disabled:opacity-50"
         >
           <ChevronLeft size={26} strokeWidth={2.5} />
           <span className="text-[16px] font-semibold -ml-0.5">Workouts</span>
@@ -207,36 +384,88 @@ const WorkoutBuilder = () => {
 
         <button
           onClick={handleSave}
-          className={`font-bold text-[14px] px-4 py-1.5 rounded-full transition-all ${
+          disabled={saving}
+          className={`font-bold text-[14px] px-4 py-1.5 rounded-full transition-all disabled:opacity-50 ${
             saved
               ? 'bg-[#10B981] text-white'
               : 'bg-[#D4AF37] hover:bg-[#E6C766] text-black'
           }`}
         >
-          {saved ? 'Saved ✓' : 'Save'}
+          {saving ? '…' : saved ? 'Saved ✓' : 'Save'}
         </button>
       </header>
+
+      {error && (
+        <div className="mx-auto max-w-2xl px-4 mt-4">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-[13px] text-red-400">
+            {error}
+          </div>
+        </div>
+      )}
 
       {/* Exercise Library Slide-in */}
       {showLibrary && (
         <div className="fixed inset-0 z-[95] bg-[#05070B] flex flex-col animate-fade-in">
-          <div className="sticky top-0 z-10 px-4 py-3.5 border-b border-white/6 flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-2xl">
-            <button
-              onClick={() => setShowLibrary(false)}
-              className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
-            >
-              <ChevronLeft size={24} strokeWidth={2.5} />
-              <span className="font-semibold text-[16px]">Back</span>
-            </button>
-            <h2 className="flex-1 text-center font-semibold text-[16px] text-[#E5E7EB]">Add Exercise</h2>
-            <div className="w-16" />
+          {/* Header */}
+          <div className="sticky top-0 z-10 border-b border-white/6 bg-[#05070B]/90 backdrop-blur-2xl">
+            <div className="px-4 py-3.5 flex items-center gap-3">
+              <button
+                onClick={() => setShowLibrary(false)}
+                className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
+              >
+                <ChevronLeft size={24} strokeWidth={2.5} />
+                <span className="font-semibold text-[16px]">Back</span>
+              </button>
+              <h2 className="flex-1 text-center font-semibold text-[16px] text-[#E5E7EB]">Add Exercise</h2>
+              <div className="w-16" />
+            </div>
+            {/* Tabs */}
+            <div className="flex px-4 gap-5">
+              {[
+                { key: 'library', label: 'Library' },
+                { key: 'mine',    label: `Mine${myExs.length ? ` (${myExs.length})` : ''}` },
+                { key: 'friends', label: `Friends${friendExs.length ? ` (${friendExs.length})` : ''}` },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setPickerTab(key)}
+                  className={`pb-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
+                    pickerTab === key
+                      ? 'border-[#D4AF37] text-[#D4AF37]'
+                      : 'border-transparent text-[#6B7280] hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Content */}
           <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
-            <ExerciseLibrary
-              selectable
-              selectedIds={selectedIds}
-              onSelect={handleAdd}
-            />
+            {pickerTab === 'library' && (
+              <ExerciseLibrary
+                selectable
+                selectedIds={selectedIds}
+                onSelect={handleAdd}
+              />
+            )}
+            {pickerTab === 'mine' && (
+              <PickerList
+                exercises={myExs}
+                selectedIds={selectedIds}
+                onSelect={handleAdd}
+                emptyText="You haven't created any exercises yet. Go to the Exercise Library to add one."
+              />
+            )}
+            {pickerTab === 'friends' && (
+              <PickerList
+                exercises={friendExs}
+                selectedIds={selectedIds}
+                onSelect={handleAdd}
+                emptyText="No exercises from friends yet."
+              />
+            )}
           </div>
         </div>
       )}
@@ -263,6 +492,7 @@ const WorkoutBuilder = () => {
               <ExerciseRow
                 key={`${item.id}-${index}`}
                 item={item}
+                exercise={findExercise(item.id)}
                 index={index}
                 total={routineExercises.length}
                 onChange={handleChange}
@@ -280,23 +510,70 @@ const WorkoutBuilder = () => {
           </div>
         )}
 
-        {/* Add Exercise button */}
+        {/* Add Exercise button — desktop only; mobile uses sticky bar */}
         <button
           onClick={() => setShowLibrary(true)}
-          className="w-full flex items-center justify-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 border border-[#D4AF37]/25 hover:border-[#D4AF37]/45 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-[14px] transition-all"
+          className="hidden md:flex w-full items-center justify-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 border border-[#D4AF37]/25 hover:border-[#D4AF37]/45 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-[14px] transition-all"
         >
           <Plus size={19} strokeWidth={2.5} /> Add Exercise
         </button>
 
+        {/* Mobile: prominent add button when empty */}
+        {routineExercises.length === 0 && (
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="md:hidden w-full flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/25 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-[14px] transition-all active:scale-95"
+          >
+            <Plus size={19} strokeWidth={2.5} /> Add Exercise
+          </button>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="mt-4 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 text-[13px] text-red-400 text-center">
+            {error}
+          </div>
+        )}
+
+        {/* Save & Done — desktop only; mobile uses sticky bar */}
+        {routineExercises.length > 0 && (
+          <button
+            onClick={() => handleSave({ andExit: true })}
+            disabled={saving}
+            className="hidden md:flex w-full mt-4 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[16px] py-4 rounded-[14px] transition-all items-center justify-center gap-2"
+          >
+            {saving ? '…' : 'Save & Done'}
+          </button>
+        )}
+
         {/* Reset hint */}
         {routineExercises.length > 0 && (
           <button
-            onClick={() => setRoutineExercises(raw.exercises.map(e => ({ ...e })))}
+            onClick={() => setRoutineExercises(originalExercises.map(e => ({ ...e })))}
             className="w-full flex items-center justify-center gap-2 text-[#4B5563] hover:text-[#9CA3AF] text-[12px] mt-3 py-2 transition-colors"
           >
-            <RotateCcw size={12} /> Reset to original
+            <RotateCcw size={12} /> Reset to saved
           </button>
         )}
+      </div>
+
+      {/* Mobile sticky bottom bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-[92] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-[#05070B]/95 backdrop-blur-xl border-t border-white/6">
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold text-[14px] py-3.5 rounded-[14px] active:scale-95 transition-all"
+          >
+            <Plus size={18} strokeWidth={2.5} /> Add
+          </button>
+          <button
+            onClick={() => handleSave({ andExit: true })}
+            disabled={saving}
+            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-black font-bold text-[15px] py-3.5 rounded-[14px] active:scale-95 transition-all flex items-center justify-center"
+          >
+            {saving ? '…' : 'Save & Done'}
+          </button>
+        </div>
       </div>
     </div>
   );

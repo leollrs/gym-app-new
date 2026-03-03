@@ -1,13 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Dumbbell, Activity, User, Tv, BookOpen } from 'lucide-react';
+import { Home, Dumbbell, Activity, User, Trophy } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { to: '/',          icon: Home,     label: 'Dashboard', end: true },
-  { to: '/workouts',  icon: Dumbbell, label: 'Workouts' },
-  { to: '/exercises', icon: BookOpen, label: 'Exercises' },
-  { to: '/social',    icon: Activity, label: 'Social' },
-  { to: '/profile',   icon: User,     label: 'Profile' },
+  { to: '/',             icon: Home,     label: 'Dashboard',  end: true },
+  { to: '/workouts',     icon: Dumbbell, label: 'Workouts' },
+  { to: '/leaderboard',  icon: Trophy,   label: 'Leaderboard' },
+  { to: '/social',       icon: Activity, label: 'Social' },
+  { to: '/profile',      icon: User,     label: 'Profile' },
 ];
 
 const Navigation = () => (
@@ -51,13 +51,6 @@ const Navigation = () => (
             </NavLink>
           ))}
 
-          {/* Gym TV */}
-          <NavLink
-            to="/tv-display"
-            className="ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-[#D4AF37] border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 hover:bg-[#D4AF37]/5 px-3 py-1.5 rounded-lg transition-all"
-          >
-            <Tv size={13} /> Gym TV
-          </NavLink>
         </div>
       </div>
     </nav>

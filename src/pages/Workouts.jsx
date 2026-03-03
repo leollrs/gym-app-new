@@ -1,14 +1,9 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, Users, X
+  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, Users, X, Trash2
 } from 'lucide-react';
-
-const mockCustomWorkouts = [
-  { id: 'cw1', name: 'Push Day (Hypertrophy)', exercises: 3, lastPerformed: '2 days ago' },
-  { id: 'cw2', name: 'Pull & Abs',             exercises: 4, lastPerformed: '4 days ago' },
-  { id: 'cw3', name: 'Leg Day Annihilation',   exercises: 5, lastPerformed: '5 days ago' },
-];
+import { useRoutines } from '../hooks/useRoutines';
 
 const mockGymPrograms = [
   {
@@ -33,21 +28,52 @@ const mockGymPrograms = [
   },
 ];
 
-const Workouts = () => {
-  const [activeTab, setActiveTab] = useState('my-routines');
-  const [routines, setRoutines] = useState([...mockCustomWorkouts]);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newRoutineName, setNewRoutineName] = useState('');
+const formatLastPerformed = (isoDate) => {
+  if (!isoDate) return 'Never';
+  const diff = Math.floor((Date.now() - new Date(isoDate)) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) return `${diff} days ago`;
+  if (diff < 30) return `${Math.floor(diff / 7)} weeks ago`;
+  return `${Math.floor(diff / 30)} months ago`;
+};
 
-  const handleCreateRoutine = (e) => {
+const Workouts = () => {
+  const navigate = useNavigate();
+  const { routines, loading, createRoutine, deleteRoutine } = useRoutines();
+  const [activeTab, setActiveTab]       = useState('my-routines');
+  const [isCreating, setIsCreating]     = useState(false);
+  const [newRoutineName, setNewRoutineName] = useState('');
+  const [creating, setCreating]         = useState(false);
+  const [deletingId, setDeletingId]     = useState(null);
+
+  const handleCreateRoutine = async (e) => {
     e.preventDefault();
     if (!newRoutineName.trim()) return;
-    setRoutines([
-      { id: `cw${Date.now()}`, name: newRoutineName, exercises: 0, lastPerformed: 'Never' },
-      ...routines,
-    ]);
-    setNewRoutineName('');
-    setIsCreating(false);
+    setCreating(true);
+    try {
+      const routine = await createRoutine(newRoutineName.trim());
+      setNewRoutineName('');
+      setIsCreating(false);
+      navigate(`/workouts/${routine.id}/edit`);
+    } catch (err) {
+      console.error('Failed to create routine:', err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeletingId(id);
+    try {
+      await deleteRoutine(id);
+    } catch (err) {
+      console.error('Failed to delete routine:', err);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -77,7 +103,7 @@ const Workouts = () => {
           <div className="w-12 h-12 rounded-xl bg-white/6 flex items-center justify-center">
             <BookOpen size={22} className="text-[#9CA3AF]" />
           </div>
-          <span className="font-semibold text-[#E5E7EB] text-[14px]">Exercises</span>
+          <span className="font-semibold text-[#E5E7EB] text-[14px]">Browse Exercises</span>
         </Link>
       </div>
 
@@ -99,7 +125,13 @@ const Workouts = () => {
               autoFocus
               className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 transition-colors"
             />
-            <button type="submit" className="btn-primary px-5 py-3 text-[14px]">Save</button>
+            <button
+              type="submit"
+              disabled={creating}
+              className="btn-primary px-5 py-3 text-[14px] disabled:opacity-50"
+            >
+              {creating ? '…' : 'Create'}
+            </button>
           </form>
         </div>
       )}
@@ -127,47 +159,65 @@ const Workouts = () => {
       {/* My Routines */}
       {activeTab === 'my-routines' && (
         <div className="flex flex-col gap-3 animate-fade-in">
-          {routines.map(workout => (
-            <div
-              key={workout.id}
-              className="bg-[#0F172A] rounded-[14px] border border-white/6 flex items-center gap-4 px-5 py-4 hover:border-white/12 transition-colors"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/8 flex items-center justify-center flex-shrink-0">
-                <Dumbbell size={18} className="text-[#D4AF37]" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{workout.name}</p>
-                <div className="flex items-center gap-3 mt-1 text-[12px] text-[#6B7280]">
-                  <span className="flex items-center gap-1"><Dumbbell size={11} /> {workout.exercises} ex</span>
-                  <span className="flex items-center gap-1"><Clock size={11} /> {workout.lastPerformed}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Link
-                  to={`/workouts/${workout.id}/edit`}
-                  className="w-9 h-9 rounded-lg bg-white/4 hover:bg-white/8 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6 cursor-pointer"
-                  aria-label="Edit routine"
-                >
-                  <Pencil size={14} />
-                </Link>
-                <Link
-                  to={`/session/${workout.id}`}
-                  className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-black text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
-                >
-                  <Play size={13} fill="currentColor" /> Start
-                </Link>
-              </div>
+          {loading ? (
+            <div className="flex flex-col gap-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-[#0F172A] rounded-[14px] border border-white/6 h-[76px] animate-pulse" />
+              ))}
             </div>
-          ))}
-
-          {routines.length === 0 && (
+          ) : routines.length === 0 ? (
             <div className="text-center py-20 text-[#6B7280]">
               <Dumbbell size={40} className="mx-auto mb-4 opacity-20" />
               <p className="text-[15px]">No routines yet</p>
               <p className="text-[13px] mt-1">Create your first routine above</p>
             </div>
+          ) : (
+            routines.map(routine => (
+              <div
+                key={routine.id}
+                className="bg-[#0F172A] rounded-[14px] border border-white/6 flex items-center gap-4 px-5 py-4 hover:border-white/12 transition-colors"
+              >
+                <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/8 flex items-center justify-center flex-shrink-0">
+                  <Dumbbell size={18} className="text-[#D4AF37]" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{routine.name}</p>
+                  <div className="flex items-center gap-3 mt-1 text-[12px] text-[#6B7280]">
+                    <span className="flex items-center gap-1">
+                      <Dumbbell size={11} /> {routine.exerciseCount} ex
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} /> {formatLastPerformed(routine.lastPerformedAt)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => handleDelete(e, routine.id)}
+                    disabled={deletingId === routine.id}
+                    className="w-9 h-9 rounded-lg bg-white/4 hover:bg-red-500/10 flex items-center justify-center text-[#6B7280] hover:text-red-400 transition-colors border border-white/6 cursor-pointer disabled:opacity-40"
+                    aria-label="Delete routine"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <Link
+                    to={`/workouts/${routine.id}/edit`}
+                    className="w-9 h-9 rounded-lg bg-white/4 hover:bg-white/8 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6 cursor-pointer"
+                    aria-label="Edit routine"
+                  >
+                    <Pencil size={14} />
+                  </Link>
+                  <Link
+                    to={`/session/${routine.id}`}
+                    className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-black text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <Play size={13} fill="currentColor" /> Start
+                  </Link>
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
@@ -177,22 +227,18 @@ const Workouts = () => {
         <div className="flex flex-col gap-4 animate-fade-in">
           {mockGymPrograms.map(prog => (
             <div key={prog.id} className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors overflow-hidden">
-              {/* Top accent bar */}
               <div className="h-[3px] w-full" style={{ background: prog.accent }} />
-
               <div className="p-5 flex items-start gap-5">
                 <div className="flex-1 min-w-0">
                   <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest">{prog.level}</span>
                   <h3 className="text-[18px] font-bold text-[#E5E7EB] mt-1 leading-tight">{prog.name}</h3>
                   <p className="text-[13px] text-[#9CA3AF] mt-0.5">{prog.subtitle}</p>
-
                   <div className="flex items-center gap-5 mt-4 text-[12px] text-[#6B7280]">
                     <span>{prog.instructor}</span>
                     <span className="flex items-center gap-1.5"><Clock size={12} /> {prog.duration}</span>
                     <span className="flex items-center gap-1.5"><Users size={12} /> {prog.enrolled}</span>
                   </div>
                 </div>
-
                 <button className="flex items-center gap-1 btn-secondary text-[13px] font-semibold px-4 py-2.5 flex-shrink-0">
                   View <ChevronRight size={13} />
                 </button>

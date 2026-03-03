@@ -6,10 +6,10 @@
 
 :root {
   /* ── Backgrounds ─────────────────────────── */
-  --bg-main:      #05070B;
-  --bg-secondary: #0B1220;
-  --bg-card:      #0F172A;
-  --bg-elevated:  #111827;
+  --bg-main:      #F8FAFC;
+  --bg-secondary: #EFF6FF;
+  --bg-card:      #FFFFFF;
+  --bg-elevated:  #F1F5F9;
 
   /* ── Gold accent ─────────────────────────── */
   --accent-gold:      #D4AF37;
@@ -22,13 +22,13 @@
   --accent-blue-soft: #60A5FA;
 
   /* ── Text ────────────────────────────────── */
-  --text-primary:   #E5E7EB;
-  --text-secondary: #9CA3AF;
-  --text-muted:     #6B7280;
+  --text-primary:   #0F172A;
+  --text-secondary: #374151;
+  --text-muted:     #64748B;
 
   /* ── Borders ─────────────────────────────── */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
 
   /* ── Legacy aliases (keep for components not yet updated) */
   --bg-primary:   var(--bg-main);
@@ -37,7 +37,7 @@
   --accent-secondary: var(--accent-gold-soft);
   --accent-glow:      var(--accent-gold-glow);
   --border-color: var(--border-subtle);
-  --glass-bg:     rgba(15, 23, 42, 0.85);
+  --glass-bg:     rgba(255, 255, 255, 0.9);
 
   /* ── Status ──────────────────────────────── */
   --success: #10B981;
@@ -52,9 +52,9 @@
   --radius-2xl: 1.25rem;
 
   /* ── Shadows ─────────────────────────────── */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.7);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.6);
-  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.12);
   --shadow-glow: 0 0 16px var(--accent-gold-glow);
 }
 
@@ -241,3 +241,72 @@ button {
 /* ── Scrollbar ────────────────────────────────────────────────────── */
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   Maps all hardcoded dark Tailwind arbitrary colors to light
+   equivalents without touching individual JSX files.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Background color overrides ─────────────────────────────────── */
+.bg-\[\#05070B\]  { background-color: #F8FAFC !important; }
+.bg-\[\#0A0D14\]  { background-color: #F1F5F9 !important; }
+.bg-\[\#0B1220\]  { background-color: #EFF6FF !important; }
+.bg-\[\#0F172A\]  { background-color: #FFFFFF !important; }
+.bg-\[\#111827\]  { background-color: #F9FAFB !important; }
+.bg-\[\#131929\]  { background-color: #F8FAFC !important; }
+.bg-\[\#131D2E\]  { background-color: #F1F5F9 !important; }
+.bg-\[\#1C1C1E\]  { background-color: #FFFFFF !important; }
+.bg-\[\#2C2C2E\]  { background-color: #E2E8F0 !important; }
+.bg-\[\#3A3A3C\]  { background-color: #CBD5E1 !important; }
+
+/* backdrop/blur overlays */
+.bg-\[\#05070B\]\/90  { background-color: rgba(248,250,252,0.95) !important; }
+.bg-\[\#0A0D14\]\/80  { background-color: rgba(241,245,249,0.9)  !important; }
+.bg-\[\#1C1C1E\]\/95  { background-color: rgba(255,255,255,0.95) !important; }
+
+/* white/opacity backgrounds (glass panels) */
+.bg-white\/4   { background-color: rgba(0,0,0,0.04) !important; }
+.bg-white\/5   { background-color: rgba(0,0,0,0.05) !important; }
+.bg-white\/6   { background-color: rgba(0,0,0,0.06) !important; }
+.bg-white\/8   { background-color: rgba(0,0,0,0.06) !important; }
+.bg-white\/10  { background-color: rgba(0,0,0,0.07) !important; }
+.bg-white\/12  { background-color: rgba(0,0,0,0.08) !important; }
+.bg-white\/14  { background-color: rgba(0,0,0,0.09) !important; }
+.bg-black\/10  { background-color: rgba(0,0,0,0.04) !important; }
+.bg-black\/30  { background-color: rgba(0,0,0,0.06) !important; }
+.bg-black\/60  { background-color: rgba(0,0,0,0.45) !important; }
+
+/* ── Text color overrides ───────────────────────────────────────── */
+.text-white          { color: #0F172A !important; }
+.text-\[\#E5E7EB\]   { color: #0F172A !important; }
+.text-\[\#CBD5E1\]   { color: #1E293B !important; }
+.text-\[\#9CA3AF\]   { color: #475569 !important; }
+.text-\[\#6B7280\]   { color: #64748B !important; }
+.text-\[\#4B5563\]   { color: #94A3B8 !important; }
+
+/* ── Border overrides ───────────────────────────────────────────── */
+.border-white\/5    { border-color: rgba(0,0,0,0.08) !important; }
+.border-white\/6    { border-color: rgba(0,0,0,0.09) !important; }
+.border-white\/8    { border-color: rgba(0,0,0,0.10) !important; }
+.border-white\/10   { border-color: rgba(0,0,0,0.12) !important; }
+.border-white\/12   { border-color: rgba(0,0,0,0.14) !important; }
+.border-white\/25   { border-color: rgba(0,0,0,0.20) !important; }
+
+/* ── Inputs ─────────────────────────────────────────────────────── */
+input::placeholder  { color: #94A3B8 !important; }
+.placeholder-\[\#6B7280\]::placeholder { color: #94A3B8 !important; }
+.placeholder-\[\#4B5563\]::placeholder { color: #CBD5E1 !important; }
+
+/* ── Keep gold & status colors as-is ───────────────────────────── */
+/* .text-[#D4AF37], .bg-[#D4AF37], .text-[#10B981], .text-red-* etc. untouched */
+
+/* ── btn-secondary on light ─────────────────────────────────────── */
+.btn-secondary {
+  color: var(--text-primary);
+  border-color: rgba(0,0,0,0.18);
+}
+.btn-secondary:hover {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.28);
+}
