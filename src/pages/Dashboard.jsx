@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, Play, Dumbbell, ChevronRight, ExternalLink } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -224,7 +224,7 @@ const Dashboard = () => {
               <Link
                 to={`/session/${nextRoutine.id}`}
                 aria-label="Start workout"
-                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95 bg-[#D4AF37] text-black"
+                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95 bg-[#D4AF37] text-[#ffffff]"
                 style={{ boxShadow: '0 0 24px rgba(212,175,55,0.35)' }}
               >
                 <Play size={22} fill="currentColor" className="ml-0.5" />
@@ -271,18 +271,7 @@ const Dashboard = () => {
                   tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'Barlow, sans-serif' }}
                   tickFormatter={v => v >= 1000 ? `${v / 1000}k` : v}
                 />
-                <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    fontSize: '12px',
-                    fontFamily: 'Barlow, sans-serif',
-                  }}
-                  formatter={v => [`${v.toLocaleString()} lbs`, 'Volume']}
-                />
-                <Bar dataKey="volume" radius={[5, 5, 2, 2]} maxBarSize={36}>
+<Bar dataKey="volume" radius={[5, 5, 2, 2]} maxBarSize={36}>
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={entry.volume > 0 ? '#3B82F6' : 'rgba(255,255,255,0.04)'} />
                   ))}

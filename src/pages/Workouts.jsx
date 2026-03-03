@@ -211,7 +211,7 @@ const Workouts = () => {
                   </Link>
                   <Link
                     to={`/session/${routine.id}`}
-                    className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-black text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-[#ffffff] text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
                   >
                     <Play size={13} fill="currentColor" /> Start
                   </Link>
