@@ -213,7 +213,7 @@ const Workouts = () => {
                     to={`/session/${routine.id}`}
                     className="flex items-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-[#ffffff] text-[13px] font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
                   >
-                    <Play size={13} fill="currentColor" /> Start
+                    <Play size={13} fill="white" stroke="white" strokeWidth={1.5} /> Start
                   </Link>
                 </div>
               </div>

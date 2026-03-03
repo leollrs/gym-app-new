@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, Play, Dumbbell, ChevronRight, ExternalLink } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -57,11 +57,11 @@ const computeStreak = (sessions) => {
 /* ── Stat card ──────────────────────────────────────────────────────────────── */
 const StatCard = ({ emoji, label, value, to }) => {
   const inner = (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors p-5 flex flex-col h-full">
-      <p className="text-[36px] font-black text-white leading-none tracking-tight">{value}</p>
-      <p className="text-[11px] text-[#6B7280] uppercase tracking-[0.15em] font-bold mt-3 flex items-center gap-1">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-3 py-4 md:p-5 flex flex-col h-full overflow-hidden">
+      <p className="text-[28px] md:text-[36px] font-black text-white leading-none tracking-tight">{value}</p>
+      <p className="text-[10px] md:text-[11px] text-[#6B7280] uppercase tracking-[0.04em] md:tracking-[0.15em] font-bold mt-2 md:mt-3 flex items-center gap-1 whitespace-nowrap overflow-hidden">
         {emoji}&nbsp;{label}
-        {to && <ExternalLink size={10} className="opacity-40 ml-0.5" />}
+        {to && <ExternalLink size={10} className="opacity-40 ml-0.5 flex-shrink-0" />}
       </p>
     </div>
   );
@@ -227,7 +227,7 @@ const Dashboard = () => {
                 className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95 bg-[#D4AF37] text-[#ffffff]"
                 style={{ boxShadow: '0 0 24px rgba(212,175,55,0.35)' }}
               >
-                <Play size={22} fill="currentColor" className="ml-0.5" />
+                <Play size={22} fill="white" stroke="white" strokeWidth={1.5} className="ml-0.5" />
               </Link>
             </div>
           </div>
@@ -247,7 +247,7 @@ const Dashboard = () => {
       </section>
 
       {/* ── Stats row ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4 mb-10">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-10">
         <StatCard emoji="🔥" label="Streak"   value={loading ? '—' : stats.streak} />
         <StatCard emoji="🏋️" label="Workouts" value={loading ? '—' : stats.sessions} to="/workout-log" />
         <StatCard emoji="📊" label="Volume"   value={loading ? '—' : stats.volumeK} />
@@ -271,7 +271,21 @@ const Dashboard = () => {
                   tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'Barlow, sans-serif' }}
                   tickFormatter={v => v >= 1000 ? `${v / 1000}k` : v}
                 />
-<Bar dataKey="volume" radius={[5, 5, 2, 2]} maxBarSize={36}>
+                <Tooltip
+                  cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontFamily: 'Barlow, sans-serif',
+                    color: '#0F172A',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                  }}
+                  labelStyle={{ color: '#64748B', fontWeight: 600 }}
+                  formatter={v => [`${v.toLocaleString()} lbs`, '']}
+                />
+                <Bar dataKey="volume" radius={[5, 5, 2, 2]} maxBarSize={36}>
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={entry.volume > 0 ? '#3B82F6' : 'rgba(255,255,255,0.04)'} />
                   ))}
