@@ -25,20 +25,21 @@ export default function AdminSettings() {
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
-      const { data } = await supabase
-        .from('gyms')
-        .select('*')
-        .eq('id', profile.gym_id)
-        .single();
-      if (data) {
-        setGym(data);
-        setName(data.name ?? '');
-        setPrimary(data.primary_color ?? '#D4AF37');
-        setAccent(data.accent_color ?? '#D4AF37');
-        setWelcome(data.welcome_message ?? '');
-        setOpenTime(data.open_time ?? '06:00');
-        setCloseTime(data.close_time ?? '22:00');
-        setOpenDays(data.open_days ?? [0, 1, 2, 3, 4, 5, 6]);
+      const [{ data: gymData }, { data: brandingData }] = await Promise.all([
+        supabase.from('gyms').select('id, name, slug, open_time, close_time, open_days').eq('id', profile.gym_id).single(),
+        supabase.from('gym_branding').select('primary_color, accent_color, welcome_message').eq('gym_id', profile.gym_id).single(),
+      ]);
+      if (gymData) {
+        setGym(gymData);
+        setName(gymData.name ?? '');
+        setOpenTime(gymData.open_time ?? '06:00');
+        setCloseTime(gymData.close_time ?? '22:00');
+        setOpenDays(gymData.open_days ?? [0, 1, 2, 3, 4, 5, 6]);
+      }
+      if (brandingData) {
+        setPrimary(brandingData.primary_color ?? '#D4AF37');
+        setAccent(brandingData.accent_color ?? '#10B981');
+        setWelcome(brandingData.welcome_message ?? '');
       }
       setLoading(false);
     };
@@ -54,19 +55,22 @@ export default function AdminSettings() {
   const handleSave = async () => {
     setSaving(true);
     setError('');
-    const { error: err } = await supabase
-      .from('gyms')
-      .update({
+    const [{ error: gymErr }, { error: brandingErr }] = await Promise.all([
+      supabase.from('gyms').update({
         name,
+        open_time:  openTime,
+        close_time: closeTime,
+        open_days:  openDays,
+        updated_at: new Date().toISOString(),
+      }).eq('id', profile.gym_id),
+      supabase.from('gym_branding').update({
         primary_color:   primaryColor,
         accent_color:    accentColor,
         welcome_message: welcomeMsg,
-        open_time:       openTime,
-        close_time:      closeTime,
-        open_days:       openDays,
         updated_at:      new Date().toISOString(),
-      })
-      .eq('id', profile.gym_id);
+      }).eq('gym_id', profile.gym_id),
+    ]);
+    const err = gymErr || brandingErr;
     if (err) { setError(err.message); setSaving(false); return; }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
