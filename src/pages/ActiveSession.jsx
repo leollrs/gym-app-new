@@ -131,6 +131,8 @@ const ActiveSession = () => {
   const [activePRBanner, setActivePRBanner] = useState(null);
   const [sessionPRs, setSessionPRs]         = useState(savedSession?.sessionPRs ?? []);
   const livePRs = useRef({});
+  // Always holds the latest state so beforeunload/visibilitychange can save without stale closures
+  const saveRef = useRef(null);
 
   const [loggedSets, setLoggedSets] = useState({});
 
@@ -253,6 +255,19 @@ const ActiveSession = () => {
     return () => clearInterval(interval);
   }, [isPaused]);
 
+  // ── Keep saveRef in sync with latest state (synchronous, never stale) ─────────
+  if (!dataLoading) {
+    saveRef.current = {
+      startedAt: startedAt.current,
+      elapsedTime,
+      loggedSets,
+      sessionPRs,
+      livePRs: livePRs.current,
+      currentExerciseIndex,
+      routineName,
+    };
+  }
+
   // ── Persist to localStorage ─────────────────────────────────────────────────
   useEffect(() => {
     if (dataLoading) return;
@@ -268,6 +283,22 @@ const ActiveSession = () => {
       }));
     } catch { }
   }, [loggedSets, sessionPRs, dataLoading, sessionKey, currentExerciseIndex, elapsedTime, routineName]);
+
+  // ── Force-save on browser close or tab switch to background ─────────────────
+  useEffect(() => {
+    const forceSave = () => {
+      if (saveRef.current) {
+        try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
+      }
+    };
+    const onVisibility = () => { if (document.hidden) forceSave(); };
+    window.addEventListener('beforeunload', forceSave);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', forceSave);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [sessionKey]);
 
   // ── Rest timer — pauses with workout, fires notification when done ───────────
   useEffect(() => {
