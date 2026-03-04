@@ -361,10 +361,10 @@ const WorkoutBuilder = () => {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#05070B] z-[90] overflow-y-auto pb-[200px] md:pb-16 animate-fade-in">
+    <div className="fixed inset-0 bg-[#05070B] z-[90] flex flex-col animate-fade-in">
 
       {/* Header */}
-      <header className="sticky top-0 z-10 px-4 py-3.5 border-b border-white/6 flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-2xl">
+      <header className="flex-shrink-0 px-4 py-3.5 border-b border-white/6 flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-2xl">
         <button
           onClick={handleBack}
           disabled={saving}
@@ -394,6 +394,9 @@ const WorkoutBuilder = () => {
           {saving ? '…' : saved ? 'Saved ✓' : 'Save'}
         </button>
       </header>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto">
 
       {error && (
         <div className="mx-auto max-w-2xl px-4 mt-4">
@@ -471,7 +474,7 @@ const WorkoutBuilder = () => {
       )}
 
       {/* Builder Content */}
-      <div className="container max-w-2xl mx-auto px-4 pt-6">
+      <div className="container max-w-2xl mx-auto px-4 pt-6 pb-6 md:pb-10">
 
         {/* Summary bar */}
         <div className="flex items-center gap-3 mb-8 text-[13px] text-[#6B7280]">
@@ -557,8 +560,10 @@ const WorkoutBuilder = () => {
         )}
       </div>
 
-      {/* Mobile sticky bottom bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-[92] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-[#05070B]/95 backdrop-blur-xl border-t border-white/6">
+      </div>{/* end scrollable body */}
+
+      {/* Mobile bottom bar — flex-shrink-0 so it stays pinned at the bottom */}
+      <div className="md:hidden flex-shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-[#05070B]/95 backdrop-blur-xl border-t border-white/6">
         <div className="flex gap-3">
           <button
             onClick={() => setShowLibrary(true)}
