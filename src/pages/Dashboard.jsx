@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Play, Dumbbell, ChevronRight, ExternalLink } from 'lucide-react';
+import { Bell, Play, Dumbbell, ChevronRight, ExternalLink, Timer } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -9,6 +9,24 @@ import { useAuth } from '../contexts/AuthContext';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const formatTime = (s) =>
+  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+// Scan localStorage for any in-progress session started within the last 24 hours
+const readActiveSession = () => {
+  try {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith('gym_session_')) continue;
+      const data = JSON.parse(localStorage.getItem(key));
+      if (data?.loggedSets && data?.startedAt && new Date(data.startedAt).getTime() > oneDayAgo) {
+        return { routineId: key.replace('gym_session_', ''), ...data };
+      }
+    }
+  } catch { }
+  return null;
+};
 
 // Build a 7-day volume chart (Sun–Sat of the current week)
 const buildWeekChart = (sessions) => {
@@ -89,6 +107,15 @@ const Dashboard = () => {
   const [nextRoutine, setNextRoutine]   = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading]           = useState(true);
+
+  // Detect in-progress session from localStorage (checked fresh on every mount)
+  const [activeSession] = useState(() => readActiveSession());
+  const activeSetsCompleted = activeSession
+    ? Object.values(activeSession.loggedSets).flat().filter(s => s.completed).length
+    : 0;
+  const activeSetsTotal = activeSession
+    ? Object.values(activeSession.loggedSets).flat().length
+    : 0;
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -202,7 +229,46 @@ const Dashboard = () => {
 
         {loading ? (
           <div className="bg-[#0F172A] rounded-[14px] border border-white/6 h-[120px] animate-pulse" />
+        ) : activeSession ? (
+          /* ── Resume in-progress session ── */
+          <div className="bg-[#0F172A] rounded-[14px] border border-[#3B82F6]/30 hover:border-[#3B82F6]/50 transition-colors overflow-hidden">
+            <div className="p-6 flex items-center gap-5">
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.13em] mb-2.5 text-[#3B82F6] flex items-center gap-1.5">
+                  <Timer size={11} />
+                  In Progress · {formatTime(activeSession.elapsedTime ?? 0)}
+                </p>
+                <h2
+                  className="text-[28px] font-black text-white leading-tight"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  {activeSession.routineName ?? 'Workout'}
+                </h2>
+                <p className="text-[13px] text-[#6B7280] mt-2 flex items-center gap-1.5">
+                  <Dumbbell size={13} className="text-[#4B5563]" />
+                  {activeSetsCompleted} / {activeSetsTotal} sets completed
+                </p>
+              </div>
+
+              <Link
+                to={`/session/${activeSession.routineId}`}
+                aria-label="Resume workout"
+                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 active:scale-95 bg-[#3B82F6] text-white"
+                style={{ boxShadow: '0 0 24px rgba(59,130,246,0.35)' }}
+              >
+                <Play size={22} fill="white" stroke="white" strokeWidth={1.5} className="ml-0.5" />
+              </Link>
+            </div>
+            {/* Progress bar */}
+            <div className="h-0.5 bg-white/6">
+              <div
+                className="h-full bg-[#3B82F6] transition-all"
+                style={{ width: activeSetsTotal > 0 ? `${(activeSetsCompleted / activeSetsTotal) * 100}%` : '0%' }}
+              />
+            </div>
+          </div>
         ) : nextRoutine ? (
+          /* ── Start a routine ── */
           <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/10 transition-colors overflow-hidden">
             <div className="p-6 flex items-center gap-5">
               <div className="flex-1 min-w-0">

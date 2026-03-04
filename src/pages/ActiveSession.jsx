@@ -264,9 +264,10 @@ const ActiveSession = () => {
         sessionPRs,
         livePRs: livePRs.current,
         currentExerciseIndex,
+        routineName,
       }));
     } catch { }
-  }, [loggedSets, sessionPRs, dataLoading, sessionKey, currentExerciseIndex, elapsedTime]);
+  }, [loggedSets, sessionPRs, dataLoading, sessionKey, currentExerciseIndex, elapsedTime, routineName]);
 
   // ── Rest timer — pauses with workout, fires notification when done ───────────
   useEffect(() => {
