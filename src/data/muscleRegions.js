@@ -11,6 +11,7 @@ export const BODY_REGION_DEFINITIONS = [
   { id: 'obliques',    label: 'Obliques',     group: 'Front torso',        emphasis: 'secondary' },
   { id: 'quads',       label: 'Quads',        group: 'Lower body',         emphasis: 'primary'   },
   { id: 'adductors',   label: 'Adductors',    group: 'Lower body',         emphasis: 'secondary' },
+  { id: 'abductors',   label: 'Abductors',    group: 'Lower body',         emphasis: 'secondary' },
   { id: 'calves',      label: 'Calves',       group: 'Lower body',         emphasis: 'secondary' },
   { id: 'traps',       label: 'Traps',        group: 'Back torso',         emphasis: 'secondary' },
   { id: 'rear_delts',  label: 'Rear Delts',   group: 'Shoulders and arms', emphasis: 'secondary' },
