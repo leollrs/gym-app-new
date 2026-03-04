@@ -18,6 +18,17 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
 
+// Admin pages
+import AdminLayout from './layouts/AdminLayout';
+import AdminOverview from './pages/admin/AdminOverview';
+import AdminMembers from './pages/admin/AdminMembers';
+import AdminAttendance from './pages/admin/AdminAttendance';
+import AdminChallenges from './pages/admin/AdminChallenges';
+import AdminPrograms from './pages/admin/AdminPrograms';
+import AdminLeaderboard from './pages/admin/AdminLeaderboard';
+import AdminAnnouncements from './pages/admin/AdminAnnouncements';
+import AdminSettings from './pages/admin/AdminSettings';
+
 // ── TV DISPLAY ─────────────────────────────────────────────
 const TVDisplay = () => (
   <div className="container main-content animate-fade-in" style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
@@ -36,23 +47,38 @@ const LoadingScreen = () => (
   </div>
 );
 
-// ── PROTECTED ROUTE ────────────────────────────────────────
-// Redirects unauthenticated users to /login.
-// Redirects authenticated but non-onboarded users to /onboarding.
+const isAdmin = (profile) => profile?.role === 'admin' || profile?.role === 'super_admin';
+const isTrainer = (profile) => profile?.role === 'trainer';
+
+// ── PROTECTED ROUTE (member) ───────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
   if (profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
+  if (isAdmin(profile))   return <Navigate to="/admin" replace />;
+  if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
+  return children;
+};
+
+// ── ADMIN ROUTE ────────────────────────────────────────────
+const AdminRoute = ({ children }) => {
+  const { user, profile, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user)            return <Navigate to="/login" replace />;
+  if (!isAdmin(profile)) return <Navigate to="/" replace />;
   return children;
 };
 
 // ── PUBLIC ROUTE ───────────────────────────────────────────
-// Redirects already-authenticated users away from login/signup.
 const PublicRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (user && profile?.is_onboarded)      return <Navigate to="/" replace />;
+  if (user && profile?.is_onboarded) {
+    if (isAdmin(profile))   return <Navigate to="/admin" replace />;
+    if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
+    return <Navigate to="/" replace />;
+  }
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   return children;
 };
@@ -66,13 +92,34 @@ function App() {
       <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
 
-      {/* Onboarding — authenticated but not yet onboarded */}
+      {/* Onboarding */}
       <Route path="/onboarding" element={<Onboarding />} />
 
       {/* TV display — no auth required, no nav */}
       <Route path="/tv-display" element={<TVDisplay />} />
 
-      {/* Protected — main app with nav */}
+      {/* Admin dashboard */}
+      <Route
+        path="/admin/*"
+        element={
+          <AdminRoute>
+            <AdminLayout>
+              <Routes>
+                <Route path="/"             element={<AdminOverview />} />
+                <Route path="/members"      element={<AdminMembers />} />
+                <Route path="/attendance"   element={<AdminAttendance />} />
+                <Route path="/challenges"   element={<AdminChallenges />} />
+                <Route path="/programs"     element={<AdminPrograms />} />
+                <Route path="/leaderboard"  element={<AdminLeaderboard />} />
+                <Route path="/announcements" element={<AdminAnnouncements />} />
+                <Route path="/settings"     element={<AdminSettings />} />
+              </Routes>
+            </AdminLayout>
+          </AdminRoute>
+        }
+      />
+
+      {/* Protected — member app with nav */}
       <Route
         path="/*"
         element={
@@ -87,9 +134,9 @@ function App() {
                 <Route path="/profile"           element={<Profile />} />
                 <Route path="/exercises"         element={<ExerciseLibraryPage />} />
                 <Route path="/session/:id"       element={<ActiveSession />} />
-                <Route path="/session-summary"  element={<SessionSummary />} />
-                <Route path="/workout-log"      element={<WorkoutLog />} />
-                <Route path="/leaderboard"     element={<Leaderboard />} />
+                <Route path="/session-summary"   element={<SessionSummary />} />
+                <Route path="/workout-log"       element={<WorkoutLog />} />
+                <Route path="/leaderboard"       element={<Leaderboard />} />
               </Routes>
             </div>
           </ProtectedRoute>
