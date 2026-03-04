@@ -135,6 +135,7 @@ const ActiveSession = () => {
   const saveRef = useRef(null);
   const lastTickAt = useRef(Date.now());
   const isPausedRef = useRef(false);
+  const draftSaveRef = useRef(null);
 
   const [loggedSets, setLoggedSets] = useState({});
 
@@ -222,16 +223,55 @@ const ActiveSession = () => {
       }));
       setExercises(enriched);
 
-      if (savedSession?.loggedSets) {
+      // Fetch DB draft — more reliable than localStorage (survives browser restarts)
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: dbDraft } = await supabase
+        .from('session_drafts')
+        .select('*')
+        .eq('profile_id', user.id)
+        .eq('routine_id', id)
+        .gte('updated_at', cutoff)
+        .maybeSingle();
+
+      // DB draft wins; fall back to localStorage if no DB draft
+      const draft = dbDraft
+        ? {
+            loggedSets:            dbDraft.logged_sets,
+            sessionPRs:            dbDraft.session_prs,
+            livePRs:               dbDraft.live_prs,
+            currentExerciseIndex:  dbDraft.current_exercise_index,
+            elapsedTime:           dbDraft.elapsed_time,
+            startedAt:             dbDraft.started_at,
+          }
+        : savedSession
+          ? {
+              loggedSets:           savedSession.loggedSets,
+              sessionPRs:           savedSession.sessionPRs,
+              livePRs:              savedSession.livePRs,
+              currentExerciseIndex: savedSession.currentExerciseIndex,
+              elapsedTime:          savedSession.elapsedTime,
+              startedAt:            savedSession.startedAt,
+            }
+          : null;
+
+      if (draft?.loggedSets) {
         const restored = {};
         enriched.forEach(ex => {
-          restored[ex.id] = savedSession.loggedSets[ex.id] ??
+          restored[ex.id] = draft.loggedSets[ex.id] ??
             Array.from({ length: ex.targetSets }).map(() => ({
               weight: '', reps: '', completed: false, isPR: false,
             }));
         });
         setLoggedSets(restored);
-        if (savedSession.livePRs) livePRs.current = savedSession.livePRs;
+        if (draft.sessionPRs)           setSessionPRs(draft.sessionPRs);
+        if (draft.livePRs)              livePRs.current = draft.livePRs;
+        if (draft.currentExerciseIndex) setCurrentExerciseIndex(draft.currentExerciseIndex);
+        if (draft.elapsedTime)          setElapsedTime(draft.elapsedTime);
+        if (draft.startedAt)            startedAt.current = draft.startedAt;
+        // Sync DB draft back to localStorage so fast local reads also work
+        if (dbDraft) {
+          try { localStorage.setItem(sessionKey, JSON.stringify(draft)); } catch { }
+        }
       } else {
         const initialSets = {};
         enriched.forEach(ex => {
@@ -261,7 +301,7 @@ const ActiveSession = () => {
     return () => clearInterval(interval);
   }, [isPaused]);
 
-  // ── Keep saveRef + isPausedRef in sync with latest state (synchronous, never stale) ──
+  // ── Keep saveRef / draftSaveRef / isPausedRef in sync (synchronous, never stale) ──
   isPausedRef.current = isPaused;
   if (!dataLoading) {
     saveRef.current = {
@@ -274,6 +314,33 @@ const ActiveSession = () => {
       routineName,
     };
   }
+  if (!dataLoading && user && profile) {
+    draftSaveRef.current = {
+      profile_id: user.id,
+      gym_id: profile.gym_id,
+      routine_id: id,
+      routine_name: routineName,
+      started_at: startedAt.current,
+      elapsed_time: elapsedTime,
+      logged_sets: loggedSets,
+      session_prs: sessionPRs,
+      live_prs: livePRs.current,
+      current_exercise_index: currentExerciseIndex,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  // ── Save draft to DB (fire-and-forget) ──────────────────────────────────────
+  const saveDraftToDb = async (overrideLoggedSets = null) => {
+    if (!draftSaveRef.current) return;
+    const payload = overrideLoggedSets
+      ? { ...draftSaveRef.current, logged_sets: overrideLoggedSets }
+      : draftSaveRef.current;
+    try {
+      await supabase.from('session_drafts')
+        .upsert(payload, { onConflict: 'profile_id,routine_id' });
+    } catch { }
+  };
 
   // ── Persist to localStorage ─────────────────────────────────────────────────
   useEffect(() => {
@@ -301,6 +368,7 @@ const ActiveSession = () => {
     const onVisibility = () => {
       if (document.hidden) {
         forceSave();
+        saveDraftToDb();
       } else {
         // App returned to foreground — catch up seconds lost while backgrounded
         if (!isPausedRef.current) {
@@ -390,6 +458,7 @@ const ActiveSession = () => {
       try {
         localStorage.setItem(sessionKey, JSON.stringify({ ...saveRef.current, loggedSets: updated }));
       } catch { }
+      saveDraftToDb(updated); // fire-and-forget DB save
 
       return updated;
     });
@@ -492,6 +561,11 @@ const ActiveSession = () => {
       }
 
       localStorage.removeItem(sessionKey);
+      // Clean up DB draft — fire-and-forget
+      supabase.from('session_drafts')
+        .delete()
+        .eq('profile_id', user.id)
+        .eq('routine_id', id);
       navigate('/session-summary', {
         replace: true,
         state: {
