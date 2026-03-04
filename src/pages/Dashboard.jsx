@@ -87,10 +87,16 @@ const StatCard = ({ emoji, label, value, to }) => {
 };
 
 /* ── Gym News card ──────────────────────────────────────────────────────────── */
+const ANN_ACCENT = {
+  event:       '#D4AF37',
+  challenge:   '#10B981',
+  maintenance: '#EF4444',
+  news:        '#3B82F6',
+};
+
 const AnnCard = ({ ann }) => (
-  <div className={`bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px] ${
-    ann.type === 'event' ? 'border-l-[#D4AF37]' : 'border-l-[#3B82F6]'
-  }`}>
+  <div className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px]"
+    style={{ borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}>
     <p className="text-[15px] font-semibold text-[#E5E7EB] leading-snug">{ann.title}</p>
     <p className="text-[13px] text-[#6B7280] mt-1.5 leading-relaxed">{ann.message}</p>
   </div>
@@ -106,6 +112,7 @@ const Dashboard = () => {
   );
   const [nextRoutine, setNextRoutine]   = useState(null);
   const [announcements, setAnnouncements] = useState([]);
+  const [welcomeMsg, setWelcomeMsg]     = useState('');
   const [loading, setLoading]           = useState(true);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
@@ -160,16 +167,24 @@ const Dashboard = () => {
         setNextRoutine(routines[0]);
       }
 
-      // 3. Load gym announcements
-      const { data: anns } = await supabase
-        .from('gym_announcements')
-        .select('id, title, message, announcement_type')
-        .eq('gym_id', profile.gym_id)
-        .eq('is_published', true)
-        .order('published_at', { ascending: false })
-        .limit(5);
+      // 3. Load gym announcements + welcome message in parallel
+      const [{ data: anns }, { data: branding }] = await Promise.all([
+        supabase
+          .from('announcements')
+          .select('id, title, message, type')
+          .eq('gym_id', profile.gym_id)
+          .lte('published_at', new Date().toISOString())
+          .order('published_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('gym_branding')
+          .select('welcome_message')
+          .eq('gym_id', profile.gym_id)
+          .single(),
+      ]);
 
       setAnnouncements(anns || []);
+      setWelcomeMsg(branding?.welcome_message || '');
 
       setLoading(false);
     };
@@ -214,6 +229,13 @@ const Dashboard = () => {
           <Bell size={16} />
         </button>
       </div>
+
+      {/* ── Welcome message (set by gym admin) ─────────────────────────── */}
+      {welcomeMsg && (
+        <div className="mb-8 px-5 py-4 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-[14px]">
+          <p className="text-[13px] text-[#D4AF37] leading-relaxed">{welcomeMsg}</p>
+        </div>
+      )}
 
       {/* ── TODAY'S WORKOUT ─────────────────────────────────────────────── */}
       <section className="mb-10">
@@ -369,13 +391,7 @@ const Dashboard = () => {
           <div className="flex flex-col gap-3">
             {announcements.length > 0 ? (
               announcements.map(ann => (
-                <AnnCard
-                  key={ann.id}
-                  ann={{
-                    ...ann,
-                    type: ann.announcement_type === 'event' ? 'event' : 'news',
-                  }}
-                />
+                <AnnCard key={ann.id} ann={ann} />
               ))
             ) : (
               <div className="bg-[#0F172A] rounded-[14px] border border-white/6 px-5 py-6 text-center">

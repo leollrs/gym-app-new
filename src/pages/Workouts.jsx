@@ -1,32 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, Users, X, Trash2
+  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, X, Trash2, CheckCircle2, Calendar
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
-
-const mockGymPrograms = [
-  {
-    id: 'gp1',
-    name: 'IronForge Powerbuilding',
-    subtitle: 'Phase 1 of 3',
-    instructor: 'Coach Sarah',
-    duration: '8 weeks',
-    level: 'Intermediate',
-    enrolled: 142,
-    accent: '#D4AF37',
-  },
-  {
-    id: 'gp2',
-    name: 'Summer Shred',
-    subtitle: 'Fat loss + strength',
-    instructor: 'Coach Mike',
-    duration: '6 weeks',
-    level: 'All Levels',
-    enrolled: 89,
-    accent: '#3B82F6',
-  },
-];
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const formatLastPerformed = (isoDate) => {
   if (!isoDate) return 'Never';
@@ -38,14 +17,203 @@ const formatLastPerformed = (isoDate) => {
   return `${Math.floor(diff / 30)} months ago`;
 };
 
+// ── Program detail modal ────────────────────────────────────
+const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
+  const [exercises, setExercises] = useState({});  // { id: name }
+  const [loading, setLoading]     = useState(true);
+  const [acting, setActing]       = useState(false);
+
+  useEffect(() => {
+    // Collect all exercise IDs from all weeks/days (supports both old flat and new week/day format)
+    const weeks = program.weeks ?? {};
+    const allIds = [...new Set(
+      Object.values(weeks).flatMap(val =>
+        Array.isArray(val) && val.length > 0 && typeof val[0] === 'string'
+          ? val                                   // old flat format
+          : (val || []).flatMap(d => d.exercises ?? [])  // new week/day format
+      )
+    )];
+    if (allIds.length === 0) { setLoading(false); return; }
+
+    supabase
+      .from('exercises')
+      .select('id, name')
+      .in('id', allIds)
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(ex => { map[ex.id] = ex.name; });
+        setExercises(map);
+        setLoading(false);
+      });
+  }, [program.id]);
+
+  const handleEnroll = async () => {
+    setActing(true);
+    await onEnroll(program.id);
+    setActing(false);
+  };
+
+  const handleLeave = async () => {
+    setActing(true);
+    await onLeave(program.id);
+    setActing(false);
+  };
+
+  const weeks = program.weeks ?? {};
+  const weekNums = Object.keys(weeks).map(Number).sort((a, b) => a - b);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-white/6 flex-shrink-0">
+          <div className="flex-1 min-w-0 pr-4">
+            <p className="text-[17px] font-bold text-[#E5E7EB]">{program.name}</p>
+            <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-1.5">
+              <Calendar size={11} /> {program.duration_weeks} week program
+            </p>
+          </div>
+          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {program.description && (
+            <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{program.description}</p>
+          )}
+
+          {/* Week-by-week */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Program Overview</p>
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <div key={i} className="h-10 bg-white/4 rounded-xl animate-pulse" />)}
+              </div>
+            ) : weekNums.length === 0 ? (
+              <p className="text-[13px] text-[#4B5563]">No exercises assigned yet</p>
+            ) : (
+              <div className="space-y-3">
+                {weekNums.map(wk => {
+                  const rawVal = weeks[wk];
+                  // Normalize: old flat format or new day format
+                  const days = Array.isArray(rawVal) && rawVal.length > 0 && typeof rawVal[0] === 'string'
+                    ? [{ name: 'Day 1', exercises: rawVal }]
+                    : (rawVal || []);
+
+                  return (
+                    <div key={wk} className="bg-[#111827] rounded-xl overflow-hidden">
+                      <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 py-2 border-b border-white/4">
+                        Week {wk}
+                      </p>
+                      {days.length === 0 ? (
+                        <p className="text-[12px] text-[#4B5563] px-3 py-2">Rest week</p>
+                      ) : (
+                        <div className="divide-y divide-white/4">
+                          {days.map((day, di) => (
+                            <div key={di} className="px-3 py-2.5">
+                              <p className="text-[12px] font-semibold text-[#E5E7EB] mb-1.5">{day.name || `Day ${di + 1}`}</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {(day.exercises || []).map((id, i) => (
+                                  <span key={i} className="text-[11px] bg-white/6 text-[#9CA3AF] px-2.5 py-1 rounded-lg">
+                                    {exercises[id] ?? id}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer CTA */}
+        <div className="p-5 border-t border-white/6 flex-shrink-0">
+          {isEnrolled ? (
+            <div className="flex gap-3">
+              <div className="flex-1 flex items-center gap-2 py-3 px-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+                <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+                <p className="text-[13px] font-semibold text-emerald-400">Enrolled</p>
+              </div>
+              <button
+                onClick={handleLeave}
+                disabled={acting}
+                className="px-4 py-3 text-[12px] font-semibold rounded-xl border border-white/10 text-[#9CA3AF] hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-40"
+              >
+                Leave
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleEnroll}
+              disabled={acting}
+              className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors disabled:opacity-50"
+            >
+              {acting ? 'Enrolling…' : 'Enroll in Program'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main page ──────────────────────────────────────────────
 const Workouts = () => {
   const navigate = useNavigate();
+  const { profile, user } = useAuth();
   const { routines, loading, createRoutine, deleteRoutine } = useRoutines();
-  const [activeTab, setActiveTab]       = useState('my-routines');
-  const [isCreating, setIsCreating]     = useState(false);
+  const [activeTab, setActiveTab]           = useState('my-routines');
+  const [isCreating, setIsCreating]         = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
-  const [creating, setCreating]         = useState(false);
-  const [deletingId, setDeletingId]     = useState(null);
+  const [creating, setCreating]             = useState(false);
+  const [deletingId, setDeletingId]         = useState(null);
+  const [gymPrograms, setGymPrograms]       = useState([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
+  const [enrolledIds, setEnrolledIds]       = useState(new Set());
+  const [selectedProgram, setSelectedProgram] = useState(null);
+
+  const loadPrograms = useCallback(async () => {
+    if (!profile?.gym_id) return;
+    setProgramsLoading(true);
+    const [{ data: progs }, { data: enrolled }] = await Promise.all([
+      supabase
+        .from('gym_programs')
+        .select('id, name, description, duration_weeks, weeks, created_at')
+        .eq('gym_id', profile.gym_id)
+        .eq('is_published', true)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('gym_program_enrollments')
+        .select('program_id')
+        .eq('profile_id', user.id),
+    ]);
+    setGymPrograms(progs || []);
+    setEnrolledIds(new Set((enrolled || []).map(r => r.program_id)));
+    setProgramsLoading(false);
+  }, [profile?.gym_id, user?.id]);
+
+  useEffect(() => { loadPrograms(); }, [loadPrograms]);
+
+  const handleEnroll = async (programId) => {
+    await supabase.from('gym_program_enrollments').insert({ program_id: programId, profile_id: user.id, gym_id: profile.gym_id });
+    setEnrolledIds(prev => new Set([...prev, programId]));
+  };
+
+  const handleLeave = async (programId) => {
+    await supabase.from('gym_program_enrollments').delete().eq('program_id', programId).eq('profile_id', user.id);
+    setEnrolledIds(prev => { const s = new Set(prev); s.delete(programId); return s; });
+  };
 
   const handleCreateRoutine = async (e) => {
     e.preventDefault();
@@ -77,6 +245,7 @@ const Workouts = () => {
   };
 
   return (
+    <>
     <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-8 md:pt-12 pb-28 md:pb-12 animate-fade-in">
 
       {/* Page header */}
@@ -125,11 +294,7 @@ const Workouts = () => {
               autoFocus
               className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 transition-colors"
             />
-            <button
-              type="submit"
-              disabled={creating}
-              className="btn-primary px-5 py-3 text-[14px] disabled:opacity-50"
-            >
+            <button type="submit" disabled={creating} className="btn-primary px-5 py-3 text-[14px] disabled:opacity-50">
               {creating ? '…' : 'Create'}
             </button>
           </form>
@@ -140,7 +305,7 @@ const Workouts = () => {
       <div className="flex border-b border-white/8 mb-8">
         {[
           { key: 'my-routines',  label: 'My Routines' },
-          { key: 'gym-programs', label: 'Gym Programs' },
+          { key: 'gym-programs', label: `Gym Programs${enrolledIds.size ? ` (${enrolledIds.size})` : ''}` },
         ].map(tab => (
           <button
             key={tab.key}
@@ -180,32 +345,24 @@ const Workouts = () => {
                 <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/8 flex items-center justify-center flex-shrink-0">
                   <Dumbbell size={16} className="text-[#D4AF37]" />
                 </div>
-
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{routine.name}</p>
                   <div className="flex items-center gap-2 mt-0.5 text-[12px] text-[#6B7280]">
-                    <span className="flex items-center gap-1">
-                      <Dumbbell size={10} /> {routine.exerciseCount} ex
-                    </span>
-                    <span className="flex items-center gap-1 truncate">
-                      <Clock size={10} className="flex-shrink-0" /> {formatLastPerformed(routine.lastPerformedAt)}
-                    </span>
+                    <span className="flex items-center gap-1"><Dumbbell size={10} /> {routine.exerciseCount} ex</span>
+                    <span className="flex items-center gap-1 truncate"><Clock size={10} className="flex-shrink-0" /> {formatLastPerformed(routine.lastPerformedAt)}</span>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     onClick={(e) => handleDelete(e, routine.id)}
                     disabled={deletingId === routine.id}
                     className="w-9 h-9 rounded-lg bg-white/4 hover:bg-red-500/10 flex items-center justify-center text-[#6B7280] hover:text-red-400 transition-colors border border-white/6 cursor-pointer disabled:opacity-40"
-                    aria-label="Delete routine"
                   >
                     <Trash2 size={14} />
                   </button>
                   <Link
                     to={`/workouts/${routine.id}/edit`}
                     className="w-9 h-9 rounded-lg bg-white/4 hover:bg-white/8 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6 cursor-pointer"
-                    aria-label="Edit routine"
                   >
                     <Pencil size={14} />
                   </Link>
@@ -213,7 +370,6 @@ const Workouts = () => {
                     to={`/session/${routine.id}`}
                     className="w-9 h-9 rounded-xl bg-[#D4AF37] hover:bg-[#E6C766] flex items-center justify-center flex-shrink-0 transition-colors cursor-pointer active:scale-95"
                     style={{ boxShadow: '0 0 10px rgba(212,175,55,0.3)' }}
-                    aria-label="Start routine"
                   >
                     <Play size={14} fill="white" stroke="white" strokeWidth={1.5} />
                   </Link>
@@ -227,30 +383,70 @@ const Workouts = () => {
       {/* Gym Programs */}
       {activeTab === 'gym-programs' && (
         <div className="flex flex-col gap-4 animate-fade-in">
-          {mockGymPrograms.map(prog => (
-            <div key={prog.id} className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors overflow-hidden">
-              <div className="h-[3px] w-full" style={{ background: prog.accent }} />
-              <div className="p-5 flex items-start gap-5">
-                <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest">{prog.level}</span>
-                  <h3 className="text-[18px] font-bold text-[#E5E7EB] mt-1 leading-tight">{prog.name}</h3>
-                  <p className="text-[13px] text-[#9CA3AF] mt-0.5">{prog.subtitle}</p>
-                  <div className="flex items-center gap-5 mt-4 text-[12px] text-[#6B7280]">
-                    <span>{prog.instructor}</span>
-                    <span className="flex items-center gap-1.5"><Clock size={12} /> {prog.duration}</span>
-                    <span className="flex items-center gap-1.5"><Users size={12} /> {prog.enrolled}</span>
-                  </div>
-                </div>
-                <button className="flex items-center gap-1 btn-secondary text-[13px] font-semibold px-4 py-2.5 flex-shrink-0">
-                  View <ChevronRight size={13} />
-                </button>
-              </div>
+          {programsLoading ? (
+            <div className="flex flex-col gap-3">
+              {[1, 2].map(i => (
+                <div key={i} className="bg-[#0F172A] rounded-[14px] border border-white/6 h-[100px] animate-pulse" />
+              ))}
             </div>
-          ))}
+          ) : gymPrograms.length === 0 ? (
+            <div className="text-center py-20 text-[#6B7280]">
+              <BookOpen size={40} className="mx-auto mb-4 opacity-20" />
+              <p className="text-[15px]">No programs yet</p>
+              <p className="text-[13px] mt-1">Your gym hasn't published any programs</p>
+            </div>
+          ) : (
+            gymPrograms.map(prog => {
+              const enrolled = enrolledIds.has(prog.id);
+              return (
+                <button
+                  key={prog.id}
+                  onClick={() => setSelectedProgram(prog)}
+                  className={`text-left bg-[#0F172A] rounded-[14px] border transition-colors overflow-hidden w-full ${enrolled ? 'border-[#D4AF37]/25 hover:border-[#D4AF37]/40' : 'border-white/6 hover:border-white/12'}`}
+                >
+                  <div className={`h-[3px] w-full ${enrolled ? 'bg-[#D4AF37]' : 'bg-white/10'}`} />
+                  <div className="p-5 flex items-start gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${enrolled ? 'bg-[#D4AF37]/12' : 'bg-white/6'}`}>
+                      <Dumbbell size={18} className={enrolled ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-[15px] font-bold text-[#E5E7EB]">{prog.name}</h3>
+                        {enrolled && (
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <CheckCircle2 size={9} /> Enrolled
+                          </span>
+                        )}
+                      </div>
+                      {prog.description && (
+                        <p className="text-[12px] text-[#9CA3AF] mt-1 line-clamp-2">{prog.description}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-2 text-[12px] text-[#6B7280]">
+                        <span className="flex items-center gap-1"><Clock size={11} /> {prog.duration_weeks} weeks</span>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-[#4B5563] flex-shrink-0 mt-1" />
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       )}
 
     </div>
+
+    {/* Program detail modal — rendered outside animate-fade-in to preserve fixed positioning */}
+    {selectedProgram && (
+      <ProgramModal
+        program={selectedProgram}
+        isEnrolled={enrolledIds.has(selectedProgram.id)}
+        onClose={() => setSelectedProgram(null)}
+        onEnroll={handleEnroll}
+        onLeave={handleLeave}
+      />
+    )}
+    </>
   );
 };
 

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Settings, Save, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { applyBranding } from '../../lib/branding';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function AdminSettings() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [gym, setGym]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -25,8 +26,9 @@ export default function AdminSettings() {
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
+      // select('*') so it works even if migration 0012 hasn't been applied yet
       const [{ data: gymData }, { data: brandingData }] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, open_time, close_time, open_days').eq('id', profile.gym_id).single(),
+        supabase.from('gyms').select('*').eq('id', profile.gym_id).single(),
         supabase.from('gym_branding').select('primary_color, accent_color, welcome_message').eq('gym_id', profile.gym_id).single(),
       ]);
       if (gymData) {
@@ -55,6 +57,8 @@ export default function AdminSettings() {
   const handleSave = async () => {
     setSaving(true);
     setError('');
+
+    // Run both saves in parallel but handle errors independently
     const [{ error: gymErr }, { error: brandingErr }] = await Promise.all([
       supabase.from('gyms').update({
         name,
@@ -70,8 +74,17 @@ export default function AdminSettings() {
         updated_at:      new Date().toISOString(),
       }).eq('gym_id', profile.gym_id),
     ]);
-    const err = gymErr || brandingErr;
-    if (err) { setError(err.message); setSaving(false); return; }
+
+    // Always apply branding to the UI even if gym name save failed
+    if (!brandingErr) applyBranding(primaryColor);
+
+    if (gymErr || brandingErr) {
+      const msg = gymErr?.message || brandingErr?.message;
+      setError(msg);
+      setSaving(false);
+      return;
+    }
+    refreshProfile(); // re-fetches gymName so the nav updates immediately
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
     setSaving(false);

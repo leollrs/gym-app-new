@@ -1,14 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { applyBranding } from '../lib/branding';
 
 const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
+  const [gymName, setGymName] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Fetch the profile row for a given user id
+  // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
     const { data } = await supabase
       .from('profiles')
@@ -16,6 +18,16 @@ export const AuthProvider = ({ children }) => {
       .eq('id', userId)
       .single();
     setProfile(data ?? null);
+
+    if (data?.gym_id) {
+      const [{ data: branding }, { data: gym }] = await Promise.all([
+        supabase.from('gym_branding').select('primary_color, accent_color, custom_app_name').eq('gym_id', data.gym_id).single(),
+        supabase.from('gyms').select('name').eq('id', data.gym_id).single(),
+      ]);
+      if (branding?.primary_color) applyBranding(branding.primary_color);
+      setGymName(gym?.name || branding?.custom_app_name || '');
+    }
+
     setLoading(false);
   };
 
@@ -98,6 +110,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       user,
       profile,
+      gymName,
       loading,
       signUp,
       signIn,

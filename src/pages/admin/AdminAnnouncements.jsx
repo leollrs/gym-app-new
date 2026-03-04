@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react';
 import { Plus, Megaphone, X, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { format } from 'date-fns';
+import { format, isFuture } from 'date-fns';
 
+// Must match the announcement_type enum in the DB schema
 const TYPE_OPTS = [
-  { value: 'info',    label: 'Info',    color: 'text-blue-400 bg-blue-500/10' },
-  { value: 'promo',   label: 'Promo',   color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
-  { value: 'alert',   label: 'Alert',   color: 'text-red-400 bg-red-500/10' },
+  { value: 'news',        label: 'News',        color: 'text-blue-400 bg-blue-500/10' },
+  { value: 'event',       label: 'Event',       color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
+  { value: 'challenge',   label: 'Challenge',   color: 'text-emerald-400 bg-emerald-500/10' },
+  { value: 'maintenance', label: 'Maintenance', color: 'text-red-400 bg-red-500/10' },
 ];
 
 const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
-  const [form, setForm] = useState({ title: '', message: '', type: 'info', scheduled_for: '' });
+  const [form, setForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -20,14 +22,15 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
     if (!form.title || !form.message) { setError('Title and message are required.'); return; }
     setSaving(true);
     setError('');
-    const { error: err } = await supabase.from('gym_announcements').insert({
-      gym_id:            gymId,
-      created_by:        adminId,
-      title:             form.title,
-      message:           form.message,
-      announcement_type: form.type,
-      is_published:      !form.scheduled_for,
-      published_at:      form.scheduled_for ? new Date(form.scheduled_for).toISOString() : new Date().toISOString(),
+    const { error: err } = await supabase.from('announcements').insert({
+      gym_id:      gymId,
+      created_by:  adminId,
+      title:       form.title,
+      message:     form.message,
+      type:        form.type,
+      published_at: form.scheduled_for
+        ? new Date(form.scheduled_for).toISOString()
+        : new Date().toISOString(),
     });
     if (err) { setError(err.message); setSaving(false); return; }
     onCreated();
@@ -57,7 +60,7 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
           </div>
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {TYPE_OPTS.map(t => (
                 <button key={t.value} onClick={() => set('type', t.value)}
                   className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
@@ -95,7 +98,7 @@ export default function AdminAnnouncements() {
   const load = async () => {
     if (!profile?.gym_id) return;
     const { data } = await supabase
-      .from('gym_announcements')
+      .from('announcements')
       .select('*')
       .eq('gym_id', profile.gym_id)
       .order('published_at', { ascending: false });
@@ -107,7 +110,7 @@ export default function AdminAnnouncements() {
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this announcement?')) return;
-    await supabase.from('gym_announcements').delete().eq('id', id);
+    await supabase.from('announcements').delete().eq('id', id);
     load();
   };
 
@@ -138,35 +141,41 @@ export default function AdminAnnouncements() {
         </div>
       ) : (
         <div className="space-y-3">
-          {announcements.map(a => (
-            <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <p className="text-[14px] font-semibold text-[#E5E7EB]">{a.title}</p>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.announcement_type)}`}>
-                      {a.announcement_type}
-                    </span>
-                    {!a.is_published && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
-                        Scheduled
+          {announcements.map(a => {
+            const isScheduled = a.published_at && isFuture(new Date(a.published_at));
+            return (
+              <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <p className="text-[14px] font-semibold text-[#E5E7EB]">{a.title}</p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
+                        {a.type}
                       </span>
+                      {isScheduled && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
+                          Scheduled
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{a.message}</p>
+                    {a.published_at && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <Calendar size={11} className="text-[#4B5563]" />
+                        <p className="text-[11px] text-[#6B7280]">
+                          {isScheduled ? 'Scheduled for' : 'Published'}{' '}
+                          {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a')}
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{a.message}</p>
-                  <div className="flex items-center gap-1 mt-2">
-                    <Calendar size={11} className="text-[#4B5563]" />
-                    <p className="text-[11px] text-[#6B7280]">
-                      {a.is_published ? 'Published' : 'Scheduled for'} {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a')}
-                    </p>
-                  </div>
+                  <button onClick={() => handleDelete(a.id)} className="text-[#4B5563] hover:text-red-400 transition-colors p-1 flex-shrink-0">
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <button onClick={() => handleDelete(a.id)} className="text-[#4B5563] hover:text-red-400 transition-colors p-1 flex-shrink-0">
-                  <Trash2 size={15} />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

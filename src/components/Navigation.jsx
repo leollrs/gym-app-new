@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Dumbbell, Activity, User, Trophy } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/',             icon: Home,     label: 'Dashboard',  end: true },
@@ -10,7 +11,9 @@ const NAV_ITEMS = [
   { to: '/profile',      icon: User,     label: 'Profile' },
 ];
 
-const Navigation = () => (
+const Navigation = () => {
+  const { gymName } = useAuth();
+  return (
   <>
     {/* Desktop Top Navigation */}
     <nav className="hidden md:block sticky top-0 z-50 border-b border-white/6 bg-[#03050A]/90 backdrop-blur-2xl">
@@ -21,7 +24,7 @@ const Navigation = () => (
           className="text-[21px] font-black tracking-tight text-gradient"
           style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
         >
-          IronForge
+          {gymName || 'GymApp'}
         </div>
 
         {/* Links */}
@@ -78,6 +81,7 @@ const Navigation = () => (
       ))}
     </nav>
   </>
-);
+  );
+};
 
 export default Navigation;

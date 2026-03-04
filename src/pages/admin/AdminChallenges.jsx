@@ -219,7 +219,7 @@ export default function AdminChallenges() {
       .from('challenges')
       .select('*')
       .eq('gym_id', profile.gym_id)
-      .order('starts_at', { ascending: false });
+      .order('start_date', { ascending: false });
     setChallenges(data || []);
     setLoading(false);
   };
