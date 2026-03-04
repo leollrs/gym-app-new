@@ -20,4 +20,7 @@ export const BODY_REGION_DEFINITIONS = [
   { id: 'lower_back',  label: 'Lower Back',   group: 'Back torso',         emphasis: 'primary'   },
   { id: 'glutes',      label: 'Glutes',       group: 'Lower body',         emphasis: 'primary'   },
   { id: 'hamstrings',  label: 'Hamstrings',   group: 'Lower body',         emphasis: 'primary'   },
+  { id: 'serratus',    label: 'Serratus',     group: 'Front torso',        emphasis: 'secondary' },
+  { id: 'hip_flexors', label: 'Hip Flexors',  group: 'Lower body',         emphasis: 'secondary' },
+  { id: 'tibialis',    label: 'Tibialis',     group: 'Lower body',         emphasis: 'secondary' },
 ];
