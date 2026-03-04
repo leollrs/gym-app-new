@@ -8,9 +8,9 @@ const regionMeta = Object.fromEntries(
 // Add a new entry here each time a new PNG is generated
 const MUSCLE_IMAGES = {
   // ── Chest ──────────────────────────────
-  // upper_chest:  '/muscles/upper_chest.png',
-  // mid_chest:    '/muscles/mid_chest.png',
-  // lower_chest:  '/muscles/lower_chest.png',
+  upper_chest:  '/muscles/upper_chest.png',
+  mid_chest:    '/muscles/mid_chest.png',
+  lower_chest:  '/muscles/lower_chest.png',
 
   // ── Shoulders ──────────────────────────
   // front_delts:  '/muscles/front_delts.png',
