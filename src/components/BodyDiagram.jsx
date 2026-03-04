@@ -7,29 +7,52 @@ const regionMeta = Object.fromEntries(
 // Map muscle region IDs → image filenames in /public/muscles/
 // Add a new entry here each time a new PNG is generated
 const MUSCLE_IMAGES = {
-  hamstrings:  '/muscles/hamstrings.png',
-  quads:       '/muscles/quads.png',
-  glutes:       '/muscles/glutes.png',
-  calves:       '/muscles/calves.png',
-  // abs:         '/muscles/abs.png',
-  // obliques:    '/muscles/obliques.png',
-  // upper_chest: '/muscles/upper_chest.png',
-  // mid_chest:   '/muscles/mid_chest.png',
-  // front_delts: '/muscles/front_delts.png',
-  // side_delts:  '/muscles/side_delts.png',
-  // rear_delts:  '/muscles/rear_delts.png',
-  // biceps:      '/muscles/biceps.png',
-  // triceps:     '/muscles/triceps.png',
-  // forearms:    '/muscles/forearms.png',
-  // lats:        '/muscles/lats.png',
-  // upper_back:  '/muscles/upper_back.png',
-  // lower_back:  '/muscles/lower_back.png',
-  // traps:       '/muscles/traps.png',
-  adductors:    '/muscles/adductors.png',
-  abductors:    '/muscles/abductors.png',
-  // tibialis:    '/muscles/tibialis.png',
-  // serratus:    '/muscles/serratus.png',
-  // hip_flexors: '/muscles/hip_flexors.png',
+  // ── Chest ──────────────────────────────
+  // upper_chest:  '/muscles/upper_chest.png',
+  // mid_chest:    '/muscles/mid_chest.png',
+  // lower_chest:  '/muscles/lower_chest.png',
+
+  // ── Shoulders ──────────────────────────
+  // front_delts:  '/muscles/front_delts.png',
+  // side_delts:   '/muscles/side_delts.png',
+  // rear_delts:   '/muscles/rear_delts.png',
+
+  // ── Arms ───────────────────────────────
+  // biceps:       '/muscles/biceps.png',
+  // triceps:      '/muscles/triceps.png',
+  // forearms:     '/muscles/forearms.png',
+  // brachialis:   '/muscles/brachialis.png',
+
+  // ── Core ───────────────────────────────
+  // upper_abs:    '/muscles/upper_abs.png',
+  // mid_abs:      '/muscles/mid_abs.png',
+  // lower_abs:    '/muscles/lower_abs.png',
+  // obliques:     '/muscles/obliques.png',
+  // serratus:     '/muscles/serratus.png',
+  // abs:          '/muscles/abs.png',
+
+  // ── Back ───────────────────────────────
+  // traps:        '/muscles/traps.png',
+  // upper_back:   '/muscles/upper_back.png',
+  // mid_back:     '/muscles/mid_back.png',
+  // lats:         '/muscles/lats.png',
+  // lower_back:   '/muscles/lower_back.png',
+
+  // ── Glutes ─────────────────────────────
+  glutes:        '/muscles/glutes.png',
+  // glute_med:    '/muscles/glute_med.png',
+
+  // ── Upper Legs ─────────────────────────
+  quads:         '/muscles/quads.png',
+  hamstrings:    '/muscles/hamstrings.png',
+  adductors:     '/muscles/adductors.png',
+  abductors:     '/muscles/abductors.png',
+  // hip_flexors:  '/muscles/hip_flexors.png',
+
+  // ── Lower Legs ─────────────────────────
+  calves:        '/muscles/calves.png',
+  // soleus:       '/muscles/soleus.png',
+  // tibialis:     '/muscles/tibialis.png',
 };
 
 // Pick any available image as the base body (they all share the same figure)
