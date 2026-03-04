@@ -13,13 +13,13 @@ const MUSCLE_IMAGES = {
   lower_chest:  '/muscles/lower_chest.png',
 
   // ── Shoulders ──────────────────────────
-  // front_delts:  '/muscles/front_delts.png',
+  front_delts:  '/muscles/front_delts.png',
   // side_delts:   '/muscles/side_delts.png',
   // rear_delts:   '/muscles/rear_delts.png',
 
   // ── Arms ───────────────────────────────
   // biceps:       '/muscles/biceps.png',
-  // triceps:      '/muscles/triceps.png',
+  triceps:      '/muscles/triceps.png',
   // forearms:     '/muscles/forearms.png',
   // brachialis:   '/muscles/brachialis.png',
 
