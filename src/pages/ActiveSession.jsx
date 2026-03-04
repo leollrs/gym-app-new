@@ -133,6 +133,8 @@ const ActiveSession = () => {
   const livePRs = useRef({});
   // Always holds the latest state so beforeunload/visibilitychange can save without stale closures
   const saveRef = useRef(null);
+  const lastTickAt = useRef(Date.now());
+  const isPausedRef = useRef(false);
 
   const [loggedSets, setLoggedSets] = useState({});
 
@@ -251,11 +253,16 @@ const ActiveSession = () => {
   // ── Session timer — pauses when isPaused ────────────────────────────────────
   useEffect(() => {
     if (isPaused) return;
-    const interval = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
+    lastTickAt.current = Date.now();
+    const interval = setInterval(() => {
+      lastTickAt.current = Date.now();
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isPaused]);
 
-  // ── Keep saveRef in sync with latest state (synchronous, never stale) ─────────
+  // ── Keep saveRef + isPausedRef in sync with latest state (synchronous, never stale) ──
+  isPausedRef.current = isPaused;
   if (!dataLoading) {
     saveRef.current = {
       startedAt: startedAt.current,
@@ -291,7 +298,20 @@ const ActiveSession = () => {
         try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
       }
     };
-    const onVisibility = () => { if (document.hidden) forceSave(); };
+    const onVisibility = () => {
+      if (document.hidden) {
+        forceSave();
+      } else {
+        // App returned to foreground — catch up seconds lost while backgrounded
+        if (!isPausedRef.current) {
+          const gapSeconds = Math.floor((Date.now() - lastTickAt.current) / 1000);
+          if (gapSeconds > 1) {
+            setElapsedTime(prev => prev + gapSeconds);
+            lastTickAt.current = Date.now();
+          }
+        }
+      }
+    };
     window.addEventListener('beforeunload', forceSave);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -364,6 +384,13 @@ const ActiveSession = () => {
       }
 
       updated[exerciseId][setIndex] = set;
+
+      // Immediately persist — bypasses the React render cycle race condition
+      // (visibilitychange can fire before the next render updates saveRef)
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify({ ...saveRef.current, loggedSets: updated }));
+      } catch { }
+
       return updated;
     });
   };
