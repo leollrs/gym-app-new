@@ -8,43 +8,57 @@ import { useAuth } from '../contexts/AuthContext';
 const FITNESS_LEVELS = [
   {
     value: 'beginner',
-    label: 'Beginner',
-    desc: 'Less than 1 year of consistent training',
+    label: 'Just getting started',
+    desc: 'Less than a year of regular training, or getting back after a long break',
+    badge: 'Beginner',
     icon: '🌱',
   },
   {
     value: 'intermediate',
-    label: 'Intermediate',
-    desc: '1–3 years of consistent training',
+    label: 'I train consistently',
+    desc: '1–3 years of regular training, comfortable with the basics',
+    badge: 'Intermediate',
     icon: '⚡',
   },
   {
     value: 'advanced',
-    label: 'Advanced',
-    desc: '3+ years, comfortable with complex movements',
+    label: 'I know what I\'m doing',
+    desc: '3+ years of structured training, comfortable with complex lifts',
+    badge: 'Advanced',
     icon: '🏆',
   },
 ];
 
 const GOALS = [
-  { value: 'muscle_gain',      label: 'Build Muscle',     desc: 'Maximize hypertrophy and size',       icon: '💪' },
-  { value: 'fat_loss',         label: 'Lose Fat',          desc: 'Burn fat while preserving muscle',    icon: '🔥' },
-  { value: 'strength',         label: 'Get Stronger',      desc: 'Increase 1RMs and raw strength',      icon: '🏋️' },
-  { value: 'endurance',        label: 'Build Endurance',   desc: 'Improve stamina and conditioning',    icon: '🏃' },
-  { value: 'general_fitness',  label: 'General Fitness',   desc: 'Stay active, healthy and consistent', icon: '✨' },
+  { value: 'muscle_gain',     label: 'Build Muscle',    desc: 'Get bigger and more defined',         icon: '💪' },
+  { value: 'fat_loss',        label: 'Lose Fat',         desc: 'Burn fat while keeping your muscle',  icon: '🔥' },
+  { value: 'strength',        label: 'Get Stronger',     desc: 'Lift heavier, hit new personal bests', icon: '🏋️' },
+  { value: 'endurance',       label: 'Build Endurance',  desc: 'Improve cardio and stamina',           icon: '🏃' },
+  { value: 'general_fitness', label: 'Stay in Shape',    desc: 'Stay active, healthy and consistent',  icon: '✨' },
 ];
 
 const FREQUENCIES = [1, 2, 3, 4, 5, 6, 7];
 
 const EQUIPMENT_OPTIONS = [
-  { value: 'Barbell',          label: 'Barbell' },
-  { value: 'Dumbbell',         label: 'Dumbbells' },
-  { value: 'Cable',            label: 'Cables' },
-  { value: 'Machine',          label: 'Machines' },
-  { value: 'Bodyweight',       label: 'Bodyweight' },
-  { value: 'Kettlebell',       label: 'Kettlebells' },
-  { value: 'Resistance Band',  label: 'Resistance Bands' },
-  { value: 'Smith Machine',    label: 'Smith Machine' },
+  { value: 'Barbell',         label: 'Barbell' },
+  { value: 'Dumbbell',        label: 'Dumbbells' },
+  { value: 'Cable',           label: 'Cables' },
+  { value: 'Machine',         label: 'Machines' },
+  { value: 'Bodyweight',      label: 'Bodyweight' },
+  { value: 'Kettlebell',      label: 'Kettlebells' },
+  { value: 'Resistance Band', label: 'Resistance Bands' },
+  { value: 'Smith Machine',   label: 'Smith Machine' },
+];
+
+const INJURY_OPTIONS = [
+  { value: 'lower_back',  label: 'Lower Back' },
+  { value: 'knees',       label: 'Knees' },
+  { value: 'shoulders',   label: 'Shoulders' },
+  { value: 'wrists',      label: 'Wrists' },
+  { value: 'elbows',      label: 'Elbows' },
+  { value: 'hips',        label: 'Hips' },
+  { value: 'neck',        label: 'Neck' },
+  { value: 'ankles',      label: 'Ankles' },
 ];
 
 const TOTAL_STEPS = 4;
@@ -68,7 +82,7 @@ const StepDots = ({ current }) => (
 );
 
 // ── OPTION CARD ────────────────────────────────────────────
-const OptionCard = ({ selected, onClick, icon, label, desc }) => (
+const OptionCard = ({ selected, onClick, icon, label, desc, badge }) => (
   <button
     type="button"
     onClick={onClick}
@@ -80,11 +94,25 @@ const OptionCard = ({ selected, onClick, icon, label, desc }) => (
   >
     <span className="text-2xl flex-shrink-0">{icon}</span>
     <div className="flex-1 min-w-0">
-      <p className={`font-semibold text-[15px] ${selected ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{label}</p>
+      <div className="flex items-center gap-2">
+        <p className={`font-semibold text-[15px] ${selected ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{label}</p>
+        {badge && (
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+            selected ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/6 text-[#6B7280]'
+          }`}>{badge}</span>
+        )}
+      </div>
       {desc && <p className="text-[12px] text-[#6B7280] mt-0.5">{desc}</p>}
     </div>
     {selected && <Check size={16} className="text-[#D4AF37] flex-shrink-0" />}
   </button>
+);
+
+// ── CONTEXT HINT ───────────────────────────────────────────
+const Hint = ({ children }) => (
+  <div className="bg-[#D4AF37]/6 border border-[#D4AF37]/15 rounded-xl px-4 py-3 mb-5">
+    <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{children}</p>
+  </div>
 );
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
@@ -92,9 +120,9 @@ const Onboarding = () => {
   const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(0);
+  const [step, setStep]     = useState(0);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]   = useState('');
 
   const [data, setData] = useState({
     fitness_level:          null,
@@ -102,19 +130,26 @@ const Onboarding = () => {
     training_days_per_week: 4,
     available_equipment:    ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'],
     initial_weight_lbs:     '',
-    injuries_notes:         '',
+    injury_areas:           [],   // array of injury_option values
   });
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
 
-  const toggleEquipment = (val) => {
+  const toggleEquipment = (val) =>
     setData(d => ({
       ...d,
       available_equipment: d.available_equipment.includes(val)
         ? d.available_equipment.filter(e => e !== val)
         : [...d.available_equipment, val],
     }));
-  };
+
+  const toggleInjury = (val) =>
+    setData(d => ({
+      ...d,
+      injury_areas: d.injury_areas.includes(val)
+        ? d.injury_areas.filter(e => e !== val)
+        : [...d.injury_areas, val],
+    }));
 
   const canAdvance = () => {
     if (step === 0) return !!data.fitness_level;
@@ -127,24 +162,30 @@ const Onboarding = () => {
     setError('');
     setSaving(true);
     try {
-      // Upsert onboarding data
+      const { data: profileRow } = await supabase
+        .from('profiles').select('gym_id').eq('id', user.id).single();
+      const gymId = profileRow.gym_id;
+
+      const injuriesNotes = data.injury_areas.length > 0
+        ? data.injury_areas.join(', ')
+        : null;
+
       const { error: onboardingErr } = await supabase
         .from('member_onboarding')
         .upsert({
           profile_id:             user.id,
-          gym_id:                 (await supabase.from('profiles').select('gym_id').eq('id', user.id).single()).data.gym_id,
+          gym_id:                 gymId,
           fitness_level:          data.fitness_level,
           primary_goal:           data.primary_goal,
           training_days_per_week: data.training_days_per_week,
           available_equipment:    data.available_equipment,
-          injuries_notes:         data.injuries_notes || null,
+          injuries_notes:         injuriesNotes,
           initial_weight_lbs:     data.initial_weight_lbs ? parseFloat(data.initial_weight_lbs) : null,
           completed_at:           new Date().toISOString(),
         });
 
       if (onboardingErr) throw onboardingErr;
 
-      // Mark profile as onboarded
       const { error: profileErr } = await supabase
         .from('profiles')
         .update({ is_onboarded: true })
@@ -152,9 +193,7 @@ const Onboarding = () => {
 
       if (profileErr) throw profileErr;
 
-      // Log initial weight if provided
       if (data.initial_weight_lbs) {
-        const gymId = (await supabase.from('profiles').select('gym_id').eq('id', user.id).single()).data.gym_id;
         await supabase.from('body_weight_logs').insert({
           profile_id: user.id,
           gym_id:     gymId,
@@ -181,9 +220,9 @@ const Onboarding = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
             <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
           </div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Set up your profile</h1>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Let's set you up</h1>
           <p className="text-[13px] text-[#6B7280] mt-1">
-            This helps us build your perfect program
+            A few quick questions so we can build your perfect plan
           </p>
         </div>
 
@@ -192,8 +231,11 @@ const Onboarding = () => {
         {/* ── STEP 0: FITNESS LEVEL ── */}
         {step === 0 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">What's your experience level?</h2>
-            <p className="text-[13px] text-[#6B7280] mb-6">Be honest — this shapes your progressive overload plan.</p>
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">How experienced are you?</h2>
+            <p className="text-[13px] text-[#6B7280] mb-4">Pick the one that sounds most like you.</p>
+            <Hint>
+              This sets how fast we push your weights up and how technical the exercises get. Honest is better — starting too heavy causes injury, starting too light just means faster progression.
+            </Hint>
             <div className="flex flex-col gap-3">
               {FITNESS_LEVELS.map(l => (
                 <OptionCard
@@ -203,6 +245,7 @@ const Onboarding = () => {
                   icon={l.icon}
                   label={l.label}
                   desc={l.desc}
+                  badge={l.badge}
                 />
               ))}
             </div>
@@ -212,8 +255,11 @@ const Onboarding = () => {
         {/* ── STEP 1: GOAL ── */}
         {step === 1 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">What's your primary goal?</h2>
-            <p className="text-[13px] text-[#6B7280] mb-6">We'll optimize your workouts and progression around this.</p>
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">What's your main goal?</h2>
+            <p className="text-[13px] text-[#6B7280] mb-4">This shapes your rep ranges and progression style.</p>
+            <Hint>
+              Your goal changes how we program your sets and reps. For example, strength training uses lower reps with heavier weight, while muscle building uses moderate weight with more volume. You can always change this later.
+            </Hint>
             <div className="flex flex-col gap-3">
               {GOALS.map(g => (
                 <OptionCard
@@ -232,14 +278,15 @@ const Onboarding = () => {
         {/* ── STEP 2: FREQUENCY + EQUIPMENT ── */}
         {step === 2 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">Training schedule</h2>
-            <p className="text-[13px] text-[#6B7280] mb-6">How often can you train, and what do you have access to?</p>
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">Training setup</h2>
+            <p className="text-[13px] text-[#6B7280] mb-5">How often do you train, and what equipment do you have?</p>
 
             {/* Days per week */}
             <div className="mb-7">
-              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3">
+              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
                 Days per week
               </p>
+              <p className="text-[12px] text-[#4B5563] mb-3">How many days can you realistically commit to?</p>
               <div className="flex gap-2">
                 {FREQUENCIES.map(n => (
                   <button
@@ -256,13 +303,21 @@ const Onboarding = () => {
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] text-[#4B5563] mt-2 text-center">
+                {data.training_days_per_week <= 2 && 'Full body sessions work best'}
+                {data.training_days_per_week === 3 && 'Great for push/pull/legs or upper/lower splits'}
+                {data.training_days_per_week === 4 && 'Upper/lower split works great here'}
+                {data.training_days_per_week === 5 && 'Push/pull/legs + 2 extra days'}
+                {data.training_days_per_week >= 6 && 'High frequency — make sure you\'re recovering well'}
+              </p>
             </div>
 
             {/* Equipment */}
             <div>
-              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3">
+              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
                 Available equipment
               </p>
+              <p className="text-[12px] text-[#4B5563] mb-3">Select everything you have access to at your gym.</p>
               <div className="flex flex-wrap gap-2">
                 {EQUIPMENT_OPTIONS.map(eq => {
                   const active = data.available_equipment.includes(eq.value);
@@ -286,17 +341,20 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 3: BODY STATS (OPTIONAL) ── */}
+        {/* ── STEP 3: BODY STATS + INJURIES ── */}
         {step === 3 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">Body stats <span className="text-[#4B5563] font-normal text-[15px]">(optional)</span></h2>
-            <p className="text-[13px] text-[#6B7280] mb-6">Used to track your progress and set accurate goals. You can skip this.</p>
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">
+              Almost done <span className="text-[#4B5563] font-normal text-[15px]">(optional)</span>
+            </h2>
+            <p className="text-[13px] text-[#6B7280] mb-5">Skip anything you don't want to fill in — you can always add it later.</p>
 
             {/* Weight */}
-            <div className="mb-5">
-              <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
+            <div className="mb-6">
+              <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
                 Current Weight (lbs)
               </label>
+              <p className="text-[12px] text-[#4B5563] mb-2">Used to track your progress over time.</p>
               <input
                 type="number"
                 step="0.1"
@@ -311,19 +369,39 @@ const Onboarding = () => {
 
             {/* Injuries */}
             <div className="mb-5">
-              <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
-                Injuries or Limitations <span className="text-[#4B5563] font-normal normal-case tracking-normal">(optional)</span>
+              <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                Any pain or limitations?
               </label>
-              <textarea
-                rows={3}
-                placeholder="e.g. bad left knee, avoid overhead pressing"
-                value={data.injuries_notes}
-                onChange={e => set('injuries_notes', e.target.value)}
-                className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors resize-none"
-              />
-              <p className="text-[11px] text-[#4B5563] mt-1.5">
-                We'll substitute or skip exercises that affect these areas.
+              <p className="text-[12px] text-[#4B5563] mb-3">
+                We'll avoid exercises that stress these areas and suggest safer alternatives.
               </p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {INJURY_OPTIONS.map(inj => {
+                  const active = data.injury_areas.includes(inj.value);
+                  return (
+                    <button
+                      key={inj.value}
+                      type="button"
+                      onClick={() => toggleInjury(inj.value)}
+                      className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                        active
+                          ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                          : 'bg-[#0F172A] border-white/8 text-[#6B7280] hover:border-white/16 hover:text-[#9CA3AF]'
+                      }`}
+                    >
+                      {inj.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {data.injury_areas.length === 0 && (
+                <p className="text-[11px] text-[#4B5563]">Nothing selected — all exercises available.</p>
+              )}
+              {data.injury_areas.length > 0 && (
+                <p className="text-[11px] text-[#9CA3AF]">
+                  {data.injury_areas.length} area{data.injury_areas.length > 1 ? 's' : ''} flagged — we'll work around these.
+                </p>
+              )}
             </div>
 
             {error && (
@@ -369,7 +447,7 @@ const Onboarding = () => {
           )}
         </div>
 
-        {/* Skip on optional step */}
+        {/* Skip on last step */}
         {step === 3 && (
           <button
             type="button"
