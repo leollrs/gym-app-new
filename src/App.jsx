@@ -21,6 +21,7 @@ import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
+import TVDisplay from './pages/TVDisplay';
 
 // Trainer pages
 import TrainerLayout from './layouts/TrainerLayout';
@@ -37,14 +38,6 @@ import AdminPrograms from './pages/admin/AdminPrograms';
 import AdminLeaderboard from './pages/admin/AdminLeaderboard';
 import AdminAnnouncements from './pages/admin/AdminAnnouncements';
 import AdminSettings from './pages/admin/AdminSettings';
-
-// ── TV DISPLAY ─────────────────────────────────────────────
-const TVDisplay = () => (
-  <div className="container main-content animate-fade-in" style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-    <h1 className="text-h1 text-gradient" style={{ fontSize: '5rem' }}>LEADERBOARD</h1>
-    <p className="text-h2 text-muted mt-4">Top Lifters This Week</p>
-  </div>
-);
 
 // ── LOADING SCREEN ─────────────────────────────────────────
 const LoadingScreen = () => (
