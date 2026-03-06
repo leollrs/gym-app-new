@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Plus, Dumbbell, X, ChevronDown, ChevronRight, Trash2, Copy } from 'lucide-react';
+import { Plus, Dumbbell, X, ChevronDown, ChevronRight, Trash2, Copy, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 // ── Data helpers ──────────────────────────────────────────
 // weeks JSONB structure:
-// { "1": [{ name: "Push Day", exercises: ["ex_bp", ...] }], "2": [...] }
+// { "1": [{ name: "Push Day", exercises: [{ id, sets, rest_seconds }] }] }
+
+const DEFAULT_SETS = 3;
+const DEFAULT_REST = 60;
+
+const normalizeExercise = (ex) => {
+  if (typeof ex === 'string') return { id: ex, sets: DEFAULT_SETS, rest_seconds: DEFAULT_REST };
+  return { id: ex.id, sets: ex.sets ?? DEFAULT_SETS, rest_seconds: ex.rest_seconds ?? DEFAULT_REST };
+};
 
 const normalizeWeeks = (raw) => {
   const result = {};
@@ -13,12 +21,29 @@ const normalizeWeeks = (raw) => {
     if (!Array.isArray(val) || val.length === 0) { result[wk] = []; return; }
     // Old flat format (array of strings) → wrap in a single day
     if (typeof val[0] === 'string') {
-      result[wk] = [{ name: 'Day 1', exercises: val }];
+      result[wk] = [{ name: 'Day 1', exercises: val.map(normalizeExercise) }];
     } else {
-      result[wk] = val;
+      result[wk] = val.map(day => ({
+        ...day,
+        exercises: (day.exercises || []).map(normalizeExercise),
+      }));
     }
   });
   return result;
+};
+
+// Estimated time for one day in seconds: sum(sets * 45s + (sets-1) * rest)
+const calcDaySeconds = (day) =>
+  (day.exercises || []).reduce((sum, ex) => {
+    const s = ex.sets ?? DEFAULT_SETS;
+    const r = ex.rest_seconds ?? DEFAULT_REST;
+    return sum + s * 45 + (s - 1) * r;
+  }, 0);
+
+const fmtTime = (secs) => {
+  if (secs < 60) return `${secs}s`;
+  const m = Math.round(secs / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 
 // ── Create / Edit program modal ───────────────────────────
@@ -30,7 +55,8 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
   const [weeks, setWeeks]         = useState(() => normalizeWeeks(program?.weeks));
   const [exercises, setExercises] = useState([]);
   const [expandedWeeks, setExpandedWeeks] = useState(new Set([1]));
-  const [copyMenu, setCopyMenu]   = useState(null);  // weekNum being copied
+  const [copyWeekMenu, setCopyWeekMenu] = useState(null); // weekNum being copied
+  const [copyDayMenu, setCopyDayMenu]   = useState(null); // { wk, di } being copied
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState('');
 
@@ -48,8 +74,7 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
 
   const copyWeekTo = (fromWk, toWk) => {
     setWeeks(prev => ({ ...prev, [toWk]: JSON.parse(JSON.stringify(prev[fromWk] || [])) }));
-    setCopyMenu(null);
-    // Auto-expand target week
+    setCopyWeekMenu(null);
     setExpandedWeeks(prev => new Set([...prev, toWk]));
   };
 
@@ -69,12 +94,30 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
     [wk]: prev[wk].map((d, i) => i === di ? { ...d, name: val } : d),
   }));
 
+  const copyDayTo = (fromWk, fromDi, toWk, toDi) => {
+    const cloned = JSON.parse(JSON.stringify(weeks[fromWk][fromDi]));
+    setWeeks(prev => {
+      const targetDays = [...(prev[toWk] || [])];
+      if (toDi === 'new') {
+        targetDays.push({ ...cloned, name: `Day ${targetDays.length + 1}` });
+      } else {
+        targetDays[toDi] = { ...cloned };
+      }
+      return { ...prev, [toWk]: targetDays };
+    });
+    setCopyDayMenu(null);
+    setExpandedWeeks(prev => new Set([...prev, toWk]));
+  };
+
   // ── Exercise operations ──
   const addExercise = (wk, di, id) => {
     if (!id) return;
     setWeeks(prev => ({
       ...prev,
-      [wk]: prev[wk].map((d, i) => i === di ? { ...d, exercises: [...d.exercises, id] } : d),
+      [wk]: prev[wk].map((d, i) => i === di
+        ? { ...d, exercises: [...d.exercises, { id, sets: DEFAULT_SETS, rest_seconds: DEFAULT_REST }] }
+        : d
+      ),
     }));
   };
 
@@ -82,6 +125,17 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
     ...prev,
     [wk]: prev[wk].map((d, i) => i === di
       ? { ...d, exercises: d.exercises.filter((_, j) => j !== ei) }
+      : d
+    ),
+  }));
+
+  const updateExercise = (wk, di, ei, field, val) => setWeeks(prev => ({
+    ...prev,
+    [wk]: prev[wk].map((d, i) => i === di
+      ? {
+          ...d,
+          exercises: d.exercises.map((ex, j) => j === ei ? { ...ex, [field]: val } : ex),
+        }
       : d
     ),
   }));
@@ -110,10 +164,33 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
 
   const allWeekNums = Array.from({ length: durationWeeks }, (_, i) => i + 1);
 
+  // All day targets for copy-day dropdown
+  const allDayTargets = (fromWk, fromDi) => {
+    const targets = [];
+    allWeekNums.forEach(wk => {
+      const days = weeks[wk] || [];
+      days.forEach((d, di) => {
+        if (wk === fromWk && di === fromDi) return;
+        targets.push({ wk, di, label: `Wk ${wk} · ${d.name || `Day ${di + 1}`}` });
+      });
+      targets.push({ wk, di: 'new', label: `Wk ${wk} · New day` });
+    });
+    return targets;
+  };
+
+  // Avg session time across all days
+  const avgSessionSecs = (() => {
+    const allDays = Object.values(weeks).flat();
+    if (!allDays.length) return 0;
+    return Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / allDays.length);
+  })();
+
+  const closeMenus = () => { setCopyWeekMenu(null); setCopyDayMenu(null); };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={() => { onClose(); setCopyMenu(null); }}
+      onClick={closeMenus}
     >
       <div
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden"
@@ -121,7 +198,14 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Program' : 'New Program'}</p>
+          <div>
+            <p className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Program' : 'New Program'}</p>
+            {avgSessionSecs > 0 && (
+              <p className="text-[11px] text-[#6B7280] mt-0.5 flex items-center gap-1">
+                <Clock size={10} /> avg {fmtTime(avgSessionSecs)} per session
+              </p>
+            )}
+          </div>
           <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
@@ -166,13 +250,14 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
               {allWeekNums.map(wk => {
                 const isOpen   = expandedWeeks.has(wk);
                 const days     = weeks[wk] || [];
-                const showCopy = copyMenu === wk;
+                const showCopyWeek = copyWeekMenu === wk;
                 const totalEx  = days.reduce((s, d) => s + d.exercises.length, 0);
+                const wkTime   = days.reduce((s, d) => s + calcDaySeconds(d), 0);
 
                 return (
-                  <div key={wk} className="border border-white/6 rounded-xl overflow-hidden">
+                  <div key={wk} className="border border-white/8 rounded-xl overflow-visible">
                     {/* Week header */}
-                    <div className="flex items-center bg-[#111827] px-3 py-2.5 gap-2">
+                    <div className="flex items-center bg-[#111827]/60 px-3 py-2.5 gap-2 rounded-xl">
                       <button
                         onClick={() => toggleWeek(wk)}
                         className="flex items-center gap-2 flex-1 text-left"
@@ -181,22 +266,22 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
                         <span className="text-[13px] font-semibold text-[#E5E7EB]">Week {wk}</span>
                         {!isOpen && (
                           <span className="text-[11px] text-[#4B5563] ml-1">
-                            {days.length} day{days.length !== 1 ? 's' : ''}{totalEx > 0 ? ` · ${totalEx} ex` : ''}
+                            {days.length} day{days.length !== 1 ? 's' : ''}{totalEx > 0 ? ` · ${totalEx} ex` : ''}{wkTime > 0 ? ` · ~${fmtTime(wkTime / Math.max(days.length, 1))} avg` : ''}
                           </span>
                         )}
                       </button>
 
-                      {/* Copy to menu */}
+                      {/* Copy week menu */}
                       <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
                         <button
-                          onClick={() => setCopyMenu(showCopy ? null : wk)}
+                          onClick={() => { setCopyWeekMenu(showCopyWeek ? null : wk); setCopyDayMenu(null); }}
                           className="flex items-center gap-1 text-[11px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] px-2 py-1 rounded-lg hover:bg-white/6 transition-colors"
                         >
-                          <Copy size={11} /> Copy to
+                          <Copy size={11} /> Copy week
                         </button>
-                        {showCopy && (
-                          <div className="absolute right-0 top-full mt-1 z-10 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
-                            <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy Week {wk} to…</p>
+                        {showCopyWeek && (
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[130px]">
+                            <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to…</p>
                             {allWeekNums.filter(w => w !== wk).map(targetWk => (
                               <button
                                 key={targetWk}
@@ -216,55 +301,121 @@ const ProgramModal = ({ program, onClose, onSaved, gymId, adminId }) => {
 
                     {/* Week body */}
                     {isOpen && (
-                      <div className="bg-[#0D1526] p-3 space-y-2">
+                      <div className="p-3 space-y-2">
                         {days.length === 0 && (
                           <p className="text-[12px] text-[#4B5563] text-center py-2">No days yet — add one below</p>
                         )}
 
-                        {days.map((day, di) => (
-                          <div key={di} className="bg-[#111827] border border-white/6 rounded-xl p-3">
-                            {/* Day header */}
-                            <div className="flex items-center gap-2 mb-2">
-                              <input
-                                value={day.name}
-                                onChange={e => updateDayName(wk, di, e.target.value)}
-                                placeholder={`Day ${di + 1}`}
-                                className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#4B5563] outline-none border-b border-white/10 focus:border-[#D4AF37]/40 pb-0.5 transition-colors"
-                              />
-                              <button
-                                onClick={() => removeDay(wk, di)}
-                                className="text-[#4B5563] hover:text-red-400 transition-colors flex-shrink-0"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
+                        {days.map((day, di) => {
+                          const dayTime = calcDaySeconds(day);
+                          const showCopyDay = copyDayMenu?.wk === wk && copyDayMenu?.di === di;
+                          const dayTargets = allDayTargets(wk, di);
 
-                            {/* Exercises */}
-                            {day.exercises.map((exId, ei) => (
-                              <div key={ei} className="flex items-center justify-between py-1.5 border-b border-white/4 last:border-0">
-                                <span className="text-[12px] text-[#9CA3AF]">{exName(exId)}</span>
+                          return (
+                            <div key={di} className="border border-white/6 rounded-xl overflow-visible">
+                              {/* Day header */}
+                              <div className="flex items-center gap-2 px-3 py-2.5 bg-[#111827]/40 rounded-t-xl">
+                                <input
+                                  value={day.name}
+                                  onChange={e => updateDayName(wk, di, e.target.value)}
+                                  placeholder={`Day ${di + 1}`}
+                                  className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#4B5563] outline-none"
+                                />
+                                {dayTime > 0 && (
+                                  <span className="text-[10px] text-[#4B5563] flex items-center gap-0.5 flex-shrink-0">
+                                    <Clock size={9} /> {fmtTime(dayTime)}
+                                  </span>
+                                )}
+                                {/* Copy day menu */}
+                                <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
+                                    className="text-[#4B5563] hover:text-[#9CA3AF] transition-colors p-0.5"
+                                    title="Copy day"
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                  {showCopyDay && (
+                                    <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[160px] max-h-48 overflow-y-auto">
+                                      <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to…</p>
+                                      {dayTargets.map((t, idx) => (
+                                        <button
+                                          key={idx}
+                                          onClick={() => copyDayTo(wk, di, t.wk, t.di)}
+                                          className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors"
+                                        >
+                                          {t.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                                 <button
-                                  onClick={() => removeExercise(wk, di, ei)}
-                                  className="text-[#4B5563] hover:text-red-400 transition-colors ml-2"
+                                  onClick={() => removeDay(wk, di)}
+                                  className="text-[#4B5563] hover:text-red-400 transition-colors flex-shrink-0"
                                 >
-                                  <Trash2 size={11} />
+                                  <X size={14} />
                                 </button>
                               </div>
-                            ))}
 
-                            {/* Add exercise picker */}
-                            <select
-                              value=""
-                              onChange={e => { addExercise(wk, di, e.target.value); e.target.value = ''; }}
-                              className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-1.5 text-[11px] text-[#6B7280] outline-none mt-2"
-                            >
-                              <option value="">+ Add exercise</option>
-                              {exercises.map(ex => (
-                                <option key={ex.id} value={ex.id}>{ex.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
+                              {/* Exercises */}
+                              <div className="px-3 pb-3 pt-1 space-y-1">
+                                {day.exercises.length === 0 && (
+                                  <p className="text-[11px] text-[#4B5563] py-1">No exercises yet</p>
+                                )}
+                                {day.exercises.map((ex, ei) => (
+                                  <div key={ei} className="flex items-center gap-2 py-1.5 border-b border-white/4 last:border-0">
+                                    <span className="text-[12px] text-[#9CA3AF] flex-1 min-w-0 truncate">{exName(ex.id)}</span>
+                                    {/* Sets */}
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <button
+                                        onClick={() => updateExercise(wk, di, ei, 'sets', Math.max(1, (ex.sets ?? DEFAULT_SETS) - 1))}
+                                        className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
+                                      >−</button>
+                                      <span className="text-[11px] text-[#E5E7EB] w-5 text-center">{ex.sets ?? DEFAULT_SETS}</span>
+                                      <button
+                                        onClick={() => updateExercise(wk, di, ei, 'sets', (ex.sets ?? DEFAULT_SETS) + 1)}
+                                        className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
+                                      >+</button>
+                                      <span className="text-[10px] text-[#4B5563] w-5">sets</span>
+                                    </div>
+                                    {/* Rest */}
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <button
+                                        onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))}
+                                        className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
+                                      >−</button>
+                                      <span className="text-[11px] text-[#E5E7EB] w-7 text-center">{ex.rest_seconds ?? DEFAULT_REST}s</span>
+                                      <button
+                                        onClick={() => updateExercise(wk, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
+                                        className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
+                                      >+</button>
+                                      <span className="text-[10px] text-[#4B5563] w-5">rest</span>
+                                    </div>
+                                    <button
+                                      onClick={() => removeExercise(wk, di, ei)}
+                                      className="text-[#4B5563] hover:text-red-400 transition-colors ml-1 flex-shrink-0"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                ))}
+
+                                {/* Add exercise picker */}
+                                <select
+                                  value=""
+                                  onChange={e => { addExercise(wk, di, e.target.value); e.target.value = ''; }}
+                                  className="w-full bg-transparent border border-white/6 rounded-lg px-3 py-1.5 text-[11px] text-[#6B7280] outline-none mt-1"
+                                >
+                                  <option value="">+ Add exercise</option>
+                                  {exercises.map(ex => (
+                                    <option key={ex.id} value={ex.id}>{ex.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })}
 
                         <button
                           onClick={() => addDay(wk)}
@@ -348,9 +499,13 @@ export default function AdminPrograms() {
       ) : (
         <div className="space-y-3">
           {programs.map(p => {
-            const weeks = normalizeWeeks(p.weeks);
-            const totalDays = Object.values(weeks).reduce((s, days) => s + days.length, 0);
-            const totalEx   = Object.values(weeks).reduce((s, days) => s + days.reduce((d, day) => d + day.exercises.length, 0), 0);
+            const wks = normalizeWeeks(p.weeks);
+            const allDays = Object.values(wks).flat();
+            const totalDays = allDays.length;
+            const totalEx   = allDays.reduce((s, d) => s + d.exercises.length, 0);
+            const avgTime   = totalDays > 0
+              ? Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / totalDays)
+              : 0;
             return (
               <div key={p.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -361,7 +516,8 @@ export default function AdminPrograms() {
                     <div className="min-w-0">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{p.name}</p>
                       <p className="text-[11px] text-[#6B7280]">
-                        {p.duration_weeks} weeks · {totalDays} days · {totalEx} exercises
+                        {p.duration_weeks}w · {totalDays} days · {totalEx} exercises
+                        {avgTime > 0 && ` · ~${fmtTime(avgTime)}/session`}
                       </p>
                     </div>
                   </div>

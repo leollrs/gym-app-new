@@ -54,11 +54,12 @@ const StatCard = ({ icon: Icon, label, value, sub, accent }) => (
 export default function AdminOverview() {
   const { profile } = useAuth();
   const navigate    = useNavigate();
-  const [loading, setLoading]   = useState(true);
-  const [stats, setStats]       = useState({});
-  const [atRisk, setAtRisk]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [stats, setStats]         = useState({});
+  const [atRisk, setAtRisk]       = useState([]);
   const [chartData, setChartData] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [topExercises, setTopExercises]     = useState([]);
 
   useEffect(() => {
     if (!profile?.gym_id) return;
@@ -108,11 +109,13 @@ export default function AdminOverview() {
       setAtRisk(atRiskMembers);
 
       // Stats
+      const total = (members || []).length;
       setStats({
-        totalMembers:  (members || []).length,
-        activeMembers: activeIds.size,
-        atRiskCount:   scored.filter(m => m.score >= 61).length,
-        workoutsMonth: (sessions || []).length,
+        totalMembers:   total,
+        activeMembers:  activeIds.size,
+        retentionPct:   total > 0 ? Math.round((activeIds.size / total) * 100) : 0,
+        atRiskCount:    scored.filter(m => m.score >= 61).length,
+        workoutsMonth:  (sessions || []).length,
       });
 
       // Chart: workouts per day for last 14 days
@@ -129,6 +132,40 @@ export default function AdminOverview() {
 
       // Recent activity feed (last 8 sessions)
       setRecentActivity((sessions || []).slice(0, 8));
+
+      // Top exercises (last 30 days)
+      const sessionIds = (sessions || []).map(s => s.id ?? '').filter(Boolean);
+      if (sessionIds.length > 0) {
+        // Get session IDs from the workout_sessions we already fetched
+        const { data: sessionRows } = await supabase
+          .from('workout_sessions')
+          .select('id')
+          .eq('gym_id', gymId)
+          .eq('status', 'completed')
+          .gte('started_at', thirtyDaysAgo);
+
+        const ids = (sessionRows || []).map(r => r.id);
+        if (ids.length > 0) {
+          const { data: exRows } = await supabase
+            .from('session_exercises')
+            .select('exercise_id, exercises(name)')
+            .in('session_id', ids);
+
+          const exCount = {};
+          const exName  = {};
+          (exRows || []).forEach(r => {
+            exCount[r.exercise_id] = (exCount[r.exercise_id] || 0) + 1;
+            if (r.exercises?.name) exName[r.exercise_id] = r.exercises.name;
+          });
+
+          const sorted = Object.entries(exCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([id, count]) => ({ id, name: exName[id] ?? id, count }));
+
+          setTopExercises(sorted);
+        }
+      }
 
       setLoading(false);
     };
@@ -150,10 +187,10 @@ export default function AdminOverview() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Users}         label="Total Members"   value={stats.totalMembers}  sub="all time" />
-        <StatCard icon={Activity}      label="Active (30d)"    value={stats.activeMembers} sub="logged a workout" />
-        <StatCard icon={AlertTriangle} label="At Risk"         value={stats.atRiskCount}   sub="churn score ≥ 61" accent="bg-red-500/15" />
-        <StatCard icon={Dumbbell}      label="Workouts (30d)"  value={stats.workoutsMonth} sub="completed sessions" />
+        <StatCard icon={Users}         label="Total Members"   value={stats.totalMembers}              sub="all time" />
+        <StatCard icon={TrendingUp}    label="Retention (30d)" value={`${stats.retentionPct ?? 0}%`}  sub="logged ≥1 workout" />
+        <StatCard icon={AlertTriangle} label="At Risk"         value={stats.atRiskCount}               sub="churn score ≥ 61" accent="bg-red-500/15" />
+        <StatCard icon={Dumbbell}      label="Workouts (30d)"  value={stats.workoutsMonth}             sub="completed sessions" />
       </div>
 
       {/* Chart + At-risk side by side on desktop */}
@@ -225,31 +262,64 @@ export default function AdminOverview() {
         </div>
       </div>
 
-      {/* Recent sessions */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-        <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">Recent Workouts</p>
-        {recentActivity.length === 0 ? (
-          <p className="text-[13px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
-        ) : (
-          <div className="divide-y divide-white/4">
-            {recentActivity.map(s => (
-              <div key={s.started_at + s.profile_id} className="flex items-center justify-between py-2.5">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-[13px] text-[#E5E7EB]">Workout completed</p>
-                    <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
+      {/* Recent sessions + Top exercises */}
+      <div className="grid md:grid-cols-[1fr_300px] gap-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">Recent Workouts</p>
+          {recentActivity.length === 0 ? (
+            <p className="text-[13px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
+          ) : (
+            <div className="divide-y divide-white/4">
+              {recentActivity.map(s => (
+                <div key={s.started_at + s.profile_id} className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-[13px] text-[#E5E7EB]">Workout completed</p>
+                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
+                    </div>
                   </div>
+                  {s.total_volume_lbs > 0 && (
+                    <span className="text-[12px] font-semibold text-[#9CA3AF]">
+                      {Math.round(s.total_volume_lbs).toLocaleString()} lbs
+                    </span>
+                  )}
                 </div>
-                {s.total_volume_lbs && (
-                  <span className="text-[12px] font-semibold text-[#9CA3AF]">
-                    {Math.round(s.total_volume_lbs).toLocaleString()} lbs
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Top exercises */}
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">Top Exercises (30d)</p>
+          {topExercises.length === 0 ? (
+            <p className="text-[13px] text-[#6B7280] text-center py-6">No data yet</p>
+          ) : (
+            <div className="space-y-2.5">
+              {topExercises.map((ex, i) => {
+                const maxCount = topExercises[0].count;
+                return (
+                  <div key={ex.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[13px] text-[#E5E7EB] truncate flex-1 mr-2">{ex.name}</p>
+                      <p className="text-[11px] text-[#6B7280] flex-shrink-0">{ex.count}×</p>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round((ex.count / maxCount) * 100)}%`,
+                          background: i === 0 ? '#D4AF37' : 'rgba(212,175,55,0.4)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

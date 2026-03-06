@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { computeSuggestion } from '../lib/overloadEngine';
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
 const epley1RM = (weight, reps) => {
@@ -183,11 +184,16 @@ const ActiveSession = () => {
       setExercises(sortedExercises);
 
       const exerciseIds = sortedExercises.map(e => e.id);
-      const { data: prs } = await supabase
-        .from('personal_records')
-        .select('exercise_id, weight_lbs, reps, estimated_1rm')
-        .eq('profile_id', user.id)
-        .in('exercise_id', exerciseIds);
+      const [{ data: prs }, { data: onboarding }] = await Promise.all([
+        supabase.from('personal_records')
+          .select('exercise_id, weight_lbs, reps, estimated_1rm')
+          .eq('profile_id', user.id)
+          .in('exercise_id', exerciseIds),
+        supabase.from('member_onboarding')
+          .select('fitness_level, primary_goal')
+          .eq('profile_id', user.id)
+          .maybeSingle(),
+      ]);
 
       const prMap = {};
       prs?.forEach(pr => { prMap[pr.exercise_id] = { weight: pr.weight_lbs, reps: pr.reps }; });
@@ -219,7 +225,8 @@ const ActiveSession = () => {
 
       const enriched = sortedExercises.map(ex => ({
         ...ex,
-        history: prevSetsMap[ex.id] || [],
+        history:    prevSetsMap[ex.id] || [],
+        suggestion: computeSuggestion(prevSetsMap[ex.id] || [], onboarding, ex.targetReps),
       }));
       setExercises(enriched);
 
@@ -471,6 +478,21 @@ const ActiveSession = () => {
     }));
   };
 
+  // Fill all incomplete sets with the engine's suggestion
+  const handleFillSuggestion = (exerciseId, suggestion) => {
+    if (!suggestion?.suggestedWeight) return;
+    setLoggedSets(prev => ({
+      ...prev,
+      [exerciseId]: prev[exerciseId].map(s =>
+        s.completed ? s : {
+          ...s,
+          weight: String(suggestion.suggestedWeight),
+          reps:   String(suggestion.suggestedReps),
+        }
+      ),
+    }));
+  };
+
   const handleFinish = async () => {
     setSaving(true);
     setSaveError('');
@@ -505,6 +527,8 @@ const ActiveSession = () => {
             weight_lbs: parseFloat(set.weight) || 0, reps: parseInt(set.reps, 10) || 0,
             is_completed: true, is_pr: set.isPR,
             estimated_1rm: epley1RM(parseFloat(set.weight), parseInt(set.reps, 10)),
+            suggested_weight_lbs: exercise.suggestion?.suggestedWeight ?? null,
+            suggested_reps:       exercise.suggestion?.suggestedReps   ?? null,
           }))
         );
         if (setsErr) throw setsErr;
@@ -841,6 +865,47 @@ const ActiveSession = () => {
                 )}
               </div>
             </div>
+
+            {/* ── Overload suggestion chip ── */}
+            {currentExercise.suggestion && (() => {
+              const s = currentExercise.suggestion;
+              if (s.note === 'first_time') return (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4"
+                  style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)' }}>
+                  <TrendingUp size={13} style={{ color: '#818CF8', flexShrink: 0 }} />
+                  <p className="text-[12px]" style={{ color: '#818CF8' }}>
+                    First time — start light and find your working weight
+                  </p>
+                </div>
+              );
+              return (
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-4"
+                  style={{ background: 'rgba(212,175,55,0.07)', border: '1px solid rgba(212,175,55,0.2)' }}>
+                  <TrendingUp size={14} style={{ color: 'var(--accent-gold)', flexShrink: 0 }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider leading-none mb-0.5"
+                      style={{ color: 'var(--accent-gold-dark)' }}>
+                      {s.note === 'increase_weight' ? 'Increase weight ↑' : 'Add reps →'}
+                    </p>
+                    <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      {s.suggestedWeight} lbs × {s.suggestedReps} reps
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
+                  </div>
+                  <button
+                    onClick={() => handleFillSuggestion(currentExercise.id, s)}
+                    className="text-[12px] font-bold px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-all"
+                    style={{
+                      background: 'rgba(212,175,55,0.15)',
+                      color: 'var(--accent-gold-dark)',
+                      border: '1px solid rgba(212,175,55,0.3)',
+                    }}
+                  >
+                    Fill
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Column headers */}
             <div className="flex items-center gap-2 px-2 py-2 mb-2 text-[11px] font-semibold uppercase tracking-wider rounded-xl"

@@ -24,15 +24,16 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
   const [acting, setActing]       = useState(false);
 
   useEffect(() => {
-    // Collect all exercise IDs from all weeks/days (supports both old flat and new week/day format)
+    // Collect all exercise IDs from all weeks/days (supports old flat, new week/day, and object formats)
     const weeks = program.weeks ?? {};
+    const resolveId = (ex) => (typeof ex === 'string' ? ex : ex?.id);
     const allIds = [...new Set(
-      Object.values(weeks).flatMap(val =>
-        Array.isArray(val) && val.length > 0 && typeof val[0] === 'string'
-          ? val                                   // old flat format
-          : (val || []).flatMap(d => d.exercises ?? [])  // new week/day format
-      )
-    )];
+      Object.values(weeks).flatMap(val => {
+        if (!Array.isArray(val) || val.length === 0) return [];
+        if (typeof val[0] === 'string') return val;           // old flat format
+        return val.flatMap(d => (d.exercises ?? []).map(resolveId)); // new format (string or object)
+      })
+    )].filter(Boolean);
     if (allIds.length === 0) { setLoading(false); return; }
 
     supabase
@@ -105,6 +106,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
                   const days = Array.isArray(rawVal) && rawVal.length > 0 && typeof rawVal[0] === 'string'
                     ? [{ name: 'Day 1', exercises: rawVal }]
                     : (rawVal || []);
+                  const resolveId = (ex) => typeof ex === 'string' ? ex : ex?.id;
 
                   return (
                     <div key={wk} className="bg-[#111827] rounded-xl overflow-hidden">
@@ -119,11 +121,14 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
                             <div key={di} className="px-3 py-2.5">
                               <p className="text-[12px] font-semibold text-[#E5E7EB] mb-1.5">{day.name || `Day ${di + 1}`}</p>
                               <div className="flex flex-wrap gap-1.5">
-                                {(day.exercises || []).map((id, i) => (
-                                  <span key={i} className="text-[11px] bg-white/6 text-[#9CA3AF] px-2.5 py-1 rounded-lg">
-                                    {exercises[id] ?? id}
-                                  </span>
-                                ))}
+                                {(day.exercises || []).map((ex, i) => {
+                                  const exId = resolveId(ex);
+                                  return (
+                                    <span key={i} className="text-[11px] bg-white/6 text-[#9CA3AF] px-2.5 py-1 rounded-lg">
+                                      {exercises[exId] ?? exId}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </div>
                           ))}
