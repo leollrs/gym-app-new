@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check } from 'lucide-react';
+import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -135,6 +135,14 @@ export default function BodyMetrics() {
   const [latestMeasurements, setLatestMeasurements] = useState(null);
   const [showMeasurements,   setShowMeasurements]   = useState(false);
 
+  // Progress photos state
+  const [photos,          setPhotos]          = useState([]);
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
+  const [uploadAngle,     setUploadAngle]     = useState('front');
+  const [uploadFile,      setUploadFile]      = useState(null);
+  const [uploading,       setUploading]       = useState(false);
+  const [photoError,      setPhotoError]      = useState('');
+
   const [loading, setLoading] = useState(true);
 
   // ── Load data ──────────────────────────────────────────────────────────────
@@ -144,7 +152,7 @@ export default function BodyMetrics() {
 
     const from = subDays(new Date(), period).toISOString().slice(0, 10);
 
-    const [{ data: logs }, { data: meas }] = await Promise.all([
+    const [{ data: logs }, { data: meas }, { data: photoData }] = await Promise.all([
       supabase
         .from('body_weight_logs')
         .select('id, weight_lbs, logged_at, notes')
@@ -158,6 +166,12 @@ export default function BodyMetrics() {
         .order('measured_at', { ascending: false })
         .limit(1)
         .single(),
+      supabase
+        .from('progress_photos')
+        .select('id, storage_path, view_angle, taken_at, is_private')
+        .eq('profile_id', user.id)
+        .order('taken_at', { ascending: false })
+        .limit(30),
     ]);
 
     const allLogs = logs ?? [];
@@ -167,6 +181,10 @@ export default function BodyMetrics() {
       weight: parseFloat(l.weight_lbs),
     })));
     setLatestMeasurements(meas ?? null);
+    setPhotos((photoData ?? []).map(p => ({
+      ...p,
+      url: supabase.storage.from('progress-photos').getPublicUrl(p.storage_path).data.publicUrl,
+    })));
     setLoading(false);
   }, [user, period]);
 
@@ -190,6 +208,38 @@ export default function BodyMetrics() {
     setWeightInput('');
     loadData();
     setLoggingWeight(false);
+  };
+
+  // ── Upload progress photo ───────────────────────────────────────────────────
+  const handlePhotoUpload = async () => {
+    if (!uploadFile) { setPhotoError('Please select a photo'); return; }
+    setUploading(true);
+    setPhotoError('');
+
+    const ext  = uploadFile.name.split('.').pop() || 'jpg';
+    const path = `${user.id}/${Date.now()}-${uploadAngle}.${ext}`;
+
+    const { error: storageErr } = await supabase.storage
+      .from('progress-photos')
+      .upload(path, uploadFile, { upsert: false });
+
+    if (storageErr) { setPhotoError(storageErr.message); setUploading(false); return; }
+
+    const { error: dbErr } = await supabase.from('progress_photos').insert({
+      profile_id:   user.id,
+      gym_id:       profile.gym_id,
+      storage_path: path,
+      view_angle:   uploadAngle,
+      is_private:   true,
+      taken_at:     new Date().toISOString(),
+    });
+
+    if (dbErr) { setPhotoError(dbErr.message); setUploading(false); return; }
+
+    setUploadFile(null);
+    setShowPhotoUpload(false);
+    loadData();
+    setUploading(false);
   };
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -470,6 +520,106 @@ export default function BodyMetrics() {
           )}
         </>
       )}
+
+          {/* ── Progress Photos ─────────────────────────────────────────────── */}
+          <div
+            className="rounded-[14px] p-5 mt-5"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>Progress Photos</p>
+              <button
+                onClick={() => { setShowPhotoUpload(v => !v); setPhotoError(''); setUploadFile(null); }}
+                className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
+                style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+              >
+                <Camera size={13} strokeWidth={2.5} />
+                Add Photo
+              </button>
+            </div>
+
+            {/* Upload panel */}
+            {showPhotoUpload && (
+              <div className="mb-4 p-4 rounded-xl" style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-[12px] font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>View Angle</p>
+                <div className="flex gap-2 mb-3">
+                  {['front', 'side', 'back'].map(angle => (
+                    <button
+                      key={angle}
+                      onClick={() => setUploadAngle(angle)}
+                      className="flex-1 py-2 rounded-xl text-[12px] font-bold capitalize transition-all border"
+                      style={uploadAngle === angle
+                        ? { background: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.5)', color: '#D4AF37' }
+                        : { background: 'transparent', borderColor: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}
+                    >
+                      {angle}
+                    </button>
+                  ))}
+                </div>
+                <label
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl cursor-pointer transition-colors"
+                  style={{ border: '2px dashed rgba(255,255,255,0.1)', color: uploadFile ? '#10B981' : 'var(--text-muted)' }}
+                >
+                  <Upload size={16} />
+                  <span className="text-[13px] font-medium">
+                    {uploadFile ? uploadFile.name : 'Select photo'}
+                  </span>
+                  <input
+                    type="file" accept="image/*" className="hidden"
+                    onChange={e => { setUploadFile(e.target.files?.[0] ?? null); setPhotoError(''); }}
+                  />
+                </label>
+                {photoError && <p className="text-[12px] text-red-400 mt-2">{photoError}</p>}
+                <button
+                  onClick={handlePhotoUpload} disabled={uploading || !uploadFile}
+                  className="mt-3 w-full py-2.5 rounded-xl font-bold text-[13px] text-black transition-opacity disabled:opacity-50"
+                  style={{ background: '#D4AF37' }}
+                >
+                  {uploading ? 'Uploading…' : 'Upload Photo'}
+                </button>
+              </div>
+            )}
+
+            {/* Photo grid by angle */}
+            {photos.length === 0 ? (
+              <div className="py-8 text-center">
+                <Camera size={28} style={{ color: '#4B5563', margin: '0 auto 10px' }} strokeWidth={1.5} />
+                <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No progress photos yet</p>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--text-subtle)' }}>Track your transformation over time</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {['front', 'side', 'back'].map(angle => {
+                  const anglePhotos = photos.filter(p => p.view_angle === angle);
+                  if (anglePhotos.length === 0) return null;
+                  return (
+                    <div key={angle}>
+                      <p className="text-[11px] font-bold uppercase tracking-widest mb-2.5 capitalize"
+                        style={{ color: 'var(--text-muted)' }}>
+                        {angle}
+                      </p>
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                        {anglePhotos.slice(0, 12).map(photo => (
+                          <div
+                            key={photo.id}
+                            className="aspect-square rounded-xl overflow-hidden"
+                            style={{ background: '#111827' }}
+                          >
+                            <img
+                              src={photo.url}
+                              alt={`${angle} - ${format(new Date(photo.taken_at), 'MMM d yyyy')}`}
+                              className="w-full h-full object-cover"
+                              onError={e => { e.target.style.display = 'none'; }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
       {showMeasurements && (
         <MeasurementsModal

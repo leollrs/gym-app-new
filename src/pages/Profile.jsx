@@ -189,6 +189,22 @@ const Profile = () => {
         .single();
       setOnboarding(ob ?? null);
 
+      // 6. Persist newly unlocked achievements
+      const achData = {
+        sessions:    allSessions.length,
+        streak:      computeStreak(allSessions),
+        totalVolume: allSessions.reduce((s, x) => s + (parseFloat(x.total_volume_lbs) || 0), 0),
+        prCount:     (prData ?? []).length,
+      };
+      const unlocked = ACHIEVEMENT_DEFS
+        .filter(a => a.check(achData))
+        .map(a => ({ profile_id: user.id, gym_id: profile.gym_id, achievement_id: a.key }));
+      if (unlocked.length > 0) {
+        await supabase
+          .from('user_achievements')
+          .upsert(unlocked, { onConflict: 'profile_id,achievement_id', ignoreDuplicates: true });
+      }
+
       setLoading(false);
     };
 
