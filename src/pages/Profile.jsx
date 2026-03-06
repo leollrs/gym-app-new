@@ -37,6 +37,17 @@ const EQUIPMENT_OPTIONS = [
   { value: 'Smith Machine',   label: 'Smith Machine' },
 ];
 
+const INJURY_OPTIONS = [
+  { value: 'lower_back', label: 'Lower Back' },
+  { value: 'knees',      label: 'Knees' },
+  { value: 'shoulders',  label: 'Shoulders' },
+  { value: 'wrists',     label: 'Wrists' },
+  { value: 'elbows',     label: 'Elbows' },
+  { value: 'hips',       label: 'Hips' },
+  { value: 'neck',       label: 'Neck' },
+  { value: 'ankles',     label: 'Ankles' },
+];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const computeStreak = (sessions) => {
   const dates = new Set(sessions.map(s => new Date(s.completed_at).toDateString()));
@@ -208,11 +219,14 @@ const Profile = () => {
   const saveGoals = async () => {
     setSavingGoals(true);
     try {
+      const injuries_notes = (goalsDraft.injury_areas ?? []).length > 0
+        ? goalsDraft.injury_areas.join(', ')
+        : null;
       const { error } = await supabase
         .from('member_onboarding')
-        .upsert({ profile_id: user.id, gym_id: profile.gym_id, ...goalsDraft });
+        .upsert({ profile_id: user.id, gym_id: profile.gym_id, ...goalsDraft, injuries_notes });
       if (!error) {
-        setOnboarding(goalsDraft);
+        setOnboarding({ ...goalsDraft, injuries_notes });
         setEditingGoals(false);
       }
     } finally {
@@ -569,14 +583,29 @@ const Profile = () => {
               {/* Injuries */}
               <div>
                 <h3 className="section-label mb-3">Injuries / Limitations</h3>
-                <textarea
-                  rows={3}
-                  placeholder="e.g. bad left knee, avoid overhead pressing"
-                  value={goalsDraft.injuries_notes ?? ''}
-                  onChange={e => setGoalsDraft(d => ({ ...d, injuries_notes: e.target.value }))}
-                  className="w-full rounded-[14px] border px-4 py-3 text-[14px] focus:outline-none resize-none transition-colors"
-                  style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                />
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {INJURY_OPTIONS.map(inj => {
+                    const active = (goalsDraft.injury_areas ?? []).includes(inj.value);
+                    return (
+                      <button key={inj.value}
+                        onClick={() => setGoalsDraft(d => ({
+                          ...d,
+                          injury_areas: active
+                            ? (d.injury_areas ?? []).filter(v => v !== inj.value)
+                            : [...(d.injury_areas ?? []), inj.value],
+                        }))}
+                        className="text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all"
+                        style={active
+                          ? { background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.4)', color: '#EF4444' }
+                          : { background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+                        {inj.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(goalsDraft.injury_areas ?? []).length === 0 && (
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Nothing selected — all exercises available.</p>
+                )}
               </div>
 
               {/* Actions */}
@@ -671,15 +700,36 @@ const Profile = () => {
 
                   {/* Injuries */}
                   <div className="rounded-[14px] border p-5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-subtle)' }}>
-                    <p className="section-label mb-2">Injuries / Limitations</p>
-                    <p className="text-[14px]" style={{ color: onboarding?.injuries_notes ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                      {onboarding?.injuries_notes || 'None noted'}
-                    </p>
+                    <p className="section-label mb-3">Injuries / Limitations</p>
+                    {(() => {
+                      const areas = onboarding?.injuries_notes
+                        ? onboarding.injuries_notes.split(',').map(s => s.trim()).filter(Boolean)
+                        : [];
+                      return areas.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {areas.map(area => {
+                            const found = INJURY_OPTIONS.find(o => o.value === area);
+                            return (
+                              <span key={area} className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                                style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                {found?.label ?? area}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>None noted</p>;
+                    })()}
                   </div>
 
                   {/* Edit button */}
                   <button
-                    onClick={() => { setGoalsDraft({ ...onboarding }); setEditingGoals(true); }}
+                    onClick={() => {
+                      const injury_areas = onboarding?.injuries_notes
+                        ? onboarding.injuries_notes.split(',').map(s => s.trim()).filter(s => INJURY_OPTIONS.some(o => o.value === s))
+                        : [];
+                      setGoalsDraft({ ...onboarding, injury_areas });
+                      setEditingGoals(true);
+                    }}
                     className="flex items-center justify-center gap-2 w-full py-3.5 rounded-[14px] border font-semibold text-[14px] transition-all hover:opacity-80"
                     style={{ borderColor: 'var(--border-strong)', color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}>
                     <Edit2 size={15} /> Edit Goals &amp; Setup
