@@ -29,7 +29,7 @@ const linkClass = (active) =>
   }`;
 
 export default function AdminLayout({ children }) {
-  const { profile, signOut } = useAuth();
+  const { profile, gymName, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -46,7 +46,7 @@ export default function AdminLayout({ children }) {
         <div className="px-5 py-5 border-b border-white/6">
           <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-widest mb-0.5">Admin</p>
           <p className="text-[16px] font-bold text-[#E5E7EB] truncate">
-            {profile?.gym_id ? 'My Gym' : 'Dashboard'}
+            {gymName || 'Dashboard'}
           </p>
         </div>
 

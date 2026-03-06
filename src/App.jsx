@@ -22,6 +22,11 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
 
+// Trainer pages
+import TrainerLayout from './layouts/TrainerLayout';
+import TrainerClients from './pages/trainer/TrainerClients';
+import TrainerPrograms from './pages/trainer/TrainerPrograms';
+
 // Admin pages
 import AdminLayout from './layouts/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
@@ -74,6 +79,15 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
+// ── TRAINER ROUTE ──────────────────────────────────────────
+const TrainerRoute = ({ children }) => {
+  const { user, profile, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user)              return <Navigate to="/login" replace />;
+  if (!isTrainer(profile)) return <Navigate to="/" replace />;
+  return children;
+};
+
 // ── PUBLIC ROUTE ───────────────────────────────────────────
 const PublicRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
@@ -120,6 +134,21 @@ function App() {
               </Routes>
             </AdminLayout>
           </AdminRoute>
+        }
+      />
+
+      {/* Trainer dashboard */}
+      <Route
+        path="/trainer/*"
+        element={
+          <TrainerRoute>
+            <TrainerLayout>
+              <Routes>
+                <Route path="/"         element={<TrainerClients />} />
+                <Route path="/programs" element={<TrainerPrograms />} />
+              </Routes>
+            </TrainerLayout>
+          </TrainerRoute>
         }
       />
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, Save, Clock } from 'lucide-react';
+import { Save, Clock, Upload, Image } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyBranding } from '../../lib/branding';
@@ -19,6 +19,9 @@ export default function AdminSettings() {
   const [primaryColor, setPrimary]   = useState('#D4AF37');
   const [accentColor, setAccent]   = useState('#D4AF37');
   const [welcomeMsg, setWelcome]   = useState('');
+  const [logoUrl, setLogoUrl]     = useState('');
+  const [logoFile, setLogoFile]   = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [openTime, setOpenTime]    = useState('06:00');
   const [closeTime, setCloseTime]  = useState('22:00');
   const [openDays, setOpenDays]    = useState([0, 1, 2, 3, 4, 5, 6]); // Mon–Sun indices
@@ -29,7 +32,7 @@ export default function AdminSettings() {
       // select('*') so it works even if migration 0012 hasn't been applied yet
       const [{ data: gymData }, { data: brandingData }] = await Promise.all([
         supabase.from('gyms').select('*').eq('id', profile.gym_id).single(),
-        supabase.from('gym_branding').select('primary_color, accent_color, welcome_message').eq('gym_id', profile.gym_id).single(),
+        supabase.from('gym_branding').select('primary_color, accent_color, welcome_message, logo_url').eq('gym_id', profile.gym_id).single(),
       ]);
       if (gymData) {
         setGym(gymData);
@@ -42,11 +45,29 @@ export default function AdminSettings() {
         setPrimary(brandingData.primary_color ?? '#D4AF37');
         setAccent(brandingData.accent_color ?? '#10B981');
         setWelcome(brandingData.welcome_message ?? '');
+        setLogoUrl(brandingData.logo_url ?? '');
       }
       setLoading(false);
     };
     load();
   }, [profile?.gym_id]);
+
+  const handleLogoUpload = async (file) => {
+    if (!file) return;
+    setUploadingLogo(true);
+    const ext  = file.name.split('.').pop() || 'png';
+    const path = `${profile.gym_id}/logo.${ext}`;
+    const { error: storageErr } = await supabase.storage
+      .from('gym-logos')
+      .upload(path, file, { upsert: true });
+    if (storageErr) { setUploadingLogo(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from('gym-logos').getPublicUrl(path);
+    setLogoUrl(publicUrl);
+    setLogoFile(null);
+    // Save logo_url to branding immediately
+    await supabase.from('gym_branding').update({ logo_url: publicUrl }).eq('gym_id', profile.gym_id);
+    setUploadingLogo(false);
+  };
 
   const toggleDay = (idx) => {
     setOpenDays(prev =>
@@ -120,6 +141,33 @@ export default function AdminSettings() {
                 placeholder="Shown to new members during onboarding…"
                 className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
             </div>
+            <div>
+              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Gym Logo</label>
+              <div className="flex items-center gap-3">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Gym logo" className="w-12 h-12 rounded-xl object-contain bg-[#111827] border border-white/6 p-1" />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-[#111827] border border-white/6 flex items-center justify-center flex-shrink-0">
+                    <Image size={20} className="text-[#4B5563]" />
+                  </div>
+                )}
+                <label className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl cursor-pointer transition-colors border border-dashed border-white/10 hover:border-white/20 text-[#6B7280] hover:text-[#9CA3AF]">
+                  <Upload size={14} />
+                  <span className="text-[12px] font-medium">
+                    {uploadingLogo ? 'Uploading…' : logoFile ? logoFile.name : 'Upload logo'}
+                  </span>
+                  <input
+                    type="file" accept="image/*" className="hidden"
+                    disabled={uploadingLogo}
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) { setLogoFile(f); handleLogoUpload(f); }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Primary Color</label>
