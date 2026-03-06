@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Trophy, Flame, Dumbbell, TrendingUp, Calendar,
-  Lock, Settings, BarChart2, Star, LogOut, Edit2, Check, Scale,
+  Trophy, Flame, Dumbbell, Calendar,
+  Lock, Settings, BarChart2, Star, LogOut, Edit2, Check, Scale, Zap,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -304,19 +304,35 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* ── Body metrics shortcut ────────────────────────────────────────── */}
-      <button
-        onClick={() => navigate('/metrics')}
-        className="w-full flex items-center justify-between px-5 py-3.5 rounded-[14px] mb-4 transition-colors hover:opacity-90 active:scale-[0.99]"
-        style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
-      >
-        <div className="flex items-center gap-3">
-          <Scale size={17} style={{ color: '#D4AF37' }} strokeWidth={2} />
-          <span className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>Body Metrics</span>
-          <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Weight &amp; measurements</span>
-        </div>
-        <TrendingUp size={15} style={{ color: '#D4AF37' }} strokeWidth={2} />
-      </button>
+      {/* ── Progress shortcuts ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <button
+          onClick={() => navigate('/metrics')}
+          className="flex items-center justify-between px-4 py-3.5 rounded-[14px] transition-colors hover:opacity-90 active:scale-[0.99]"
+          style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
+        >
+          <div className="flex items-center gap-2.5">
+            <Scale size={16} style={{ color: '#D4AF37' }} strokeWidth={2} />
+            <div className="text-left">
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Body Metrics</p>
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Weight &amp; measurements</p>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={() => navigate('/strength')}
+          className="flex items-center justify-between px-4 py-3.5 rounded-[14px] transition-colors hover:opacity-90 active:scale-[0.99]"
+          style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
+        >
+          <div className="flex items-center gap-2.5">
+            <Zap size={16} style={{ color: '#D4AF37' }} strokeWidth={2} />
+            <div className="text-left">
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Strength</p>
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>PRs &amp; standards</p>
+            </div>
+          </div>
+        </button>
+      </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
       <div className="flex mb-8" style={{ borderBottom: '1px solid var(--border-subtle)' }}>

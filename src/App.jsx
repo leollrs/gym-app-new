@@ -13,6 +13,7 @@ import WorkoutBuilder from './pages/WorkoutBuilder';
 import SessionSummary from './pages/SessionSummary';
 import WorkoutLog from './pages/WorkoutLog';
 import BodyMetrics from './pages/BodyMetrics';
+import Strength from './pages/Strength';
 import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
@@ -139,6 +140,7 @@ function App() {
                 <Route path="/workout-log"       element={<WorkoutLog />} />
                 <Route path="/leaderboard"       element={<Leaderboard />} />
                 <Route path="/metrics"           element={<BodyMetrics />} />
+                <Route path="/strength"          element={<Strength />} />
               </Routes>
             </div>
           </ProtectedRoute>
