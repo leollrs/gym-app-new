@@ -14,6 +14,8 @@ import SessionSummary from './pages/SessionSummary';
 import WorkoutLog from './pages/WorkoutLog';
 import BodyMetrics from './pages/BodyMetrics';
 import Strength from './pages/Strength';
+import Nutrition from './pages/Nutrition';
+import CheckIn from './pages/CheckIn';
 import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
@@ -141,6 +143,8 @@ function App() {
                 <Route path="/leaderboard"       element={<Leaderboard />} />
                 <Route path="/metrics"           element={<BodyMetrics />} />
                 <Route path="/strength"          element={<Strength />} />
+                <Route path="/nutrition"         element={<Nutrition />} />
+                <Route path="/checkin"           element={<CheckIn />} />
               </Routes>
             </div>
           </ProtectedRoute>

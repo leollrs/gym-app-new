@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Play, Dumbbell, ChevronRight, ExternalLink, Timer } from 'lucide-react';
+import { Bell, Play, Dumbbell, ChevronRight, ExternalLink, Timer, MapPin, Flame, Zap } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -339,6 +339,23 @@ const Dashboard = () => {
         <StatCard emoji="🔥" label="Streak"   value={loading ? '—' : stats.streak} />
         <StatCard emoji="🏋️" label="Workouts" value={loading ? '—' : stats.sessions} to="/workout-log" />
         <StatCard emoji="📊" label="Volume"   value={loading ? '—' : stats.volumeK} />
+      </div>
+
+      {/* ── Quick actions ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-2 md:gap-3 mb-10">
+        {[
+          { to: '/checkin',   icon: MapPin, label: 'Check In',  color: '#10B981' },
+          { to: '/nutrition', icon: Flame,  label: 'Nutrition', color: '#D4AF37' },
+          { to: '/strength',  icon: Zap,    label: 'Strength',  color: '#A78BFA' },
+        ].map(({ to, icon: Icon, label, color }) => (
+          <Link
+            key={to} to={to}
+            className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-3 py-3.5 flex flex-col items-center gap-1.5"
+          >
+            <Icon size={18} style={{ color }} strokeWidth={2} />
+            <p className="text-[11px] font-semibold text-[#9CA3AF]">{label}</p>
+          </Link>
+        ))}
       </div>
 
       {/* ── Chart + Sidebar ─────────────────────────────────────────────── */}

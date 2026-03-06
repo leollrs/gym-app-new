@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Trophy, Flame, Dumbbell, Calendar,
-  Lock, Settings, BarChart2, Star, LogOut, Edit2, Check, Scale, Zap,
+  Lock, Settings, BarChart2, Star, LogOut, Edit2, Check, Scale, Zap, MapPin,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -306,32 +306,25 @@ const Profile = () => {
 
       {/* ── Progress shortcuts ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <button
-          onClick={() => navigate('/metrics')}
-          className="flex items-center justify-between px-4 py-3.5 rounded-[14px] transition-colors hover:opacity-90 active:scale-[0.99]"
-          style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
-        >
-          <div className="flex items-center gap-2.5">
-            <Scale size={16} style={{ color: '#D4AF37' }} strokeWidth={2} />
-            <div className="text-left">
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Body Metrics</p>
-              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Weight &amp; measurements</p>
+        {[
+          { to: '/metrics',   icon: Scale,    label: 'Body Metrics', sub: 'Weight & measurements' },
+          { to: '/strength',  icon: Zap,      label: 'Strength',     sub: 'PRs & standards'        },
+          { to: '/nutrition', icon: Flame,    label: 'Nutrition',    sub: 'Targets & check-ins'    },
+          { to: '/checkin',   icon: MapPin,   label: 'Check In',     sub: 'Log gym visits'         },
+        ].map(({ to, icon: Icon, label, sub }) => (
+          <button
+            key={to}
+            onClick={() => navigate(to)}
+            className="flex items-center gap-2.5 px-4 py-3.5 rounded-[14px] transition-colors hover:opacity-90 active:scale-[0.99] text-left"
+            style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
+          >
+            <Icon size={16} style={{ color: '#D4AF37', flexShrink: 0 }} strokeWidth={2} />
+            <div>
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{label}</p>
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{sub}</p>
             </div>
-          </div>
-        </button>
-        <button
-          onClick={() => navigate('/strength')}
-          className="flex items-center justify-between px-4 py-3.5 rounded-[14px] transition-colors hover:opacity-90 active:scale-[0.99]"
-          style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.15)' }}
-        >
-          <div className="flex items-center gap-2.5">
-            <Zap size={16} style={{ color: '#D4AF37' }} strokeWidth={2} />
-            <div className="text-left">
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Strength</p>
-              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>PRs &amp; standards</p>
-            </div>
-          </div>
-        </button>
+          </button>
+        ))}
       </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
