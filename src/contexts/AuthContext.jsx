@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
     setProfile(data ?? null);
 
     if (data?.gym_id) {
@@ -42,8 +42,10 @@ export const AuthProvider = ({ children }) => {
     // Subscribe to auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else {
+      if (session?.user) {
+        setLoading(true);
+        fetchProfile(session.user.id);
+      } else {
         setProfile(null);
         setLoading(false);
       }

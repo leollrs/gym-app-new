@@ -18,6 +18,8 @@ import Nutrition from './pages/Nutrition';
 import CheckIn from './pages/CheckIn';
 import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 import Leaderboard from './pages/Leaderboard';
+import Challenges from './pages/Challenges';
+import Notifications from './pages/Notifications';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
@@ -163,6 +165,8 @@ function App() {
                 <Route path="/session-summary"   element={<SessionSummary />} />
                 <Route path="/workout-log"       element={<WorkoutLog />} />
                 <Route path="/leaderboard"       element={<Leaderboard />} />
+                <Route path="/challenges"        element={<Challenges />} />
+                <Route path="/notifications"     element={<Notifications />} />
                 <Route path="/metrics"           element={<BodyMetrics />} />
                 <Route path="/strength"          element={<Strength />} />
                 <Route path="/nutrition"         element={<Nutrition />} />

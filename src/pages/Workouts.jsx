@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, X, Trash2, CheckCircle2, Calendar
+  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, X, Trash2, CheckCircle2, Calendar, Zap, RefreshCw, Heart
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 
 const formatLastPerformed = (isoDate) => {
   if (!isoDate) return 'Never';
@@ -177,7 +178,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
 const Workouts = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
-  const { routines, loading, createRoutine, deleteRoutine } = useRoutines();
+  const { routines, loading, createRoutine, deleteRoutine, refetch } = useRoutines();
   const [activeTab, setActiveTab]           = useState('my-routines');
   const [isCreating, setIsCreating]         = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
@@ -187,6 +188,10 @@ const Workouts = () => {
   const [programsLoading, setProgramsLoading] = useState(false);
   const [enrolledIds, setEnrolledIds]       = useState(new Set());
   const [selectedProgram, setSelectedProgram] = useState(null);
+  const [showGenerator, setShowGenerator]   = useState(false);
+  const [generatedProgram, setGeneratedProgram] = useState(null);
+  const [programLoading, setProgramLoading] = useState(true);
+  const [onboardingData, setOnboardingData] = useState(null);
 
   const loadPrograms = useCallback(async () => {
     if (!profile?.gym_id) return;
@@ -209,6 +214,62 @@ const Workouts = () => {
   }, [profile?.gym_id, user?.id]);
 
   useEffect(() => { loadPrograms(); }, [loadPrograms]);
+
+  // Load generated program status and onboarding data
+  useEffect(() => {
+    if (!user?.id || !profile?.gym_id) return;
+    const load = async () => {
+      const [{ data: gp }, { data: ob }] = await Promise.all([
+        supabase
+          .from('generated_programs')
+          .select('*')
+          .eq('profile_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('member_onboarding')
+          .select('*')
+          .eq('profile_id', user.id)
+          .maybeSingle(),
+      ]);
+      setGeneratedProgram(gp || null);
+      setOnboardingData(ob || null);
+      setProgramLoading(false);
+
+      // Fire expiry notification once if program just expired and no notification sent yet
+      if (gp && new Date(gp.expires_at) <= new Date() && !gp.expiry_notified) {
+        supabase.from('notifications').insert({
+          profile_id: user.id,
+          gym_id:     profile.gym_id,
+          type:       'milestone',
+          title:      'Your 6-week program has ended',
+          body:       'Great work finishing your program! Head to Workouts to reassess and generate your next one.',
+        }).then(() =>
+          supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', gp.id)
+        );
+      }
+    };
+    load();
+  }, [user?.id, profile?.gym_id]);
+
+  // Derived program state
+  const today        = new Date();
+  const programActive = generatedProgram && new Date(generatedProgram.expires_at) > today;
+  const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
+  const currentWeekNum = programActive
+    ? Math.floor((today - new Date(generatedProgram.program_start)) / (7 * 86400000)) + 1
+    : 0;
+  const isWeekA = currentWeekNum % 2 === 1; // odd weeks = A, even weeks = B
+
+  // This week's routines (Auto: routines filtered by A or B suffix)
+  const thisWeekRoutines = programActive
+    ? routines.filter(r => {
+        if (!r.name.startsWith('Auto:')) return false;
+        if (isWeekA) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
+        return r.name.endsWith(' B');
+      })
+    : [];
 
   const handleEnroll = async (programId) => {
     await supabase.from('gym_program_enrollments').insert({ program_id: programId, profile_id: user.id, gym_id: profile.gym_id });
@@ -258,6 +319,88 @@ const Workouts = () => {
         <h1 className="text-[24px] font-bold text-[#E5E7EB]">Workouts</h1>
         <p className="text-[13px] text-[#6B7280] mt-1">Your routines and gym programs.</p>
       </header>
+
+      {/* ── Generated Program Banner ── */}
+      {!programLoading && programExpired && (
+        <div className="mb-8 flex items-center gap-4 bg-[#D4AF37]/8 border border-[#D4AF37]/25 rounded-[14px] px-5 py-4">
+          <RefreshCw size={20} className="text-[#D4AF37] flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] font-bold text-[#D4AF37]">Your 6-week program has ended</p>
+            <p className="text-[12px] text-[#9CA3AF] mt-0.5">Reassess and generate a fresh program to keep progressing.</p>
+          </div>
+          <button
+            onClick={() => setShowGenerator(true)}
+            className="flex-shrink-0 px-4 py-2 bg-[#D4AF37] text-black text-[13px] font-bold rounded-xl hover:bg-[#E6C766] transition-colors"
+          >
+            Reassess
+          </button>
+        </div>
+      )}
+
+      {!programLoading && !generatedProgram && (
+        <div className="mb-8 flex items-center gap-4 bg-[#D4AF37]/8 border border-[#D4AF37]/25 rounded-[14px] px-5 py-4">
+          <Zap size={20} className="text-[#D4AF37] flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] font-bold text-[#D4AF37]">Generate your personalized program</p>
+            <p className="text-[12px] text-[#9CA3AF] mt-0.5">6-week AI-built plan based on your goals, body, and equipment.</p>
+          </div>
+          <button
+            onClick={() => setShowGenerator(true)}
+            className="flex-shrink-0 px-4 py-2 bg-[#D4AF37] text-black text-[13px] font-bold rounded-xl hover:bg-[#E6C766] transition-colors"
+          >
+            Generate
+          </button>
+        </div>
+      )}
+
+      {/* ── This Week's Plan ── */}
+      {programActive && thisWeekRoutines.length > 0 && (
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-[15px] font-bold text-[#E5E7EB]">This Week's Plan</p>
+              <p className="text-[12px] text-[#6B7280]">
+                Week {Math.min(currentWeekNum, 6)} of 6 · {isWeekA ? 'Routine A' : 'Routine B'}
+                {generatedProgram?.cardio_days?.daysPerWeek > 0 && ` · ${generatedProgram.cardio_days.daysPerWeek}× cardio`}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowGenerator(true)}
+              className="text-[11px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+            >
+              Regenerate
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {thisWeekRoutines.map(routine => (
+              <div key={routine.id} className="bg-[#0F172A] rounded-[14px] border border-[#D4AF37]/15 flex items-center gap-3 px-4 py-3.5">
+                <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                  <Dumbbell size={15} className="text-[#D4AF37]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[#E5E7EB] text-[14px] truncate">{routine.name.replace('Auto: ', '')}</p>
+                  <p className="text-[11px] text-[#6B7280] mt-0.5">{routine.exerciseCount} exercises</p>
+                </div>
+                <Link
+                  to={`/session/${routine.id}`}
+                  className="w-9 h-9 rounded-xl bg-[#D4AF37] hover:bg-[#E6C766] flex items-center justify-center flex-shrink-0 transition-colors"
+                  style={{ boxShadow: '0 0 10px rgba(212,175,55,0.3)' }}
+                >
+                  <Play size={13} fill="black" stroke="black" strokeWidth={1.5} />
+                </Link>
+              </div>
+            ))}
+            {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
+              <div className="flex items-center gap-3 bg-emerald-500/5 border border-emerald-500/15 rounded-[14px] px-4 py-3">
+                <Heart size={15} className="text-emerald-400 flex-shrink-0" />
+                <p className="text-[13px] text-emerald-400 font-semibold">
+                  {generatedProgram.cardio_days.daysPerWeek}× {generatedProgram.cardio_days.description}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-4 mb-10">
@@ -449,6 +592,27 @@ const Workouts = () => {
         onClose={() => setSelectedProgram(null)}
         onEnroll={handleEnroll}
         onLeave={handleLeave}
+      />
+    )}
+
+    {showGenerator && (
+      <GenerateWorkoutModal
+        onboarding={onboardingData}
+        onClose={() => setShowGenerator(false)}
+        onGenerated={() => {
+          // Refresh generated program + routines
+          if (user?.id) {
+            supabase
+              .from('generated_programs')
+              .select('*')
+              .eq('profile_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+              .then(({ data }) => setGeneratedProgram(data || null));
+          }
+          refetch();
+        }}
       />
     )}
     </>

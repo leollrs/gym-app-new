@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Trophy, Dumbbell, Clock, Zap, BarChart2, CheckCircle, Share2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { createNotification } from '../lib/notifications';
+
+const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
 
 const formatTime = (s) => {
   const h = Math.floor(s / 3600);
@@ -27,6 +32,7 @@ const StatCard = ({ icon: Icon, label, value, accent }) => (
 const SessionSummary = () => {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const { user, profile } = useAuth();
   const [visible, setVisible] = useState(false);
 
   // Data passed from ActiveSession via navigate state
@@ -45,6 +51,43 @@ const SessionSummary = () => {
     const t = setTimeout(() => setVisible(true), 60);
     return () => clearTimeout(t);
   }, []);
+
+  // Milestone + PR notifications
+  useEffect(() => {
+    if (!user?.id || !profile?.gym_id) return;
+    const fire = async () => {
+      // Count total completed sessions
+      const { count } = await supabase
+        .from('workout_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .eq('status', 'completed');
+
+      if (MILESTONES.includes(count)) {
+        await createNotification({
+          profileId: user.id,
+          gymId:     profile.gym_id,
+          type:      'milestone',
+          title:     `${count} workout${count === 1 ? '' : 's'} completed!`,
+          body:      count === 1
+            ? 'Welcome to your fitness journey. Keep it up!'
+            : `You've hit ${count} workouts. Consistency is everything.`,
+        });
+      }
+
+      // PR notifications
+      if (sessionPRs?.length > 0) {
+        await createNotification({
+          profileId: user.id,
+          gymId:     profile.gym_id,
+          type:      'pr',
+          title:     `${sessionPRs.length} new PR${sessionPRs.length > 1 ? 's' : ''} this session!`,
+          body:      sessionPRs.slice(0, 3).map(p => p.exerciseName ?? p.exercise_name ?? 'Exercise').join(', '),
+        });
+      }
+    };
+    fire();
+  }, [user?.id, profile?.gym_id]); // eslint-disable-line
 
   const dateStr = new Date(completedAt).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',

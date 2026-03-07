@@ -1,18 +1,40 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Home, Dumbbell, Activity, User, Trophy } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Home, Dumbbell, Activity, User, Trophy, Bell } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/',             icon: Home,     label: 'Dashboard',  end: true },
   { to: '/workouts',     icon: Dumbbell, label: 'Workouts' },
-  { to: '/leaderboard',  icon: Trophy,   label: 'Leaderboard' },
+  { to: '/challenges',   icon: Trophy,   label: 'Challenges' },
   { to: '/social',       icon: Activity, label: 'Social' },
   { to: '/profile',      icon: User,     label: 'Profile' },
 ];
 
 const Navigation = () => {
-  const { gymName } = useAuth();
+  const { gymName, user } = useAuth();
+  const navigate = useNavigate();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetch = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .eq('read', false);
+      setUnread(count || 0);
+    };
+    fetch();
+    const ch = supabase.channel('nav-notif')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `profile_id=eq.${user.id}` },
+        fetch)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [user?.id]);
+
   return (
   <>
     {/* Desktop Top Navigation */}
@@ -54,6 +76,18 @@ const Navigation = () => {
             </NavLink>
           ))}
 
+          {/* Bell */}
+          <button
+            onClick={() => navigate('/notifications')}
+            className="relative ml-1 p-2 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/4 transition-colors"
+          >
+            <Bell size={17} />
+            {unread > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center leading-none">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </nav>

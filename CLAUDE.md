@@ -236,39 +236,43 @@ Separate web interface, not the member app.
 ## Current Build Status
 
 ### Done
+- [x] Auth (login, signup, role-based routing — member / admin / trainer)
+- [x] Onboarding flow (fitness level, goal, training days, equipment, injuries, body metrics)
 - [x] Dashboard (stats, upcoming workout, weekly volume chart, gym news)
-- [x] Workouts page (My Routines + Gym Programs tabs)
+- [x] Workouts page (My Routines + Gym Programs tabs + Auto-generated program section)
 - [x] Workout Builder (create/edit routines, add from library, configure sets/reps/rest)
-- [x] Active Session (live workout tracker, set logging, rest timer)
+- [x] Active Session (live workout tracker, set logging, rest timer, draft persistence)
+- [x] Session Summary (post-workout summary screen with PRs, volume, duration)
+- [x] Workout Log (history of past sessions)
+- [x] Progressive overload engine (overloadEngine.js — double progression, Epley 1RM, wired into ActiveSession suggestion chip)
+- [x] Auto Workout Generator (workoutGenerator.js + GenerateWorkoutModal — BMI/somatotype, A/B rotation, 6-week program, cardio prescription)
 - [x] Exercise Library (40+ exercises, filter by muscle + equipment, expandable cards with BodyDiagram)
-- [x] Social Feed (activity timeline, like/comment UI)
-- [x] Profile (user stats, achievements hub)
 - [x] Body Diagram (interactive SVG muscle visualizer, compact mode)
-- [x] Navigation (desktop top nav, mobile bottom nav)
-- [x] TV Display (placeholder leaderboard screen)
+- [x] Body Metrics (weight tracking, measurements, progress charts — BodyMetrics.jsx)
+- [x] 1RM Tracker + Strength Standards (Strength.jsx)
+- [x] Social Feed (activity timeline, like/comment, friend system — add friends, friend requests)
+- [x] Challenges (member-facing: Live/Upcoming/Ended tabs, leaderboards — Challenges.jsx)
+- [x] Leaderboard (in-app leaderboard page)
+- [x] Notifications (bell icon in nav with unread badge, Notifications.jsx, realtime)
+- [x] Check-In (QR / GPS / manual check-in — CheckIn.jsx)
+- [x] Nutrition (calorie + protein targets, daily check-in — Nutrition.jsx)
+- [x] Profile (user stats, achievements hub)
+- [x] Navigation (desktop top nav, mobile bottom nav, notification badge)
+- [x] TV Display (leaderboard screen for gym displays)
+- [x] Admin dashboard (Overview, Members, Attendance, Challenges, Programs, Leaderboard, Announcements, Settings)
+- [x] Trainer tier (TrainerClients, TrainerPrograms)
 - [x] Design system (dark theme, gold accent, glassmorphism, Tailwind CSS)
+- [x] Supabase backend integration (auth, DB, realtime, RLS policies, generated_programs table)
+- [x] Multi-tenancy (gym_id on all records, RLS enforced)
 
 ### Not Built Yet
-- [ ] Onboarding flow
-- [ ] Progressive overload engine
-- [ ] Program templates
-- [ ] Body metrics tracking (weight, measurements, progress photos)
-- [ ] 1RM tracker + strength standards
-- [ ] Attendance / check-in system
-- [ ] Friend system (add friends, friend profiles)
-- [ ] Challenge system (creation, participation, scoring, leaderboards)
-- [ ] Full leaderboard (in-app + TV display)
-- [ ] Achievements / gamification (milestone badges, challenge badges)
-- [ ] Notification system
-- [ ] Nutrition targets
-- [ ] Health integrations (Apple Health, Google Fit)
-- [ ] Admin dashboard (entire portal)
-- [ ] Churn prediction model + automated follow-up
-- [ ] Trainer tier
-- [ ] White-label config system (per-gym branding)
-- [ ] Supabase backend integration
-- [ ] Auth (login, signup, roles)
-- [ ] Multi-tenancy architecture
+- [ ] Program templates (pre-built 8-12 week PPL, 5/3/1, Upper/Lower etc. — gym admin can assign)
+- [ ] Progress photos (front/side/back upload, private by default)
+- [ ] Achievements / gamification (milestone badges, challenge completion badges — backend logic + display)
+- [ ] White-label config system (per-gym branding via AdminSettings — UI exists, dynamic theming not applied)
+- [ ] Churn prediction model + automated follow-up (at-risk scoring, trigger notifications/SMS)
+- [ ] Health integrations (Apple Health, Google Fit read/write)
+- [ ] Push notifications (web push / mobile — currently in-app only)
 
 ---
 

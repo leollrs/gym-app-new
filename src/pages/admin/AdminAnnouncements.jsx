@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Megaphone, X, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { broadcastNotification } from '../../lib/notifications';
 import { format, isFuture } from 'date-fns';
 
 // Must match the announcement_type enum in the DB schema
@@ -33,6 +34,13 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
         : new Date().toISOString(),
     });
     if (err) { setError(err.message); setSaving(false); return; }
+    // Notify all members
+    broadcastNotification({
+      gymId,
+      type:  'announcement',
+      title: form.title,
+      body:  form.message,
+    });
     onCreated();
     onClose();
   };
