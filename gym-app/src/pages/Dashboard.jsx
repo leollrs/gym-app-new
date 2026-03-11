@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Timer, Flame, Zap } from 'lucide-react';
+import { ChevronRight, Timer, Flame, Zap, Dumbbell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -79,8 +79,10 @@ const Dashboard = () => {
     DAY_LABELS.map(day => ({ day, volume: 0 }))
   );
 
-  const [loading, setLoading]           = useState(true);
-  const [recentSessions, setRecentSessions] = useState([]);
+  const [nextRoutine, setNextRoutine]         = useState(null);
+  const [lastSessionForRoutine, setLastSessionForRoutine] = useState(null);
+  const [loading, setLoading]                 = useState(true);
+  const [recentSessions, setRecentSessions]   = useState([]);
   const [readiness, setReadiness]       = useState('Loading…');
   const [readinessScore, setReadinessScore] = useState(5);
 
@@ -169,6 +171,20 @@ const Dashboard = () => {
       setReadiness(rText);
       setReadinessScore(rScore);
 
+      // 2. Most recent routine for the hero card
+      const { data: routines } = await supabase
+        .from('routines')
+        .select('id, name, routine_exercises(id)')
+        .eq('created_by', user.id)
+        .eq('is_template', false)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (routines?.length > 0) {
+        setNextRoutine(routines[0]);
+        setLastSessionForRoutine(allSessions.find(s => s.routine_id === routines[0].id) ?? null);
+      }
+
       setLoading(false);
     };
 
@@ -176,6 +192,14 @@ const Dashboard = () => {
   }, [user, profile]);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
+
+  const liftCount    = nextRoutine?.routine_exercises?.length ?? 0;
+  const lastVol      = lastSessionForRoutine ? Math.round(lastSessionForRoutine.total_volume_lbs || 0) : 0;
+  const lastDur      = lastSessionForRoutine?.duration_seconds ? formatTime(lastSessionForRoutine.duration_seconds) : null;
+  const lastSummary  = lastVol > 0 ? `${(lastVol / 1000).toFixed(1)}k lbs last time` : lastDur ? `Last: ${lastDur}` : null;
+  const estimatedMin = lastSessionForRoutine?.duration_seconds
+    ? Math.round(lastSessionForRoutine.duration_seconds / 60)
+    : liftCount * 4;
 
   return (
     <div className="min-h-screen bg-[#05070B]">
@@ -191,27 +215,66 @@ const Dashboard = () => {
           </p>
         </section>
 
-        {/* In-progress session banner (only shows when a session is active) */}
-        {activeSession && (
-          <section className="mb-5">
+        {/* Hero workout card */}
+        <section className="mb-5">
+          {loading ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-48 animate-pulse" />
+          ) : activeSession ? (
             <button
               type="button"
               onClick={() => navigate(`/session/${activeSession.routineId}`)}
-              className="w-full rounded-[14px] bg-[#0F172A] border border-emerald-500/30 p-4 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
+              className="w-full rounded-[14px] bg-[#0F172A] border border-emerald-500/30 overflow-hidden text-left active:scale-[0.99] transition-transform"
             >
-              <Timer size={18} className="text-emerald-400 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#E5E7EB] text-sm truncate">
-                  {activeSession.routineName ?? 'Workout'} — in progress
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Timer size={13} className="text-emerald-400" />
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">In progress</span>
+                </div>
+                <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                  {activeSession.routineName ?? 'Workout'}
+                </h2>
+                <p className="text-sm text-[#9CA3AF] mb-4">
+                  {activeSetsCompleted} / {activeSetsTotal} sets · {formatTime(activeSession.elapsedTime ?? 0)}
                 </p>
-                <p className="text-xs text-[#9CA3AF]">
-                  {activeSetsCompleted}/{activeSetsTotal} sets · {formatTime(activeSession.elapsedTime ?? 0)}
-                </p>
+                <div className="w-full py-3.5 rounded-xl bg-emerald-500 text-black text-center font-bold text-[15px]">
+                  Resume workout
+                </div>
               </div>
-              <span className="text-xs font-bold text-emerald-400 flex-shrink-0">Resume →</span>
             </button>
-          </section>
-        )}
+          ) : nextRoutine ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/session/${nextRoutine.id}`)}
+              className="w-full rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden text-left active:scale-[0.99] transition-transform"
+            >
+              <div className="p-5">
+                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2">Up next</p>
+                <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                  {nextRoutine.name}
+                </h2>
+                <p className="text-sm text-[#9CA3AF] mb-0.5">
+                  {liftCount} exercises · ~{estimatedMin} min
+                </p>
+                {lastSummary && (
+                  <p className="text-xs text-[#6B7280] mb-4">{lastSummary}</p>
+                )}
+                {!lastSummary && <div className="mb-4" />}
+                <div className="w-full py-3.5 rounded-xl bg-[#D4AF37] text-black text-center font-bold text-[15px]">
+                  Start workout
+                </div>
+              </div>
+            </button>
+          ) : (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-6 text-center">
+              <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280]" />
+              <p className="font-bold text-[#E5E7EB] text-base">No routines yet</p>
+              <p className="text-sm text-[#9CA3AF] mt-1 mb-4">Create one to get started.</p>
+              <Link to="/workouts" className="inline-block py-2.5 px-6 rounded-xl bg-[#D4AF37] text-black font-bold text-sm">
+                Create routine
+              </Link>
+            </div>
+          )}
+        </section>
 
         {/* 3 stat chips */}
         <section className="grid grid-cols-3 gap-2 mb-3">
