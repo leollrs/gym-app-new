@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Info, ExternalLink, Play } from 'lucide-react';
+import { X, Info, Play, ExternalLink } from 'lucide-react';
 
 function getYouTubeId(url) {
   if (!url) return null;
@@ -8,8 +8,11 @@ function getYouTubeId(url) {
 }
 
 export default function ExerciseVideoModal({ exerciseName, demoUrl, instructions, onClose }) {
-  const [loaded, setLoaded] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const videoId = getYouTubeId(demoUrl);
+  const thumbnailUrl = videoId
+    ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    : null;
   const embedUrl = videoId
     ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`
     : null;
@@ -48,50 +51,49 @@ export default function ExerciseVideoModal({ exerciseName, demoUrl, instructions
           </button>
         </div>
 
-        {/* Video embed */}
-        {embedUrl ? (
-          <div className="mx-5 mb-4 rounded-2xl overflow-hidden bg-black relative" style={{ aspectRatio: '16/9' }}>
-            {!loaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#0A0D14]">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(212,175,55,0.15)' }}>
-                  <Play size={20} fill="#D4AF37" strokeWidth={0} style={{ color: '#D4AF37' }} />
-                </div>
-              </div>
-            )}
+        {/* Video area */}
+        <div className="mx-5 mb-4 rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '16/9' }}>
+          {playing && embedUrl ? (
             <iframe
               src={embedUrl}
               title={`${exerciseName} demo`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
-              onLoad={() => setLoaded(true)}
               className="w-full h-full border-0"
             />
-          </div>
-        ) : (
-          /* Fallback: open YouTube search if no direct video ID */
-          <div className="px-5 pb-4">
-            <a
-              href={demoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-3 w-full py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #FF0000 0%, #CC0000 100%)',
-                color: '#fff',
-                boxShadow: '0 4px 20px rgba(255, 0, 0, 0.3)',
-              }}
+          ) : (
+            <button
+              onClick={() => setPlaying(true)}
+              className="relative w-full h-full block group"
             >
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <Play size={16} fill="white" strokeWidth={0} />
+              {thumbnailUrl ? (
+                <img
+                  src={thumbnailUrl}
+                  alt={`${exerciseName} demo`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-[#0A0D14] flex items-center justify-center">
+                  <Play size={32} className="text-[#6B7280]" />
+                </div>
+              )}
+              {/* Dark overlay on hover */}
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
+              {/* Play button */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-transform group-hover:scale-110"
+                  style={{ background: 'rgba(255,0,0,0.92)' }}
+                >
+                  <Play size={28} fill="white" strokeWidth={0} className="ml-1" />
+                </div>
               </div>
-              Watch on YouTube
-              <ExternalLink size={14} className="opacity-70" />
-            </a>
-          </div>
-        )}
+            </button>
+          )}
+        </div>
 
-        {/* Open in YouTube link (when embedded) */}
-        {embedUrl && (
+        {/* Open in YouTube fallback link */}
+        {demoUrl && (
           <div className="px-5 pb-3 flex justify-end">
             <a
               href={demoUrl}
