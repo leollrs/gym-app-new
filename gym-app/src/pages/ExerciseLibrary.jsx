@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, Dumbbell, Info, Plus, Bookmark, Check, Users } from 'lucide-react';
+import { Search, X, ChevronDown, Dumbbell, Info, Plus, Bookmark, Check, Users, Play } from 'lucide-react';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
 import BodyDiagram from '../components/BodyDiagram';
+import ExerciseVideoModal from '../components/ExerciseVideoModal';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,7 +19,7 @@ const MUSCLE_COLORS = {
   'Full Body': { bg: 'rgba(107,114,128,0.15)',  text: '#9CA3AF' },
 };
 
-const ExerciseCard = ({ exercise, onSelect, selectable }) => {
+const ExerciseCard = ({ exercise, onSelect, selectable, onWatchDemo }) => {
   const [expanded, setExpanded] = useState(false);
   const colors = MUSCLE_COLORS[exercise.muscle] || { bg: 'rgba(212,175,55,0.15)', text: '#D4AF37' };
 
@@ -77,10 +78,21 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
               <Info size={14} className="mt-0.5 flex-shrink-0 text-[#D4AF37]" />
               <p>{exercise.instructions}</p>
             </div>
-            <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280]">
-              <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
-              <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
-              <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
+            <div className="flex items-center gap-3 mt-4 flex-wrap">
+              <div className="flex gap-5 text-[12px] text-[#6B7280]">
+                <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
+                <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
+                <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
+              </div>
+              {exercise.demoUrl && onWatchDemo && (
+                <button
+                  onClick={e => { e.stopPropagation(); onWatchDemo(exercise); }}
+                  className="flex items-center gap-1.5 bg-[#111827] border border-white/8 text-[#E5E7EB] rounded-xl px-3 py-1.5 text-[12px] font-semibold active:scale-95 transition-transform ml-auto"
+                >
+                  <Play size={11} fill="currentColor" strokeWidth={0} className="text-[#D4AF37]" />
+                  Watch Demo
+                </button>
+              )}
             </div>
             {exercise.primaryRegions?.length > 0 && (
               <div className="mt-4">
@@ -119,10 +131,21 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
             <Info size={14} className="mt-0.5 flex-shrink-0 text-[#D4AF37]" />
             <p>{exercise.instructions}</p>
           </div>
-          <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280]">
-            <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
-            <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
-            <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
+          <div className="flex items-center gap-3 mt-4 flex-wrap">
+            <div className="flex gap-5 text-[12px] text-[#6B7280]">
+              <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
+              <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
+              <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
+            </div>
+            {exercise.demoUrl && onWatchDemo && (
+              <button
+                onClick={e => { e.stopPropagation(); onWatchDemo(exercise); }}
+                className="flex items-center gap-1.5 bg-[#111827] border border-white/8 text-[#E5E7EB] rounded-xl px-3 py-1.5 text-[12px] font-semibold active:scale-95 transition-transform ml-auto"
+              >
+                <Play size={11} fill="currentColor" strokeWidth={0} className="text-[#D4AF37]" />
+                Watch Demo
+              </button>
+            )}
           </div>
           {exercise.primaryRegions?.length > 0 && (
             <div className="mt-4">
@@ -144,6 +167,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
   const [query, setQuery] = useState('');
   const [activeMuscle, setActiveMuscle] = useState('All');
   const [activeEquipment, setActiveEquipment] = useState('All');
+  const [videoExercise, setVideoExercise] = useState(null);
 
   const allExercises = useMemo(() => [...localExercises, ...extraExercises], [extraExercises]);
 
@@ -250,6 +274,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                   exercise={ex}
                   selectable={selectable && !selectedIds.includes(ex.id)}
                   onSelect={onSelect}
+                  onWatchDemo={ex.demoUrl ? (exercise) => setVideoExercise(exercise) : null}
                 />
               ))}
             </div>
@@ -264,6 +289,15 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           </div>
         )}
       </div>
+
+      {videoExercise && (
+        <ExerciseVideoModal
+          exerciseName={videoExercise.name}
+          demoUrl={videoExercise.demoUrl}
+          instructions={videoExercise.instructions}
+          onClose={() => setVideoExercise(null)}
+        />
+      )}
     </div>
   );
 };

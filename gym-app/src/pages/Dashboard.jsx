@@ -84,6 +84,7 @@ const Dashboard = () => {
   const [loading, setLoading]           = useState(true);
   const [recentSessions, setRecentSessions] = useState([]);
   const [readiness, setReadiness]       = useState('Loading…');
+  const [readinessScore, setReadinessScore] = useState(5);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -136,16 +137,39 @@ const Dashboard = () => {
       setRecentSessions(allSessions.slice(0, 4));
 
       // 1c. Simple readiness heuristic based on recent training load vs goal
+      let rScore = 5;
+      let rText = 'Great day to start a new streak';
       if (weekGoal > 0) {
-        if (weekSessions >= weekGoal + 1) setReadiness("Go light today — you're ahead of goal");
-        else if (weekSessions === weekGoal) setReadiness('Optional day — streak padding');
-        else if (weekSessions === weekGoal - 1) setReadiness('Today is important to hit your goal');
-        else setReadiness('Plenty of room to train today');
+        if (weekSessions >= weekGoal + 1) {
+          rScore = 4;
+          rText = "Go light today — you're ahead of goal";
+        } else if (weekSessions === weekGoal) {
+          rScore = 6;
+          rText = 'Optional day — streak padding';
+        } else if (streak >= 3 && weekSessions < weekGoal - 1) {
+          rScore = 10;
+          rText = 'Well rested and on track — go hard';
+        } else if (streak >= 1) {
+          rScore = 8;
+          rText = 'Keep the momentum going today';
+        } else {
+          rScore = 8;
+          rText = 'Plenty of room to train today';
+        }
       } else {
-        if (streak >= 5) setReadiness("You've been on it — consider how you feel before pushing");
-        else if (streak >= 1) setReadiness('Keep the momentum going today');
-        else setReadiness('Great day to start a new streak');
+        if (streak >= 5) {
+          rScore = 3;
+          rText = "You've been on it — consider how you feel before pushing";
+        } else if (streak >= 1) {
+          rScore = 8;
+          rText = 'Keep the momentum going today';
+        } else {
+          rScore = 5;
+          rText = 'Great day to start a new streak';
+        }
       }
+      setReadiness(rText);
+      setReadinessScore(rScore);
 
       // 2. Load first/most-recent routine for "Today's Workout"
       const { data: routines } = await supabase
@@ -268,8 +292,8 @@ const Dashboard = () => {
           )}
         </section>
 
-        {/* 4. Stats row: Streak, Workouts, Weekly Goal (3 compact cards) */}
-        <section className="grid grid-cols-3 gap-2 mb-5">
+        {/* 4. Stats grid: Streak, Workouts, Weekly Goal, Readiness (2x2) */}
+        <section className="grid grid-cols-2 gap-2 mb-5">
           <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3.5 text-center">
             <div className="text-lg mb-1">🔥</div>
             <p className="text-[11px] font-semibold text-[#E5E7EB] uppercase tracking-wider">
@@ -292,6 +316,35 @@ const Dashboard = () => {
               {loading ? '—' : stats.weekGoal > 0 ? `${stats.weekSessions} / ${stats.weekGoal}` : `${stats.weekSessions}`}
             </p>
             <p className="text-[11px] text-[#6B7280] mt-0.5">Weekly target</p>
+          </div>
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3.5 text-center">
+            <Zap
+              size={18}
+              className="mx-auto mb-1"
+              style={{
+                color: loading ? '#6B7280'
+                  : readinessScore >= 7 ? '#10B981'
+                  : readinessScore >= 5 ? '#D4AF37'
+                  : '#EF4444'
+              }}
+            />
+            <p
+              className="text-[13px] font-bold uppercase tracking-wider"
+              style={{
+                color: loading ? '#6B7280'
+                  : readinessScore >= 7 ? '#10B981'
+                  : readinessScore >= 5 ? '#D4AF37'
+                  : '#EF4444'
+              }}
+            >
+              {loading ? '—' : `${readinessScore}/10`}
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">Readiness</p>
+            {!loading && (
+              <p className="text-[10px] text-[#4B5563] mt-1 leading-tight line-clamp-2">
+                {readiness}
+              </p>
+            )}
           </div>
         </section>
 

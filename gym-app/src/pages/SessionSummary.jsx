@@ -8,12 +8,17 @@ import { createNotification } from '../lib/notifications';
 const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
 
 const ACHIEVEMENT_DEFS = [
-  { key: 'first_workout', label: 'First Workout',  desc: 'Log your first session',     check: (d) => d.sessions >= 1 },
-  { key: 'streak_7',      label: '7-Day Streak',   desc: 'Train 7 days in a row',      check: (d) => d.streak >= 7 },
-  { key: 'streak_30',     label: '30-Day Streak',  desc: 'Train 30 days in a row',     check: (d) => d.streak >= 30 },
-  { key: 'century_club',  label: 'Century Club',   desc: '100 workouts completed',     check: (d) => d.sessions >= 100 },
-  { key: 'volume_king',   label: 'Volume King',    desc: '1 million lbs total volume', check: (d) => d.totalVolume >= 1_000_000 },
-  { key: 'pr_machine',    label: 'PR Machine',     desc: 'Set 10 personal records',    check: (d) => d.prCount >= 10 },
+  { key: 'first_workout', label: 'First Workout',   desc: 'Log your first session',          check: (d) => d.sessions >= 1 },
+  { key: 'sessions_10',   label: '10 Workouts',     desc: 'Complete 10 sessions',            check: (d) => d.sessions >= 10 },
+  { key: 'sessions_50',   label: '50 Workouts',     desc: 'Complete 50 sessions',            check: (d) => d.sessions >= 50 },
+  { key: 'century_club',  label: 'Century Club',    desc: '100 workouts completed',          check: (d) => d.sessions >= 100 },
+  { key: 'streak_7',      label: '7-Day Streak',    desc: 'Train 7 days in a row',           check: (d) => d.streak >= 7 },
+  { key: 'streak_30',     label: '30-Day Streak',   desc: 'Train 30 days in a row',          check: (d) => d.streak >= 30 },
+  { key: 'first_pr',      label: 'First PR',        desc: 'Set your first personal record',  check: (d) => d.prCount >= 1 },
+  { key: 'pr_machine',    label: 'PR Machine',      desc: 'Set 10 personal records',         check: (d) => d.prCount >= 10 },
+  { key: 'volume_100k',   label: '100k Club',       desc: '100,000 lbs total volume',        check: (d) => d.totalVolume >= 100_000 },
+  { key: 'volume_king',   label: 'Volume King',     desc: '1 million lbs total volume',      check: (d) => d.totalVolume >= 1_000_000 },
+  { key: 'early_bird',    label: 'Early Bird',      desc: 'Complete a workout before 7am',   check: (d) => d.earlyBird === true },
 ];
 
 const ACHIEVEMENT_UUID_MAP = {
@@ -23,6 +28,11 @@ const ACHIEVEMENT_UUID_MAP = {
   century_club:  'a1000000-0000-0000-0000-000000000004',
   volume_king:   'a1000000-0000-0000-0000-000000000005',
   pr_machine:    'a1000000-0000-0000-0000-000000000006',
+  sessions_10:   'a1000000-0000-0000-0000-000000000007',
+  sessions_50:   'a1000000-0000-0000-0000-000000000008',
+  first_pr:      'a1000000-0000-0000-0000-000000000009',
+  volume_100k:   'a1000000-0000-0000-0000-000000000010',
+  early_bird:    'a1000000-0000-0000-0000-000000000011',
 };
 
 const computeStreak = (sessions) => {
@@ -65,6 +75,7 @@ const SessionSummary = () => {
   const location  = useLocation();
   const { user, profile } = useAuth();
   const [visible, setVisible] = useState(false);
+  const [achievementToasts, setAchievementToasts] = useState([]);
 
   // Data passed from ActiveSession via navigate state
   const {
@@ -163,13 +174,18 @@ const SessionSummary = () => {
       ]);
 
       const alreadyUnlockedIds = new Set((alreadyUnlocked ?? []).map(a => a.achievement_id));
+      // early_bird: check if this session or any past session was completed before 7am
+      const earlyBird = (allSess ?? []).some(s => new Date(s.completed_at).getHours() < 7)
+        || new Date(completedAt).getHours() < 7;
       const achData = {
         sessions:    (allSess ?? []).length,
         streak:      computeStreak(allSess ?? []),
         totalVolume: (allSess ?? []).reduce((s, x) => s + (parseFloat(x.total_volume_lbs) || 0), 0),
         prCount:     (allPRs ?? []).length,
+        earlyBird,
       };
 
+      const newToasts = [];
       for (const ach of ACHIEVEMENT_DEFS) {
         const uuid = ACHIEVEMENT_UUID_MAP[ach.key];
         if (!ach.check(achData) || alreadyUnlockedIds.has(uuid)) continue;
@@ -199,6 +215,18 @@ const SessionSummary = () => {
           title:     `Achievement Unlocked: ${ach.label}`,
           body:      ach.desc,
         });
+
+        newToasts.push(ach.label);
+      }
+
+      if (newToasts.length > 0) {
+        setAchievementToasts(newToasts);
+        // Auto-dismiss after 3s per toast (sequential)
+        newToasts.forEach((_, i) => {
+          setTimeout(() => {
+            setAchievementToasts(prev => prev.slice(1));
+          }, 3000 * (i + 1));
+        });
       }
     };
     fire();
@@ -210,6 +238,29 @@ const SessionSummary = () => {
 
   return (
     <div className="fixed inset-0 bg-[#05070B] z-[110] overflow-y-auto">
+
+      {/* ── Achievement toasts ──────────────────────────────────────────── */}
+      {achievementToasts.length > 0 && (
+        <div
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] flex flex-col items-center gap-2"
+          style={{ pointerEvents: 'none' }}
+        >
+          {achievementToasts.slice(0, 1).map((label, i) => (
+            <div
+              key={label + i}
+              className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-[15px] shadow-2xl animate-fade-in"
+              style={{
+                background: '#D4AF37',
+                color: '#000',
+                boxShadow: '0 4px 32px rgba(212,175,55,0.45)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🏆 Achievement Unlocked: {label}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Subtle glow backdrop */}
       <div

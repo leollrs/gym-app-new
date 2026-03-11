@@ -18,6 +18,49 @@ const tooltipStyle = {
   itemStyle:  { color: '#D4AF37' },
 };
 
+// Custom dot for the projected point — gold dashed ring
+function ProjectedDot({ cx, cy, payload }) {
+  if (payload?.projected == null) return null;
+  return (
+    <g>
+      <circle
+        cx={cx} cy={cy} r={6}
+        fill="none"
+        stroke="#D4AF37"
+        strokeWidth={1.5}
+        strokeDasharray="3 2"
+        opacity={0.75}
+      />
+      <circle cx={cx} cy={cy} r={2.5} fill="#D4AF37" opacity={0.6} />
+    </g>
+  );
+}
+
+// Custom tooltip: show "Projected: X lbs" for the projected column
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const proj   = payload.find(p => p.dataKey === 'projected');
+  const bridge = payload.find(p => p.dataKey === 'bridge');
+  const real   = payload.find(p => p.dataKey === 'orm');
+  if (proj?.value != null) {
+    return (
+      <div style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12, padding: '6px 10px' }}>
+        <p style={{ color: '#9CA3AF', marginBottom: 2 }}>{label}</p>
+        <p style={{ color: '#D4AF37' }}>Projected: {proj.value} lbs</p>
+      </div>
+    );
+  }
+  if (real?.value != null) {
+    return (
+      <div style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12, padding: '6px 10px' }}>
+        <p style={{ color: '#9CA3AF', marginBottom: 2 }}>{label}</p>
+        <p style={{ color: '#D4AF37' }}>Est. 1RM: {real.value} lbs</p>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
   const { user } = useAuth();
   const [data, setData]       = useState([]);
@@ -50,6 +93,33 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
   const firstOrm  = data[0]?.orm;
   const gain      = latestOrm && firstOrm && data.length > 1 ? latestOrm - firstOrm : null;
 
+  // Linear regression projection
+  const trendPoints = data.slice(-5);
+  let projectedOrm  = null;
+  let slope         = 0;
+  if (trendPoints.length >= 2) {
+    const n     = trendPoints.length;
+    const xMean = (n - 1) / 2;
+    const yMean = trendPoints.reduce((s, d) => s + d.orm, 0) / n;
+    slope = trendPoints.reduce((s, d, i) => s + (i - xMean) * (d.orm - yMean), 0) /
+            trendPoints.reduce((s, _, i) => s + (i - xMean) ** 2, 0);
+    projectedOrm = Math.round(trendPoints[n - 1].orm + slope * 4);
+  }
+
+  // Chart data: real points + one projected point stitched to the last real point
+  const chartData = data.length > 0
+    ? [
+        ...data,
+        {
+          date:      '~4 wks',
+          orm:       null,
+          projected: projectedOrm,
+          // bridge value so the dashed line connects from the last real orm
+          bridge:    data[data.length - 1].orm,
+        },
+      ]
+    : data;
+
   return (
     <div
       className="fixed inset-0 z-[160] flex items-end justify-center bg-black/50 backdrop-blur-sm"
@@ -77,13 +147,25 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
           </button>
         </div>
 
-        {/* Gain badge */}
-        {gain != null && gain > 0 && (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-[12px] font-semibold mb-4">
-            <TrendingUp size={12} />
-            +{gain} lbs 1RM across {data.length} PRs
-          </div>
-        )}
+        {/* Gain badge + projection chip */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {gain != null && gain > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-[12px] font-semibold">
+              <TrendingUp size={12} />
+              +{gain} lbs 1RM across {data.length} PRs
+            </div>
+          )}
+          {trendPoints.length >= 3 && slope > 0 && projectedOrm != null && (
+            <div className="inline-flex items-center gap-1 bg-[#0F172A] border border-[#D4AF37]/30 text-[#D4AF37] text-[12px] rounded-full px-2.5 py-1">
+              📈 On track for ~{projectedOrm} lbs 1RM in 4 weeks
+            </div>
+          )}
+          {trendPoints.length >= 3 && slope <= 0 && (
+            <div className="inline-flex items-center gap-1 bg-[#0F172A] border border-white/10 text-slate-400 text-[12px] rounded-full px-2.5 py-1">
+              Holding steady — focus on consistency
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center h-44">
@@ -98,7 +180,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
         ) : (
           <>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={data} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis
                   dataKey="date"
@@ -112,10 +194,8 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                   tickLine={false}
                   domain={['auto', 'auto']}
                 />
-                <Tooltip
-                  {...tooltipStyle}
-                  formatter={(value) => [`${value} lbs`, 'Est. 1RM']}
-                />
+                <Tooltip content={<CustomTooltip />} />
+                {/* Real 1RM line */}
                 <Line
                   type="monotone"
                   dataKey="orm"
@@ -123,6 +203,30 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                   strokeWidth={2.5}
                   dot={{ fill: '#D4AF37', r: 4, strokeWidth: 0 }}
                   activeDot={{ r: 6, fill: '#D4AF37' }}
+                  connectNulls={false}
+                />
+                {/* Bridge: invisible line that connects last real point to projected point */}
+                <Line
+                  type="monotone"
+                  dataKey="bridge"
+                  stroke="rgba(212,175,55,0.45)"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  dot={false}
+                  activeDot={false}
+                  legendType="none"
+                  connectNulls={false}
+                />
+                {/* Projected point line */}
+                <Line
+                  type="monotone"
+                  dataKey="projected"
+                  stroke="rgba(212,175,55,0.45)"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  dot={<ProjectedDot />}
+                  activeDot={false}
+                  connectNulls={false}
                 />
               </LineChart>
             </ResponsiveContainer>

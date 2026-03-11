@@ -91,12 +91,17 @@ const MUSCLE_COLORS = {
 };
 
 const ACHIEVEMENT_DEFS = [
-  { key: 'first_workout', label: 'First Workout',  icon: Dumbbell,  desc: 'Log your first session',     check: (d) => d.sessions >= 1 },
-  { key: 'streak_7',      label: '7-Day Streak',   icon: Flame,     desc: 'Train 7 days in a row',      check: (d) => d.streak >= 7 },
-  { key: 'streak_30',     label: '30-Day Streak',  icon: Flame,     desc: 'Train 30 days in a row',     check: (d) => d.streak >= 30 },
-  { key: 'century_club',  label: 'Century Club',   icon: Trophy,    desc: '100 workouts completed',     check: (d) => d.sessions >= 100 },
-  { key: 'volume_king',   label: 'Volume King',    icon: BarChart2, desc: '1 million lbs total volume', check: (d) => d.totalVolume >= 1_000_000 },
-  { key: 'pr_machine',    label: 'PR Machine',     icon: Star,      desc: 'Set 10 personal records',    check: (d) => d.prCount >= 10 },
+  { key: 'first_workout', label: 'First Workout',   icon: Dumbbell,  desc: 'Log your first session',          check: (d) => d.sessions >= 1 },
+  { key: 'sessions_10',   label: '10 Workouts',     icon: Dumbbell,  desc: 'Complete 10 sessions',            check: (d) => d.sessions >= 10 },
+  { key: 'sessions_50',   label: '50 Workouts',     icon: Dumbbell,  desc: 'Complete 50 sessions',            check: (d) => d.sessions >= 50 },
+  { key: 'century_club',  label: 'Century Club',    icon: Trophy,    desc: '100 workouts completed',          check: (d) => d.sessions >= 100 },
+  { key: 'streak_7',      label: '7-Day Streak',    icon: Flame,     desc: 'Train 7 days in a row',           check: (d) => d.streak >= 7 },
+  { key: 'streak_30',     label: '30-Day Streak',   icon: Flame,     desc: 'Train 30 days in a row',          check: (d) => d.streak >= 30 },
+  { key: 'first_pr',      label: 'First PR',        icon: Star,      desc: 'Set your first personal record',  check: (d) => d.prCount >= 1 },
+  { key: 'pr_machine',    label: 'PR Machine',      icon: Star,      desc: 'Set 10 personal records',         check: (d) => d.prCount >= 10 },
+  { key: 'volume_100k',   label: '100k Club',       icon: BarChart2, desc: '100,000 lbs total volume',        check: (d) => d.totalVolume >= 100_000 },
+  { key: 'volume_king',   label: 'Volume King',     icon: BarChart2, desc: '1 million lbs total volume',      check: (d) => d.totalVolume >= 1_000_000 },
+  { key: 'early_bird',    label: 'Early Bird',      icon: Flame,     desc: 'Complete a workout before 7am',   check: (d) => d.earlyBird === true },
 ];
 
 // Fixed UUIDs matching migration 0019_seed_achievement_definitions.sql
@@ -107,6 +112,11 @@ const ACHIEVEMENT_UUID_MAP = {
   century_club:  'a1000000-0000-0000-0000-000000000004',
   volume_king:   'a1000000-0000-0000-0000-000000000005',
   pr_machine:    'a1000000-0000-0000-0000-000000000006',
+  sessions_10:   'a1000000-0000-0000-0000-000000000007',
+  sessions_50:   'a1000000-0000-0000-0000-000000000008',
+  first_pr:      'a1000000-0000-0000-0000-000000000009',
+  volume_100k:   'a1000000-0000-0000-0000-000000000010',
+  early_bird:    'a1000000-0000-0000-0000-000000000011',
 };
 
 // ── Hero stat block ───────────────────────────────────────────────────────────
@@ -127,12 +137,13 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('prs');
 
   // Data state
-  const [gymName, setGymName]             = useState('');
-  const [sessions, setSessions]           = useState([]);
-  const [prs, setPrs]                     = useState([]);
-  const [muscleBalance, setMuscleBalance] = useState([]);
-  const [weeklyChart, setWeeklyChart]     = useState([]);
-  const [loading, setLoading]             = useState(true);
+  const [gymName, setGymName]                         = useState('');
+  const [sessions, setSessions]                       = useState([]);
+  const [prs, setPrs]                                 = useState([]);
+  const [muscleBalance, setMuscleBalance]             = useState([]);
+  const [weeklyChart, setWeeklyChart]                 = useState([]);
+  const [loading, setLoading]                         = useState(true);
+  const [unlockedAchievementIds, setUnlockedAchievementIds] = useState(new Set());
 
   // Goals state
   const [onboarding, setOnboarding]     = useState(null);
@@ -201,20 +212,36 @@ const Profile = () => {
         .single();
       setOnboarding(ob ?? null);
 
-      // 6. Persist newly unlocked achievements
+      // 6. Load already-unlocked achievements from DB
+      const { data: dbUnlocked } = await supabase
+        .from('user_achievements')
+        .select('achievement_id')
+        .eq('profile_id', user.id);
+      const alreadyUnlockedIds = new Set((dbUnlocked ?? []).map(a => a.achievement_id));
+      setUnlockedAchievementIds(alreadyUnlockedIds);
+
+      // 7. Persist newly unlocked achievements
+      const earlyBird = allSessions.some(s => {
+        const h = new Date(s.completed_at).getHours();
+        return h < 7;
+      });
       const achData = {
         sessions:    allSessions.length,
         streak:      computeStreak(allSessions),
         totalVolume: allSessions.reduce((s, x) => s + (parseFloat(x.total_volume_lbs) || 0), 0),
         prCount:     (prData ?? []).length,
+        earlyBird,
       };
-      const unlocked = ACHIEVEMENT_DEFS
-        .filter(a => a.check(achData))
+      const newlyUnlocked = ACHIEVEMENT_DEFS
+        .filter(a => a.check(achData) && !alreadyUnlockedIds.has(ACHIEVEMENT_UUID_MAP[a.key]))
         .map(a => ({ profile_id: user.id, gym_id: profile.gym_id, achievement_id: ACHIEVEMENT_UUID_MAP[a.key] }));
-      if (unlocked.length > 0) {
+      if (newlyUnlocked.length > 0) {
         await supabase
           .from('user_achievements')
-          .upsert(unlocked, { onConflict: 'profile_id,achievement_id', ignoreDuplicates: true });
+          .upsert(newlyUnlocked, { onConflict: 'profile_id,achievement_id', ignoreDuplicates: true });
+        // Merge into local set so UI reflects immediately
+        newlyUnlocked.forEach(u => alreadyUnlockedIds.add(u.achievement_id));
+        setUnlockedAchievementIds(new Set(alreadyUnlockedIds));
       }
 
       setLoading(false);
@@ -231,7 +258,8 @@ const Profile = () => {
     : totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(0)}k`
     : `${Math.round(totalVolume)}`;
 
-  const achievementData = { sessions: sessions.length, streak, totalVolume, prCount: prs.length };
+  const earlyBirdLive = sessions.some(s => new Date(s.completed_at).getHours() < 7);
+  const achievementData = { sessions: sessions.length, streak, totalVolume, prCount: prs.length, earlyBird: earlyBirdLive };
   const prGroups = prs.reduce((acc, pr) => {
     const group = pr.exercises?.muscle_group ?? 'Other';
     if (!acc[group]) acc[group] = [];
@@ -432,7 +460,9 @@ const Profile = () => {
       {activeTab === 'achievements' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 animate-fade-in">
           {ACHIEVEMENT_DEFS.map(a => {
-            const unlocked = a.check(achievementData);
+            // Unlocked if DB says so OR live data satisfies the check
+            const uuid = ACHIEVEMENT_UUID_MAP[a.key];
+            const unlocked = unlockedAchievementIds.has(uuid) || a.check(achievementData);
             const Icon = a.icon;
             return (
               <div key={a.key}

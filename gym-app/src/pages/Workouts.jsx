@@ -181,6 +181,7 @@ const Workouts = () => {
   const { profile, user } = useAuth();
   const { routines, loading, createRoutine, deleteRoutine, refetch } = useRoutines();
   const [activeTab, setActiveTab]           = useState('my-routines');
+  const [equipFilter, setEquipFilter]       = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingId, setDeletingId]         = useState(null);
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -486,6 +487,28 @@ const Workouts = () => {
       {/* My Routines */}
       {activeTab === 'my-routines' && (
         <div className="flex flex-col gap-3 animate-fade-in">
+          {/* Equipment filter chips */}
+          {!loading && routines.length > 0 && (
+            <div className="flex gap-2 mb-1">
+              {[
+                { key: 'all',  label: 'All' },
+                { key: 'gym',  label: 'Gym' },
+                { key: 'home', label: 'Home / Bodyweight' },
+              ].map(chip => (
+                <button
+                  key={chip.key}
+                  onClick={() => setEquipFilter(chip.key)}
+                  className={
+                    equipFilter === chip.key
+                      ? 'bg-[#D4AF37] text-black font-semibold rounded-full px-3 py-1 text-[12px]'
+                      : 'bg-[#111827] text-[#6B7280] border border-white/8 rounded-full px-3 py-1 text-[12px]'
+                  }
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          )}
           {loading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map(i => (
@@ -498,8 +521,20 @@ const Workouts = () => {
               <p className="text-[15px] text-[#9CA3AF]">No routines yet</p>
               <p className="text-[13px] mt-1 text-[#6B7280]">Create your first routine above</p>
             </div>
-          ) : (
-            routines.map(routine => (
+          ) : (() => {
+            const isHomeBW = (r) => /home|bodyweight|bw/i.test(r.name);
+            const filtered = equipFilter === 'gym'
+              ? routines.filter(r => !isHomeBW(r))
+              : equipFilter === 'home'
+              ? routines.filter(r => isHomeBW(r))
+              : routines;
+            if (filtered.length === 0) return (
+              <div className="text-center py-16 text-[#6B7280]">
+                <Dumbbell size={36} className="mx-auto mb-3 opacity-20" />
+                <p className="text-[14px] text-[#9CA3AF]">No routines match this filter</p>
+              </div>
+            );
+            return filtered.map(routine => (
               <div
                 key={routine.id}
                 className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5 hover:border-white/[0.12] transition-colors"
@@ -538,8 +573,8 @@ const Workouts = () => {
                   </Link>
                 </div>
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
       )}
 
