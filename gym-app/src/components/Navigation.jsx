@@ -33,10 +33,10 @@ const MEMBER_TABS = [
     label: 'Social',
   },
   {
-    id: 'you',
-    to: '/profile',
-    icon: User,
-    label: 'You',
+    id: 'challenges',
+    to: '/challenges',
+    icon: Trophy,
+    label: 'Challenges',
   },
 ];
 
