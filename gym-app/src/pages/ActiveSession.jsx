@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp, MessageSquare, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion } from '../lib/overloadEngine';
+import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
+import BodyDiagram from '../components/BodyDiagram';
+import ExerciseProgressChart from '../components/ExerciseProgressChart';
+import { exercises as localExercises } from '../data/exercises';
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
 const epley1RM = (weight, reps) => {
@@ -35,7 +39,7 @@ const PRBanner = ({ exercise, weight, reps, onDismiss }) => (
 );
 
 // ── Finish Modal ──────────────────────────────────────────────────────────────
-const FinishModal = ({ workout, sessionPRs, totalVolume, duration, onConfirm, onCancel, saving, error }) => (
+const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error }) => (
   <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm">
     <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in bg-white dark:bg-slate-800 shadow-[0_-8px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_40px_rgba(0,0,0,0.4)]">
       <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-black/10 dark:bg-white/20" />
@@ -45,7 +49,7 @@ const FinishModal = ({ workout, sessionPRs, totalVolume, duration, onConfirm, on
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
           { value: `${(totalVolume / 1000).toFixed(1)}k`, label: 'Volume lbs' },
-          { value: sessionPRs.length, label: 'New PRs' },
+          { value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, label: 'Sets Done' },
           { value: duration, label: 'Duration' },
         ].map(({ value, label }) => (
           <div key={label} className="rounded-2xl p-3 text-center bg-slate-100 dark:bg-slate-700/80">
@@ -144,12 +148,14 @@ const ActiveSession = () => {
   });
   const [sessionRpe, setSessionRpe] = useState(null);
   const [sessionFeeling, setSessionFeeling] = useState(null);
+  const [expandedNotesSet, setExpandedNotesSet] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showProgressChart, setShowProgressChart] = useState(null); // { exerciseId, exerciseName }
+  const restNotificationScheduled = useRef(false);
 
   // ── Notification permission ─────────────────────────────────────────────────
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    requestNotificationPermission();
   }, []);
 
   // ── Load routine + prev session + PRs ──────────────────────────────────────
@@ -269,10 +275,11 @@ const ActiveSession = () => {
       if (draft?.loggedSets) {
         const restored = {};
         enriched.forEach(ex => {
-          restored[ex.id] = draft.loggedSets[ex.id] ??
-            Array.from({ length: ex.targetSets }).map(() => ({
-              weight: '', reps: '', completed: false, isPR: false,
-            }));
+          restored[ex.id] = draft.loggedSets[ex.id]?.map(s => ({
+            weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '', ...s,
+          })) ?? Array.from({ length: ex.targetSets }).map(() => ({
+            weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '',
+          }));
         });
         setLoggedSets(restored);
         if (draft.sessionPRs)           setSessionPRs(draft.sessionPRs);
@@ -288,9 +295,7 @@ const ActiveSession = () => {
         const initialSets = {};
         enriched.forEach(ex => {
           initialSets[ex.id] = Array.from({ length: ex.targetSets }).map(() => ({
-            weight: '',
-            reps:   '',
-            completed: false, isPR: false,
+            weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '',
           }));
         });
         setLoggedSets(initialSets);
@@ -403,13 +408,15 @@ const ActiveSession = () => {
   // ── Rest timer — pauses with workout, fires notification when done ───────────
   useEffect(() => {
     if (!isResting || isPaused) return;
+    // Schedule OS-level notification once when rest begins
+    if (!restNotificationScheduled.current) {
+      restNotificationScheduled.current = true;
+      scheduleRestDoneNotification(
+        exercises[currentExerciseIndex]?.name ?? 'exercise',
+        restTimer
+      );
+    }
     if (restTimer <= 0) {
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification('Rest Complete! 💪', {
-          body: `Time for your next set of ${exercises[currentExerciseIndex]?.name ?? 'the exercise'}!`,
-          icon: '/favicon.ico',
-        });
-      }
       setIsResting(false);
       return;
     }
@@ -448,6 +455,21 @@ const ActiveSession = () => {
   const completedSets = Object.values(loggedSets).flat().filter(s => s.completed).length;
   const totalSets     = Object.values(loggedSets).flat().length;
 
+  // ── Derive worked muscle regions from completed sets ────────────────────────
+  const workedRegions = useMemo(() => {
+    const primary   = new Set();
+    const secondary = new Set();
+    exercises.forEach(ex => {
+      const sets = loggedSets[ex.id] || [];
+      if (!sets.some(s => s.completed)) return;
+      const local = localExercises.find(e => e.id === ex.id);
+      if (!local) return;
+      (local.primaryRegions   || []).forEach(r => primary.add(r));
+      (local.secondaryRegions || []).forEach(r => secondary.add(r));
+    });
+    return { primary: [...primary], secondary: [...secondary] };
+  }, [exercises, loggedSets]);
+
   const handleUpdateSet = (exerciseId, setIndex, field, value) => {
     let val = value;
     if (field === 'weight' || field === 'reps') {
@@ -483,6 +505,7 @@ const ActiveSession = () => {
 
         setCurrentRestDuration(restSeconds);
         setRestTimer(restSeconds);
+        restNotificationScheduled.current = false;
         setIsResting(true);
       } else {
         set.isPR = false;
@@ -502,9 +525,31 @@ const ActiveSession = () => {
   };
 
   const handleAddSet = (exerciseId) => {
+    const exercise = exercises.find(e => e.id === exerciseId);
+    const currentSetsForEx = loggedSets[exerciseId] || [];
+    const newSetIndex = currentSetsForEx.length;
+
+    // Try history entry at same index, then last history entry, then last completed set
+    const histEntry = exercise?.history?.[newSetIndex] ?? exercise?.history?.[exercise.history.length - 1] ?? null;
+    let lastCompleted = null;
+    for (let i = currentSetsForEx.length - 1; i >= 0; i--) {
+      if (currentSetsForEx[i]?.completed && currentSetsForEx[i].weight && currentSetsForEx[i].reps) {
+        lastCompleted = currentSetsForEx[i];
+        break;
+      }
+    }
+    const source = histEntry || lastCompleted;
+
     setLoggedSets(prev => ({
       ...prev,
-      [exerciseId]: [...prev[exerciseId], { weight: '', reps: '', completed: false, isPR: false }],
+      [exerciseId]: [
+        ...prev[exerciseId],
+        {
+          weight: source ? String(source.weight ?? '') : '',
+          reps: source ? String(source.reps ?? '') : '',
+          completed: false, isPR: false, rpe: null, notes: '',
+        },
+      ],
     }));
   };
 
@@ -586,6 +631,8 @@ const ActiveSession = () => {
             estimated_1rm: epley1RM(parseFloat(set.weight), parseInt(set.reps, 10)),
             suggested_weight_lbs: exercise.suggestion?.suggestedWeight ?? null,
             suggested_reps:       exercise.suggestion?.suggestedReps   ?? null,
+            rpe: set.rpe ?? null,
+            notes: set.notes || null,
           }))
         );
         if (setsErr) throw setsErr;
@@ -703,7 +750,8 @@ const ActiveSession = () => {
         replace: true,
         state: {
           routineName, elapsedTime, totalVolume, completedSets,
-          totalExercises: exercises.length, sessionPRs,
+          totalSets,
+          totalExercises: Object.values(loggedSets).filter(sets => sets.some(s => s.completed)).length, sessionPRs,
           completedAt: new Date().toISOString(),
         },
       });
@@ -749,6 +797,7 @@ const ActiveSession = () => {
         <FinishModal
           workout={routineName} sessionPRs={sessionPRs}
           totalVolume={totalVolume} duration={formatTime(elapsedTime)}
+          completedSets={completedSets} totalSets={totalSets}
           onConfirm={handleFinish} onCancel={() => setShowFinishModal(false)}
           saving={saving} error={saveError}
         />
@@ -854,21 +903,6 @@ const ActiveSession = () => {
         </div>
       )}
 
-      {/* Stats bar */}
-      <div className="flex-shrink-0 flex items-center justify-center gap-5 py-2.5 text-[12px] text-[#64748B] dark:text-slate-400 bg-white/80 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
-        <span>{completedSets}/{totalSets} sets</span>
-        <span className="text-slate-400 dark:text-slate-500">·</span>
-        <span>{(totalVolume / 1000).toFixed(1)}k lbs</span>
-        {sessionPRs.length > 0 && (
-          <>
-            <span className="text-slate-400 dark:text-slate-500">·</span>
-            <span className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
-              <Trophy size={11} /> {sessionPRs.length} PR{sessionPRs.length > 1 ? 's' : ''}
-            </span>
-          </>
-        )}
-      </div>
-
       {/* ── Exercise Navigator ───────────────────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10">
         <button
@@ -948,7 +982,7 @@ const ActiveSession = () => {
           </p>
 
           <button
-            onClick={() => setIsResting(false)}
+            onClick={() => { setIsResting(false); cancelRestNotification(); restNotificationScheduled.current = false; }}
             className="px-6 py-3 rounded-2xl font-semibold text-[14px] active:scale-95 transition-transform shadow-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 border border-amber-300 dark:border-amber-600"
           >
             Skip rest
@@ -965,7 +999,17 @@ const ActiveSession = () => {
               {/* Exercise header */}
               <div className="mb-5">
                 <h2 className="font-bold tracking-tight leading-tight flex items-center gap-2.5 text-[#0F172A] dark:text-slate-100" style={{ fontSize: 'clamp(20px,5vw,26px)' }}>
-                  {currentExercise.name}
+                  <button
+                    onClick={() => setShowProgressChart({ exerciseId: currentExercise.id, exerciseName: currentExercise.name })}
+                    className="text-left hover:opacity-80 active:opacity-60 transition-opacity"
+                  >
+                    {currentExercise.name}
+                  </button>
+                  <TrendingUp
+                    size={15}
+                    className="text-slate-300 dark:text-slate-600 flex-shrink-0 cursor-pointer hover:text-amber-500 dark:hover:text-amber-400 transition-colors"
+                    onClick={() => setShowProgressChart({ exerciseId: currentExercise.id, exerciseName: currentExercise.name })}
+                  />
                   {currentSets.some(s => s.isPR) && (
                     <Trophy size={18} className="text-amber-500 dark:text-amber-400 flex-shrink-0" />
                   )}
@@ -1015,6 +1059,31 @@ const ActiveSession = () => {
                 );
               })()}
 
+              {/* Muscles heatmap toggle + panel */}
+              {completedSets > 0 && (
+                <div className="mb-4">
+                  <button
+                    onClick={() => setShowHeatmap(v => !v)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all mb-2 ${
+                      showHeatmap
+                        ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-600/60'
+                        : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-transparent'
+                    }`}
+                  >
+                    <Activity size={11} />
+                    Muscles
+                  </button>
+                  {showHeatmap && (
+                    <BodyDiagram
+                      primaryRegions={workedRegions.primary}
+                      secondaryRegions={workedRegions.secondary}
+                      title="Muscles worked this session"
+                      compact
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Column headers */}
               <div className="flex items-center gap-2 px-2 py-2 mb-2 text-[11px] font-semibold uppercase tracking-wider rounded-xl bg-slate-100 dark:bg-slate-700/80 text-[#64748B] dark:text-slate-400">
                 <div className="w-8 text-center">Set</div>
@@ -1033,139 +1102,201 @@ const ActiveSession = () => {
                   const prPending = !set.completed && isPR(
                     currentExercise.id, set.weight, set.reps, livePRs.current
                   );
+                  const notesKey = `${currentExercise.id}-${setIndex}`;
 
                   return (
-                    <div
-                      key={setIndex}
-                      className={`flex items-center gap-2 px-2 py-2.5 rounded-2xl transition-all duration-300 ${
-                        set.isPR
-                          ? 'bg-amber-100/80 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-600/60'
-                          : set.completed
-                          ? 'bg-emerald-100/80 dark:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-700/60'
-                          : 'bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-white/10'
-                      }`}
-                      onTouchStart={e => {
-                        if (e.touches?.[0]) touchStartXRef.current = e.touches[0].clientX;
-                      }}
-                      onTouchEnd={e => {
-                        const endX = e.changedTouches?.[0]?.clientX ?? 0;
-                        const deltaX = endX - touchStartXRef.current;
-                        if (Math.abs(deltaX) > 40) {
-                          handleToggleComplete(
-                            currentExercise.id,
-                            setIndex,
-                            currentExercise.name,
-                            currentExercise.restSeconds
-                          );
-                        }
-                      }}
-                    >
-                      <div className="w-8 text-center font-bold text-[15px] text-[#64748B] dark:text-slate-400">
-                        {set.isPR
-                          ? <Trophy size={14} className="text-amber-500 mx-auto" />
-                          : setIndex + 1
-                        }
-                      </div>
-
-                      <div className="flex-1 min-w-[60px] text-[13px] font-medium truncate text-[#64748B] dark:text-slate-400">
-                        {prev
-                          ? <>{prev.weight} <span className="opacity-50 text-[11px] mx-0.5">×</span> {prev.reps}</>
-                          : '—'
-                        }
-                      </div>
-
-                      <div className="w-20 sm:w-24 flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          value={set.weight}
-                          onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'weight', e.target.value)}
-                          placeholder="—"
-                          disabled={set.completed}
-                          className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
-                            set.isPR
-                              ? 'text-amber-700 dark:text-amber-400 bg-transparent'
-                              : set.completed
-                              ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
-                              : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPlateCalcState({
-                              open: true,
-                              weight: set.weight,
-                              exerciseName: currentExercise.name,
-                            })
-                          }
-                          className="shrink-0 px-2 py-1 text-[9px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-600/70 text-slate-600 dark:text-slate-200"
-                        >
-                          Plates
-                        </button>
-                      </div>
-
-                      <div className="w-16 sm:w-20">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={0}
-                          value={set.reps}
-                          onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'reps', e.target.value)}
-                          placeholder="—"
-                          disabled={set.completed}
-                          className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
-                            set.isPR
-                              ? 'text-amber-700 dark:text-amber-400 bg-transparent'
-                              : set.completed
-                              ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
-                              : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
-                          }`}
-                        />
-                      </div>
-
-                      <div className="w-10 flex flex-col items-center gap-0.5">
-                        <button
-                          onClick={() => handleToggleComplete(
-                            currentExercise.id, setIndex,
-                            currentExercise.name, currentExercise.restSeconds
-                          )}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-                            set.isPR
-                              ? 'bg-amber-500 dark:bg-amber-500 text-white scale-110 shadow-lg shadow-amber-500/40'
-                              : set.completed
-                              ? 'bg-emerald-500 dark:bg-emerald-500 text-white scale-[1.08] shadow-lg shadow-emerald-500/40'
-                              : prPending
-                              ? 'bg-amber-100 dark:bg-amber-900/50 border-2 border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-400'
-                              : 'bg-slate-50 dark:bg-slate-600/50 border border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400'
-                          }`}
-                        >
-                          {set.completed
-                            ? <CheckCircle size={18} strokeWidth={3} />
-                            : <div className="w-3.5 h-3.5 rounded-sm border-2 border-slate-400 dark:border-slate-500 opacity-50" />
-                          }
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDuplicateLastSet(
+                    <div key={setIndex}>
+                      {/* Main set row */}
+                      <div
+                        className={`flex items-center gap-2 px-2 py-2.5 rounded-2xl transition-all duration-300 ${
+                          set.isPR
+                            ? 'bg-amber-100/80 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-600/60'
+                            : set.completed
+                            ? 'bg-emerald-100/80 dark:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-700/60'
+                            : 'bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-white/10'
+                        }`}
+                        onTouchStart={e => {
+                          if (e.touches?.[0]) touchStartXRef.current = e.touches[0].clientX;
+                        }}
+                        onTouchEnd={e => {
+                          const endX = e.changedTouches?.[0]?.clientX ?? 0;
+                          const deltaX = endX - touchStartXRef.current;
+                          if (Math.abs(deltaX) > 40) {
+                            handleToggleComplete(
                               currentExercise.id,
                               setIndex,
-                              currentExercise.history
-                            )
+                              currentExercise.name,
+                              currentExercise.restSeconds
+                            );
                           }
-                          className="mt-0.5 text-[9px] font-semibold text-indigo-600 dark:text-indigo-300 disabled:opacity-40"
-                          disabled={set.completed}
-                        >
-                          Use last
-                        </button>
-                        {prPending && (
-                          <span className="text-[9px] font-bold uppercase tracking-wide leading-none text-amber-600 dark:text-amber-400">
-                            PR!
-                          </span>
-                        )}
+                        }}
+                      >
+                        <div className="w-8 text-center font-bold text-[15px] text-[#64748B] dark:text-slate-400">
+                          {set.isPR
+                            ? <Trophy size={14} className="text-amber-500 mx-auto" />
+                            : setIndex + 1
+                          }
+                        </div>
+
+                        {/* Previous — gold arrow, visually distinct */}
+                        <div className="flex-1 min-w-[60px] text-[12px] font-semibold truncate">
+                          {prev ? (
+                            <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
+                              ↑ {prev.weight}
+                              <span className="opacity-50 text-[10px] mx-0.5">×</span>
+                              {prev.reps}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500">—</span>
+                          )}
+                        </div>
+
+                        <div className="w-20 sm:w-24 flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            value={set.weight}
+                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'weight', e.target.value)}
+                            placeholder="—"
+                            disabled={set.completed}
+                            className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
+                              set.isPR
+                                ? 'text-amber-700 dark:text-amber-400 bg-transparent'
+                                : set.completed
+                                ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
+                                : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPlateCalcState({
+                                open: true,
+                                weight: set.weight,
+                                exerciseName: currentExercise.name,
+                              })
+                            }
+                            className="shrink-0 px-2 py-1 text-[9px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-600/70 text-slate-600 dark:text-slate-200"
+                          >
+                            Plates
+                          </button>
+                        </div>
+
+                        <div className="w-16 sm:w-20">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            value={set.reps}
+                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'reps', e.target.value)}
+                            placeholder="—"
+                            disabled={set.completed}
+                            className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
+                              set.isPR
+                                ? 'text-amber-700 dark:text-amber-400 bg-transparent'
+                                : set.completed
+                                ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
+                                : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="w-10 flex flex-col items-center gap-0.5">
+                          <button
+                            onClick={() => handleToggleComplete(
+                              currentExercise.id, setIndex,
+                              currentExercise.name, currentExercise.restSeconds
+                            )}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+                              set.isPR
+                                ? 'bg-amber-500 dark:bg-amber-500 text-white scale-110 shadow-lg shadow-amber-500/40'
+                                : set.completed
+                                ? 'bg-emerald-500 dark:bg-emerald-500 text-white scale-[1.08] shadow-lg shadow-emerald-500/40'
+                                : prPending
+                                ? 'bg-amber-100 dark:bg-amber-900/50 border-2 border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-400'
+                                : 'bg-slate-50 dark:bg-slate-600/50 border border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {set.completed
+                              ? <CheckCircle size={18} strokeWidth={3} />
+                              : <div className="w-3.5 h-3.5 rounded-sm border-2 border-slate-400 dark:border-slate-500 opacity-50" />
+                            }
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDuplicateLastSet(
+                                currentExercise.id,
+                                setIndex,
+                                currentExercise.history
+                              )
+                            }
+                            className="mt-0.5 text-[9px] font-semibold text-indigo-600 dark:text-indigo-300 disabled:opacity-40"
+                            disabled={set.completed}
+                          >
+                            Use last
+                          </button>
+                          {prPending && (
+                            <span className="text-[9px] font-bold uppercase tracking-wide leading-none text-amber-600 dark:text-amber-400">
+                              PR!
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {/* RPE + Notes sub-row — appears after completing a set */}
+                      {set.completed && (
+                        <div className="flex items-center gap-2 px-2 pt-1 pb-0.5">
+                          {/* RPE picker */}
+                          <div className="flex items-center gap-1 flex-1">
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider w-7 shrink-0">RPE</span>
+                            <div className="flex gap-0.5">
+                              {[6, 7, 8, 9, 10].map(v => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  onClick={() => handleUpdateSet(currentExercise.id, setIndex, 'rpe', set.rpe === v ? null : v)}
+                                  className={`w-7 h-7 rounded-full text-[11px] font-bold transition-all active:scale-90 ${
+                                    set.rpe === v
+                                      ? 'bg-emerald-500 text-white shadow-sm'
+                                      : 'bg-slate-100 dark:bg-slate-700/80 text-slate-500 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {v}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Notes toggle */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedNotesSet(expandedNotesSet === notesKey ? null : notesKey)}
+                            className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg transition-all ${
+                              set.notes
+                                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            <MessageSquare size={10} />
+                            {set.notes ? 'Note' : '+ Note'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Notes input — expands inline */}
+                      {expandedNotesSet === notesKey && (
+                        <div className="px-2 pb-1.5">
+                          <input
+                            type="text"
+                            value={set.notes || ''}
+                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'notes', e.target.value)}
+                            placeholder="Add a note for this set..."
+                            autoFocus
+                            className="w-full text-[13px] bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none border border-slate-200 dark:border-white/10"
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1236,6 +1367,15 @@ const ActiveSession = () => {
           Finish Workout
         </button>
       </div>
+
+      {/* Exercise progress chart modal */}
+      {showProgressChart && (
+        <ExerciseProgressChart
+          exerciseId={showProgressChart.exerciseId}
+          exerciseName={showProgressChart.exerciseName}
+          onClose={() => setShowProgressChart(null)}
+        />
+      )}
 
       {/* Plate calculator modal */}
       {plateCalcState.open && (

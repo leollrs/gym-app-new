@@ -6,26 +6,26 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const MUSCLE_COLORS = {
-  Chest:      { bg: '#FEE2E2', text: '#B91C1C' },
-  Back:       { bg: '#DBEAFE', text: '#1D4ED8' },
-  Shoulders:  { bg: '#FEF3C7', text: '#B45309' },
-  Biceps:     { bg: '#FEF3C7', text: '#B45309' },
-  Triceps:    { bg: '#FFEDD5', text: '#C2410C' },
-  Legs:       { bg: '#D1FAE5', text: '#047857' },
-  Glutes:     { bg: '#FFEDD5', text: '#C2410C' },
-  Core:       { bg: '#E0F2FE', text: '#0369A1' },
-  Calves:     { bg: '#D1FAE5', text: '#047857' },
-  'Full Body': { bg: '#F3F4F6', text: '#4B5563' },
+  Chest:       { bg: 'rgba(239,68,68,0.15)',   text: '#F87171' },
+  Back:        { bg: 'rgba(59,130,246,0.15)',   text: '#60A5FA' },
+  Shoulders:   { bg: 'rgba(212,175,55,0.15)',   text: '#D4AF37' },
+  Biceps:      { bg: 'rgba(212,175,55,0.15)',   text: '#D4AF37' },
+  Triceps:     { bg: 'rgba(251,146,60,0.15)',   text: '#FB923C' },
+  Legs:        { bg: 'rgba(16,185,129,0.15)',   text: '#34D399' },
+  Glutes:      { bg: 'rgba(251,146,60,0.15)',   text: '#FB923C' },
+  Core:        { bg: 'rgba(14,165,233,0.15)',   text: '#38BDF8' },
+  Calves:      { bg: 'rgba(16,185,129,0.15)',   text: '#34D399' },
+  'Full Body': { bg: 'rgba(107,114,128,0.15)',  text: '#9CA3AF' },
 };
 
 const ExerciseCard = ({ exercise, onSelect, selectable }) => {
   const [expanded, setExpanded] = useState(false);
-  const colors = MUSCLE_COLORS[exercise.muscle] || { bg: '#FEF3C7', text: '#B45309' };
+  const colors = MUSCLE_COLORS[exercise.muscle] || { bg: 'rgba(212,175,55,0.15)', text: '#D4AF37' };
 
   const cardContent = (
     <>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[16px] leading-tight text-[#0F172A] dark:text-slate-100">
+        <p className="font-semibold text-[16px] leading-tight text-[#E5E7EB]">
           {exercise.name}
         </p>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -35,14 +35,14 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
           >
             {exercise.muscle}
           </span>
-          <span className="text-[12px] text-[#6B7280] dark:text-slate-400">
+          <span className="text-[12px] text-[#6B7280]">
             {exercise.equipment}
           </span>
         </div>
       </div>
       <ChevronDown
         size={18}
-        className={`flex-shrink-0 transition-transform duration-200 text-[#9CA3AF] dark:text-slate-500 ${expanded ? 'rotate-180' : ''}`}
+        className={`flex-shrink-0 transition-transform duration-200 text-[#9CA3AF] ${expanded ? 'rotate-180' : ''}`}
       />
     </>
   );
@@ -50,7 +50,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
   // ── SELECTABLE MODE: tap card to expand, tap + to add ───────────────────
   if (selectable) {
     return (
-      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 overflow-hidden shadow-sm">
+      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
         <div
           className="flex items-center gap-4 px-4 py-4 cursor-pointer"
           onClick={() => setExpanded(e => !e)}
@@ -65,21 +65,22 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(exercise); }}
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform bg-[#EEF2FF] dark:bg-indigo-900/40 border border-indigo-200 dark:border-white/10"
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
+            style={{ background: 'rgba(212,175,55,0.18)', border: '1.5px solid rgba(212,175,55,0.5)' }}
           >
-            <Plus size={16} strokeWidth={2.5} className="text-[#4F46E5] dark:text-indigo-400" />
+            <Plus size={16} strokeWidth={2.5} style={{ color: '#D4AF37' }} />
           </button>
         </div>
         {expanded && (
-          <div className="px-4 pb-4 pt-3 border-t border-slate-200 dark:border-white/10">
-            <div className="flex gap-2.5 text-[13px] leading-relaxed text-[#4B5563] dark:text-slate-400">
-              <Info size={14} className="mt-0.5 flex-shrink-0 text-amber-500 dark:text-amber-400" />
+          <div className="px-4 pb-4 pt-3 border-t border-white/8">
+            <div className="flex gap-2.5 text-[13px] leading-relaxed text-[#9CA3AF]">
+              <Info size={14} className="mt-0.5 flex-shrink-0 text-[#D4AF37]" />
               <p>{exercise.instructions}</p>
             </div>
-            <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280] dark:text-slate-400">
-              <span>Default: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultSets} sets</span></span>
-              <span>Reps: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultReps}</span></span>
-              <span>Category: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.category}</span></span>
+            <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280]">
+              <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
+              <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
+              <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
             </div>
             {exercise.primaryRegions?.length > 0 && (
               <div className="mt-4">
@@ -99,7 +100,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
 
   // ── BROWSE MODE: expandable card ─────────────────────────────────────────
   return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 overflow-hidden shadow-sm hover:border-black/10 dark:hover:border-white/20 transition-colors">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/12 transition-colors">
       <div
         className="flex items-center gap-4 px-4 py-4 cursor-pointer"
         onClick={() => setExpanded(e => !e)}
@@ -113,15 +114,15 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
         {cardContent}
       </div>
       {expanded && (
-        <div className="px-4 pb-4 pt-3 border-t border-slate-200 dark:border-white/10">
-          <div className="flex gap-2.5 text-[13px] leading-relaxed text-[#4B5563] dark:text-slate-400">
-            <Info size={14} className="mt-0.5 flex-shrink-0 text-amber-500 dark:text-amber-400" />
+        <div className="px-4 pb-4 pt-3 border-t border-white/8">
+          <div className="flex gap-2.5 text-[13px] leading-relaxed text-[#9CA3AF]">
+            <Info size={14} className="mt-0.5 flex-shrink-0 text-[#D4AF37]" />
             <p>{exercise.instructions}</p>
           </div>
-          <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280] dark:text-slate-400">
-            <span>Default: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultSets} sets</span></span>
-            <span>Reps: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultReps}</span></span>
-            <span>Category: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.category}</span></span>
+          <div className="flex gap-5 mt-4 text-[12px] text-[#6B7280]">
+            <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
+            <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
+            <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
           </div>
           {exercise.primaryRegions?.length > 0 && (
             <div className="mt-4">
@@ -174,19 +175,19 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       <div className="relative mb-5">
         <Search
           size={15}
-          className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#9CA3AF] dark:text-slate-500"
+          className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#9CA3AF]"
         />
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search exercises…"
-          className="w-full rounded-xl pl-10 pr-10 py-3 text-[14px] focus:outline-none transition-colors bg-[#F9FAFB] dark:bg-slate-800 border border-slate-300 dark:border-white/10 text-[#0F172A] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          className="w-full rounded-xl pl-10 pr-10 py-3 text-[14px] focus:outline-none transition-colors bg-[#111827] border border-white/6 text-[#E5E7EB] placeholder-[#4B5563]"
         />
         {query && (
           <button
             onClick={() => setQuery('')}
-            className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors text-[#9CA3AF] dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors text-[#9CA3AF] hover:text-[#E5E7EB]"
           >
             <X size={15} />
           </button>
@@ -201,8 +202,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             onClick={() => setActiveMuscle(m)}
             className={`flex-shrink-0 text-[12px] font-semibold px-3.5 py-1.5 rounded-full transition-colors border ${
               activeMuscle === m
-                ? 'bg-amber-400 dark:bg-amber-500 text-[#0F172A] border-amber-400 dark:border-amber-500'
-                : 'bg-white dark:bg-slate-700 text-[#6B7280] dark:text-slate-400 border-slate-300 dark:border-white/10'
+                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                : 'bg-[#111827] text-[#6B7280] border-white/8'
             }`}
           >
             {m}
@@ -218,8 +219,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             onClick={() => setActiveEquipment(eq)}
             className={`flex-shrink-0 text-[12px] font-semibold px-3.5 py-1.5 rounded-full border transition-colors ${
               activeEquipment === eq
-                ? 'bg-indigo-100 dark:bg-indigo-900/50 text-[#4F46E5] dark:text-indigo-300 border-indigo-200 dark:border-indigo-700'
-                : 'bg-white dark:bg-slate-700 text-[#6B7280] dark:text-slate-400 border-slate-300 dark:border-white/10'
+                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                : 'bg-[#111827] text-[#6B7280] border-white/8'
             }`}
           >
             {eq}
@@ -228,9 +229,9 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       </div>
 
       {/* Results count */}
-      <p className="text-[12px] mb-5 font-medium text-[#64748B] dark:text-slate-400">
+      <p className="text-[12px] mb-5 font-medium text-[#6B7280]">
         {filtered.length} of {allExercises.length} exercises
-        {query && <span> · “{query}”</span>}
+        {query && <span> · "{query}"</span>}
       </p>
 
       {/* Exercise groups */}
@@ -238,7 +239,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         {Object.entries(grouped).map(([muscle, exs]) => (
           <section key={muscle}>
             {activeMuscle === 'All' && (
-              <h3 className="text-[13px] font-bold uppercase tracking-[0.15em] mb-3 text-[#64748B] dark:text-slate-400">
+              <h3 className="text-[13px] font-bold uppercase tracking-[0.15em] mb-3 text-[#6B7280]">
                 {muscle}
               </h3>
             )}
@@ -256,7 +257,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         ))}
 
         {filtered.length === 0 && (
-          <div className="text-center py-20 text-[#6B7280] dark:text-slate-400">
+          <div className="text-center py-20 text-[#6B7280]">
             <Dumbbell size={40} className="mx-auto mb-4 opacity-20" />
             <p className="text-[15px]">No exercises found</p>
             <p className="text-[13px] mt-1">Try a different search or filter</p>
@@ -270,10 +271,10 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 // ── Custom Exercise Card (Mine / Friends tabs) ────────────────────────────────
 const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
   const [expanded, setExpanded] = useState(false);
-  const colors = MUSCLE_COLORS[exercise.muscle] || { bg: '#FEF3C7', text: '#B45309' };
+  const colors = MUSCLE_COLORS[exercise.muscle] || { bg: 'rgba(212,175,55,0.15)', text: '#D4AF37' };
 
   return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 overflow-hidden shadow-sm">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
       <div className="flex items-center gap-4 px-4 py-4 cursor-pointer"
         onClick={() => setExpanded(e => !e)}>
         <div
@@ -283,7 +284,7 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
           <Dumbbell size={18} strokeWidth={2} style={{ color: colors.text }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[16px] leading-tight text-[#0F172A] dark:text-slate-100">
+          <p className="font-semibold text-[16px] leading-tight text-[#E5E7EB]">
             {exercise.name}
           </p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -293,14 +294,14 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
             >
               {exercise.muscle}
             </span>
-            <span className="text-[12px] text-[#64748B] dark:text-slate-400">{exercise.equipment}</span>
+            <span className="text-[12px] text-[#6B7280]">{exercise.equipment}</span>
             {!isMine && exercise.createdByName && (
-              <span className="text-[11px] text-[#64748B] dark:text-slate-400">
+              <span className="text-[11px] text-[#6B7280]">
                 by @{exercise.createdByUsername ?? exercise.createdByName}
               </span>
             )}
             {isMine && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
                 Created by you
               </span>
             )}
@@ -308,29 +309,29 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
         </div>
         {!isMine && !isSaved && onSave && (
           <button onClick={e => { e.stopPropagation(); onSave(); }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400">
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37]">
             <Bookmark size={12} /> Save
           </button>
         )}
         {isSaved && !isMine && (
-          <span className="flex items-center gap-1 text-[11px] font-medium flex-shrink-0 text-emerald-600 dark:text-emerald-400">
+          <span className="flex items-center gap-1 text-[11px] font-medium flex-shrink-0 text-[#10B981]">
             <Check size={11} /> Saved
           </span>
         )}
-        <ChevronDown size={16} className={`flex-shrink-0 transition-transform duration-200 text-[#64748B] dark:text-slate-400 ${expanded ? 'rotate-180' : ''}`} />
+        <ChevronDown size={16} className={`flex-shrink-0 transition-transform duration-200 text-[#6B7280] ${expanded ? 'rotate-180' : ''}`} />
       </div>
 
       {expanded && (
-        <div className="px-5 pb-5 pt-3 border-t border-slate-200 dark:border-white/10">
+        <div className="px-5 pb-5 pt-3 border-t border-white/8">
           {exercise.instructions && (
-            <div className="flex gap-2.5 text-[13px] leading-relaxed mb-3 text-[#475569] dark:text-slate-400">
-              <Info size={14} className="mt-0.5 flex-shrink-0 text-amber-500 dark:text-amber-400" />
+            <div className="flex gap-2.5 text-[13px] leading-relaxed mb-3 text-[#9CA3AF]">
+              <Info size={14} className="mt-0.5 flex-shrink-0 text-[#D4AF37]" />
               <p>{exercise.instructions}</p>
             </div>
           )}
-          <div className="flex gap-5 text-[12px] text-[#64748B] dark:text-slate-400">
-            <span>Default: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultSets} sets</span></span>
-            <span>Reps: <span className="font-semibold text-[#0F172A] dark:text-slate-100">{exercise.defaultReps}</span></span>
+          <div className="flex gap-5 text-[12px] text-[#6B7280]">
+            <span>Default: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultSets} sets</span></span>
+            <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
           </div>
         </div>
       )}
@@ -368,34 +369,28 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label }) => {
   }, []);
   return (
     <div ref={ref} className="relative">
-      <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
+      <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-[#9CA3AF]">
         {label}
       </label>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full rounded-xl px-3 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none transition-colors"
-        style={{
-          background: '#F9FAFB',
-          border: '1px solid rgba(148,163,184,0.7)',
-          color: '#0F172A',
-        }}
+        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none transition-colors text-[#E5E7EB]"
       >
         <span>{value || placeholder}</span>
-        <ChevronDown size={16} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#6B7280' }} />
+        <ChevronDown size={16} className={`flex-shrink-0 transition-transform text-[#6B7280] ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div
-          className="absolute left-0 right-0 top-full mt-1 rounded-xl border shadow-lg overflow-hidden z-10 max-h-[200px] overflow-y-auto"
-          style={{ background: '#FFFFFF', borderColor: 'rgba(148,163,184,0.5)' }}
+          className="absolute left-0 right-0 top-full mt-1 bg-[#111827] border border-white/8 rounded-xl shadow-lg overflow-hidden z-10 max-h-[200px] overflow-y-auto"
         >
           {options.map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => { onChange(opt); setOpen(false); }}
-              className="w-full px-3 py-3 text-left text-[14px] hover:bg-[#F3F4F6] transition-colors"
-              style={{ color: value === opt ? '#4F46E5' : '#0F172A' }}
+              className="w-full px-3 py-3 text-left text-[14px] hover:bg-white/5 transition-colors"
+              style={{ color: value === opt ? '#D4AF37' : '#E5E7EB' }}
             >
               {opt}
             </button>
@@ -443,33 +438,30 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   return (
     <div
       className="fixed inset-0 z-[120] flex items-start justify-center px-4 pb-4"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', paddingTop: '20vh' }}
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', paddingTop: '20vh' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className="w-full max-w-[480px] rounded-[20px] p-6 max-h-[80vh] overflow-y-auto"
-        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
-      >
+      <div className="w-full max-w-[480px] bg-[#0F172A] border border-white/8 rounded-[20px] p-6 max-h-[80vh] overflow-y-auto">
 
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-bold text-[18px]" style={{ color: 'var(--text-primary)' }}>New Exercise</h2>
+          <h2 className="font-bold text-[18px] text-[#E5E7EB]">New Exercise</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:opacity-70">
-            <X size={18} style={{ color: 'var(--text-muted)' }} />
+            <X size={18} className="text-[#9CA3AF]" />
           </button>
         </div>
 
         <div className="flex flex-col gap-4">
           {/* Name */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
-              style={{ color: 'var(--text-muted)' }}>Exercise Name *</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-[#9CA3AF]">
+              Exercise Name *
+            </label>
             <input
               autoFocus
               value={form.name}
               onChange={e => set('name', e.target.value)}
               placeholder="e.g. Bulgarian Split Squat"
-              className="w-full rounded-xl px-3 py-2.5 text-[14px] focus:outline-none"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[14px] focus:outline-none text-[#E5E7EB] placeholder-[#4B5563]"
             />
           </div>
 
@@ -492,17 +484,18 @@ const AddExerciseModal = ({ onSave, onClose }) => {
           {/* Sets + Reps */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: 'var(--text-muted)' }}>Default Sets</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-[#9CA3AF]">
+                Default Sets
+              </label>
               <input type="number" min="1" max="10" value={form.defaultSets}
                 onChange={e => set('defaultSets', e.target.value)}
-                className="w-full rounded-xl px-3 py-2.5 text-[13px] focus:outline-none"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none text-[#E5E7EB]"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: 'var(--text-muted)' }}>Default Reps</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-[#9CA3AF]">
+                Default Reps
+              </label>
               <input type="number" inputMode="numeric" min={0} value={form.defaultReps}
                 onChange={e => {
                   const v = e.target.value;
@@ -511,31 +504,29 @@ const AddExerciseModal = ({ onSave, onClose }) => {
                   set('defaultReps', (!isNaN(n) && n < 0) ? '0' : v);
                 }}
                 placeholder="8-12"
-                className="w-full rounded-xl px-3 py-2.5 text-[13px] focus:outline-none"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none text-[#E5E7EB] placeholder-[#4B5563]"
               />
             </div>
           </div>
 
           {/* Instructions */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
-              style={{ color: 'var(--text-muted)' }}>Instructions (optional)</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-[#9CA3AF]">
+              Instructions (optional)
+            </label>
             <textarea
               value={form.instructions}
               onChange={e => set('instructions', e.target.value)}
               placeholder="How to perform this exercise…"
               rows={3}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] focus:outline-none resize-none"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none resize-none text-[#E5E7EB] placeholder-[#4B5563]"
             />
           </div>
 
           {error && <p className="text-[12px] text-red-500">{error}</p>}
 
           <button onClick={handleSave} disabled={saving}
-            className="w-full py-3 rounded-xl font-semibold text-[14px] disabled:opacity-50 active:scale-95 transition-all"
-            style={{ background: 'var(--accent-gold)', color: '#000' }}>
+            className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-95 transition-all bg-[#D4AF37] text-black">
             {saving ? 'Saving…' : 'Add Exercise'}
           </button>
         </div>
@@ -663,25 +654,23 @@ export const ExerciseLibraryPage = () => {
       {/* Header */}
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold" style={{ color: 'var(--text-primary)', fontFamily: "'Barlow Condensed', sans-serif" }}>
+          <h1 className="text-[24px] font-bold text-[#E5E7EB]" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
             Exercises
           </h1>
-          <p className="text-[13px] mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1 text-[#9CA3AF]">
             {localExercises.length + customExercises.length} exercises available
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold active:scale-95 transition-all"
-          style={{ background: 'var(--accent-gold)', color: '#000' }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black"
         >
           <Plus size={14} /> New Exercise
         </button>
       </header>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 rounded-xl p-1"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+      <div className="flex gap-1 mb-6 bg-[#111827] border border-white/8 rounded-xl p-1">
         {[
           { key: 'all',     label: 'All' },
           { key: 'mine',    label: `Mine${mineExercises.length ? ` · ${mineExercises.length}` : ''}` },
@@ -690,9 +679,9 @@ export const ExerciseLibraryPage = () => {
           <button key={t.key} onClick={() => setTab(t.key)}
             className="flex-1 py-2 rounded-lg text-[13px] font-semibold transition-all"
             style={{
-              background: tab === t.key ? 'var(--bg-card)' : 'transparent',
-              color: tab === t.key ? 'var(--text-primary)' : 'var(--text-muted)',
-              boxShadow: tab === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              background: tab === t.key ? '#0F172A' : 'transparent',
+              color: tab === t.key ? '#E5E7EB' : '#9CA3AF',
+              boxShadow: tab === t.key ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
             }}>
             {t.label}
           </button>
@@ -708,14 +697,13 @@ export const ExerciseLibraryPage = () => {
       {tab === 'mine' && !loading && (
         mineExercises.length === 0 ? (
           <div className="text-center py-20">
-            <Dumbbell size={40} className="mx-auto mb-4 opacity-20" style={{ color: 'var(--text-muted)' }} />
-            <p className="font-semibold text-[16px]" style={{ color: 'var(--text-secondary)' }}>No custom exercises yet</p>
-            <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+            <Dumbbell size={40} className="mx-auto mb-4 opacity-20 text-[#9CA3AF]" />
+            <p className="font-semibold text-[16px] text-[#E5E7EB]">No custom exercises yet</p>
+            <p className="text-[13px] mt-1.5 text-[#9CA3AF]">
               Create your own or save exercises from friends.
             </p>
             <button onClick={() => setShowAddModal(true)}
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold active:scale-95 transition-all"
-              style={{ background: 'var(--accent-gold)', color: '#000' }}>
+              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black">
               <Plus size={14} /> New Exercise
             </button>
           </div>
@@ -732,9 +720,9 @@ export const ExerciseLibraryPage = () => {
       {tab === 'friends' && !loading && (
         friendExercises.length === 0 ? (
           <div className="text-center py-20">
-            <Users size={40} className="mx-auto mb-4 opacity-20" style={{ color: 'var(--text-muted)' }} />
-            <p className="font-semibold text-[16px]" style={{ color: 'var(--text-secondary)' }}>No friend exercises yet</p>
-            <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+            <Users size={40} className="mx-auto mb-4 opacity-20 text-[#9CA3AF]" />
+            <p className="font-semibold text-[16px] text-[#E5E7EB]">No friend exercises yet</p>
+            <p className="text-[13px] mt-1.5 text-[#9CA3AF]">
               When friends add custom exercises, they'll appear here.
             </p>
           </div>

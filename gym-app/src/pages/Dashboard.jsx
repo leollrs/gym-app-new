@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Play, Dumbbell, ChevronRight, ExternalLink, Timer, Flame, Zap } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
-} from 'recharts';
+import { Bell, Play, Dumbbell, ChevronRight, Timer, Flame, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -72,29 +69,6 @@ const computeStreak = (sessions) => {
   return streak;
 };
 
-/* ── Stat card (Apple Fitness-inspired) ─────────────────────────────────────── */
-const StatCard = ({ emoji, label, value, to, gold }) => {
-  const content = (
-    <div className={`rounded-[18px] border shadow-sm hover:shadow-md transition-all px-3 py-4 md:px-4 md:py-4 flex flex-col items-center text-center justify-between h-full ${gold ? 'bg-[#D4AF37]/10 border-[#D4AF37]/30' : 'bg-white/90 dark:bg-slate-800/90 border-black/5 dark:border-white/10'}`}>
-      <div className="flex items-center justify-center gap-2 mb-2">
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#F3F4F6] dark:bg-white/10 text-[15px]">
-          {emoji}
-        </span>
-        <p className="text-[10px] md:text-[11px] text-[#6B7280] dark:text-slate-400 uppercase tracking-[0.18em] font-semibold">
-          {label}
-        </p>
-      </div>
-      <p
-        className={`text-[26px] md:text-[32px] font-black leading-none tracking-tight ${gold ? 'text-[#D4AF37]' : 'text-[#0F172A] dark:text-slate-100'}`}
-        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-      >
-        {value}
-      </p>
-    </div>
-  );
-  return to ? <Link to={to} className="block">{content}</Link> : content;
-};
-
 /* ── Main ───────────────────────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile } = useAuth();
@@ -105,9 +79,11 @@ const Dashboard = () => {
     DAY_LABELS.map(day => ({ day, volume: 0 }))
   );
   const [nextRoutine, setNextRoutine]   = useState(null);
-  const [welcomeMsg, setWelcomeMsg]     = useState('');
+  const [lastSessionForRoutine, setLastSessionForRoutine] = useState(null);
+  const [gymWeekSessions, setGymWeekSessions] = useState(0);
   const [loading, setLoading]           = useState(true);
-  const [unread, setUnread]             = useState(0);
+  const [recentSessions, setRecentSessions] = useState([]);
+  const [readiness, setReadiness]       = useState('Loading…');
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -124,10 +100,10 @@ const Dashboard = () => {
     const load = async () => {
       setLoading(true);
 
-      // 1. Load all completed sessions (lightweight — just what we need for stats)
+      // 1. Load all completed sessions (lightweight — just what we need for stats + cards)
       const { data: sessions } = await supabase
         .from('workout_sessions')
-        .select('completed_at, total_volume_lbs, routine_id')
+        .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
         .eq('profile_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false });
@@ -156,6 +132,21 @@ const Dashboard = () => {
       setStats({ sessions: totalSessions, streak, weekSessions, weekGoal });
       setChartData(weekly);
 
+      // 1b. Recent sessions for activity cards (top 4)
+      setRecentSessions(allSessions.slice(0, 4));
+
+      // 1c. Simple readiness heuristic based on recent training load vs goal
+      if (weekGoal > 0) {
+        if (weekSessions >= weekGoal + 1) setReadiness("Go light today — you're ahead of goal");
+        else if (weekSessions === weekGoal) setReadiness('Optional day — streak padding');
+        else if (weekSessions === weekGoal - 1) setReadiness('Today is important to hit your goal');
+        else setReadiness('Plenty of room to train today');
+      } else {
+        if (streak >= 5) setReadiness("You've been on it — consider how you feel before pushing");
+        else if (streak >= 1) setReadiness('Keep the momentum going today');
+        else setReadiness('Great day to start a new streak');
+      }
+
       // 2. Load first/most-recent routine for "Today's Workout"
       const { data: routines } = await supabase
         .from('routines')
@@ -166,17 +157,22 @@ const Dashboard = () => {
         .limit(1);
 
       if (routines && routines.length > 0) {
-        setNextRoutine(routines[0]);
+        const routine = routines[0];
+        setNextRoutine(routine);
+        const lastForRoutine = allSessions.find(s => s.routine_id === routine.id) ?? null;
+        setLastSessionForRoutine(lastForRoutine);
+      } else {
+        setLastSessionForRoutine(null);
       }
 
-      // 3. Load welcome message (gym news moved to Notifications page)
-      const { data: branding } = await supabase
-        .from('gym_branding')
-        .select('welcome_message')
+      const startOfWeekIso = startOfWeek.toISOString();
+      const { count: gymCount } = await supabase
+        .from('workout_sessions')
+        .select('id', { count: 'exact', head: true })
         .eq('gym_id', profile.gym_id)
-        .single();
-
-      setWelcomeMsg(branding?.welcome_message || '');
+        .eq('status', 'completed')
+        .gte('completed_at', startOfWeekIso);
+      setGymWeekSessions(gymCount ?? 0);
 
       setLoading(false);
     };
@@ -184,239 +180,200 @@ const Dashboard = () => {
     load();
   }, [user, profile]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const fetchUnread = async () => {
-      const { count } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', user.id)
-        .is('read_at', null);
-      setUnread(count || 0);
-    };
-    fetchUnread();
-    const ch = supabase.channel('dashboard-notif')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `profile_id=eq.${user.id}` }, fetchUnread)
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [user?.id]);
-
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
 
-  return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-8 md:pt-10 pb-28 md:pb-12 animate-fade-in">
+  const liftCount = nextRoutine?.routine_exercises?.length ?? 0;
+  const lastVol = lastSessionForRoutine ? Math.round(lastSessionForRoutine.total_volume_lbs || 0) : 0;
+  const lastDur = lastSessionForRoutine?.duration_seconds ? formatTime(lastSessionForRoutine.duration_seconds) : null;
+  const lastSummary = lastVol > 0 ? `${(lastVol / 1000).toFixed(1)}k lbs last time` : lastDur ? `Last time: ${lastDur}` : null;
+  const estimatedMin = lastSessionForRoutine?.duration_seconds ? Math.round(lastSessionForRoutine.duration_seconds / 60) : liftCount * 4;
 
-      {/* ── Greeting / hero strip ───────────────────────────────────────── */}
-      <section className="mb-10">
-        <div className="flex items-center justify-between rounded-2xl border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-800/80 shadow-sm backdrop-blur-xl px-4 md:px-6 py-4 md:py-5">
-          <div className="flex items-center gap-3.5">
-            {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt="Profile"
-                className="w-11 h-11 rounded-2xl border border-white/60 dark:border-white/20 object-cover shadow-sm"
-              />
-            ) : (
-              <div className="w-11 h-11 rounded-2xl bg-[#F3F4FF] dark:bg-white/10 border border-white/70 dark:border-white/10 flex items-center justify-center shadow-sm">
-                <span className="text-[#111827] dark:text-slate-200 font-bold text-[16px]">
-                  {firstName[0]?.toUpperCase()}
-                </span>
-              </div>
-            )}
-            <div>
-              <h1 className="text-[20px] md:text-[22px] font-semibold text-[#0F172A] dark:text-slate-100 leading-tight tracking-tight">
-                Hey, {firstName}
-              </h1>
-              <p className="text-[12px] text-[#64748B] dark:text-slate-400 mt-0.5">
-                Your training at a glance
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+  return (
+    <div className="min-h-screen bg-[#05070B]">
+      <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 animate-fade-in">
+
+        {/* Greeting section */}
+        <section className="mb-5 mt-2">
+          <h1 className="text-xl font-bold text-[#E5E7EB] tracking-tight">
+            Hey, {firstName}
+          </h1>
+          <p className="text-[13px] text-[#9CA3AF] mt-0.5">
+            Stay consistent. Get stronger.
+          </p>
+        </section>
+
+        {/* 3. Hero card — dominant, one clear CTA */}
+        <section className="mb-5">
+          {loading ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-52 animate-pulse" />
+          ) : activeSession ? (
             <button
               type="button"
-              aria-label="Notifications"
-              onClick={() => navigate('/notifications')}
-              className="relative w-11 h-11 rounded-full bg-white/80 dark:bg-white/10 border border-black/5 dark:border-white/10 flex items-center justify-center text-[#64748B] dark:text-slate-400 hover:text-[#D4AF37] dark:hover:text-[#D4AF37] hover:bg-white dark:hover:bg-white/20 shadow-sm transition-colors"
+              onClick={() => navigate(`/session/${activeSession.routineId}`)}
+              className="w-full rounded-[14px] bg-[#0F172A] border border-emerald-500/30 overflow-hidden text-left active:scale-[0.99] transition-transform"
             >
-              <Bell size={20} />
-              {unread > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#D4AF37] text-black text-[9px] font-bold flex items-center justify-center leading-none">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Welcome message (set by gym admin) ─────────────────────────── */}
-      {welcomeMsg && (
-        <div className="mb-8 px-5 py-4 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-[14px]">
-          <p className="text-[13px] text-[#D4AF37] leading-relaxed">{welcomeMsg}</p>
-        </div>
-      )}
-
-      {/* ── TODAY'S WORKOUT ─────────────────────────────────────────────── */}
-      <section className="mb-10">
-        <div className="flex justify-between items-center mb-4">
-          <p className="section-label">Today's Workout</p>
-          <Link
-            to="/workouts"
-            className="text-[12px] text-[#6B7280] dark:text-slate-400 hover:text-[#E5E7EB] dark:hover:text-slate-200 flex items-center gap-0.5 transition-colors"
-          >
-            All workouts <ChevronRight size={13} />
-          </Link>
-        </div>
-
-        {loading ? (
-          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-slate-800/80 h-[120px] animate-pulse shadow-sm" />
-        ) : activeSession ? (
-          /* ── Resume in-progress session ── */
-          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-gradient-to-r from-white via-[#F9FAFB] to-[#EFF6FF] dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 shadow-sm overflow-hidden">
-            <div className="p-5 md:p-6 flex items-center gap-5">
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] mb-2 text-[#2563EB] dark:text-blue-400 flex items-center gap-1.5">
-                  <Timer size={11} />
-                  In progress · {formatTime(activeSession.elapsedTime ?? 0)}
-                </p>
-                <h2
-                  className="text-[26px] md:text-[30px] font-black text-[#0F172A] dark:text-slate-100 leading-tight"
-                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-                >
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Timer size={14} className="text-emerald-400" />
+                  <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+                    In progress
+                  </span>
+                </div>
+                <h2 className="text-2xl font-bold text-[#E5E7EB] tracking-tight mb-1">
                   {activeSession.routineName ?? 'Workout'}
                 </h2>
-                <p className="text-[13px] text-[#6B7280] dark:text-slate-400 mt-2 flex items-center gap-1.5">
-                  <Dumbbell size={13} className="text-[#9CA3AF] dark:text-slate-500" />
-                  {activeSetsCompleted} / {activeSetsTotal} sets completed
+                <p className="text-sm text-[#9CA3AF] mb-4">
+                  {activeSetsCompleted} / {activeSetsTotal} sets · {formatTime(activeSession.elapsedTime ?? 0)}
                 </p>
+                <div className="w-full py-4 rounded-xl bg-emerald-500 text-black text-center font-bold text-base">
+                  Resume workout
+                </div>
               </div>
-
-              <Link
-                to={`/session/${activeSession.routineId}`}
-                aria-label="Resume workout"
-                className="w-16 h-16 md:w-18 md:h-18 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95 bg-[#22C55E] text-white shadow-[0_0_24px_rgba(34,197,94,0.45)]"
-              >
-                <Play size={22} fill="white" stroke="white" strokeWidth={1.5} className="ml-0.5" />
-              </Link>
-            </div>
-            {/* Progress bar */}
-            <div className="h-1 bg-black/5 dark:bg-white/10">
-              <div
-                className="h-full bg-[#22C55E] transition-all"
-                style={{ width: activeSetsTotal > 0 ? `${(activeSetsCompleted / activeSetsTotal) * 100}%` : '0%' }}
-              />
-            </div>
-          </div>
-        ) : nextRoutine ? (
-          /* ── Start a routine ── */
-          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-gradient-to-r from-white via-[#FEFCE8] to-[#FFFBEB] dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 shadow-sm overflow-hidden">
-            <div className="p-5 md:p-6 flex items-center gap-5">
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] mb-2 text-[#CA8A04] dark:text-amber-400">
-                  Ready to train
-                </p>
-                <h2
-                  className="text-[26px] md:text-[30px] font-black text-[#0F172A] dark:text-slate-100 leading-tight"
-                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-                >
+            </button>
+          ) : nextRoutine ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/session/${nextRoutine.id}`)}
+              className="w-full rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden text-left active:scale-[0.99] transition-transform"
+            >
+              <div className="p-5">
+                <h2 className="text-2xl font-bold text-[#E5E7EB] tracking-tight mb-1">
                   {nextRoutine.name}
                 </h2>
-                <p className="text-[13px] text-[#6B7280] dark:text-slate-400 mt-2 flex items-center gap-1.5">
-                  <Dumbbell size={13} className="text-[#9CA3AF] dark:text-slate-500" />
-                  {nextRoutine.routine_exercises?.length ?? 0} exercises
+                <p className="text-sm text-[#9CA3AF] mb-1">
+                  {liftCount} exercises · ~{estimatedMin} min
                 </p>
+                {lastSummary && (
+                  <p className="text-xs text-[#6B7280] mb-4">
+                    Last session: {lastSummary}
+                  </p>
+                )}
+                <div className="w-full py-4 rounded-xl bg-[#D4AF37] text-black text-center font-bold text-base">
+                  Start workout
+                </div>
               </div>
-
+            </button>
+          ) : (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-6 text-center">
+              <Dumbbell size={40} className="mx-auto mb-3 text-[#6B7280]" />
+              <p className="font-semibold text-[#E5E7EB] text-lg">No routines yet</p>
+              <p className="text-sm text-[#9CA3AF] mt-1 mb-5">Create one to get started.</p>
               <Link
-                to={`/session/${nextRoutine.id}`}
-                aria-label="Start workout"
-                className="w-16 h-16 md:w-18 md:h-18 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95 bg-[#D4AF37] text-black dark:text-black shadow-[0_0_24px_rgba(212,175,55,0.45)]"
+                to="/workouts"
+                className="inline-block py-3 px-6 rounded-xl bg-[#D4AF37] text-black font-bold text-sm"
               >
-                <Play size={22} fill="black" stroke="black" strokeWidth={1.5} className="ml-0.5" />
+                Create routine
               </Link>
             </div>
+          )}
+        </section>
+
+        {/* 4. Stats row: Streak, Workouts, Weekly Goal (3 compact cards) */}
+        <section className="grid grid-cols-3 gap-2 mb-5">
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3.5 text-center">
+            <div className="text-lg mb-1">🔥</div>
+            <p className="text-[11px] font-semibold text-[#E5E7EB] uppercase tracking-wider">
+              {loading ? '—' : `${stats.streak} day${stats.streak === 1 ? '' : 's'}`}
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">
+              Don&apos;t break it
+            </p>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 bg-white/70 dark:bg-slate-800/80 p-6 text-center shadow-sm">
-            <Dumbbell size={32} className="mx-auto mb-3 text-[#CBD5E1] dark:text-slate-500" />
-            <p className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">No routines yet</p>
-            <p className="text-[13px] text-[#6B7280] dark:text-slate-400 mt-1">Create your first routine to get started</p>
-            <Link
-              to="/workouts"
-              className="inline-block mt-4 bg-[#D4AF37] hover:bg-[#E6C766] text-black text-[13px] font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm"
-            >
-              Create Routine
-            </Link>
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3.5 text-center">
+            <div className="text-lg mb-1">🏋️</div>
+            <p className="text-[11px] font-semibold text-[#E5E7EB] uppercase tracking-wider">
+              {loading ? '—' : `${stats.sessions} workouts`}
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">Total sessions</p>
           </div>
-        )}
-      </section>
-
-      {/* ── Stats row ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-10">
-        <StatCard emoji="🔥" label="Streak"   value={loading ? '—' : `${stats.streak} days`} />
-        <StatCard emoji="🏋️" label="Workouts" value={loading ? '—' : stats.sessions} to="/workout-log" />
-        <StatCard emoji="🎯" label="This Week" value={loading ? '—' : stats.weekGoal > 0 ? `${stats.weekSessions}/${stats.weekGoal}` : stats.weekSessions} gold={!loading && stats.weekGoal > 0 && stats.weekSessions >= stats.weekGoal} to="/workout-log" />
-      </div>
-
-      {/* ── Quick actions ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2 md:gap-3 mb-10">
-        {[
-          { to: '/nutrition', icon: Flame, label: 'Nutrition', color: '#D4AF37' },
-          { to: '/strength',  icon: Zap,   label: 'Strength',  color: '#A78BFA' },
-        ].map(({ to, icon: Icon, label, color }) => (
-          <Link
-            key={to} to={to}
-            className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-3 py-5 flex flex-col items-center gap-2 min-h-[80px] md:min-h-[72px] justify-center"
-          >
-            <Icon size={22} style={{ color }} strokeWidth={2} />
-            <p className="text-[12px] font-semibold text-[#9CA3AF]">{label}</p>
-          </Link>
-        ))}
-      </div>
-
-      {/* ── Chart + Sidebar ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-8 md:grid md:grid-cols-[1fr_288px]">
-
-        {/* Volume Chart */}
-        <section>
-          <p className="section-label mb-4">Volume This Week</p>
-          <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-5" style={{ height: 248 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 6, right: 4, left: -28, bottom: 0 }}>
-                <XAxis
-                  dataKey="day" axisLine={false} tickLine={false}
-                  tick={{ fill: '#6B7280', fontSize: 11, fontFamily: 'Barlow, sans-serif' }}
-                />
-                <YAxis
-                  axisLine={false} tickLine={false}
-                  tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'Barlow, sans-serif' }}
-                  tickFormatter={v => v >= 1000 ? `${v / 1000}k` : v}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(0,0,0,0.04)' }}
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    borderRadius: '10px',
-                    fontSize: '12px',
-                    fontFamily: 'Barlow, sans-serif',
-                    color: '#0F172A',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                  }}
-                  labelStyle={{ color: '#64748B', fontWeight: 600 }}
-                  formatter={v => [`${v.toLocaleString()} lbs`, '']}
-                />
-                <Bar dataKey="volume" radius={[5, 5, 2, 2]} maxBarSize={36}>
-                  {chartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.volume > 0 ? '#3B82F6' : 'rgba(255,255,255,0.04)'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3.5 text-center">
+            <div className="text-lg mb-1">🎯</div>
+            <p className="text-[11px] font-semibold text-[#E5E7EB] uppercase tracking-wider">
+              {loading ? '—' : stats.weekGoal > 0 ? `${stats.weekSessions} / ${stats.weekGoal}` : `${stats.weekSessions}`}
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">Weekly target</p>
           </div>
         </section>
 
+        {/* 5. Secondary: only 2 cards — Nutrition, Strength */}
+        <section className="grid grid-cols-2 gap-3 mb-5">
+          <Link
+            to="/nutrition"
+            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 flex flex-col items-center justify-center min-h-[100px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
+          >
+            <Flame size={28} className="text-[#D4AF37] mb-2" />
+            <span className="font-semibold text-[#E5E7EB] text-[15px]">Nutrition</span>
+            <span className="text-[11px] text-[#6B7280] mt-1">Calories &amp; macros</span>
+          </Link>
+          <Link
+            to="/strength"
+            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 flex flex-col items-center justify-center min-h-[100px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
+          >
+            <Zap size={28} className="text-[#D4AF37] mb-2" />
+            <span className="font-semibold text-[#E5E7EB] text-[15px]">Strength</span>
+            <span className="text-[11px] text-[#6B7280] mt-1">PRs &amp; volume trends</span>
+          </Link>
+        </section>
+
+        {/* 6. Weekly progress — compact, motivating strip */}
+        <section className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em]">
+              Weekly consistency
+            </span>
+            <span className="text-xs font-semibold text-[#E5E7EB]">
+              {loading ? '—' : stats.weekGoal > 0 ? `${stats.weekSessions} / ${stats.weekGoal} workouts` : `${stats.weekSessions} workouts`}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            {chartData.map((d) => (
+              <div key={d.day} className="flex-1 flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-full rounded-xl transition-all min-h-[40px] ${
+                    d.volume > 0 ? 'bg-[#D4AF37]' : 'bg-[#111827]'
+                  }`}
+                />
+                <span className="text-[10px] font-medium text-[#6B7280]">
+                  {d.day.slice(0, 1)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 7. Recent activity — single card preview + View all */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">
+              Recent
+            </span>
+            <Link
+              to="/workout-log"
+              className="text-xs font-semibold text-[#D4AF37] flex items-center gap-0.5"
+            >
+              View all <ChevronRight size={12} />
+            </Link>
+          </div>
+          {recentSessions.length === 0 ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 px-4 py-3 text-center">
+              <p className="text-xs text-[#6B7280]">No workouts yet</p>
+            </div>
+          ) : (
+            <Link
+              to="/workout-log"
+              className="block rounded-[14px] bg-[#0F172A] border border-white/8 p-3 hover:border-white/[0.12] hover:bg-[#111827] transition-colors"
+            >
+              <p className="font-medium text-[#E5E7EB] text-sm truncate">
+                {recentSessions[0].name || 'Workout'}
+              </p>
+              <p className="text-xs text-[#6B7280] mt-0.5">
+                {recentSessions[0].duration_seconds ? formatTime(recentSessions[0].duration_seconds) : '—'}
+                {' · '}
+                {((recentSessions[0].total_volume_lbs || 0) / 1000).toFixed(1)}k lbs
+              </p>
+            </Link>
+          )}
+        </section>
       </div>
     </div>
   );

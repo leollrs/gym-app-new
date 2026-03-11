@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload } from 'lucide-react';
+import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -147,6 +147,9 @@ export default function BodyMetrics() {
   const [uploadFile,      setUploadFile]      = useState(null);
   const [uploading,       setUploading]       = useState(false);
   const [photoError,      setPhotoError]      = useState('');
+  const [viewingPhoto,    setViewingPhoto]    = useState(null); // { url, angle, taken_at, id }
+  const [deletingId,      setDeletingId]      = useState(null);
+  const [expandedDate,    setExpandedDate]    = useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -245,7 +248,6 @@ export default function BodyMetrics() {
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(uploadFile.type)) {
       setPhotoError('Only JPEG, PNG, WebP, or HEIC photos are allowed'); return;
     }
-    if (uploadFile.size > 5 * 1024 * 1024) { setPhotoError('Photo must be under 5MB'); return; }
     setUploading(true);
     setPhotoError('');
 
@@ -279,6 +281,15 @@ export default function BodyMetrics() {
     setShowPhotoUpload(false);
     loadData();
     setUploading(false);
+  };
+
+  const handleDeletePhoto = async (photo) => {
+    setDeletingId(photo.id);
+    await supabase.storage.from('progress-photos').remove([photo.storage_path]);
+    await supabase.from('progress_photos').delete().eq('id', photo.id);
+    setViewingPhoto(null);
+    setDeletingId(null);
+    loadData();
   };
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -563,9 +574,6 @@ export default function BodyMetrics() {
               </div>
             </div>
           )}
-        </>
-      )}
-
           {/* ── Progress Photos ─────────────────────────────────────────────── */}
           <div
             className="rounded-[14px] p-5 mt-5"
@@ -625,46 +633,133 @@ export default function BodyMetrics() {
               </div>
             )}
 
-            {/* Photo grid by angle */}
+            {/* Date list — photos only load when row is expanded */}
             {photos.length === 0 ? (
               <div className="py-8 text-center">
                 <Camera size={28} style={{ color: '#4B5563', margin: '0 auto 10px' }} strokeWidth={1.5} />
                 <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No progress photos yet</p>
                 <p className="text-[11px] mt-1" style={{ color: 'var(--text-subtle)' }}>Track your transformation over time</p>
               </div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                {['front', 'side', 'back'].map(angle => {
-                  const anglePhotos = photos.filter(p => p.view_angle === angle);
-                  if (anglePhotos.length === 0) return null;
-                  return (
-                    <div key={angle}>
-                      <p className="text-[11px] font-bold uppercase tracking-widest mb-2.5 capitalize"
-                        style={{ color: 'var(--text-muted)' }}>
-                        {angle}
-                      </p>
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {anglePhotos.slice(0, 12).map(photo => (
-                          <div
-                            key={photo.id}
-                            className="aspect-square rounded-xl overflow-hidden"
-                            style={{ background: '#111827' }}
-                          >
-                            <img
-                              src={photo.url}
-                              alt={`${angle} - ${format(new Date(photo.taken_at), 'MMM d yyyy')}`}
-                              className="w-full h-full object-cover"
-                              onError={e => { e.target.style.display = 'none'; }}
-                            />
+            ) : (() => {
+              const byDate = {};
+              photos.forEach(p => {
+                const day = p.taken_at.slice(0, 10);
+                if (!byDate[day]) byDate[day] = {};
+                byDate[day][p.view_angle] = p;
+              });
+              const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+              return (
+                <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                  {dates.map(day => {
+                    const isOpen = expandedDate === day;
+                    const angleCount = Object.keys(byDate[day]).length;
+                    return (
+                      <div key={day}>
+                        {/* Collapsed row — date + photo count + chevron */}
+                        <button
+                          onClick={() => setExpandedDate(isOpen ? null : day)}
+                          className="w-full flex items-center justify-between py-3 px-1 active:opacity-70 transition-opacity"
+                        >
+                          <div className="flex items-center gap-3">
+                            <p className="text-[14px] font-semibold text-white">
+                              {format(new Date(day + 'T12:00:00'), 'MMMM d, yyyy')}
+                            </p>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-muted)' }}>
+                              {angleCount} photo{angleCount !== 1 ? 's' : ''}
+                            </span>
                           </div>
-                        ))}
+                          {isOpen
+                            ? <ChevronDown size={16} style={{ color: 'var(--text-muted)' }} />
+                            : <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
+                          }
+                        </button>
+
+                        {/* Expanded — 3-column photo grid, images only mount when open */}
+                        {isOpen && (
+                          <div className="pb-4">
+                            <div className="grid grid-cols-3 gap-2 mb-2">
+                              {['Front', 'Side', 'Back'].map(a => (
+                                <p key={a} className="text-center text-[10px] font-bold uppercase tracking-widest"
+                                  style={{ color: 'var(--text-muted)' }}>{a}</p>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {['front', 'side', 'back'].map(angle => {
+                                const photo = byDate[day][angle];
+                                return photo ? (
+                                  <button
+                                    key={angle}
+                                    onClick={() => setViewingPhoto(photo)}
+                                    className="relative w-full rounded-xl overflow-hidden active:scale-95 transition-transform"
+                                    style={{ aspectRatio: '3/4', background: '#111827' }}
+                                  >
+                                    <img
+                                      src={photo.url}
+                                      alt={`${angle} ${day}`}
+                                      className="w-full h-full object-cover"
+                                      onError={e => { e.target.style.display = 'none'; }}
+                                    />
+                                  </button>
+                                ) : (
+                                  <div
+                                    key={angle}
+                                    className="w-full rounded-xl flex items-center justify-center"
+                                    style={{ aspectRatio: '3/4', background: '#111827', border: '1px dashed rgba(255,255,255,0.06)' }}
+                                  >
+                                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>—</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
+        </>
+      )}
+
+      {/* ── Lightbox ──────────────────────────────────────────────────────── */}
+      {viewingPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-sm"
+          onClick={() => setViewingPhoto(null)}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 pt-safe-top pt-4 pb-3" onClick={e => e.stopPropagation()}>
+            <div>
+              <p className="text-[13px] font-semibold capitalize text-white">{viewingPhoto.view_angle}</p>
+              <p className="text-[11px] text-[#6B7280]">{format(new Date(viewingPhoto.taken_at), 'MMMM d, yyyy')}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleDeletePhoto(viewingPhoto)}
+                disabled={deletingId === viewingPhoto.id}
+                className="px-3 py-1.5 rounded-xl text-[12px] font-semibold text-red-400 border border-red-800/60 disabled:opacity-50"
+              >
+                {deletingId === viewingPhoto.id ? 'Deleting…' : 'Delete'}
+              </button>
+              <button onClick={() => setViewingPhoto(null)}>
+                <X size={22} className="text-white" />
+              </button>
+            </div>
+          </div>
+
+          {/* Full-size image */}
+          <div className="flex-1 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+            <img
+              src={viewingPhoto.url}
+              alt=""
+              className="max-h-full max-w-full object-contain rounded-2xl"
+            />
+          </div>
+        </div>
+      )}
 
       {showMeasurements && (
         <MeasurementsModal

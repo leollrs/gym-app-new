@@ -71,7 +71,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
       onClick={onClose}
     >
       <div
-        className="bg-[#0F172A] border border-white/8 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+        className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -148,14 +148,14 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
         <div className="p-5 border-t border-white/6 flex-shrink-0">
           {isEnrolled ? (
             <div className="flex gap-3">
-              <div className="flex-1 flex items-center gap-2 py-3 px-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
-                <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
-                <p className="text-[13px] font-semibold text-emerald-400">Enrolled</p>
+              <div className="flex-1 flex items-center gap-2 py-3 px-4 rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/10">
+                <CheckCircle2 size={16} className="text-[#D4AF37] flex-shrink-0" />
+                <p className="text-[13px] font-semibold text-[#D4AF37]">Enrolled</p>
               </div>
               <button
                 onClick={handleLeave}
                 disabled={acting}
-                className="px-4 py-3 text-[12px] font-semibold rounded-xl border border-white/10 text-[#9CA3AF] hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-40"
+                className="px-4 py-3 text-[12px] font-semibold rounded-xl border border-white/8 text-[#9CA3AF] hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-40"
               >
                 Leave
               </button>
@@ -164,7 +164,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
             <button
               onClick={handleEnroll}
               disabled={acting}
-              className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors disabled:opacity-50"
+              className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {acting ? 'Enrolling…' : 'Enroll in Program'}
             </button>
@@ -318,41 +318,39 @@ const Workouts = () => {
       {/* Page header */}
       <header className="mb-10 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-[24px] font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
+          <h1 className="text-[24px] font-semibold tracking-tight text-[#E5E7EB]">
             Workouts
           </h1>
-          <p className="text-[13px] mt-1 text-[#64748B] dark:text-slate-400">
-            Build your own routines or follow your gym’s plans.
+          <p className="text-[13px] mt-1 text-[#9CA3AF]">
+            Build your own routines or follow your gym's plans.
           </p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-[13px] font-semibold shadow-sm active:scale-95 transition-transform"
-          style={{ background: 'var(--accent-gold)', color: '#000' }}
+          className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold shadow-sm active:scale-95 transition-transform bg-[#D4AF37] text-black"
         >
           <Plus size={16} />
           New routine
         </button>
       </header>
 
-      {/* ── Generated Program Banner ── */}
+      {/* ── Program context & this week's plan ── */}
       {!programLoading && programExpired && (
-        <div className="mb-8 flex items-center gap-4 rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 shadow-sm px-5 py-4">
-          <div className="w-10 h-10 rounded-full bg-[#FEF3C7] dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-            <RefreshCw size={18} className="text-[#CA8A04] dark:text-amber-400" />
+        <div className="mb-6 flex items-center gap-4 rounded-[14px] border border-white/8 bg-[#0F172A] px-5 py-4">
+          <div className="w-10 h-10 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+            <RefreshCw size={18} className="text-[#D4AF37]" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-[#0F172A] dark:text-slate-100">
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">
               Your 6‑week program has ended
             </p>
-            <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">
+            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
               Reassess and generate a fresh program to keep progressing.
             </p>
           </div>
           <button
             onClick={() => setShowGenerator(true)}
-            className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold hover:opacity-90 transition-colors"
-            style={{ background: 'var(--accent-gold)', color: '#000' }}
+            className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-opacity hover:opacity-90"
           >
             Reassess
           </button>
@@ -360,116 +358,113 @@ const Workouts = () => {
       )}
 
       {!programLoading && !generatedProgram && (
-        <div className="mb-8 flex items-center gap-4 rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 shadow-sm px-5 py-4">
-          <div className="w-10 h-10 rounded-full bg-[#ECFEFF] dark:bg-cyan-900/40 flex items-center justify-center flex-shrink-0">
-            <Zap size={18} className="text-[#0EA5E9] dark:text-cyan-400" />
+        <div className="mb-6 flex items-center gap-4 rounded-[14px] border border-white/8 bg-[#0F172A] px-5 py-4">
+          <div className="w-10 h-10 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+            <Zap size={18} className="text-[#D4AF37]" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-[#0F172A] dark:text-slate-100">
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">
               Generate your personalized program
             </p>
-            <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">
+            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
               6‑week AI‑built plan based on your goals, body, and equipment.
             </p>
           </div>
           <button
             onClick={() => setShowGenerator(true)}
-            className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold hover:opacity-90 transition-colors"
-            style={{ background: 'var(--accent-gold)', color: '#000' }}
+            className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-opacity hover:opacity-90"
           >
             Generate
           </button>
         </div>
       )}
 
-      {/* ── This Week's Plan ── */}
+      {/* ── Program header + today's training options ── */}
       {programActive && thisWeekRoutines.length > 0 && (
-        <div className="mb-10">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-[15px] font-semibold" style={{ color: '#0F172A' }}>This week’s plan</p>
-              <p className="text-[12px]" style={{ color: '#64748B' }}>
-                Week {Math.min(currentWeekNum, 6)} of 6 · {isWeekA ? 'Routine A' : 'Routine B'}
-                {generatedProgram?.cardio_days?.daysPerWeek > 0 && ` · ${generatedProgram.cardio_days.daysPerWeek}× cardio`}
-              </p>
-            </div>
-            <button
-              onClick={() => setShowGenerator(true)}
-              className="text-[11px] font-semibold text-[#6B7280] dark:text-slate-400 hover:text-[#9CA3AF] dark:hover:text-slate-300 transition-colors"
-            >
-              Regenerate
-            </button>
+        <div className="mb-8">
+          <div className="mb-3">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-[#6B7280]">
+              Current program
+            </p>
+            <p className="text-[18px] font-bold text-[#E5E7EB] leading-tight">
+              Routine {isWeekA ? 'A' : 'B'}
+            </p>
+            <p className="text-[13px] text-[#9CA3AF]">
+              Week {Math.min(currentWeekNum, 6)} of 6
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             {thisWeekRoutines.map(routine => (
               <div
                 key={routine.id}
-                className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 flex items-center gap-3 px-4 py-3.5 shadow-sm"
+                className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5"
               >
-                <div className="w-9 h-9 rounded-xl bg-[#EEF2FF] dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0">
-                  <Dumbbell size={15} className="text-[#4F46E5] dark:text-indigo-400" />
+                <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                  <Dumbbell size={15} className="text-[#D4AF37]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[14px] truncate text-[#0F172A] dark:text-slate-100">
+                  <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
                     {routine.name.replace('Auto: ', '')}
                   </p>
-                  <p className="text-[11px] mt-0.5 text-[#6B7280] dark:text-slate-400">
+                  <p className="text-[11px] mt-0.5 text-[#6B7280]">
                     {routine.exerciseCount} exercises
                   </p>
                 </div>
                 <Link
                   to={`/session/${routine.id}`}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform active:scale-95"
-                  style={{
-                    background: '#22C55E',
-                    color: '#FFFFFF',
-                    boxShadow: '0 0 14px rgba(34,197,94,0.5)',
-                  }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 bg-[#D4AF37]"
                 >
-                  <Play size={13} fill="white" stroke="white" strokeWidth={1.5} />
+                  <Play size={13} fill="black" stroke="black" strokeWidth={1.5} />
                 </Link>
               </div>
             ))}
             {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
-              <div className="flex items-center gap-3 rounded-2xl px-4 py-3 border border-emerald-500/20 bg-emerald-50">
-                <Heart size={15} className="text-emerald-500 flex-shrink-0" />
-                <p className="text-[13px] text-emerald-700 font-semibold">
-                  {generatedProgram.cardio_days.daysPerWeek}× {generatedProgram.cardio_days.description}
-                </p>
+              <div className="flex items-center gap-3 rounded-[14px] border border-white/8 bg-[#0F172A] px-4 py-3">
+                <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                  <Heart size={15} className="text-[#D4AF37] flex-shrink-0" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold text-[#E5E7EB]">
+                    Active Recovery
+                  </p>
+                  <p className="text-[12px] text-[#6B7280]">
+                    {generatedProgram.cardio_days.description}
+                  </p>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-4 mb-10">
+      {/* Quick Actions (builder tools) */}
+      <div className="grid grid-cols-2 gap-3 mb-8 mt-4">
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 shadow-sm py-7 transition-transform active:scale-98"
+          className="flex flex-col items-center justify-center gap-2 rounded-[14px] border border-white/8 bg-[#0F172A] py-5 transition-transform active:scale-98"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#FEF3C7] dark:bg-amber-900/40 flex items-center justify-center">
-            <Plus size={22} className="text-[#CA8A04] dark:text-amber-400" />
+          <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center">
+            <Plus size={18} className="text-[#D4AF37]" />
           </div>
-          <span className="font-semibold text-[14px] text-[#0F172A] dark:text-slate-100">
+          <span className="font-medium text-[13px] text-[#E5E7EB]">
             Create routine
           </span>
         </button>
         <Link
           to="/exercises"
-          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 shadow-sm py-7 transition-transform active:scale-98"
+          className="flex flex-col items-center justify-center gap-2 rounded-[14px] border border-white/8 bg-[#0F172A] py-5 transition-transform active:scale-98"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#EEF2FF] dark:bg-indigo-900/40 flex items-center justify-center">
-            <BookOpen size={22} className="text-[#4F46E5] dark:text-indigo-400" />
+          <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center">
+            <BookOpen size={18} className="text-[#9CA3AF]" />
           </div>
-          <span className="font-semibold text-[14px] text-[#0F172A] dark:text-slate-100">
+          <span className="font-medium text-[13px] text-[#E5E7EB]">
             Browse exercises
           </span>
         </Link>
       </div>
 
       {/* Tab bar */}
-      <div className="flex mb-8 rounded-full bg-[#E5E7EB] dark:bg-white/10 p-0.5">
+      <div className="flex mb-8 rounded-xl bg-[#111827] p-1">
         {[
           { key: 'my-routines',  label: 'My Routines' },
           { key: 'gym-programs', label: `Gym Programs${enrolledIds.size ? ` (${enrolledIds.size})` : ''}` },
@@ -477,10 +472,10 @@ const Workouts = () => {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 py-2.5 text-[13px] font-semibold rounded-full transition-colors cursor-pointer ${
+            className={`flex-1 py-2.5 text-[13px] font-semibold rounded-xl transition-colors cursor-pointer ${
               activeTab === tab.key
-                ? 'bg-white dark:bg-slate-700 text-[#0F172A] dark:text-slate-100 shadow-sm'
-                : 'bg-transparent text-[#6B7280] dark:text-slate-400 hover:text-[#111827] dark:hover:text-slate-100'
+                ? 'bg-[#D4AF37] text-black'
+                : 'bg-transparent text-[#6B7280] hover:text-[#E5E7EB]'
             }`}
           >
             {tab.label}
@@ -494,29 +489,29 @@ const Workouts = () => {
           {loading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map(i => (
-                <div key={i} className="bg-slate-200 dark:bg-slate-700 rounded-[14px] border border-slate-200 dark:border-white/10 h-[76px] animate-pulse" />
+                <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[76px] animate-pulse" />
               ))}
             </div>
           ) : routines.length === 0 ? (
-            <div className="text-center py-20 text-[#6B7280] dark:text-slate-400">
+            <div className="text-center py-20 text-[#6B7280]">
               <Dumbbell size={40} className="mx-auto mb-4 opacity-20" />
-              <p className="text-[15px]">No routines yet</p>
-              <p className="text-[13px] mt-1">Create your first routine above</p>
+              <p className="text-[15px] text-[#9CA3AF]">No routines yet</p>
+              <p className="text-[13px] mt-1 text-[#6B7280]">Create your first routine above</p>
             </div>
           ) : (
             routines.map(routine => (
               <div
                 key={routine.id}
-                className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-slate-800 flex items-center gap-3 px-4 py-3.5 shadow-sm hover:border-black/10 dark:hover:border-white/20 transition-colors"
+                className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5 hover:border-white/[0.12] transition-colors"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0">
-                  <Dumbbell size={16} className="text-[#4F46E5] dark:text-indigo-400" />
+                <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                  <Dumbbell size={16} className="text-[#D4AF37]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[15px] truncate text-[#0F172A] dark:text-slate-100">
+                  <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
                     {routine.name}
                   </p>
-                  <div className="flex items-center gap-2 mt-0.5 text-[12px] text-[#6B7280] dark:text-slate-400">
+                  <div className="flex items-center gap-2 mt-0.5 text-[12px] text-[#6B7280]">
                     <span className="flex items-center gap-1"><Dumbbell size={10} /> {routine.exerciseCount} ex</span>
                     <span className="flex items-center gap-1 truncate"><Clock size={10} className="flex-shrink-0" /> {formatLastPerformed(routine.lastPerformedAt)}</span>
                   </div>
@@ -525,26 +520,21 @@ const Workouts = () => {
                   <button
                     onClick={(e) => handleDelete(e, routine.id)}
                     disabled={deletingId === routine.id}
-                    className="w-9 h-9 rounded-lg bg-[#F9FAFB] dark:bg-white/10 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center text-[#9CA3AF] dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors border border-[#E5E7EB] dark:border-white/10 cursor-pointer disabled:opacity-40"
+                    className="w-9 h-9 rounded-lg bg-[#111827] hover:bg-red-900/30 flex items-center justify-center text-[#6B7280] hover:text-red-400 transition-colors border border-white/6 cursor-pointer disabled:opacity-40"
                   >
                     <Trash2 size={14} />
                   </button>
                   <Link
                     to={`/workouts/${routine.id}/edit`}
-                    className="w-9 h-9 rounded-lg bg-[#F9FAFB] dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 flex items-center justify-center text-[#9CA3AF] dark:text-slate-400 hover:text-[#111827] dark:hover:text-slate-100 transition-colors border border-[#E5E7EB] dark:border-white/10 cursor-pointer"
+                    className="w-9 h-9 rounded-lg bg-[#111827] hover:bg-white/10 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6 cursor-pointer"
                   >
                     <Pencil size={14} />
                   </Link>
                   <Link
                     to={`/session/${routine.id}`}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform cursor-pointer active:scale-95"
-                    style={{
-                      background: '#22C55E',
-                      color: '#FFFFFF',
-                      boxShadow: '0 0 12px rgba(34,197,94,0.5)',
-                    }}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform cursor-pointer active:scale-95 bg-[#D4AF37]"
                   >
-                    <Play size={14} fill="white" stroke="white" strokeWidth={1.5} />
+                    <Play size={14} fill="black" stroke="black" strokeWidth={1.5} />
                   </Link>
                 </div>
               </div>
@@ -559,14 +549,14 @@ const Workouts = () => {
           {programsLoading ? (
             <div className="flex flex-col gap-3">
               {[1, 2].map(i => (
-                <div key={i} className="bg-slate-200 dark:bg-slate-700 rounded-[14px] border border-slate-200 dark:border-white/10 h-[100px] animate-pulse" />
+                <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[100px] animate-pulse" />
               ))}
             </div>
           ) : gymPrograms.length === 0 ? (
-            <div className="text-center py-20 text-[#6B7280] dark:text-slate-400">
+            <div className="text-center py-20 text-[#6B7280]">
               <BookOpen size={40} className="mx-auto mb-4 opacity-20" />
-              <p className="text-[15px]">No programs yet</p>
-              <p className="text-[13px] mt-1">Your gym hasn't published any programs</p>
+              <p className="text-[15px] text-[#9CA3AF]">No programs yet</p>
+              <p className="text-[13px] mt-1 text-[#6B7280]">Your gym hasn't published any programs</p>
             </div>
           ) : (
             gymPrograms.map(prog => {
@@ -575,43 +565,41 @@ const Workouts = () => {
                 <button
                   key={prog.id}
                   onClick={() => setSelectedProgram(prog)}
-                  className={`text-left rounded-2xl border transition-colors overflow-hidden w-full bg-white dark:bg-slate-800 shadow-sm ${
-                    enrolled ? 'border-amber-400/60 dark:border-amber-500/50 hover:border-amber-500 dark:hover:border-amber-400' : 'border-black/5 dark:border-white/10 hover:border-black/10 dark:hover:border-white/20'
+                  className={`text-left rounded-[14px] border transition-colors overflow-hidden w-full bg-[#0F172A] ${
+                    enrolled ? 'border-[#D4AF37]/50 hover:border-[#D4AF37]' : 'border-white/8 hover:border-white/[0.12]'
                   }`}
                 >
-                  <div className={`h-[3px] w-full ${enrolled ? 'bg-amber-400 dark:bg-amber-500' : 'bg-[#E5E7EB] dark:bg-white/10'}`} />
+                  <div className={`h-[3px] w-full ${enrolled ? 'bg-[#D4AF37]' : 'bg-white/8'}`} />
                   <div className="p-5 flex items-start gap-4">
                     <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        enrolled ? 'bg-[#FEF3C7] dark:bg-amber-900/40' : 'bg-[#EEF2FF] dark:bg-indigo-900/40'
-                      }`}
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#111827]`}
                     >
                       <Dumbbell
                         size={18}
-                        className={enrolled ? 'text-[#CA8A04] dark:text-amber-400' : 'text-[#4F46E5] dark:text-indigo-400'}
+                        className={enrolled ? 'text-[#D4AF37]' : 'text-[#6B7280]'}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">
+                        <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
                           {prog.name}
                         </h3>
                         {enrolled && (
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                             <CheckCircle2 size={9} /> Enrolled
                           </span>
                         )}
                       </div>
                       {prog.description && (
-                        <p className="text-[12px] mt-1 line-clamp-2 text-[#64748B] dark:text-slate-400">
+                        <p className="text-[12px] mt-1 line-clamp-2 text-[#9CA3AF]">
                           {prog.description}
                         </p>
                       )}
-                      <div className="flex items-center gap-4 mt-2 text-[12px] text-[#6B7280] dark:text-slate-400">
+                      <div className="flex items-center gap-4 mt-2 text-[12px] text-[#6B7280]">
                         <span className="flex items-center gap-1"><Clock size={11} /> {prog.duration_weeks} weeks</span>
                       </div>
                     </div>
-                    <ChevronRight size={16} className="text-[#9CA3AF] dark:text-slate-500 flex-shrink-0 mt-1" />
+                    <ChevronRight size={16} className="text-[#6B7280] flex-shrink-0 mt-1" />
                   </div>
                 </button>
               );

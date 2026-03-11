@@ -6,12 +6,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 
 const TYPE_META = {
-  announcement: { icon: Megaphone, color: 'text-blue-400',     bg: 'bg-blue-500/10'    },
-  pr:           { icon: Trophy,    color: 'text-[#D4AF37]',    bg: 'bg-[#D4AF37]/10'  },
-  milestone:    { icon: Dumbbell,  color: 'text-emerald-400',  bg: 'bg-emerald-500/10' },
-  challenge:    { icon: Zap,       color: 'text-purple-400',   bg: 'bg-purple-500/10'  },
-  friend:       { icon: UserPlus,  color: 'text-pink-400',     bg: 'bg-pink-500/10'    },
-  default:      { icon: Bell,      color: 'text-[#9CA3AF]',    bg: 'bg-white/6'        },
+  announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
+  pr:           { icon: Trophy,    color: 'text-[#D4AF37]',   bg: 'bg-[#D4AF37]/10'  },
+  milestone:    { icon: Dumbbell,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  challenge:    { icon: Zap,       color: 'text-purple-400',  bg: 'bg-purple-500/10'  },
+  friend:       { icon: UserPlus,  color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
+  default:      { icon: Bell,      color: 'text-[#9CA3AF]',   bg: 'bg-white/6'        },
 };
 
 const ANN_ACCENT = {
@@ -24,10 +24,10 @@ const ANN_ACCENT = {
 export default function Notifications() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
-  const [items, setItems]       = useState([]);
+  const [items, setItems]               = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [marking, setMarking]   = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [marking, setMarking]           = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -96,16 +96,16 @@ export default function Notifications() {
   const unreadCount = items.filter(n => !n.read_at).length;
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-24 md:pb-8">
+    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border-b border-white/6 dark:border-white/10">
+      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => navigate(-1)}
               aria-label="Go back"
-              className="p-2 -ml-2 rounded-xl text-[#9CA3AF] dark:text-slate-400 hover:text-[#E5E7EB] dark:hover:text-slate-200 hover:bg-white/5 dark:hover:bg-white/10 transition-colors"
+              className="p-2 -ml-2 rounded-xl text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/5 transition-colors"
             >
               <ChevronLeft size={24} strokeWidth={2} />
             </button>
@@ -113,9 +113,9 @@ export default function Notifications() {
               <Bell size={18} className="text-[#D4AF37]" />
             </div>
             <div>
-              <h1 className="text-[18px] font-bold text-[#E5E7EB] dark:text-slate-100">Notifications</h1>
+              <h1 className="text-[18px] font-bold text-[#E5E7EB]">Notifications</h1>
               {unreadCount > 0 && (
-                <p className="text-[12px] text-[#D4AF37] dark:text-amber-400 font-medium">
+                <p className="text-[12px] text-[#D4AF37] font-medium">
                   {unreadCount} {unreadCount === 1 ? 'message' : 'messages'} not read
                 </p>
               )}
@@ -137,16 +137,16 @@ export default function Notifications() {
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-[11px] font-semibold text-[#6B7280] dark:text-slate-400 uppercase tracking-widest mb-3">Gym News</h2>
+            <h2 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Gym News</h2>
             <div className="flex flex-col gap-3">
               {announcements.map(ann => (
                 <div
                   key={ann.id}
-                  className="bg-[#0F172A] dark:bg-slate-800 rounded-[14px] border border-white/6 dark:border-white/10 hover:border-white/12 dark:hover:border-white/20 transition-colors px-5 py-4 border-l-[3px]"
+                  className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px]"
                   style={{ borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}
                 >
-                  <p className="text-[15px] font-semibold text-[#E5E7EB] dark:text-slate-100 leading-snug">{ann.title}</p>
-                  <p className="text-[13px] text-[#6B7280] dark:text-slate-400 mt-1.5 leading-relaxed">{ann.message}</p>
+                  <p className="text-[15px] font-semibold text-[#E5E7EB] leading-snug">{ann.title}</p>
+                  <p className="text-[13px] text-[#6B7280] mt-1.5 leading-relaxed">{ann.message}</p>
                 </div>
               ))}
             </div>
@@ -155,7 +155,7 @@ export default function Notifications() {
 
         {/* Your notifications */}
         <section>
-          <h2 className="text-[11px] font-semibold text-[#6B7280] dark:text-slate-400 uppercase tracking-widest mb-3">
+          <h2 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">
             Your notifications
           </h2>
         {loading ? (
@@ -164,9 +164,9 @@ export default function Notifications() {
           </div>
         ) : items.length === 0 ? (
           <div className="text-center py-24">
-            <Bell size={32} className="text-[#4B5563] dark:text-slate-500 mx-auto mb-3" />
-            <p className="text-[14px] text-[#6B7280] dark:text-slate-400">No notifications yet</p>
-            <p className="text-[12px] text-[#4B5563] dark:text-slate-500 mt-1">You'll see workout milestones, PRs, and gym announcements here</p>
+            <Bell size={32} className="text-[#4B5563] mx-auto mb-3" />
+            <p className="text-[14px] text-[#6B7280]">No notifications yet</p>
+            <p className="text-[12px] text-[#4B5563] mt-1">You'll see workout milestones, PRs, and gym announcements here</p>
           </div>
         ) : (
           <div className="space-y-1.5">

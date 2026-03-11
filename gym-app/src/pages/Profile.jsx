@@ -111,12 +111,12 @@ const ACHIEVEMENT_UUID_MAP = {
 
 // ── Hero stat block ───────────────────────────────────────────────────────────
 const HeroStat = ({ label, value, sub }) => (
-  <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-slate-200 dark:border-white/10 last:border-r-0">
-    <p className="text-[26px] font-black leading-none text-amber-600 dark:text-amber-400 flex items-baseline justify-center gap-1 flex-wrap">
+  <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
+    <p className="text-[26px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap">
       {value}
-      {sub && <span className="text-[12px] font-semibold text-[#64748B] dark:text-slate-400 normal-case">{sub}</span>}
+      {sub && <span className="text-[12px] font-semibold text-[#6B7280] normal-case">{sub}</span>}
     </p>
-    <p className="text-[11px] font-medium mt-1.5 text-[#64748B] dark:text-slate-400 uppercase tracking-wider">{label}</p>
+    <p className="text-[11px] font-medium mt-1.5 text-[#6B7280] uppercase tracking-wider">{label}</p>
   </div>
 );
 
@@ -270,11 +270,11 @@ const Profile = () => {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] pb-24 md:pb-10 transition-colors">
+    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       <div className="max-w-[680px] mx-auto px-4 pt-6 pb-8">
 
       {/* ── Profile header card ──────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm mb-6 overflow-hidden transition-colors">
+      <div className="rounded-[14px] bg-[#0F172A] border border-white/8 mb-6 overflow-hidden">
 
         {/* Identity row */}
         <div className="flex items-start justify-between p-6 pb-4">
@@ -282,21 +282,21 @@ const Profile = () => {
             <div className="relative flex-shrink-0">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt={profile.full_name}
-                  className="w-[72px] h-[72px] rounded-2xl object-cover border-2 border-amber-200"
+                  className="w-[72px] h-[72px] rounded-[14px] object-cover border-2 border-[#D4AF37]/40"
                 />
               ) : (
-                <div className="w-[72px] h-[72px] rounded-2xl flex items-center justify-center font-black text-[28px] bg-amber-100 border-2 border-amber-200 text-amber-700">
+                <div className="w-[72px] h-[72px] rounded-[14px] flex items-center justify-center font-black text-[28px] bg-amber-900/40 border-2 border-[#D4AF37]/30 text-[#D4AF37]">
                   {(profile?.full_name?.[0] ?? '?').toUpperCase()}
                 </div>
               )}
             </div>
             <div>
-              <h1 className="text-[22px] font-bold leading-tight text-[#0F172A] dark:text-slate-100">
+              <h1 className="text-[22px] font-bold leading-tight text-[#E5E7EB]">
                 {loading ? '—' : profile?.full_name}
               </h1>
-              <p className="text-[13px] mt-0.5 text-[#64748B] dark:text-slate-400">@{profile?.username}</p>
+              <p className="text-[13px] mt-0.5 text-[#9CA3AF]">@{profile?.username}</p>
               {gymName && (
-                <p className="text-[13px] mt-1.5 flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                <p className="text-[13px] mt-1.5 flex items-center gap-1.5 font-semibold text-[#D4AF37]">
                   <Dumbbell size={14} /> {gymName}
                 </p>
               )}
@@ -307,7 +307,7 @@ const Profile = () => {
             <button
               type="button"
               onClick={signOut}
-              className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400"
+              className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-red-900/30 border border-red-800 text-red-400"
               title="Log out"
             >
               <LogOut size={18} />
@@ -316,20 +316,20 @@ const Profile = () => {
         </div>
 
         {joinDate && (
-          <p className="text-[12px] flex items-center gap-1.5 px-6 pb-4 text-[#64748B] dark:text-slate-400">
+          <p className="text-[12px] flex items-center gap-1.5 px-6 pb-4 text-[#6B7280]">
             <Calendar size={12} /> Member since {joinDate}
           </p>
         )}
 
         {/* Hero stats */}
-        <div className="border-t border-slate-100 dark:border-white/10">
+        <div className="border-t border-white/8">
           <div className="grid grid-cols-4 gap-0 w-full">
             <HeroStat label="Workouts" value={loading ? '—' : sessions.length} />
             <HeroStat label="Streak"   value={loading ? '—' : streak} sub="days" />
             <HeroStat label="Volume"   value={loading ? '—' : volumeStr} sub="lbs" />
-            <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-slate-200 dark:border-white/10 last:border-r-0">
-              <p className="text-[26px] font-black leading-none text-amber-600 dark:text-amber-400">{loading ? '—' : prs.length}</p>
-              <p className="text-[11px] font-medium mt-1.5 text-[#64748B] dark:text-slate-400 uppercase tracking-wider">Records</p>
+            <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
+              <p className="text-[26px] font-black leading-none text-[#D4AF37]">{loading ? '—' : prs.length}</p>
+              <p className="text-[11px] font-medium mt-1.5 text-[#6B7280] uppercase tracking-wider">Records</p>
             </div>
           </div>
         </div>
@@ -339,19 +339,19 @@ const Profile = () => {
       <button
         type="button"
         onClick={() => navigate('/metrics')}
-        className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm hover:shadow-md transition-all text-left mb-6"
+        className="w-full flex items-center gap-3 px-4 py-4 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/12 transition-all text-left mb-6"
       >
-        <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-          <Scale size={18} className="text-amber-600 dark:text-amber-400" strokeWidth={2} />
+        <div className="w-10 h-10 rounded-xl bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+          <Scale size={18} className="text-[#D4AF37]" strokeWidth={2} />
         </div>
         <div>
-          <p className="text-[14px] font-semibold text-[#0F172A] dark:text-slate-100">Body Metrics</p>
-          <p className="text-[12px] text-[#64748B] dark:text-slate-400">Weight & measurements</p>
+          <p className="text-[14px] font-semibold text-[#E5E7EB]">Body Metrics</p>
+          <p className="text-[12px] text-[#9CA3AF]">Weight & measurements</p>
         </div>
       </button>
 
       {/* ── Pill tabs ─────────────────────────────────────────────────────────── */}
-      <div className="flex gap-1.5 mb-6 bg-slate-200/60 dark:bg-white/10 p-1.5 rounded-full">
+      <div className="flex gap-1 mb-6 bg-[#111827] p-1 rounded-xl">
         {[
           { key: 'prs',          label: 'Records' },
           { key: 'achievements', label: 'Achievements' },
@@ -362,10 +362,10 @@ const Profile = () => {
             key={t.key}
             type="button"
             onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-2.5 rounded-full text-[13px] font-semibold transition-all ${
+            className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-all ${
               activeTab === t.key
-                ? 'bg-white dark:bg-slate-700 text-[#0F172A] dark:text-slate-100 shadow-sm'
-                : 'text-[#64748B] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-100'
+                ? 'bg-[#D4AF37] text-black font-semibold'
+                : 'text-[#6B7280] hover:text-[#9CA3AF]'
             }`}
           >
             {t.label}
@@ -379,33 +379,33 @@ const Profile = () => {
           {loading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-16 rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 animate-pulse" />
+                <div key={i} className="h-16 rounded-[14px] bg-[#0F172A] border border-white/8 animate-pulse" />
               ))}
             </div>
           ) : Object.keys(prGroups).length === 0 ? (
-            <div className="text-center py-16 rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center mx-auto mb-4">
-                <Trophy size={28} className="text-slate-400 dark:text-slate-500" />
+            <div className="text-center py-16 rounded-[14px] bg-[#0F172A] border border-white/8">
+              <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+                <Trophy size={28} className="text-[#6B7280]" />
               </div>
-              <p className="font-semibold text-[#334155] dark:text-slate-200">No records yet</p>
-              <p className="text-[13px] mt-1 text-[#64748B] dark:text-slate-400">Complete sets to start tracking your PRs</p>
+              <p className="font-semibold text-[#E5E7EB]">No records yet</p>
+              <p className="text-[13px] mt-1 text-[#9CA3AF]">Complete sets to start tracking your PRs</p>
             </div>
           ) : (
             Object.entries(prGroups).map(([group, groupPrs]) => (
               <section key={group}>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">{group}</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{group}</h3>
                 <div className="flex flex-col gap-3">
                   {groupPrs.map(pr => (
                     <div key={pr.exercise_id}
-                      className="rounded-2xl flex items-center gap-4 px-5 py-4 bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm">
-                      <div className="w-11 h-11 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                        <Trophy size={18} className="text-amber-600 dark:text-amber-400" />
+                      className="rounded-[14px] flex items-center gap-4 px-5 py-4 bg-[#0F172A] border border-white/8">
+                      <div className="w-11 h-11 rounded-xl bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                        <Trophy size={18} className="text-[#D4AF37]" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[15px] truncate text-[#0F172A] dark:text-slate-100">
+                        <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
                           {pr.exercises?.name ?? pr.exercise_id}
                         </p>
-                        <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">
+                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
                           {pr.achieved_at
                             ? new Date(pr.achieved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                             : '—'}
@@ -413,11 +413,11 @@ const Profile = () => {
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-black text-[22px] leading-none text-amber-600 dark:text-amber-400">
+                        <p className="font-black text-[22px] leading-none text-[#D4AF37]">
                           {pr.weight_lbs}
-                          <span className="text-[12px] font-normal ml-1 text-[#64748B] dark:text-slate-400">lbs</span>
+                          <span className="text-[12px] font-normal ml-1 text-[#6B7280]">lbs</span>
                         </p>
-                        <p className="text-[12px] mt-0.5 text-[#475569] dark:text-slate-400">× {pr.reps} reps</p>
+                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">× {pr.reps} reps</p>
                       </div>
                     </div>
                   ))}
@@ -436,23 +436,25 @@ const Profile = () => {
             const Icon = a.icon;
             return (
               <div key={a.key}
-                className={`rounded-2xl border p-5 flex flex-col items-center text-center gap-3 transition-all ${
-                  unlocked ? 'bg-white dark:bg-slate-800 border-amber-200/60 dark:border-amber-600/50 shadow-sm' : 'bg-slate-100/80 dark:bg-slate-700/80 border-slate-200 dark:border-white/10 opacity-70'
+                className={`rounded-[14px] border p-5 flex flex-col items-center text-center gap-3 transition-all ${
+                  unlocked
+                    ? 'bg-[#0F172A] border-[#D4AF37]/30'
+                    : 'bg-[#111827] border-white/6 opacity-60'
                 }`}
               >
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  unlocked ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400' : 'bg-slate-200 dark:bg-slate-600 text-slate-400 dark:text-slate-500'
+                  unlocked ? 'bg-amber-900/40 text-[#D4AF37]' : 'bg-[#0F172A] text-[#6B7280]'
                 }`}>
                   {unlocked ? <Icon size={22} /> : <Lock size={20} />}
                 </div>
                 <div>
-                  <p className={`font-semibold text-[14px] ${unlocked ? 'text-[#0F172A] dark:text-slate-100' : 'text-[#64748B] dark:text-slate-400'}`}>
+                  <p className={`font-semibold text-[14px] ${unlocked ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
                     {a.label}
                   </p>
-                  <p className="text-[12px] mt-1 leading-snug text-[#64748B] dark:text-slate-400">{a.desc}</p>
+                  <p className="text-[12px] mt-1 leading-snug text-[#9CA3AF]">{a.desc}</p>
                 </div>
                 {unlocked && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Unlocked</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">Unlocked</span>
                 )}
               </div>
             );
@@ -464,10 +466,10 @@ const Profile = () => {
       {activeTab === 'stats' && (
         <div className="flex flex-col gap-6 animate-fade-in">
           <div>
-            <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Volume — Last 8 Weeks</h3>
-            <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5 h-[224px]">
+            <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Volume — Last 8 Weeks</h3>
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 h-[224px]">
               {loading ? (
-                <div className="h-full animate-pulse rounded-xl bg-slate-100 dark:bg-slate-700" />
+                <div className="h-full animate-pulse rounded-xl bg-[#111827]" />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={weeklyChart} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -478,16 +480,16 @@ const Profile = () => {
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="week" axisLine={false} tickLine={false}
-                      tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                      tick={{ fill: '#6B7280', fontSize: 10 }} />
                     <YAxis axisLine={false} tickLine={false}
-                      tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
+                      tick={{ fill: '#6B7280', fontSize: 10 }}
                       tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
                     <Tooltip
-                      cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1 }}
-                      contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }}
+                      cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+                      contentStyle={{ backgroundColor: '#0F172A', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#E5E7EB' }}
                       formatter={v => [`${v.toLocaleString()} lbs`, 'Volume']}
                     />
-                    <Area type="monotone" dataKey="volume" stroke="#B45309" strokeWidth={2} fill="url(#volGrad)" />
+                    <Area type="monotone" dataKey="volume" stroke="#D4AF37" strokeWidth={2} fill="url(#volGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -495,24 +497,24 @@ const Profile = () => {
           </div>
 
           <div>
-            <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Muscle Balance · This Month</h3>
-            <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
+            <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Muscle Balance · This Month</h3>
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
               {loading ? (
                 <div className="flex flex-col gap-4">
-                  {[1, 2, 3].map(i => <div key={i} className="h-4 rounded-full animate-pulse bg-slate-100 dark:bg-slate-700" />)}
+                  {[1, 2, 3].map(i => <div key={i} className="h-4 rounded-full animate-pulse bg-[#111827]" />)}
                 </div>
               ) : muscleBalance.length === 0 ? (
-                <p className="text-center text-[13px] py-6 text-[#64748B] dark:text-slate-400">No workout data for this month yet</p>
+                <p className="text-center text-[13px] py-6 text-[#9CA3AF]">No workout data for this month yet</p>
               ) : (
                 <div className="flex flex-col gap-4">
                   {muscleBalance.map(({ muscle, sets }) => (
                     <div key={muscle} className="flex items-center gap-4">
-                      <div className="w-20 text-[12px] text-right flex-shrink-0 text-[#475569] dark:text-slate-400">{muscle}</div>
-                      <div className="flex-1 h-2 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700">
+                      <div className="w-20 text-[12px] text-right flex-shrink-0 text-[#9CA3AF]">{muscle}</div>
+                      <div className="flex-1 h-2 rounded-full overflow-hidden bg-[#111827]">
                         <div className="h-full rounded-full transition-all duration-700"
                           style={{ width: `${(sets / maxMuscleSets) * 100}%`, background: MUSCLE_COLORS[muscle] ?? '#D4AF37' }} />
                       </div>
-                      <div className="w-6 text-[12px] text-right flex-shrink-0 text-[#64748B] dark:text-slate-400">{sets}</div>
+                      <div className="w-6 text-[12px] text-right flex-shrink-0 text-[#6B7280]">{sets}</div>
                     </div>
                   ))}
                 </div>
@@ -531,22 +533,23 @@ const Profile = () => {
 
               {/* Fitness Level */}
               <div>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Fitness Level</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Fitness Level</h3>
                 <div className="flex flex-col gap-3">
                   {FITNESS_LEVELS.map(l => (
                     <button key={l.value} type="button"
                       onClick={() => setGoalsDraft(d => ({ ...d, fitness_level: l.value }))}
-                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
+                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-[14px] border transition-all ${
                         goalsDraft.fitness_level === l.value
-                          ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-white/10 shadow-sm'
+                          ? 'bg-amber-900/30 border-[#D4AF37]/50'
+                          : 'bg-[#0F172A] border-white/8'
                       }`}
                     >
                       <span className="text-2xl flex-shrink-0">{l.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-[15px] ${goalsDraft.fitness_level === l.value ? 'text-amber-700 dark:text-amber-300' : 'text-[#0F172A] dark:text-slate-100'}`}>{l.label}</p>
-                        <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">{l.desc}</p>
+                        <p className={`font-semibold text-[15px] ${goalsDraft.fitness_level === l.value ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{l.label}</p>
+                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">{l.desc}</p>
                       </div>
-                      {goalsDraft.fitness_level === l.value && <Check size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />}
+                      {goalsDraft.fitness_level === l.value && <Check size={16} className="text-[#D4AF37] flex-shrink-0" />}
                     </button>
                   ))}
                 </div>
@@ -554,21 +557,23 @@ const Profile = () => {
 
               {/* Primary Goal */}
               <div>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Primary Goal</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Primary Goal</h3>
                 <div className="flex flex-col gap-3">
                   {GOALS.map(g => (
                     <button key={g.value} type="button"
                       onClick={() => setGoalsDraft(d => ({ ...d, primary_goal: g.value }))}
-                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
-                        goalsDraft.primary_goal === g.value ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-white/10 shadow-sm'
+                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-[14px] border transition-all ${
+                        goalsDraft.primary_goal === g.value
+                          ? 'bg-amber-900/30 border-[#D4AF37]/50'
+                          : 'bg-[#0F172A] border-white/8'
                       }`}
                     >
                       <span className="text-2xl flex-shrink-0">{g.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-[15px] ${goalsDraft.primary_goal === g.value ? 'text-amber-700 dark:text-amber-300' : 'text-[#0F172A] dark:text-slate-100'}`}>{g.label}</p>
-                        <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">{g.desc}</p>
+                        <p className={`font-semibold text-[15px] ${goalsDraft.primary_goal === g.value ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>{g.label}</p>
+                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">{g.desc}</p>
                       </div>
-                      {goalsDraft.primary_goal === g.value && <Check size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />}
+                      {goalsDraft.primary_goal === g.value && <Check size={16} className="text-[#D4AF37] flex-shrink-0" />}
                     </button>
                   ))}
                 </div>
@@ -576,14 +581,15 @@ const Profile = () => {
 
               {/* Training Days */}
               <div>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Days Per Week</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Days Per Week</h3>
                 <div className="flex gap-2">
                   {FREQUENCIES.map(n => (
                     <button key={n} type="button"
                       onClick={() => setGoalsDraft(d => ({ ...d, training_days_per_week: n }))}
                       className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all border ${
                         goalsDraft.training_days_per_week === n
-                          ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-300' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-white/10 text-[#64748B] dark:text-slate-400'
+                          ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
+                          : 'bg-[#111827] border-white/8 text-[#6B7280]'
                       }`}
                     >
                       {n}
@@ -594,7 +600,7 @@ const Profile = () => {
 
               {/* Equipment */}
               <div>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Available Equipment</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Available Equipment</h3>
                 <div className="flex flex-wrap gap-2">
                   {EQUIPMENT_OPTIONS.map(eq => {
                     const active = (goalsDraft.available_equipment ?? []).includes(eq.value);
@@ -607,7 +613,9 @@ const Profile = () => {
                             : [...(d.available_equipment ?? []), eq.value],
                         }))}
                         className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
-                          active ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-white/10 text-[#64748B] dark:text-slate-400'
+                          active
+                            ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
+                            : 'bg-[#111827] border-white/8 text-[#6B7280]'
                         }`}
                       >
                         {eq.label}
@@ -619,7 +627,7 @@ const Profile = () => {
 
               {/* Injuries */}
               <div>
-                <h3 className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Injuries / Limitations</h3>
+                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Injuries / Limitations</h3>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {INJURY_OPTIONS.map(inj => {
                     const active = (goalsDraft.injury_areas ?? []).includes(inj.value);
@@ -632,7 +640,9 @@ const Profile = () => {
                             : [...(d.injury_areas ?? []), inj.value],
                         }))}
                         className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
-                          active ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-white/10 text-[#64748B] dark:text-slate-400'
+                          active
+                            ? 'bg-red-900/30 border-red-700 text-red-400'
+                            : 'bg-[#111827] border-white/8 text-[#6B7280]'
                         }`}
                       >
                         {inj.label}
@@ -641,7 +651,7 @@ const Profile = () => {
                   })}
                 </div>
                 {(goalsDraft.injury_areas ?? []).length === 0 && (
-                  <p className="text-[11px] text-[#64748B] dark:text-slate-400">Nothing selected — all exercises available.</p>
+                  <p className="text-[11px] text-[#6B7280]">Nothing selected — all exercises available.</p>
                 )}
               </div>
 
@@ -654,49 +664,49 @@ const Profile = () => {
               {loading ? (
                 <div className="flex flex-col gap-4">
                   {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="h-20 rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 animate-pulse" />
+                    <div key={i} className="h-20 rounded-[14px] bg-[#0F172A] border border-white/8 animate-pulse" />
                   ))}
                 </div>
               ) : (
                 <>
                   {/* Fitness Level */}
-                  <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Fitness Level</p>
+                  <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Fitness Level</p>
                     {(() => {
                       const l = FITNESS_LEVELS.find(x => x.value === onboarding?.fitness_level);
                       return l ? (
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">{l.icon}</span>
                           <div>
-                            <p className="font-semibold text-[15px] text-[#0F172A] dark:text-slate-100">{l.label}</p>
-                            <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">{l.desc}</p>
+                            <p className="font-semibold text-[15px] text-[#E5E7EB]">{l.label}</p>
+                            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">{l.desc}</p>
                           </div>
                         </div>
-                      ) : <p className="text-[#64748B] dark:text-slate-400">Not set</p>;
+                      ) : <p className="text-[#9CA3AF]">Not set</p>;
                     })()}
                   </div>
 
                   {/* Primary Goal */}
-                  <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Primary Goal</p>
+                  <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Primary Goal</p>
                     {(() => {
                       const g = GOALS.find(x => x.value === onboarding?.primary_goal);
                       return g ? (
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">{g.icon}</span>
                           <div>
-                            <p className="font-semibold text-[15px] text-[#0F172A] dark:text-slate-100">{g.label}</p>
-                            <p className="text-[12px] mt-0.5 text-[#64748B] dark:text-slate-400">{g.desc}</p>
+                            <p className="font-semibold text-[15px] text-[#E5E7EB]">{g.label}</p>
+                            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">{g.desc}</p>
                           </div>
                         </div>
-                      ) : <p className="text-[#64748B] dark:text-slate-400">Not set</p>;
+                      ) : <p className="text-[#9CA3AF]">Not set</p>;
                     })()}
                   </div>
 
                   {/* Training Frequency */}
-                  <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-2">Training Frequency</p>
-                    <p className="font-semibold text-[15px] text-[#0F172A] dark:text-slate-100">
+                  <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">Training Frequency</p>
+                    <p className="font-semibold text-[15px] text-[#E5E7EB]">
                       {onboarding?.training_days_per_week
                         ? `${onboarding.training_days_per_week} day${onboarding.training_days_per_week !== 1 ? 's' : ''} per week`
                         : 'Not set'}
@@ -704,25 +714,25 @@ const Profile = () => {
                   </div>
 
                   {/* Equipment */}
-                  <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Available Equipment</p>
+                  <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Available Equipment</p>
                     {onboarding?.available_equipment?.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {onboarding.available_equipment.map(eq => {
                           const found = EQUIPMENT_OPTIONS.find(e => e.value === eq);
                           return (
-                            <span key={eq} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                            <span key={eq} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-amber-900/40 text-[#D4AF37] border border-[#D4AF37]/30">
                               {found?.label ?? eq}
                             </span>
                           );
                         })}
                       </div>
-                    ) : <p className="text-[#64748B] dark:text-slate-400">Not set</p>}
+                    ) : <p className="text-[#9CA3AF]">Not set</p>}
                   </div>
 
                   {/* Injuries */}
-                  <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm p-5">
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-3">Injuries / Limitations</p>
+                  <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Injuries / Limitations</p>
                     {(() => {
                       const areas = onboarding?.injuries_notes
                         ? onboarding.injuries_notes.split(',').map(s => s.trim()).filter(Boolean)
@@ -732,13 +742,13 @@ const Profile = () => {
                           {areas.map(area => {
                             const found = INJURY_OPTIONS.find(o => o.value === area);
                             return (
-                              <span key={area} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800">
+                              <span key={area} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-red-900/30 text-red-400 border border-red-800">
                                 {found?.label ?? area}
                               </span>
                             );
                           })}
                         </div>
-                      ) : <p className="text-[14px] text-[#64748B] dark:text-slate-400">None noted</p>;
+                      ) : <p className="text-[14px] text-[#9CA3AF]">None noted</p>;
                     })()}
                   </div>
 
@@ -751,7 +761,7 @@ const Profile = () => {
                       setGoalsDraft({ ...onboarding, injury_areas });
                       setEditingGoals(true);
                     }}
-                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-slate-200 dark:border-white/10 font-semibold text-[14px] text-[#475569] dark:text-slate-400 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-white/5"
+                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-[14px] border border-white/8 font-semibold text-[14px] text-[#9CA3AF] bg-[#0F172A] hover:bg-[#111827] transition-colors"
                   >
                     <Edit2 size={15} /> Edit Goals &amp; Setup
                   </button>
@@ -765,13 +775,13 @@ const Profile = () => {
             <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 z-50 flex gap-3 px-4 py-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-[#05070B] border-t border-white/10">
               <button type="button"
                 onClick={() => setEditingGoals(false)}
-                className="flex-1 py-3.5 rounded-2xl border border-white/15 text-[15px] font-semibold text-white bg-white/10">
+                className="flex-1 py-3.5 rounded-xl border border-white/15 text-[15px] font-semibold text-[#E5E7EB] bg-white/10">
                 Cancel
               </button>
               <button type="button"
                 onClick={saveGoals}
                 disabled={savingGoals}
-                className="flex-1 py-3.5 rounded-2xl text-[15px] font-bold bg-[#D4AF37] text-black disabled:opacity-50">
+                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold bg-[#D4AF37] text-black disabled:opacity-50">
                 {savingGoals ? 'Saving…' : 'Save Changes'}
               </button>
             </div>

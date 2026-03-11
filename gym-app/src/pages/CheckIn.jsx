@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { format, parseISO, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 
 const METHOD_LABELS = { manual: 'Manual', qr: 'QR Scan', gps: 'GPS' };
 const METHOD_COLORS = { manual: '#9CA3AF', qr: '#D4AF37', gps: '#10B981' };
@@ -13,11 +13,11 @@ export default function CheckIn() {
   const navigate  = useNavigate();
   const { user, profile } = useAuth();
 
-  const [checkins,   setCheckins]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [checking,   setChecking]   = useState(false);
-  const [confirmed,  setConfirmed]  = useState(false);
-  const [error,      setError]      = useState('');
+  const [checkins,  setCheckins]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [checking,  setChecking]  = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error,     setError]     = useState('');
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -41,17 +41,16 @@ export default function CheckIn() {
     setChecking(true);
     setError('');
     const { error: err } = await supabase.from('check_ins').insert({
-      profile_id:     user.id,
-      gym_id:         profile.gym_id,
-      method:         'manual',
-      checked_in_at:  new Date().toISOString(),
+      profile_id:    user.id,
+      gym_id:        profile.gym_id,
+      method:        'manual',
+      checked_in_at: new Date().toISOString(),
     });
     if (err) { setError(err.message); setChecking(false); return; }
     supabase.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id);
     setConfirmed(true);
     await load();
     setChecking(false);
-    // Reset animation after 3s
     setTimeout(() => setConfirmed(false), 3000);
   };
 
@@ -86,22 +85,18 @@ export default function CheckIn() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0F172A] border border-white/6"
         >
-          <ArrowLeft size={18} style={{ color: 'var(--text-secondary)' }} />
+          <ArrowLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Check In</h1>
-          <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Log your gym visit</p>
+          <h1 className="text-[20px] font-bold text-[#E5E7EB]">Check In</h1>
+          <p className="text-[12px] text-[#9CA3AF]">Log your gym visit</p>
         </div>
       </div>
 
       {/* ── Check-in button ──────────────────────────────────────────────────── */}
-      <div
-        className="rounded-[14px] p-6 mb-5 flex flex-col items-center text-center"
-        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
-      >
+      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-6 mb-5 flex flex-col items-center text-center">
         {/* Big check-in button */}
         <button
           onClick={handleCheckIn}
@@ -132,13 +127,13 @@ export default function CheckIn() {
 
         {todayCheckIn ? (
           <div>
-            <p className="text-[15px] font-bold text-white mb-1">You're in!</p>
-            <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">You're in!</p>
+            <p className="text-[12px] text-[#9CA3AF]">
               Checked in at {format(new Date(todayCheckIn.checked_in_at), 'h:mm a')}
             </p>
           </div>
         ) : (
-          <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] text-[#9CA3AF]">
             Tap to log today's gym visit
           </p>
         )}
@@ -150,8 +145,8 @@ export default function CheckIn() {
           className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-full"
           style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.15)' }}
         >
-          <span className="text-[22px] font-black" style={{ color: '#D4AF37' }}>{streak}</span>
-          <span className="text-[13px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          <span className="text-[22px] font-black text-[#D4AF37]">{streak}</span>
+          <span className="text-[13px] font-semibold text-[#9CA3AF]">
             day{streak !== 1 ? 's' : ''} this week streak
           </span>
         </div>
@@ -163,23 +158,17 @@ export default function CheckIn() {
           <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : checkins.length === 0 ? (
-        <div
-          className="rounded-[14px] py-12 text-center"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
-        >
+        <div className="bg-[#0F172A] rounded-[14px] border border-white/8 py-12 text-center">
           <MapPin size={28} style={{ color: '#4B5563', margin: '0 auto 12px' }} strokeWidth={1.5} />
-          <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No check-ins yet</p>
+          <p className="text-[13px] text-[#9CA3AF]">No check-ins yet</p>
         </div>
       ) : (
-        <div
-          className="rounded-[14px] overflow-hidden"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
-        >
-          <p className="text-[13px] font-semibold px-5 pt-4 pb-2" style={{ color: 'var(--text-muted)' }}>History</p>
+        <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
+          <p className="text-[13px] font-semibold px-5 pt-4 pb-2 text-[#9CA3AF]">History</p>
           <div className="divide-y divide-white/4">
             {Object.entries(grouped).map(([label, items]) => (
               <div key={label}>
-                <p className="text-[11px] font-bold uppercase tracking-widest px-5 py-2" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-[11px] font-bold uppercase tracking-widest px-5 py-2 text-[#6B7280]">
                   {label}
                 </p>
                 {items.map(c => (
@@ -194,11 +183,11 @@ export default function CheckIn() {
                       <p className="text-[13px] font-semibold text-[#E5E7EB]">
                         {format(new Date(c.checked_in_at), 'h:mm a')}
                       </p>
-                      <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      <p className="text-[11px] text-[#9CA3AF]">
                         {METHOD_LABELS[c.method] ?? c.method}
                       </p>
                     </div>
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-[11px] text-[#6B7280]">
                       {formatDistanceToNow(new Date(c.checked_in_at), { addSuffix: true })}
                     </p>
                   </div>

@@ -35,8 +35,7 @@ const SessionCard = ({ session }) => {
     : `${Math.round(volumeK)} lbs`;
 
   return (
-    <div className="rounded-[14px] overflow-hidden transition-all"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden transition-all">
 
       {/* Main row */}
       <button
@@ -45,32 +44,31 @@ const SessionCard = ({ session }) => {
       >
         {/* Date block */}
         <div className="flex-shrink-0 w-10 text-center pt-0.5">
-          <p className="text-[11px] font-bold uppercase tracking-wider"
-            style={{ color: 'var(--accent-gold)' }}>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-[#D4AF37]">
             {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
           </p>
-          <p className="text-[24px] font-black leading-none" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-[24px] font-black leading-none text-[#E5E7EB]">
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-[16px] leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
+          <p className="font-bold text-[16px] leading-tight truncate text-[#E5E7EB]">
             {session.name}
           </p>
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
-            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
               <Clock size={11} /> {formatDuration(session.duration_seconds)}
             </span>
-            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
               <Zap size={11} /> {volumeStr}
             </span>
-            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
               <Dumbbell size={11} /> {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
             </span>
             {prSets.length > 0 && (
-              <span className="flex items-center gap-1 text-[12px] font-semibold text-amber-600">
+              <span className="flex items-center gap-1 text-[12px] font-semibold text-[#D4AF37]">
                 <Trophy size={11} /> {prSets.length} PR{prSets.length !== 1 ? 's' : ''}
               </span>
             )}
@@ -80,17 +78,14 @@ const SessionCard = ({ session }) => {
         {/* Expand arrow */}
         <ChevronDown
           size={18}
-          className="flex-shrink-0 mt-1 transition-transform duration-200"
-          style={{
-            color: 'var(--text-muted)',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-          }}
+          className="flex-shrink-0 mt-1 transition-transform duration-200 text-[#9CA3AF]"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
 
       {/* Expanded exercise list */}
       {expanded && (
-        <div className="px-5 pb-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div className="px-5 pb-4 border-t border-white/8">
           <div className="pt-3 flex flex-col gap-3">
             {exercises
               .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
@@ -101,10 +96,10 @@ const SessionCard = ({ session }) => {
                 return (
                   <div key={ex.id}>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <p className="font-semibold text-[14px]" style={{ color: 'var(--text-primary)' }}>
+                      <p className="font-semibold text-[14px] text-[#E5E7EB]">
                         {ex.snapshot_name}
                       </p>
-                      {hasPR && <Trophy size={13} className="text-amber-500" />}
+                      {hasPR && <Trophy size={13} className="text-[#D4AF37]" />}
                     </div>
 
                     <div className="flex flex-wrap gap-1.5">
@@ -116,8 +111,8 @@ const SessionCard = ({ session }) => {
                             className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
                             style={
                               set.is_pr
-                                ? { background: 'rgba(245,158,11,0.1)', color: '#D97706', border: '1px solid rgba(245,158,11,0.25)' }
-                                : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }
+                                ? { background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }
+                                : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.08)' }
                             }
                           >
                             {set.weight_lbs} × {set.reps}
@@ -182,23 +177,22 @@ const WorkoutLog = () => {
   const months = Object.keys(grouped);
 
   return (
-    <div className="mx-auto w-full max-w-[680px] px-4 md:px-6 pt-6 pb-28 md:pb-10 animate-fade-in">
+    <div className="mx-auto w-full max-w-[680px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:opacity-70"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 bg-[#111827] text-[#9CA3AF]"
         >
           <ChevronLeft size={20} strokeWidth={2.5} />
         </button>
         <div>
-          <h1 className="font-black text-[24px] leading-tight" style={{ color: 'var(--text-primary)', fontFamily: "'Barlow Condensed', sans-serif" }}>
+          <h1 className="font-black text-[24px] leading-tight text-[#E5E7EB]" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
             Workout Log
           </h1>
           {!loading && (
-            <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
               {sessions.length} workout{sessions.length !== 1 ? 's' : ''} completed
             </p>
           )}
@@ -209,8 +203,7 @@ const WorkoutLog = () => {
       {loading && (
         <div className="flex flex-col gap-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 rounded-[14px] animate-pulse"
-              style={{ background: 'var(--bg-elevated)' }} />
+            <div key={i} className="h-20 rounded-[14px] animate-pulse bg-[#111827]" />
           ))}
         </div>
       )}
@@ -218,17 +211,16 @@ const WorkoutLog = () => {
       {/* Empty state */}
       {!loading && sessions.length === 0 && (
         <div className="text-center py-20">
-          <Dumbbell size={40} className="mx-auto mb-4" style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
-          <p className="font-semibold text-[16px]" style={{ color: 'var(--text-secondary)' }}>
+          <Dumbbell size={40} className="mx-auto mb-4 text-[#9CA3AF] opacity-40" />
+          <p className="font-semibold text-[16px] text-[#E5E7EB]">
             No workouts yet
           </p>
-          <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1.5 text-[#9CA3AF]">
             Complete your first session to see it here
           </p>
           <button
             onClick={() => navigate('/workouts')}
-            className="mt-6 font-bold text-[14px] px-6 py-2.5 rounded-xl transition-colors"
-            style={{ background: 'var(--accent-gold)', color: '#000' }}
+            className="mt-6 font-bold text-[14px] px-6 py-2.5 rounded-xl transition-colors bg-[#D4AF37] text-black"
           >
             Go to Workouts
           </button>
@@ -238,8 +230,7 @@ const WorkoutLog = () => {
       {/* Sessions grouped by month */}
       {!loading && months.map(month => (
         <div key={month} className="mb-8">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-3"
-            style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-3 text-[#9CA3AF]">
             {month}
           </p>
           <div className="flex flex-col gap-3">

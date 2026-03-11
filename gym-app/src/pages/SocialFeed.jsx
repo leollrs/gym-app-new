@@ -34,28 +34,28 @@ const fmtVolume = (lbs) => {
 const FeedContent = ({ type, data }) => {
   if (type === 'workout_completed') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-amber-400 bg-amber-50/60 dark:bg-amber-900/30 dark:border-amber-500">
-        <p className="font-bold text-[16px] leading-tight mb-3 text-[#0F172A] dark:text-slate-100">
+      <div className="rounded-[14px] p-4 border-l-4 border-[#D4AF37] bg-amber-900/20">
+        <p className="font-bold text-[16px] leading-tight mb-3 text-[#E5E7EB]">
           {data.routine_name ?? 'Workout'}
         </p>
         <div className="flex flex-wrap gap-4">
           {data.duration_seconds > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#64748B] dark:text-slate-400">
+            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
               <Clock size={12} /> {fmtDuration(data.duration_seconds)}
             </span>
           )}
           {data.total_volume_lbs > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#64748B] dark:text-slate-400">
+            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
               <Zap size={12} /> {fmtVolume(data.total_volume_lbs)}
             </span>
           )}
           {data.exercise_count > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#64748B] dark:text-slate-400">
+            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
               <Dumbbell size={12} /> {data.exercise_count} exercise{data.exercise_count !== 1 ? 's' : ''}
             </span>
           )}
           {data.set_count > 0 && (
-            <span className="text-[12px] text-[#64748B] dark:text-slate-400">{data.set_count} sets</span>
+            <span className="text-[12px] text-[#9CA3AF]">{data.set_count} sets</span>
           )}
         </div>
       </div>
@@ -64,16 +64,16 @@ const FeedContent = ({ type, data }) => {
 
   if (type === 'pr_hit') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-amber-400 bg-amber-50/80 dark:bg-amber-900/30 dark:border-amber-500">
+      <div className="rounded-[14px] p-4 border-l-4 border-[#D4AF37] bg-amber-900/20">
         <div className="flex items-center gap-2 mb-1">
-          <Trophy size={14} className="text-amber-500 dark:text-amber-400 flex-shrink-0" />
-          <p className="font-bold text-[13px] text-amber-700 dark:text-amber-300">New Personal Record</p>
+          <Trophy size={14} className="text-[#D4AF37] flex-shrink-0" />
+          <p className="font-bold text-[13px] text-[#D4AF37]">New Personal Record</p>
         </div>
-        <p className="font-black text-[20px] text-[#0F172A] dark:text-slate-100">{data.exercise_name}</p>
-        <p className="text-[15px] font-semibold mt-1 text-amber-700 dark:text-amber-300">
+        <p className="font-black text-[20px] text-[#E5E7EB]">{data.exercise_name}</p>
+        <p className="text-[15px] font-semibold mt-1 text-[#D4AF37]">
           {data.weight_lbs} lbs × {data.reps}{' '}
           {data.estimated_1rm > 0 && (
-            <span className="font-normal text-[13px] text-[#64748B] dark:text-slate-400">· e1RM {Math.round(data.estimated_1rm)} lbs</span>
+            <span className="font-normal text-[13px] text-[#9CA3AF]">· e1RM {Math.round(data.estimated_1rm)} lbs</span>
           )}
         </p>
       </div>
@@ -82,11 +82,11 @@ const FeedContent = ({ type, data }) => {
 
   if (type === 'achievement_unlocked') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-purple-400 bg-purple-50/80 dark:bg-purple-900/30 dark:border-purple-500">
-        <p className="font-bold text-[13px] text-purple-600 dark:text-purple-300 mb-1">Achievement Unlocked 🎖️</p>
-        <p className="font-bold text-[16px] text-[#0F172A] dark:text-slate-100">{data.achievement_name ?? 'New Achievement'}</p>
+      <div className="rounded-[14px] p-4 border-l-4 border-purple-500 bg-purple-900/20">
+        <p className="font-bold text-[13px] text-purple-300 mb-1">Achievement Unlocked 🎖️</p>
+        <p className="font-bold text-[16px] text-[#E5E7EB]">{data.achievement_name ?? 'New Achievement'}</p>
         {data.achievement_desc && (
-          <p className="text-[13px] mt-0.5 text-[#64748B] dark:text-slate-400">{data.achievement_desc}</p>
+          <p className="text-[13px] mt-0.5 text-[#9CA3AF]">{data.achievement_desc}</p>
         )}
       </div>
     );
@@ -94,8 +94,8 @@ const FeedContent = ({ type, data }) => {
 
   if (type === 'check_in') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-emerald-400 bg-emerald-50/80 dark:bg-emerald-900/30 dark:border-emerald-500">
-        <p className="font-semibold text-[15px] text-[#0F172A] dark:text-slate-100">
+      <div className="rounded-[14px] p-4 border-l-4 border-emerald-500 bg-emerald-900/20">
+        <p className="font-semibold text-[15px] text-[#E5E7EB]">
           ✅ Checked in at the gym{data.gym_name ? ` — ${data.gym_name}` : ''}
         </p>
       </div>
@@ -104,8 +104,8 @@ const FeedContent = ({ type, data }) => {
 
   if (type === 'program_started') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-blue-400 bg-blue-50/80 dark:bg-blue-900/30 dark:border-blue-500">
-        <p className="font-semibold text-[15px] text-[#0F172A] dark:text-slate-100">
+      <div className="rounded-[14px] p-4 border-l-4 border-blue-500 bg-blue-900/20">
+        <p className="font-semibold text-[15px] text-[#E5E7EB]">
           🚀 Started <span className="font-bold">{data.program_name ?? 'a new program'}</span>
         </p>
       </div>
@@ -113,8 +113,8 @@ const FeedContent = ({ type, data }) => {
   }
 
   return (
-    <div className="rounded-2xl p-4 bg-slate-100/80 dark:bg-slate-700/50">
-      <p className="text-[14px] text-[#475569] dark:text-slate-400">{type.replace(/_/g, ' ')}</p>
+    <div className="rounded-[14px] p-4 bg-[#111827]">
+      <p className="text-[14px] text-[#9CA3AF]">{type.replace(/_/g, ' ')}</p>
     </div>
   );
 };
@@ -123,11 +123,11 @@ const FeedContent = ({ type, data }) => {
 const Avatar = ({ src, name, size = 44 }) => {
   const initial = (name ?? '?')[0].toUpperCase();
   return src ? (
-    <img src={src} alt={name} className="rounded-full object-cover flex-shrink-0 border-2 border-slate-200 dark:border-white/20"
+    <img src={src} alt={name} className="rounded-full object-cover flex-shrink-0 border-2 border-white/10"
       style={{ width: size, height: size }} />
   ) : (
     <div
-      className="rounded-full flex items-center justify-center flex-shrink-0 font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-2 border-amber-200 dark:border-amber-700"
+      className="rounded-full flex items-center justify-center flex-shrink-0 font-bold bg-amber-900/40 text-[#D4AF37] border-2 border-[#D4AF37]/20"
       style={{ width: size, height: size, fontSize: size * 0.38 }}
     >
       {initial}
@@ -139,14 +139,14 @@ const Avatar = ({ src, name, size = 44 }) => {
 const FriendButton = ({ status, onAdd, onAccept }) => {
   if (status === 'accepted') {
     return (
-      <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/40">
+      <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
         <Check size={12} strokeWidth={2.5} /> Friends
       </span>
     );
   }
   if (status === 'pending_sent') {
     return (
-      <span className="flex items-center gap-1 text-[12px] font-medium text-[#64748B] dark:text-slate-400 flex-shrink-0">
+      <span className="flex items-center gap-1 text-[12px] font-medium text-[#6B7280] flex-shrink-0">
         <Clock size={12} /> Pending
       </span>
     );
@@ -166,7 +166,7 @@ const FriendButton = ({ status, onAdd, onAccept }) => {
     <button
       type="button"
       onClick={onAdd}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-amber-500 text-black hover:bg-amber-600"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 bg-[#D4AF37] text-black hover:opacity-90"
     >
       <UserPlus size={12} strokeWidth={2} /> Add
     </button>
@@ -177,11 +177,11 @@ const FriendButton = ({ status, onAdd, onAccept }) => {
 const CommentRow = ({ comment }) => (
   <div className="flex gap-3 py-2">
     <Avatar src={comment.profiles?.avatar_url} name={comment.profiles?.full_name ?? '?'} size={32} />
-    <div className="flex-1 rounded-2xl px-4 py-2.5 bg-slate-100 dark:bg-slate-700/60 border border-slate-200/80 dark:border-white/10">
-      <span className="font-semibold text-[13px] text-[#0F172A] dark:text-slate-100">
+    <div className="flex-1 rounded-[14px] px-4 py-2.5 bg-[#111827] border border-white/6">
+      <span className="font-semibold text-[13px] text-[#E5E7EB]">
         {comment.profiles?.full_name ?? 'Member'}{' '}
       </span>
-      <span className="text-[13px] text-[#475569] dark:text-slate-400">{comment.content}</span>
+      <span className="text-[13px] text-[#9CA3AF]">{comment.content}</span>
     </div>
   </div>
 );
@@ -226,16 +226,16 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
   };
 
   return (
-    <div className="rounded-2xl overflow-hidden bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm hover:shadow-md transition-shadow">
+    <div className="rounded-[14px] overflow-hidden bg-[#0F172A] border border-white/8 transition-colors">
 
       {/* Header */}
       <div className="flex items-center gap-4 p-5 pb-4">
         <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug text-[#0F172A] dark:text-slate-100">
+          <p className="font-semibold text-[15px] leading-snug text-[#E5E7EB]">
             {item.profiles?.full_name ?? 'Gym Member'}
           </p>
-          <p className="text-[12px] text-[#64748B] dark:text-slate-400 mt-0.5">
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5">
             @{item.profiles?.username ?? '—'} · {timeAgo(item.created_at)}
           </p>
         </div>
@@ -247,11 +247,11 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
       </div>
 
       {/* Action bar */}
-      <div className="flex items-center gap-6 px-5 py-3 border-t border-slate-100 dark:border-white/10">
+      <div className="flex items-center gap-6 px-5 py-3 border-t border-white/8">
         <button
           type="button"
           onClick={() => onToggleLike(item.id, item.hasLiked)}
-          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${item.hasLiked ? 'text-red-500 dark:text-red-400' : 'text-[#64748B] dark:text-slate-400 hover:text-[#475569] dark:hover:text-slate-300'}`}
+          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${item.hasLiked ? 'text-red-400' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}
         >
           <Heart size={16} fill={item.hasLiked ? 'currentColor' : 'none'} />
           {item.likeCount > 0 ? item.likeCount : 'Like'}
@@ -259,7 +259,7 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
         <button
           type="button"
           onClick={handleToggleComments}
-          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${showComments ? 'text-blue-500 dark:text-blue-400' : 'text-[#64748B] dark:text-slate-400 hover:text-[#475569] dark:hover:text-slate-300'}`}
+          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${showComments ? 'text-blue-400' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}
         >
           <MessageCircle size={16} />
           {item.commentCount > 0 ? item.commentCount : 'Comment'}
@@ -268,12 +268,12 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
 
       {/* Comments section */}
       {showComments && (
-        <div className="px-5 pb-5 pt-1 border-t border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+        <div className="px-5 pb-5 pt-1 border-t border-white/8 bg-[#111827]/50">
           <div className="pt-3 flex flex-col">
             {comments === null ? (
-              <p className="text-[13px] py-3 text-center text-[#64748B] dark:text-slate-400">Loading…</p>
+              <p className="text-[13px] py-3 text-center text-[#9CA3AF]">Loading…</p>
             ) : comments.length === 0 ? (
-              <p className="text-[13px] py-2 text-[#64748B] dark:text-slate-400">No comments yet. Be the first!</p>
+              <p className="text-[13px] py-2 text-[#9CA3AF]">No comments yet. Be the first!</p>
             ) : (
               comments.map(c => <CommentRow key={c.id} comment={c} />)
             )}
@@ -285,13 +285,13 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
               onChange={e => setCommentText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmitComment()}
               placeholder="Write a comment…"
-              className="flex-1 rounded-2xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-500/50 border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-700 text-[#0F172A] dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 bg-[#111827] border border-white/6 text-[#E5E7EB] placeholder-[#4B5563]"
             />
             <button
               type="button"
               onClick={handleSubmitComment}
               disabled={!commentText.trim() || submitting}
-              className="w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-amber-500 dark:bg-amber-500 text-black font-semibold"
+              className="w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold"
             >
               <Send size={16} />
             </button>
@@ -424,20 +424,20 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
   const incomingWithRequester = incoming.map((f) => ({ ...f, requester: requesters[f.requester_id] }));
 
   return (
-    <div className="rounded-2xl overflow-hidden mb-6 bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm">
+    <div className="rounded-[14px] overflow-hidden mb-6 bg-[#0F172A] border border-white/8">
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4">
-        <p className="font-bold text-[17px] text-[#0F172A] dark:text-slate-100">
+        <p className="font-bold text-[17px] text-[#E5E7EB]">
           Friends
           {accepted.length > 0 && (
-            <span className="font-normal ml-1.5 text-[#64748B] dark:text-slate-400">· {accepted.length}</span>
+            <span className="font-normal ml-1.5 text-[#6B7280]">· {accepted.length}</span>
           )}
         </p>
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-[#64748B] dark:text-slate-400 transition-colors"
+          className="p-2 rounded-xl hover:bg-white/8 text-[#6B7280] transition-colors"
         >
           <X size={18} />
         </button>
@@ -446,52 +446,52 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
       <div className="px-5 pb-5 space-y-6">
         {/* Add Friends — search same-gym members only */}
         <div>
-          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-2">Add Friends</p>
-          <p className="text-[12px] text-[#64748B] dark:text-slate-400 mb-2">Search for members at your gym by name or username.</p>
+          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">Add Friends</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-2">Search for members at your gym by name or username.</p>
           {!gymId ? (
-            <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200/80 dark:border-amber-700 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-200">
+            <div className="rounded-[14px] bg-amber-900/20 border border-[#D4AF37]/30 px-4 py-3 text-[13px] text-[#D4AF37]">
               You need to be in a gym to add friends. Join or select a gym in your profile.
             </div>
           ) : (
             <>
           <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8] dark:text-slate-500" />
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B7280]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search members at your gym…"
-              className="w-full rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-700/80 pl-11 pr-4 py-3 text-[14px] text-[#0F172A] dark:text-slate-100 placeholder:text-[#94A3B8] dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-500/50 focus:border-amber-300 dark:focus:border-amber-500/50"
+              className="w-full rounded-xl border border-white/6 bg-[#111827] pl-11 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37]/40"
             />
           </div>
           {searching && (
             <div className="mt-3 flex justify-center py-4">
-              <div className="w-5 h-5 border-2 border-amber-200 dark:border-amber-800 border-t-amber-500 dark:border-t-amber-400 rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
             </div>
           )}
           {!searching && searchQuery.trim() && (
             <div className="mt-3 space-y-1 max-h-[240px] overflow-y-auto">
               {searchResults.length === 0 ? (
-                <p className="text-[13px] text-[#64748B] dark:text-slate-400 py-4 text-center">No one found at your gym. Try a different name or username.</p>
+                <p className="text-[13px] text-[#9CA3AF] py-4 text-center">No one found at your gym. Try a different name or username.</p>
               ) : (
                 searchResults.map((p) => {
                   const status = getFriendStatus(friendships, userId, p.id);
                   const isAdding = addingId === p.id;
                   return (
-                    <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                    <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-[14px] hover:bg-white/5 transition-colors">
                       <Avatar src={p.avatar_url} name={p.full_name} size={40} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[14px] truncate text-[#0F172A] dark:text-slate-100">{p.full_name}</p>
+                        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
                         {p.username && (
-                          <p className="text-[12px] text-[#64748B] dark:text-slate-400">@{p.username}</p>
+                          <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
                         )}
                       </div>
                       {status === 'accepted' ? (
-                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/40">
+                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
                           <Check size={12} strokeWidth={2.5} /> Friends
                         </span>
                       ) : status === 'pending_sent' ? (
-                        <span className="flex items-center gap-1 text-[12px] font-medium text-[#64748B] dark:text-slate-400 flex-shrink-0">
+                        <span className="flex items-center gap-1 text-[12px] font-medium text-[#6B7280] flex-shrink-0">
                           <Clock size={12} /> Pending
                         </span>
                       ) : (
@@ -499,7 +499,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
                           type="button"
                           onClick={() => handleAddFriend(p.id)}
                           disabled={isAdding}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-amber-500 dark:!bg-amber-400 text-black hover:bg-amber-600 dark:hover:!bg-amber-300"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-[#D4AF37] text-black hover:opacity-90"
                         >
                           <UserPlus size={12} strokeWidth={2} /> {isAdding ? '…' : 'Add'}
                         </button>
@@ -517,7 +517,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
         {/* Incoming requests */}
         {incomingWithRequester.length > 0 && (
           <div>
-            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-2">Requests</p>
+            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">Requests</p>
             <div className="space-y-1">
               {incomingWithRequester.map((f) => (
                 <IncomingRequestRow
@@ -533,14 +533,14 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
 
         {/* Your friends list */}
         <div>
-          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-2">Your friends</p>
+          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">Your friends</p>
           {accepted.length === 0 ? (
-            <div className="py-8 text-center rounded-2xl bg-slate-50/80 dark:bg-white/5">
-              <div className="w-12 h-12 rounded-2xl bg-slate-200/80 dark:bg-slate-600 flex items-center justify-center mx-auto mb-3">
-                <Users size={24} className="text-slate-400 dark:text-slate-500" />
+            <div className="py-8 text-center rounded-[14px] bg-[#111827]">
+              <div className="w-12 h-12 rounded-[14px] bg-[#0F172A] flex items-center justify-center mx-auto mb-3">
+                <Users size={24} className="text-[#6B7280]" />
               </div>
-              <p className="text-[14px] font-semibold text-[#475569] dark:text-slate-300">No friends yet</p>
-              <p className="text-[13px] text-[#64748B] dark:text-slate-400 mt-1">Search above to add friends from your gym</p>
+              <p className="text-[14px] font-semibold text-[#E5E7EB]">No friends yet</p>
+              <p className="text-[13px] text-[#9CA3AF] mt-1">Search above to add friends from your gym</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -548,17 +548,17 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
                 const otherId = f.requester_id === userId ? f.addressee_id : f.requester_id;
                 const p = profiles[otherId];
                 return (
-                  <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                  <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-[14px] hover:bg-white/5 transition-colors">
                     <Avatar src={p?.avatar_url} name={p?.full_name ?? '?'} size={44} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[15px] truncate text-[#0F172A] dark:text-slate-100">
-                        {p?.full_name ?? <span className="text-[#64748B] dark:text-slate-400">Loading…</span>}
+                      <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
+                        {p?.full_name ?? <span className="text-[#6B7280]">Loading…</span>}
                       </p>
                       {p?.username && (
-                        <p className="text-[12px] text-[#64748B] dark:text-slate-400">@{p.username}</p>
+                        <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
                       )}
                     </div>
-                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/40">
+                    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
                       <Check size={12} strokeWidth={2.5} /> Friends
                     </span>
                   </div>
@@ -578,17 +578,17 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting }) => {
   if (!p) return null;
 
   return (
-    <div className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+    <div className="flex items-center gap-4 py-3 px-3 rounded-[14px] hover:bg-white/5 transition-colors">
       <Avatar src={p.avatar_url} name={p.full_name} size={40} />
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[14px] truncate text-[#0F172A] dark:text-slate-100">{p.full_name}</p>
-        <p className="text-[12px] text-[#64748B] dark:text-slate-400">@{p.username}</p>
+        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
+        <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
       </div>
       <button
         type="button"
         onClick={onAccept}
         disabled={isAccepting}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-emerald-500 dark:bg-emerald-500 text-white hover:bg-emerald-600 dark:hover:bg-emerald-400"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0 disabled:opacity-50 bg-emerald-500 text-white hover:bg-emerald-600"
       >
         <Check size={12} strokeWidth={2.5} /> {isAccepting ? '…' : 'Accept'}
       </button>
@@ -709,25 +709,27 @@ const SocialFeed = () => {
   const activeFeed  = tab === 'friends' ? friendsFeed : myFeed;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] pb-24 md:pb-10 transition-colors">
+    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       <div className="max-w-[680px] mx-auto px-4 pt-6 pb-8">
 
         {/* Header */}
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center shadow-sm">
-              <Users size={24} className="text-amber-600" strokeWidth={2} />
+            <div className="w-12 h-12 rounded-[14px] bg-amber-900/40 flex items-center justify-center">
+              <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[#0F172A] dark:text-slate-100 tracking-tight">Social</h1>
-              <p className="text-[13px] text-[#64748B] dark:text-slate-400 mt-0.5">Activity from you and friends</p>
+              <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight">Social</h1>
+              <p className="text-[13px] text-[#9CA3AF] mt-0.5">Activity from you and friends</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowFriends(s => !s)}
             className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold active:scale-95 transition-all ${
-              showFriends ? 'bg-amber-500 text-black shadow-sm' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-white/10 text-[#0F172A] dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-600'
+              showFriends
+                ? 'bg-[#D4AF37] text-black'
+                : 'bg-[#111827] border border-white/8 text-[#E5E7EB] hover:bg-[#0F172A]'
             }`}
           >
             <Users size={16} />
@@ -752,7 +754,7 @@ const SocialFeed = () => {
         )}
 
         {/* Pill tabs */}
-        <div className="flex gap-1.5 mb-6 bg-slate-200/60 dark:bg-white/10 p-1.5 rounded-full">
+        <div className="flex gap-1 mb-6 bg-[#111827] p-1 rounded-xl">
           {[
             { key: 'friends', label: 'Friends' },
             { key: 'mine', label: 'My Posts' },
@@ -761,8 +763,10 @@ const SocialFeed = () => {
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`flex-1 py-2.5 rounded-full text-[13px] font-semibold transition-all ${
-                tab === t.key ? 'bg-white dark:bg-slate-700 text-[#0F172A] dark:text-slate-100 shadow-sm' : 'text-[#64748B] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-100'
+              className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-all ${
+                tab === t.key
+                  ? 'bg-[#D4AF37] text-black font-semibold'
+                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
               }`}
             >
               {t.label}
@@ -774,7 +778,7 @@ const SocialFeed = () => {
         {loading && (
           <div className="flex flex-col gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-2xl h-40 bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm animate-pulse" />
+              <div key={i} className="rounded-[14px] h-40 bg-[#0F172A] border border-white/8 animate-pulse" />
             ))}
           </div>
         )}
@@ -782,15 +786,15 @@ const SocialFeed = () => {
         {/* Empty states */}
         {!loading && activeFeed.length === 0 && tab === 'friends' && (
           <div className="text-center py-20 px-4">
-            <div className="w-16 h-16 rounded-3xl bg-slate-200/80 flex items-center justify-center mx-auto mb-4">
-              <Users size={32} className="text-slate-400" />
+            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+              <Users size={32} className="text-[#6B7280]" />
             </div>
-            <p className="text-[16px] font-semibold text-[#334155]">No friend activity yet</p>
-            <p className="text-[14px] text-[#64748B] mt-2">Add friends to see their workouts and PRs here.</p>
+            <p className="text-[16px] font-semibold text-[#E5E7EB]">No friend activity yet</p>
+            <p className="text-[14px] text-[#9CA3AF] mt-2">Add friends to see their workouts and PRs here.</p>
             <button
               type="button"
               onClick={() => setShowFriends(true)}
-              className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-semibold active:scale-95 transition-all bg-amber-500 text-black"
+              className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black"
             >
               <UserPlus size={16} /> Find Friends
             </button>
@@ -799,11 +803,11 @@ const SocialFeed = () => {
 
         {!loading && activeFeed.length === 0 && tab === 'mine' && (
           <div className="text-center py-20 px-4">
-            <div className="w-16 h-16 rounded-3xl bg-slate-200/80 dark:bg-white/10 flex items-center justify-center mx-auto mb-4">
-              <Dumbbell size={32} className="text-slate-400 dark:text-slate-500" />
+            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+              <Dumbbell size={32} className="text-[#6B7280]" />
             </div>
-            <p className="text-[16px] font-semibold text-[#334155] dark:text-slate-200">No posts yet</p>
-            <p className="text-[14px] text-[#64748B] dark:text-slate-400 mt-2">Finish a workout to post your first activity.</p>
+            <p className="text-[16px] font-semibold text-[#E5E7EB]">No posts yet</p>
+            <p className="text-[14px] text-[#9CA3AF] mt-2">Finish a workout to post your first activity.</p>
           </div>
         )}
 
@@ -818,7 +822,7 @@ const SocialFeed = () => {
                 onToggleLike={handleToggleLike}
               />
             ))}
-            <p className="text-center text-[13px] py-8 text-[#94A3B8] dark:text-slate-500 font-medium">— You're all caught up —</p>
+            <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
           </div>
         )}
       </div>

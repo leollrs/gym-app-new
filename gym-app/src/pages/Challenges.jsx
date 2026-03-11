@@ -29,7 +29,7 @@ const Countdown = ({ date, prefix }) => {
     return () => clearInterval(id);
   }, [date]);
   return (
-    <span className="flex items-center gap-1 text-[11px] text-[#64748B] dark:text-slate-400">
+    <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
       <Clock size={11} /> {prefix} {label}
     </span>
   );
@@ -53,23 +53,23 @@ const ParticipantList = ({ challengeId }) => {
 
   if (loading) return (
     <div className="py-5 flex justify-center">
-      <div className="w-5 h-5 border-2 border-amber-200 dark:border-amber-800 border-t-amber-500 dark:border-t-amber-400 rounded-full animate-spin" />
+      <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
     </div>
   );
 
   if (names.length === 0) return (
-    <p className="text-[13px] text-[#64748B] dark:text-slate-400 text-center py-5">No one has joined yet — be the first!</p>
+    <p className="text-[13px] text-[#6B7280] text-center py-5">No one has joined yet — be the first!</p>
   );
 
   return (
     <div className="mt-4 space-y-2">
-      <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-widest mb-2">Signed up</p>
+      <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">Signed up</p>
       {names.map((name, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#F8FAFC] dark:bg-white/5 border border-black/5 dark:border-white/10">
-          <div className="w-8 h-8 rounded-full bg-[#FEF3C7] dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-            <span className="text-[12px] font-bold text-[#B45309] dark:text-amber-300">{name[0]}</span>
+        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-[14px] bg-[#111827] border border-white/6">
+          <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-[12px] font-bold text-[#D4AF37]">{name[0]}</span>
           </div>
-          <p className="text-[14px] font-medium text-[#0F172A] dark:text-slate-100">{name}</p>
+          <p className="text-[14px] font-medium text-[#E5E7EB]">{name}</p>
         </div>
       ))}
     </div>
@@ -83,9 +83,6 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
   const status = statusOf(challenge);
 
   const fetch = useCallback(async () => {
-    // Always read from challenge_participants.score — it's the persisted source of truth
-    // readable by all gym members (RLS: gym_id = current_gym_id()).
-    // Scores are backfilled on join and incremented by SessionSummary on workout completion.
     const { data } = await supabase
       .from('challenge_participants')
       .select('profile_id, score, profiles(full_name)')
@@ -118,18 +115,18 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
     <div className="mt-4">
       {/* My rank callout */}
       {myEntry && (
-        <div className="flex items-center justify-between rounded-2xl bg-[#FFFBEB] dark:bg-amber-900/30 border border-amber-200/80 dark:border-amber-700/50 px-5 py-4 mb-4 shadow-sm">
+        <div className="flex items-center justify-between rounded-[14px] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-5 py-4 mb-4">
           <div>
-            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold uppercase tracking-widest">Your rank</p>
-            <p className="text-[24px] font-black text-amber-700 dark:text-amber-400 leading-tight mt-0.5">
+            <p className="text-[11px] text-[#D4AF37] font-semibold uppercase tracking-widest">Your rank</p>
+            <p className="text-[24px] font-black text-[#D4AF37] leading-tight mt-0.5">
               #{myRank + 1}
               {myRank < 3 && <span className="ml-1.5 text-[20px]">{MEDAL[myRank]}</span>}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-[#64748B] dark:text-slate-400 font-medium">Your score</p>
-            <p className="text-[18px] font-bold text-[#0F172A] dark:text-slate-100 mt-0.5">
-              {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[#64748B] dark:text-slate-400">{unit}</span>
+            <p className="text-[11px] text-[#9CA3AF] font-medium">Your score</p>
+            <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
+              {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[#9CA3AF]">{unit}</span>
             </p>
           </div>
         </div>
@@ -137,10 +134,10 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
 
       {loading ? (
         <div className="py-8 flex justify-center">
-          <div className="w-6 h-6 border-2 border-amber-200 dark:border-amber-800 border-t-amber-500 dark:border-t-amber-400 rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-[13px] text-[#64748B] dark:text-slate-400 text-center py-6">
+        <p className="text-[13px] text-[#6B7280] text-center py-6">
           {status === 'upcoming' ? 'Leaderboard opens when the challenge starts' : 'No one has joined yet'}
         </p>
       ) : (
@@ -150,36 +147,38 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
             const top = entries[0]?.score || 1;
             return (
               <div key={e.id}
-                className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl overflow-hidden transition-colors ${
-                  isMe ? 'bg-[#FFFBEB] dark:bg-amber-900/30 border border-amber-200/80 dark:border-amber-700/50 shadow-sm' : 'bg-[#F8FAFC] dark:bg-white/5 border border-black/5 dark:border-white/10'
+                className={`relative flex items-center gap-3 px-4 py-3 rounded-[14px] overflow-hidden transition-colors ${
+                  isMe
+                    ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'
+                    : 'bg-[#111827] border border-white/6'
                 }`}
               >
                 <div
-                  className="absolute inset-0 opacity-[0.06] dark:opacity-[0.12]"
-                  style={{ width: `${(e.score / top) * 100}%`, background: isMe ? '#B45309' : '#64748B' }}
+                  className="absolute inset-0 opacity-[0.08]"
+                  style={{ width: `${(e.score / top) * 100}%`, background: isMe ? '#D4AF37' : '#6B7280' }}
                 />
                 <span className={`text-[14px] font-bold w-6 text-center relative z-10 ${
-                  i === 0 ? 'text-amber-600 dark:text-amber-400' : i === 1 ? 'text-slate-500 dark:text-slate-400' : i === 2 ? 'text-amber-700 dark:text-amber-500' : 'text-[#64748B] dark:text-slate-400'
+                  i === 0 ? 'text-[#D4AF37]' : i === 1 ? 'text-[#9CA3AF]' : i === 2 ? 'text-[#D4AF37]/70' : 'text-[#6B7280]'
                 }`}>
                   {i < 3 ? MEDAL[i] : i + 1}
                 </span>
-                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-amber-800 dark:text-amber-300' : 'text-[#0F172A] dark:text-slate-100'}`}>
-                  {e.name}{isMe && <span className="ml-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">YOU</span>}
+                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                  {e.name}{isMe && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37]">YOU</span>}
                 </p>
-                <p className={`text-[13px] font-bold relative z-10 ${isMe ? 'text-amber-700 dark:text-amber-400' : 'text-[#475569] dark:text-slate-400'}`}>
-                  {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[#94A3B8] dark:text-slate-500">{unit}</span>
+                <p className={`text-[13px] font-bold relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[#9CA3AF]'}`}>
+                  {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[#6B7280]">{unit}</span>
                 </p>
               </div>
             );
           })}
           {entries.length > 10 && myRank >= 10 && myEntry && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#FFFBEB] dark:bg-amber-900/30 border border-amber-200/80 dark:border-amber-700/50 shadow-sm">
-              <span className="text-[14px] font-bold w-6 text-center text-amber-700 dark:text-amber-400">#{myRank + 1}</span>
-              <p className="flex-1 text-[14px] font-semibold text-amber-800 dark:text-amber-300 truncate">
-                {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">YOU</span>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-[14px] bg-[#D4AF37]/10 border border-[#D4AF37]/30">
+              <span className="text-[14px] font-bold w-6 text-center text-[#D4AF37]">#{myRank + 1}</span>
+              <p className="flex-1 text-[14px] font-semibold text-[#D4AF37] truncate">
+                {myEntry.name} <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37]">YOU</span>
               </p>
-              <p className="text-[13px] font-bold text-amber-700 dark:text-amber-400">
-                {myEntry.score.toLocaleString()} <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">{unit}</span>
+              <p className="text-[13px] font-bold text-[#D4AF37]">
+                {myEntry.score.toLocaleString()} <span className="text-[11px] font-medium text-[#D4AF37]/70">{unit}</span>
               </p>
             </div>
           )}
@@ -198,9 +197,9 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const Icon = meta.icon ?? Trophy;
 
   const statusStyle = {
-    live:     'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40',
-    upcoming: 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40',
-    ended:    'text-[#64748B] dark:text-slate-400 bg-slate-100 dark:bg-slate-700',
+    live:     'text-emerald-400 bg-emerald-500/10',
+    upcoming: 'text-blue-400 bg-blue-500/10',
+    ended:    'text-[#6B7280] bg-white/6',
   }[status];
 
   const statusLabel = { live: 'Live', upcoming: 'Upcoming', ended: 'Ended' }[status];
@@ -213,39 +212,39 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-black/5 dark:border-white/10 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
       <div
         role="button"
         tabIndex={0}
-        className="w-full flex items-center gap-4 p-5 text-left hover:bg-slate-50/80 dark:hover:bg-white/5 active:bg-slate-100/80 dark:active:bg-white/10 transition-colors cursor-pointer"
+        className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer"
         onClick={() => setOpen(o => !o)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
       >
-        <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-          <Icon size={22} className="text-amber-600 dark:text-amber-400" strokeWidth={2} />
+        <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+          <Icon size={22} className="text-[#D4AF37]" strokeWidth={2} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <p className="text-[16px] font-semibold text-[#0F172A] dark:text-slate-100 truncate">{challenge.name}</p>
+            <p className="text-[16px] font-semibold text-[#E5E7EB] truncate">{challenge.name}</p>
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusStyle}`}>
               {statusLabel}
             </span>
           </div>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <span className="text-[12px] text-[#64748B] dark:text-slate-400">{meta.label}</span>
+            <span className="text-[12px] text-[#9CA3AF]">{meta.label}</span>
             {participantCount > 0 && (
               <>
-                <span className="text-[#CBD5E1] dark:text-slate-500">·</span>
-                <span className="flex items-center gap-1 text-[12px] text-[#64748B] dark:text-slate-400">
+                <span className="text-[#6B7280]">·</span>
+                <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
                   <Users size={12} /> {participantCount}
                 </span>
               </>
             )}
-            <span className="text-[#CBD5E1] dark:text-slate-500">·</span>
+            <span className="text-[#6B7280]">·</span>
             {status === 'live' && <Countdown date={challenge.end_date} prefix="Ends in" />}
             {status === 'upcoming' && <Countdown date={challenge.start_date} prefix="Starts in" />}
             {status === 'ended' && (
-              <span className="text-[12px] text-[#64748B] dark:text-slate-400">
+              <span className="text-[12px] text-[#9CA3AF]">
                 Ended {format(new Date(challenge.end_date), 'MMM d')}
               </span>
             )}
@@ -255,7 +254,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
         {/* Join / Joined for live + upcoming */}
         {status !== 'ended' && (
           joined ? (
-            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/40">
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-500/10">
               <Check size={14} strokeWidth={2.5} /> In
             </span>
           ) : (
@@ -263,22 +262,22 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
               type="button"
               onClick={handleJoin}
               disabled={joining}
-              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold transition-all active:scale-95 disabled:opacity-50 bg-amber-500 text-black hover:bg-amber-600 shadow-sm border border-amber-600/30 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 dark:focus:ring-offset-slate-800 dark:!bg-amber-400 dark:hover:!bg-amber-300 dark:border-amber-300/60 dark:text-black"
+              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold transition-all active:scale-95 disabled:opacity-50 bg-[#D4AF37] text-black hover:bg-[#E6C766] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50"
             >
               {joining ? '…' : 'Join'}
             </button>
           )
         )}
 
-        <ChevronDown size={20} className={`text-[#94A3B8] dark:text-slate-500 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={20} className={`text-[#6B7280] flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </div>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+        <div className="px-5 pb-5 pt-1 border-t border-white/6 bg-[#111827]/50">
           {challenge.description && (
-            <p className="text-[14px] text-[#475569] dark:text-slate-400 leading-relaxed mt-4">{challenge.description}</p>
+            <p className="text-[14px] text-[#9CA3AF] leading-relaxed mt-4">{challenge.description}</p>
           )}
-          <div className="mt-3 text-[12px] text-[#64748B] dark:text-slate-400 font-medium">
+          <div className="mt-3 text-[12px] text-[#6B7280] font-medium">
             {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
           </div>
           {status === 'upcoming'
@@ -297,7 +296,7 @@ const TABS = ['live', 'upcoming', 'ended'];
 export default function Challenges() {
   const { profile, user } = useAuth();
   const [challenges, setChallenges]       = useState([]);
-  const [participants, setParticipants]   = useState([]); // all participant rows for this gym's challenges
+  const [participants, setParticipants]   = useState([]);
   const [loading, setLoading]             = useState(true);
   const [tab, setTab]                     = useState('live');
 
@@ -320,7 +319,6 @@ export default function Challenges() {
     const challenge = challenges.find(c => c.id === challengeId);
     if (!challenge) return;
 
-    // Backfill score from user's own data during the challenge period
     let score = 0;
     try {
       const start = challenge.start_date;
@@ -355,7 +353,7 @@ export default function Challenges() {
         score = count ?? 0;
       }
     } catch (_) {
-      // If backfill fails, join with 0 — better than not joining
+      // If backfill fails, join with 0
     }
 
     const { data, error } = await supabase
@@ -366,7 +364,6 @@ export default function Challenges() {
     if (!error && data) setParticipants(prev => [...prev, data]);
   };
 
-  // Derived maps
   const myJoinedIds = new Set(participants.filter(p => p.profile_id === user?.id).map(p => p.challenge_id));
   const countMap = participants.reduce((acc, p) => {
     acc[p.challenge_id] = (acc[p.challenge_id] ?? 0) + 1;
@@ -374,40 +371,39 @@ export default function Challenges() {
   }, {});
 
   const filtered = challenges.filter(c => statusOf(c) === tab);
-
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] pb-24 md:pb-10 transition-colors">
+    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#F8FAFC]/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-white/10">
+      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
         <div className="max-w-2xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shadow-sm">
-              <Trophy size={24} className="text-amber-600 dark:text-amber-400" strokeWidth={2} />
+            <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center">
+              <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[#0F172A] dark:text-slate-100 tracking-tight">Challenges</h1>
-              <p className="text-[13px] text-[#64748B] dark:text-slate-400 mt-0.5">Compete with your gym</p>
+              <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight">Challenges</h1>
+              <p className="text-[13px] text-[#9CA3AF] mt-0.5">Compete with your gym</p>
             </div>
           </div>
 
-          {/* Pill tabs */}
-          <div className="flex gap-1.5 bg-slate-200/60 dark:bg-white/10 p-1.5 rounded-full">
+          {/* Tab bar */}
+          <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
             {TABS.map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`flex-1 py-2.5 rounded-full text-[13px] font-semibold capitalize transition-all ${
+                className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold capitalize transition-all ${
                   tab === t
-                    ? 'bg-white dark:bg-slate-700 text-[#0F172A] dark:text-slate-100 shadow-sm'
-                    : 'text-[#64748B] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-100'
+                    ? 'bg-[#D4AF37] text-black font-semibold'
+                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
                 }`}
               >
                 {t}
                 {t === 'live' && liveCount > 0 && (
                   <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold ${
-                    tab === t ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300' : 'bg-slate-300/80 dark:bg-white/20 text-slate-600 dark:text-slate-400'
+                    tab === t ? 'bg-black/20 text-black' : 'bg-white/10 text-[#9CA3AF]'
                   }`}>
                     {liveCount}
                   </span>
@@ -421,20 +417,20 @@ export default function Challenges() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         {loading ? (
           <div className="flex justify-center py-28">
-            <div className="w-8 h-8 border-2 border-amber-200 dark:border-amber-800 border-t-amber-500 dark:border-t-amber-400 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-24 px-6">
-            <div className="w-16 h-16 rounded-3xl bg-slate-200/80 dark:bg-white/10 flex items-center justify-center mx-auto mb-4">
-              <Trophy size={32} className="text-slate-400 dark:text-slate-500" />
+            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+              <Trophy size={32} className="text-[#6B7280]" />
             </div>
-            <p className="text-[16px] font-semibold text-[#334155] dark:text-slate-200">
+            <p className="text-[16px] font-semibold text-[#E5E7EB]">
               {tab === 'live'     && 'No active challenges right now'}
               {tab === 'upcoming' && 'No upcoming challenges'}
               {tab === 'ended'    && 'No past challenges'}
             </p>
             {tab === 'live' && (
-              <p className="text-[14px] text-[#64748B] dark:text-slate-400 mt-2">Your gym admin will post challenges here</p>
+              <p className="text-[14px] text-[#9CA3AF] mt-2">Your gym admin will post challenges here</p>
             )}
           </div>
         ) : (

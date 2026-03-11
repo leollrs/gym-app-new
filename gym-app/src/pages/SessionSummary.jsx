@@ -72,6 +72,7 @@ const SessionSummary = () => {
     elapsedTime    = 0,
     totalVolume    = 0,
     completedSets  = 0,
+    totalSets      = 0,
     totalExercises = 0,
     sessionPRs     = [],
     completedAt    = new Date().toISOString(),
@@ -250,7 +251,7 @@ const SessionSummary = () => {
         <div className="w-full max-w-sm grid grid-cols-2 gap-3 mb-6">
           <StatCard icon={Clock}    label="Duration"   value={formatTime(elapsedTime)}   accent="#60A5FA" />
           <StatCard icon={BarChart2} label="Volume"    value={`${formatVolume(totalVolume)} lbs`} accent="#D4AF37" />
-          <StatCard icon={Zap}      label="Sets Done"  value={completedSets}              accent="#34D399" />
+          <StatCard icon={Zap}      label="Sets Done"  value={totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets} accent="#34D399" />
           <StatCard icon={Dumbbell} label="Exercises"  value={totalExercises}             accent="#A78BFA" />
         </div>
 
