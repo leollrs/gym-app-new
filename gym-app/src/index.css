@@ -1,0 +1,341 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: add .dark to html to enable dark: variants */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+:root {
+  /* ── Backgrounds ─────────────────────────── */
+  --bg-main:      #F8FAFC;
+  --bg-secondary: #EFF6FF;
+  --bg-card:      #FFFFFF;
+  --bg-elevated:  #F1F5F9;
+
+  /* ── Gold accent ─────────────────────────── */
+  --accent-gold:      #D4AF37;
+  --accent-gold-soft: #E6C766;
+  --accent-gold-dark: #9F7F1D;
+  --accent-gold-glow: rgba(212, 175, 55, 0.2);
+
+  /* ── Blue (charts / secondary only) ─────── */
+  --accent-blue:      #3B82F6;
+  --accent-blue-soft: #60A5FA;
+
+  /* ── Text ────────────────────────────────── */
+  --text-primary:   #0F172A;
+  --text-secondary: #374151;
+  --text-muted:     #64748B;
+
+  /* ── Borders ─────────────────────────────── */
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
+
+  /* ── Legacy aliases (keep for components not yet updated) */
+  --bg-primary:   var(--bg-main);
+  --bg-tertiary:  var(--bg-elevated);
+  --accent-primary:   var(--accent-gold);
+  --accent-secondary: var(--accent-gold-soft);
+  --accent-glow:      var(--accent-gold-glow);
+  --border-color: var(--border-subtle);
+  --glass-bg:     rgba(255, 255, 255, 0.9);
+
+  /* ── Status ──────────────────────────────── */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger:  #EF4444;
+
+  /* ── Radius ──────────────────────────────── */
+  --radius-sm:  0.5rem;
+  --radius-md:  0.75rem;
+  --radius-lg:  0.875rem;
+  --radius-xl:  1rem;
+  --radius-2xl: 1.25rem;
+
+  /* ── Shadows ─────────────────────────────── */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 16px var(--accent-gold-glow);
+}
+
+/* ── Dark theme (when html has class "dark") ───────────────────────────── */
+html.dark {
+  --bg-main:      #0F172A;
+  --bg-secondary:  #1E293B;
+  --bg-card:       #1E293B;
+  --bg-elevated:   #334155;
+
+  --text-primary:   #F1F5F9;
+  --text-secondary:  #E2E8F0;
+  --text-muted:     #94A3B8;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --glass-bg: rgba(30, 41, 59, 0.95);
+
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(212, 175, 55, 0.25);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+/* Tailwind v4 Preflight already handles box-sizing, margin, padding reset */
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--accent-gold);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover { color: var(--accent-gold-soft); }
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: none;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 18px;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover { border-color: var(--border-strong); }
+
+/* ── Legacy glass (backwards compat) ─────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  transition: border-color 0.2s ease;
+}
+
+.glass-card:hover { border-color: var(--border-strong); }
+
+/* ── Layout ───────────────────────────────────────────────────────── */
+/* .container kept for legacy use in TVDisplay / ActiveSession */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* Pages use explicit Tailwind utilities for padding instead of .main-content */
+.app-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background-color: var(--bg-main);
+  /* Mobile: offset the fixed top header (64px + safe area inset) */
+  padding-top: calc(64px + env(safe-area-inset-top));
+}
+
+@media (min-width: 768px) {
+  .app-wrapper {
+    /* Desktop: sticky nav is in normal flow, no offset needed */
+    padding-top: 0;
+  }
+}
+
+.main-content {
+  flex: 1;
+  padding-top: 2.5rem;
+  padding-bottom: 2.5rem;
+}
+
+/* ── Typography ───────────────────────────────────────────────────── */
+.text-h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.02em; }
+.text-h2 { font-size: clamp(1.375rem, 3vw, 1.75rem); letter-spacing: -0.015em; }
+.text-h3 { font-size: clamp(1.125rem, 2.5vw, 1.375rem); }
+.text-large   { font-size: 1.0625rem; }
+.text-regular { font-size: 0.9375rem; }
+.text-small   { font-size: 0.875rem; }
+.text-meta    { font-size: 0.8125rem; color: var(--text-muted); }
+
+.text-muted  { color: var(--text-muted); }
+.text-accent { color: var(--accent-gold); }
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-soft));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.font-bold { font-weight: 700; }
+
+/* ── Section label ────────────────────────────────────────────────── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  background: var(--accent-gold);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--accent-gold-soft);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active { transform: translateY(1px); }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+@keyframes pulse-glow {
+  0%   { box-shadow: 0 0 0 0   var(--accent-gold-glow); }
+  70%  { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(212, 175, 55, 0);   }
+}
+
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   Maps all hardcoded dark Tailwind arbitrary colors to light
+   equivalents without touching individual JSX files.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Light theme only: force light backgrounds when NOT dark ─────────────── */
+html:not(.dark) .bg-\[\#05070B\]  { background-color: #F8FAFC !important; }
+html:not(.dark) .bg-\[\#0A0D14\]  { background-color: #F1F5F9 !important; }
+html:not(.dark) .bg-\[\#0B1220\]  { background-color: #EFF6FF !important; }
+html:not(.dark) .bg-\[\#0F172A\]  { background-color: #FFFFFF !important; }
+html:not(.dark) .bg-\[\#111827\]  { background-color: #F9FAFB !important; }
+html:not(.dark) .bg-\[\#131929\]  { background-color: #F8FAFC !important; }
+html:not(.dark) .bg-\[\#131D2E\]  { background-color: #F1F5F9 !important; }
+html:not(.dark) .bg-\[\#1C1C1E\]  { background-color: #FFFFFF !important; }
+html:not(.dark) .bg-\[\#2C2C2E\]  { background-color: #E2E8F0 !important; }
+html:not(.dark) .bg-\[\#3A3A3C\]  { background-color: #CBD5E1 !important; }
+
+html:not(.dark) .bg-\[\#05070B\]\/90  { background-color: rgba(248,250,252,0.95) !important; }
+html:not(.dark) .bg-\[\#0A0D14\]\/80  { background-color: rgba(241,245,249,0.9)  !important; }
+html:not(.dark) .bg-\[\#1C1C1E\]\/95  { background-color: rgba(255,255,255,0.95) !important; }
+
+html:not(.dark) .bg-white\/4   { background-color: rgba(0,0,0,0.04) !important; }
+html:not(.dark) .bg-white\/5   { background-color: rgba(0,0,0,0.05) !important; }
+html:not(.dark) .bg-white\/6   { background-color: rgba(0,0,0,0.06) !important; }
+html:not(.dark) .bg-white\/8   { background-color: rgba(0,0,0,0.06) !important; }
+html:not(.dark) .bg-white\/10  { background-color: rgba(0,0,0,0.07) !important; }
+html:not(.dark) .bg-white\/12  { background-color: rgba(0,0,0,0.08) !important; }
+html:not(.dark) .bg-white\/14  { background-color: rgba(0,0,0,0.09) !important; }
+html:not(.dark) .bg-black\/10  { background-color: rgba(0,0,0,0.04) !important; }
+html:not(.dark) .bg-black\/30  { background-color: rgba(0,0,0,0.06) !important; }
+html:not(.dark) .bg-black\/60  { background-color: rgba(0,0,0,0.45) !important; }
+
+html:not(.dark) .text-white          { color: #0F172A !important; }
+html:not(.dark) .text-\[\#E5E7EB\]   { color: #0F172A !important; }
+html:not(.dark) .text-\[\#CBD5E1\]   { color: #1E293B !important; }
+html:not(.dark) .text-\[\#9CA3AF\]   { color: #475569 !important; }
+html:not(.dark) .text-\[\#6B7280\]   { color: #64748B !important; }
+html:not(.dark) .text-\[\#4B5563\]   { color: #94A3B8 !important; }
+
+html:not(.dark) .border-white\/5    { border-color: rgba(0,0,0,0.08) !important; }
+html:not(.dark) .border-white\/6    { border-color: rgba(0,0,0,0.09) !important; }
+html:not(.dark) .border-white\/8    { border-color: rgba(0,0,0,0.10) !important; }
+html:not(.dark) .border-white\/10   { border-color: rgba(0,0,0,0.12) !important; }
+html:not(.dark) .border-white\/12   { border-color: rgba(0,0,0,0.14) !important; }
+html:not(.dark) .border-white\/25   { border-color: rgba(0,0,0,0.20) !important; }
+
+html:not(.dark) input::placeholder  { color: #94A3B8 !important; }
+html:not(.dark) .placeholder-\[\#6B7280\]::placeholder { color: #94A3B8 !important; }
+html:not(.dark) .placeholder-\[\#4B5563\]::placeholder { color: #CBD5E1 !important; }
+
+/* ── Keep gold & status colors as-is ───────────────────────────── */
+/* .text-[#D4AF37], .bg-[#D4AF37], .text-[#10B981], .text-red-* etc. untouched */
+
+/* ── btn-secondary (light only) ─────────────────────────────────────── */
+html:not(.dark) .btn-secondary {
+  color: var(--text-primary);
+  border-color: rgba(0,0,0,0.18);
+}
+html:not(.dark) .btn-secondary:hover {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.28);
+}

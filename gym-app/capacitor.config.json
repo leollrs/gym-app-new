@@ -1,0 +1,9 @@
+{
+  "appId": "com.ironforge.app",
+  "appName": "IronForge",
+  "webDir": "dist",
+  "server": {
+    "url": "https://gym-app-new-nu.vercel.app",
+    "cleartext": false
+  }
+}

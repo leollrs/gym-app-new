@@ -1,0 +1,154 @@
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { applyBranding } from '../lib/branding';
+
+const AuthContext = createContext({});
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser]       = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [gymName, setGymName] = useState('');
+  const [gymLogoUrl, setGymLogoUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Fetch the profile row for a given user id, then apply gym branding
+  const fetchProfile = async (userId) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    setProfile(data ?? null);
+
+    if (data?.gym_id) {
+      const [{ data: branding }, { data: gym }] = await Promise.all([
+        supabase
+          .from('gym_branding')
+          .select('primary_color, accent_color, custom_app_name, logo_url')
+          .eq('gym_id', data.gym_id)
+          .single(),
+        supabase
+          .from('gyms')
+          .select('name')
+          .eq('id', data.gym_id)
+          .single(),
+      ]);
+      if (branding?.primary_color) applyBranding(branding.primary_color);
+      setGymName(gym?.name || branding?.custom_app_name || '');
+
+      // Resolve a signed logo URL if a storage path is present
+      if (branding?.logo_url) {
+        const { data: signed, error } = await supabase
+          .storage
+          .from('gym-logos')
+          .createSignedUrl(branding.logo_url, 60 * 60 * 24 * 7); // 7 days
+        if (!error && signed?.signedUrl) {
+          setGymLogoUrl(signed.signedUrl);
+        } else {
+          setGymLogoUrl('');
+        }
+      } else {
+        setGymLogoUrl('');
+      }
+    } else {
+      setGymLogoUrl('');
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    // Check for an existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchProfile(session.user.id);
+      else setLoading(false);
+    });
+
+    // Subscribe to auth state changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        setLoading(true);
+        fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── SIGN UP ────────────────────────────────────────────────
+  // Creates the Supabase auth user then immediately inserts
+  // a profiles row. Email confirmation must be DISABLED in
+  // Supabase Auth settings for this to work without extra steps.
+  const signUp = async ({ email, password, fullName, username, gymSlug }) => {
+    // 1. Look up the gym by slug
+    const { data: gym, error: gymError } = await supabase
+      .from('gyms')
+      .select('id')
+      .eq('slug', gymSlug.toLowerCase().trim())
+      .eq('is_active', true)
+      .single();
+
+    if (gymError || !gym) {
+      throw new Error('Gym code not found. Ask your gym for the correct code.');
+    }
+
+    // 2. Create the auth user
+    const { data, error: authError } = await supabase.auth.signUp({ email, password });
+    if (authError) throw authError;
+
+    // 3. Insert the profile row (user is now authenticated)
+    if (data.user) {
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id:           data.user.id,
+        gym_id:       gym.id,
+        full_name:    fullName,
+        username:     username.toLowerCase().trim(),
+        role:         'member',
+        is_onboarded: false,
+      });
+      if (profileError) throw profileError;
+    }
+
+    return data;
+  };
+
+  // ── SIGN IN ────────────────────────────────────────────────
+  const signIn = async ({ email, password }) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  // ── SIGN OUT ───────────────────────────────────────────────
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // ── REFRESH PROFILE ────────────────────────────────────────
+  // Call this after onboarding completes to pick up is_onboarded = true
+  const refreshProfile = () => {
+    if (user) fetchProfile(user.id);
+  };
+
+  return (
+    <AuthContext.Provider value={{
+      user,
+      profile,
+      gymName,
+      gymLogoUrl,
+      loading,
+      signUp,
+      signIn,
+      signOut,
+      refreshProfile,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => useContext(AuthContext);
