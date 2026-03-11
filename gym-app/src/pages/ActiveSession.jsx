@@ -141,11 +141,6 @@ const ActiveSession = () => {
 
   const [loggedSets, setLoggedSets] = useState({});
   const [showResumedBanner, setShowResumedBanner] = useState(!!savedSession?.loggedSets);
-  const [plateCalcState, setPlateCalcState] = useState({
-    open: false,
-    weight: '',
-    exerciseName: '',
-  });
   const [sessionRpe, setSessionRpe] = useState(null);
   const [sessionFeeling, setSessionFeeling] = useState(null);
   const [expandedNotesSet, setExpandedNotesSet] = useState(null);
@@ -429,22 +424,13 @@ const ActiveSession = () => {
   const formatTime = (s) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  const computePlateBreakdown = (targetWeight, barWeight = 45) => {
-    const total = parseFloat(targetWeight);
-    if (!total || total <= barWeight) return [];
-    const perSide = (total - barWeight) / 2;
-    if (perSide <= 0) return [];
-    const available = [45, 35, 25, 10, 5, 2.5];
-    const result = [];
-    let remaining = perSide;
-    for (const plate of available) {
-      const count = Math.floor(remaining / plate);
-      if (count > 0) {
-        result.push({ plate, count });
-        remaining = Math.round((remaining - count * plate) * 100) / 100;
-      }
-    }
-    return result;
+  const handleRemoveSet = (exerciseId, setIndex) => {
+    setLoggedSets(prev => {
+      const current = prev[exerciseId] || [];
+      if (current.length <= 1) return prev; // keep at least 1 set
+      const updated = current.filter((_, i) => i !== setIndex);
+      return { ...prev, [exerciseId]: updated };
+    });
   };
 
   const totalVolume = Object.entries(loggedSets).reduce((sum, [, sets]) =>
@@ -1131,11 +1117,22 @@ const ActiveSession = () => {
                           }
                         }}
                       >
-                        <div className="w-8 text-center font-bold text-[15px] text-[#64748B] dark:text-slate-400">
-                          {set.isPR
-                            ? <Trophy size={14} className="text-amber-500 mx-auto" />
-                            : setIndex + 1
-                          }
+                        <div className="w-8 flex flex-col items-center justify-center gap-0.5">
+                          <span className="font-bold text-[15px] text-[#64748B] dark:text-slate-400">
+                            {set.isPR
+                              ? <Trophy size={14} className="text-amber-500 mx-auto" />
+                              : setIndex + 1
+                            }
+                          </span>
+                          {!set.completed && currentSets.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSet(currentExercise.id, setIndex)}
+                              className="text-[9px] font-bold text-red-400/70 hover:text-red-400 transition-colors leading-none"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
 
                         {/* Previous — gold arrow, visually distinct */}
@@ -1151,7 +1148,7 @@ const ActiveSession = () => {
                           )}
                         </div>
 
-                        <div className="w-20 sm:w-24 flex items-center gap-1.5">
+                        <div className="w-20 sm:w-24">
                           <input
                             type="number"
                             inputMode="decimal"
@@ -1168,19 +1165,6 @@ const ActiveSession = () => {
                                 : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
                             }`}
                           />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPlateCalcState({
-                                open: true,
-                                weight: set.weight,
-                                exerciseName: currentExercise.name,
-                              })
-                            }
-                            className="shrink-0 px-2 py-1 text-[9px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-600/70 text-slate-600 dark:text-slate-200"
-                          >
-                            Plates
-                          </button>
                         </div>
 
                         <div className="w-16 sm:w-20">
@@ -1377,62 +1361,6 @@ const ActiveSession = () => {
         />
       )}
 
-      {/* Plate calculator modal */}
-      {plateCalcState.open && (
-        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/40 dark:bg-black/60">
-          <div className="w-full max-w-md mx-auto rounded-t-3xl bg-white dark:bg-slate-900 px-5 pt-4 pb-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400">
-                  Plate calculator
-                </p>
-                <p className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">
-                  {plateCalcState.exerciseName || 'Current set'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPlateCalcState(s => ({ ...s, open: false }))}
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="mb-3">
-              <p className="text-[12px] text-slate-600 dark:text-slate-300 mb-1">
-                Total weight on bar
-              </p>
-              <p className="text-[20px] font-bold text-slate-900 dark:text-slate-50">
-                {plateCalcState.weight || '—'} lbs
-              </p>
-              <p className="text-[12px] mt-1 text-slate-500 dark:text-slate-400">
-                Assuming 45 lb barbell
-              </p>
-            </div>
-            <div className="mt-3">
-              {computePlateBreakdown(plateCalcState.weight).length === 0 ? (
-                <p className="text-[13px] text-slate-500 dark:text-slate-400">
-                  Enter a weight heavier than the bar to see plate math.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {computePlateBreakdown(plateCalcState.weight).map(({ plate, count }) => (
-                    <div
-                      key={plate}
-                      className="px-3 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-[12px] text-slate-800 dark:text-slate-100 flex items-center gap-2"
-                    >
-                      <span className="font-bold">{plate}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        × {count} per side
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
