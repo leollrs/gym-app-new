@@ -1012,9 +1012,9 @@ const ActiveSession = () => {
                       <Trophy size={11} /> PR: {knownPR.weight} lbs × {knownPR.reps}
                     </p>
                   )}
-                  {currentExerciseLocal?.demoUrl && (
+                  {currentExercise && (
                     <button
-                      onClick={() => setShowDemoExercise(currentExerciseLocal)}
+                      onClick={() => setShowDemoExercise(currentExercise)}
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all active:scale-95 bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-transparent hover:border-slate-300 dark:hover:border-white/20"
                     >
                       <Video size={11} />
@@ -1377,7 +1377,6 @@ const ActiveSession = () => {
       {showDemoExercise && (
         <ExerciseVideoModal
           exerciseName={showDemoExercise.name}
-          demoUrl={showDemoExercise.demoUrl}
           instructions={showDemoExercise.instructions}
           onClose={() => setShowDemoExercise(null)}
         />

@@ -84,7 +84,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable, onWatchDemo }) => {
                 <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
                 <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
               </div>
-              {exercise.demoUrl && onWatchDemo && (
+              {onWatchDemo && (
                 <button
                   onClick={e => { e.stopPropagation(); onWatchDemo(exercise); }}
                   className="flex items-center gap-1.5 bg-[#111827] border border-white/8 text-[#E5E7EB] rounded-xl px-3 py-1.5 text-[12px] font-semibold active:scale-95 transition-transform ml-auto"
@@ -137,7 +137,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable, onWatchDemo }) => {
               <span>Reps: <span className="font-semibold text-[#E5E7EB]">{exercise.defaultReps}</span></span>
               <span>Category: <span className="font-semibold text-[#E5E7EB]">{exercise.category}</span></span>
             </div>
-            {exercise.demoUrl && onWatchDemo && (
+            {onWatchDemo && (
               <button
                 onClick={e => { e.stopPropagation(); onWatchDemo(exercise); }}
                 className="flex items-center gap-1.5 bg-[#111827] border border-white/8 text-[#E5E7EB] rounded-xl px-3 py-1.5 text-[12px] font-semibold active:scale-95 transition-transform ml-auto"
@@ -274,7 +274,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                   exercise={ex}
                   selectable={selectable && !selectedIds.includes(ex.id)}
                   onSelect={onSelect}
-                  onWatchDemo={ex.demoUrl ? (exercise) => setVideoExercise(exercise) : null}
+                  onWatchDemo={(exercise) => setVideoExercise(exercise)}
                 />
               ))}
             </div>
@@ -293,7 +293,6 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       {videoExercise && (
         <ExerciseVideoModal
           exerciseName={videoExercise.name}
-          demoUrl={videoExercise.demoUrl}
           instructions={videoExercise.instructions}
           onClose={() => setVideoExercise(null)}
         />
