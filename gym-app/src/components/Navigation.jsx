@@ -107,7 +107,7 @@ const Navigation = () => {
             className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-black text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors"
           >
             <PlayCircle size={16} className="flex-shrink-0" />
-            Record
+            Start
           </button>
 
           {/* Desktop notifications + profile */}
@@ -218,7 +218,7 @@ const Navigation = () => {
               onClick={() => navigate('/record')}
               className="flex flex-col items-center justify-end min-w-[64px]"
               style={{ paddingBottom: '2px' }}
-              aria-label="Record"
+              aria-label="Start"
             >
               <div
                 className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform -mt-5 ${
