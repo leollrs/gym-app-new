@@ -196,22 +196,63 @@ const Dashboard = () => {
   const liftCount    = nextRoutine?.routine_exercises?.length ?? 0;
   const lastVol      = lastSessionForRoutine ? Math.round(lastSessionForRoutine.total_volume_lbs || 0) : 0;
   const lastDur      = lastSessionForRoutine?.duration_seconds ? formatTime(lastSessionForRoutine.duration_seconds) : null;
-  const lastSummary  = lastVol > 0 ? `${(lastVol / 1000).toFixed(1)}k lbs last time` : lastDur ? `Last: ${lastDur}` : null;
+  const lastSummary  = lastVol > 0 ? `Last: ${(lastVol / 1000).toFixed(1)}k lbs — beat it.` : lastDur ? `Last: ${lastDur} — top it.` : null;
   const estimatedMin = lastSessionForRoutine?.duration_seconds
     ? Math.round(lastSessionForRoutine.duration_seconds / 60)
     : liftCount * 4;
+
+  // Coach greeting — data-driven, personal
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+  const daysSinceLast = recentSessions.length > 0
+    ? Math.floor((Date.now() - new Date(recentSessions[0].completed_at).getTime()) / 86400000)
+    : null;
+  const coachLine = daysSinceLast === null
+    ? 'Your first session starts the chain.'
+    : daysSinceLast === 0
+    ? 'Strong work today. Rest up — you earned it.'
+    : daysSinceLast === 1
+    ? 'Yesterday was solid. Keep the chain going.'
+    : daysSinceLast === 2
+    ? "Two days off. Your body's recovered. Go."
+    : `${daysSinceLast} days since your last session. Don't lose it.`;
+
+  // Streak visual intensity
+  const streakColor = !loading
+    ? stats.streak >= 14 ? '#FF6B35'
+    : stats.streak >= 7  ? '#D4AF37'
+    : stats.streak >= 3  ? '#F59E0B'
+    : stats.streak >= 1  ? '#E5E7EB'
+    : '#4B5563'
+    : '#4B5563';
+  const streakLabel = stats.streak >= 3 ? "Don't break it" : stats.streak >= 1 ? 'Day streak' : 'Start today';
+
+  // Weekly pace context
+  const weekBehind = stats.weekGoal > 0 ? stats.weekGoal - stats.weekSessions : 0;
+  const weekLabel = stats.weekGoal === 0
+    ? `${stats.weekSessions} this week`
+    : stats.weekSessions >= stats.weekGoal
+    ? 'Goal met'
+    : weekBehind === 1
+    ? '1 more to goal'
+    : `${weekBehind} behind pace`;
+  const weekColor = !loading
+    ? (stats.weekGoal === 0 || stats.weekSessions >= stats.weekGoal) ? '#10B981'
+    : weekBehind === 1 ? '#D4AF37'
+    : '#F59E0B'
+    : '#4B5563';
 
   return (
     <div className="min-h-screen bg-[#05070B]">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 animate-fade-in">
 
-        {/* Greeting section */}
+        {/* Greeting — coach voice */}
         <section className="mb-5 mt-2">
-          <h1 className="text-xl font-bold text-[#E5E7EB] tracking-tight">
-            Hey, {firstName}
+          <h1 className="text-[22px] font-black text-[#E5E7EB] tracking-tight leading-tight">
+            {timeGreeting}, {firstName}.
           </h1>
-          <p className="text-[13px] text-[#9CA3AF] mt-0.5">
-            Stay consistent. Get stronger.
+          <p className="text-[13px] text-[#9CA3AF] mt-1 leading-snug">
+            {loading ? '…' : coachLine}
           </p>
         </section>
 
@@ -248,19 +289,19 @@ const Dashboard = () => {
               className="w-full rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden text-left active:scale-[0.99] transition-transform"
             >
               <div className="p-5">
-                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2">Up next</p>
-                <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight mb-1">
-                  {nextRoutine.name}
-                </h2>
-                <p className="text-sm text-[#9CA3AF] mb-0.5">
+                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2">
                   {liftCount} exercises · ~{estimatedMin} min
                 </p>
-                {lastSummary && (
-                  <p className="text-xs text-[#6B7280] mb-4">{lastSummary}</p>
+                <h2 className="text-[24px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                  {nextRoutine.name}
+                </h2>
+                {lastSummary ? (
+                  <p className="text-[13px] text-[#D4AF37] font-semibold mb-5">{lastSummary}</p>
+                ) : (
+                  <p className="text-[13px] text-[#6B7280] mb-5">First time. Set your baseline.</p>
                 )}
-                {!lastSummary && <div className="mb-4" />}
-                <div className="w-full py-3.5 rounded-xl bg-[#D4AF37] text-black text-center font-bold text-[15px]">
-                  Start workout
+                <div className="w-full py-4 rounded-xl bg-[#D4AF37] text-black text-center font-black text-[16px] tracking-wide">
+                  Let's go
                 </div>
               </div>
             </button>
@@ -278,26 +319,30 @@ const Dashboard = () => {
 
         {/* 3 stat chips */}
         <section className="grid grid-cols-3 gap-2 mb-3">
-          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3 text-center">
-            <div className="text-base mb-0.5">🔥</div>
-            <p className="text-[15px] font-bold text-[#E5E7EB]">
+          {/* Streak — dominant */}
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3 text-center" style={{ borderColor: stats.streak >= 3 && !loading ? `${streakColor}30` : undefined }}>
+            <p className="text-[28px] font-black leading-none" style={{ color: streakColor }}>
               {loading ? '—' : stats.streak}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Day streak</p>
+            <p className="text-[10px] mt-1 font-semibold" style={{ color: streakColor === '#4B5563' ? '#4B5563' : `${streakColor}99` }}>
+              {loading ? '…' : streakLabel}
+            </p>
           </div>
+          {/* Total workouts */}
           <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3 text-center">
-            <div className="text-base mb-0.5">🏋️</div>
-            <p className="text-[15px] font-bold text-[#E5E7EB]">
+            <p className="text-[28px] font-black text-[#E5E7EB] leading-none">
               {loading ? '—' : stats.sessions}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Workouts</p>
+            <p className="text-[10px] text-[#6B7280] mt-1 font-semibold">Total</p>
           </div>
+          {/* Weekly pace */}
           <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-3 text-center">
-            <div className="text-base mb-0.5">🎯</div>
-            <p className="text-[15px] font-bold text-[#E5E7EB]">
+            <p className="text-[28px] font-black leading-none" style={{ color: loading ? '#4B5563' : weekColor }}>
               {loading ? '—' : stats.weekGoal > 0 ? `${stats.weekSessions}/${stats.weekGoal}` : stats.weekSessions}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">This week</p>
+            <p className="text-[10px] mt-1 font-semibold" style={{ color: loading ? '#4B5563' : `${weekColor}99` }}>
+              {loading ? '…' : weekLabel}
+            </p>
           </div>
         </section>
 
