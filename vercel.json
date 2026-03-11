@@ -1,0 +1,4 @@
+{
+  "rootDirectory": "gym-app",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
