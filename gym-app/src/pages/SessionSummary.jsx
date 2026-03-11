@@ -232,6 +232,14 @@ const SessionSummary = () => {
     fire();
   }, [user?.id, profile?.gym_id]); // eslint-disable-line
 
+  const coachHeadline = sessionPRs.length > 0
+    ? `${sessionPRs.length} new PR${sessionPRs.length > 1 ? 's' : ''}. You earned it.`
+    : completedSets >= totalSets && totalSets > 0
+    ? 'Full session. Nothing left.'
+    : completedSets > 0
+    ? 'Work done. Stay consistent.'
+    : 'You showed up. That counts.';
+
   const dateStr = new Date(completedAt).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   });
@@ -287,14 +295,14 @@ const SessionSummary = () => {
         </div>
 
         {/* ── Title ──────────────────────────────────────────────── */}
-        <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-[#D4AF37] mb-2">
-          Workout Complete
+        <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-[#6B7280] mb-2">
+          {routineName}
         </p>
         <h1
-          className="text-[32px] font-black text-white text-center leading-tight mb-1"
+          className="text-[28px] font-black text-white text-center leading-tight mb-1"
           style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
         >
-          {routineName}
+          {coachHeadline}
         </h1>
         <p className="text-[13px] text-[#6B7280] mb-10">{dateStr}</p>
 
@@ -340,24 +348,27 @@ const SessionSummary = () => {
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
           >
             <p className="text-[13px] text-[#9CA3AF]">
-              Consistency builds PRs — keep showing up. 💪
+              No PRs today. Keep pushing — they come from showing up.
             </p>
           </div>
         )}
 
         {/* ── Actions ────────────────────────────────────────────── */}
         <div className="w-full max-w-sm flex flex-col gap-3 mt-auto pt-4">
+          <p className="text-center text-[13px] text-[#4B5563] mb-1">
+            {sessionPRs.length > 0 ? 'Rest up. Come back stronger.' : 'See you next session.'}
+          </p>
           <button
             onClick={() => navigate('/')}
-            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[17px] py-4 rounded-2xl transition-colors"
+            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-black text-[17px] py-4 rounded-2xl transition-colors"
           >
-            Done
+            Back to the grind
           </button>
           <button
             onClick={() => navigate('/workouts')}
-            className="w-full bg-white/5 hover:bg-white/10 text-[#CBD5E1] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors border border-white/8"
+            className="w-full bg-white/5 hover:bg-white/10 text-[#9CA3AF] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors border border-white/8"
           >
-            Back to Workouts
+            View Workouts
           </button>
         </div>
       </div>

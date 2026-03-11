@@ -40,11 +40,11 @@ const PRBanner = ({ exercise, weight, reps, onDismiss }) => (
 
 // ── Finish Modal ──────────────────────────────────────────────────────────────
 const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error }) => (
-  <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm">
-    <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in bg-white dark:bg-slate-800 shadow-[0_-8px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_-8px_40px_rgba(0,0,0,0.4)]">
-      <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-black/10 dark:bg-white/20" />
-      <h2 className="font-bold text-[22px] mb-1 text-[#0F172A] dark:text-slate-100">Finish Workout?</h2>
-      <p className="text-[14px] mb-6 text-[#64748B] dark:text-slate-400">{workout} · {duration}</p>
+  <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm">
+    <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in bg-[#0F172A] border-t border-white/10 shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
+      <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-white/20" />
+      <h2 className="font-black text-[24px] mb-1 text-[#E5E7EB]">That's a wrap.</h2>
+      <p className="text-[14px] mb-6 text-[#6B7280]">{workout} · {duration}</p>
 
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
@@ -52,29 +52,29 @@ const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets
           { value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, label: 'Sets Done' },
           { value: duration, label: 'Duration' },
         ].map(({ value, label }) => (
-          <div key={label} className="rounded-2xl p-3 text-center bg-slate-100 dark:bg-slate-700/80">
-            <p className="text-[22px] font-bold text-[#0F172A] dark:text-slate-100">{value}</p>
-            <p className="text-[11px] mt-0.5 uppercase font-semibold text-[#64748B] dark:text-slate-400">{label}</p>
+          <div key={label} className="rounded-2xl p-3 text-center bg-white/5 border border-white/8">
+            <p className="text-[24px] font-black text-[#E5E7EB]">{value}</p>
+            <p className="text-[10px] mt-0.5 uppercase font-semibold text-[#6B7280]">{label}</p>
           </div>
         ))}
       </div>
 
       {sessionPRs.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-2xl p-4 mb-6">
+        <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-2xl p-4 mb-6">
           <div className="flex items-center gap-2 mb-2">
-            <Trophy size={16} className="text-amber-500 dark:text-amber-400" />
-            <p className="text-amber-700 dark:text-amber-300 font-bold text-[13px]">Personal Records This Session</p>
+            <Trophy size={16} className="text-[#D4AF37]" />
+            <p className="text-[#D4AF37] font-bold text-[13px]">{sessionPRs.length} New PR{sessionPRs.length > 1 ? 's' : ''} 🔥</p>
           </div>
           {sessionPRs.map((pr, i) => (
-            <p key={i} className="text-[13px] text-amber-900 dark:text-amber-200 py-0.5">
-              🏆 {pr.exercise} — {pr.weight} lbs × {pr.reps}
+            <p key={i} className="text-[13px] text-[#E5E7EB] py-0.5">
+              {pr.exercise} — {pr.weight} lbs × {pr.reps}
             </p>
           ))}
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-2xl p-3 mb-4 text-[13px] text-red-600 dark:text-red-400">
+        <div className="bg-red-900/30 border border-red-800 rounded-2xl p-3 mb-4 text-[13px] text-red-400">
           {error}
         </div>
       )}
@@ -82,16 +82,16 @@ const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets
       <button
         onClick={onConfirm}
         disabled={saving}
-        className="w-full disabled:opacity-50 font-bold text-[17px] py-4 rounded-2xl transition-colors mb-3 bg-[#D4AF37] dark:bg-amber-500 text-black"
+        className="w-full disabled:opacity-50 font-black text-[17px] py-4 rounded-2xl transition-colors mb-3 bg-[#D4AF37] text-black"
       >
-        {saving ? 'Saving…' : 'Save Workout'}
+        {saving ? 'Saving…' : 'Save & finish'}
       </button>
       <button
         onClick={onCancel}
         disabled={saving}
-        className="w-full font-semibold text-[15px] py-2 transition-colors text-[#64748B] dark:text-slate-400"
+        className="w-full font-semibold text-[15px] py-2 transition-colors text-[#6B7280]"
       >
-        Keep Going
+        Not done yet
       </button>
     </div>
   </div>
@@ -833,7 +833,7 @@ const ActiveSession = () => {
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
-        className="flex-shrink-0 px-4 pb-3 border-b border-slate-200 dark:border-white/10 bg-gradient-to-br from-amber-50/80 to-slate-100/50 dark:from-amber-900/20 dark:to-slate-800/80"
+        className="flex-shrink-0 px-4 pb-3 border-b border-white/10 bg-[#05070B]"
         style={{
           paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
         }}
@@ -841,7 +841,7 @@ const ActiveSession = () => {
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-0.5 transition-opacity hover:opacity-70 -ml-1 p-1 text-blue-600 dark:text-blue-400"
+            className="flex items-center gap-0.5 transition-opacity hover:opacity-70 -ml-1 p-1 text-[#9CA3AF]"
           >
             <ChevronLeft size={24} strokeWidth={2.5} />
             <span className="text-[15px] font-semibold -ml-1">Back</span>
@@ -855,7 +855,7 @@ const ActiveSession = () => {
         </div>
 
         <div className="text-center">
-          <h1 className="font-semibold text-[17px] tracking-tight leading-none text-[#0F172A] dark:text-slate-100">
+          <h1 className="font-bold text-[17px] tracking-tight leading-none text-[#E5E7EB]">
             {routineName}
           </h1>
         </div>
@@ -1033,7 +1033,7 @@ const ActiveSession = () => {
                   <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/50">
                     <TrendingUp size={13} className="text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
                     <p className="text-[12px] text-indigo-700 dark:text-indigo-300">
-                      First time — start light and find your working weight
+                      First time here. Find your working weight — go light.
                     </p>
                   </div>
                 );
@@ -1364,7 +1364,7 @@ const ActiveSession = () => {
           onClick={() => setShowFinishModal(true)}
           className="mt-2 w-full font-bold text-[17px] py-4 rounded-2xl transition-colors active:scale-[0.99] bg-[#D4AF37] dark:bg-amber-500 text-black"
         >
-          Finish Workout
+          {completedSets === 0 ? 'End Session' : completedSets >= totalSets && totalSets > 0 ? 'Done — save it' : 'Finish Strong'}
         </button>
       </div>
 
