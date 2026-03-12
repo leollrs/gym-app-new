@@ -15,9 +15,9 @@ export default function Community({ defaultTab = 'feed' }) {
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       {/* Sticky header */}
       <div className="sticky top-0 z-30 bg-[#05070B]/95 backdrop-blur-2xl border-b border-white/6">
-        <div className="max-w-2xl mx-auto px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4">
+        <div className="max-w-2xl mx-auto px-4 pt-3 pb-3">
           {/* Title */}
-          <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight mb-4">
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight mb-3">
             Community
           </h1>
 

@@ -108,7 +108,7 @@ const QuickStart = () => {
   const otherRoutines = routines.filter(r => r.id !== suggested?.id);
 
   return (
-    <div className="min-h-screen bg-[#05070B] px-4 pt-[calc(80px+env(safe-area-inset-top))] pb-[calc(100px+env(safe-area-inset-bottom))]">
+    <div className="min-h-screen bg-[#05070B] px-4 pt-4 pb-28 md:pb-12">
       <div className="max-w-lg mx-auto space-y-5 stagger-fade-in">
 
         {/* Header */}
