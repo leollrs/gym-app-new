@@ -644,12 +644,17 @@ const SocialFeed = ({ embedded = false }) => {
 
     const actorIds = [user.id, ...acceptedIds];
 
+    // Only fetch today's posts to reduce DB load
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
     // Fetch feed items and friend streaks in parallel
     const [{ data: items }, streakData] = await Promise.all([
       supabase
         .from('activity_feed_items')
         .select('*, profiles!actor_id(full_name, username, avatar_url)')
         .in('actor_id', actorIds)
+        .gte('created_at', todayStart.toISOString())
         .order('created_at', { ascending: false })
         .limit(50),
       // Fetch recent sessions for friends to compute streaks
@@ -854,7 +859,7 @@ const SocialFeed = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
-      <div className={`max-w-[680px] mx-auto px-4 ${embedded ? 'pt-0 pb-0' : 'pt-6 pb-8'}`}>
+      <div className={`${embedded ? '' : 'max-w-[680px] mx-auto px-4 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (

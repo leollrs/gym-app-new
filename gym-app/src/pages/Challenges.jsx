@@ -589,7 +589,7 @@ export default function Challenges({ embedded = false }) {
       )}
 
       {/* Tab bar — always visible */}
-      <div className={`max-w-2xl mx-auto px-4 ${embedded ? 'pt-2 pb-3' : ''}`}>
+      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-2xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
         <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
           {TABS.map(t => (
@@ -615,7 +615,7 @@ export default function Challenges({ embedded = false }) {
         </div>
       </div>
 
-      <div className={`max-w-2xl mx-auto px-4 ${embedded ? 'py-0' : 'py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`}>
         {user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} />
         )}
