@@ -260,7 +260,7 @@ const Onboarding = () => {
       }
 
       refreshProfile();
-      navigate('/');
+      navigate('/welcome');
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {

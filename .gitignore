@@ -1,1 +1,11 @@
 .vercel
+
+# macOS metadata
+._*
+.DS_Store
+
+# Source video files (compressed versions live in public/videos)
+gym-app/videos/
+*.mov
+*.MP4
+Lateral_raises_video.mp4

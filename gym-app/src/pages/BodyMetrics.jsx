@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload, ChevronDown, ChevronRight, BarChart3 } from 'lucide-react';
+import MonthlyProgressReport from '../components/MonthlyProgressReport';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -150,6 +151,7 @@ export default function BodyMetrics() {
   const [viewingPhoto,    setViewingPhoto]    = useState(null); // { url, angle, taken_at, id }
   const [deletingId,      setDeletingId]      = useState(null);
   const [expandedDate,    setExpandedDate]    = useState(null);
+  const [showMonthlyReport, setShowMonthlyReport] = useState(false);
 
   const [loading, setLoading] = useState(true);
 
@@ -324,10 +326,18 @@ export default function BodyMetrics() {
         >
           <ArrowLeft size={18} style={{ color: 'var(--text-secondary)' }} />
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Body Metrics</h1>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Weight & measurements over time</p>
         </div>
+        <button
+          onClick={() => setShowMonthlyReport(true)}
+          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors"
+          style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+        >
+          <BarChart3 size={14} />
+          Monthly Report
+        </button>
       </div>
 
       {loading ? (
@@ -768,6 +778,13 @@ export default function BodyMetrics() {
           profileId={user.id}
           onSaved={loadData}
           onClose={() => setShowMeasurements(false)}
+        />
+      )}
+
+      {showMonthlyReport && (
+        <MonthlyProgressReport
+          isOpen={showMonthlyReport}
+          onClose={() => setShowMonthlyReport(false)}
         />
       )}
     </div>

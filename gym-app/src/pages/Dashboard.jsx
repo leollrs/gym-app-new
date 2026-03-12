@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Timer, Flame, Zap, Dumbbell, Trophy, Users } from 'lucide-react';
+import { ChevronRight, Timer, Flame, Zap, Dumbbell, Trophy, Users, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { runNotificationScheduler } from '../lib/notificationScheduler';
+import WorkoutOfTheDay from '../components/WorkoutOfTheDay';
+import GymPulse from '../components/GymPulse';
+import LiveTrainingIndicator from '../components/LiveTrainingIndicator';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -362,6 +366,9 @@ const Dashboard = () => {
       } catch { /* friendships table may not exist yet — fail silently */ }
 
       setLoading(false);
+
+      // Run smart notification scheduler (fire-and-forget)
+      runNotificationScheduler(user.id, profile.gym_id).catch(() => {});
     };
 
     load();
@@ -584,6 +591,18 @@ const Dashboard = () => {
           )}
         </section>
 
+        {/* ── AI WORKOUT OF THE DAY ────────────────────────────────────────────── */}
+        {!loading && !activeSession && (
+          <section className="mb-5">
+            <WorkoutOfTheDay />
+          </section>
+        )}
+
+        {/* ── LIVE TRAINING (friends currently at gym) ─────────────────────────── */}
+        <section className="mb-5">
+          <LiveTrainingIndicator />
+        </section>
+
         {/* 3 stat chips */}
         <section className="grid grid-cols-3 gap-2 mb-3">
           {/* Streak — dominant */}
@@ -746,23 +765,28 @@ const Dashboard = () => {
           </section>
         )}
 
-        {/* 2 shortcut cards */}
-        <section className="grid grid-cols-2 gap-3 mb-5">
+        {/* 3 shortcut cards */}
+        <section className="grid grid-cols-3 gap-3 mb-5">
           <Link
             to="/nutrition"
-            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 flex flex-col items-center justify-center min-h-[100px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
+            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4 flex flex-col items-center justify-center min-h-[90px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
           >
-            <Flame size={28} className="text-[#D4AF37] mb-2" />
-            <span className="font-semibold text-[#E5E7EB] text-[15px]">Nutrition</span>
-            <span className="text-[11px] text-[#6B7280] mt-1">Calories &amp; macros</span>
+            <Flame size={24} className="text-[#D4AF37] mb-1.5" />
+            <span className="font-semibold text-[#E5E7EB] text-[13px]">Nutrition</span>
           </Link>
           <Link
             to="/strength"
-            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 flex flex-col items-center justify-center min-h-[100px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
+            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4 flex flex-col items-center justify-center min-h-[90px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
           >
-            <Zap size={28} className="text-[#D4AF37] mb-2" />
-            <span className="font-semibold text-[#E5E7EB] text-[15px]">Strength</span>
-            <span className="text-[11px] text-[#6B7280] mt-1">PRs &amp; volume trends</span>
+            <Zap size={24} className="text-[#D4AF37] mb-1.5" />
+            <span className="font-semibold text-[#E5E7EB] text-[13px]">Strength</span>
+          </Link>
+          <Link
+            to="/rewards"
+            className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4 flex flex-col items-center justify-center min-h-[90px] hover:border-[#D4AF37]/30 hover:bg-[#111827] transition-all active:scale-[0.98]"
+          >
+            <Gift size={24} className="text-[#D4AF37] mb-1.5" />
+            <span className="font-semibold text-[#E5E7EB] text-[13px]">Rewards</span>
           </Link>
         </section>
 
@@ -790,6 +814,11 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ── GYM PULSE (real-time gym activity) ─────────────────────────────── */}
+        <section className="mb-5">
+          <GymPulse />
         </section>
 
         {/* ── FRIENDS THIS WEEK ────────────────────────────────────────────────── */}

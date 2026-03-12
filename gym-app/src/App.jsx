@@ -20,9 +20,11 @@ import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 import Leaderboard from './pages/Leaderboard';
 import Challenges from './pages/Challenges';
 import Notifications from './pages/Notifications';
+import Rewards from './pages/Rewards';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
+import FirstWorkoutWelcome from './components/FirstWorkoutWelcome';
 import TVDisplay from './pages/TVDisplay';
 
 // Trainer pages
@@ -118,6 +120,9 @@ function App() {
       {/* Onboarding */}
       <Route path="/onboarding" element={<Onboarding />} />
 
+      {/* First-win welcome screen (post-onboarding, pre-dashboard) */}
+      <Route path="/welcome" element={<ProtectedRoute><FirstWorkoutWelcome /></ProtectedRoute>} />
+
       {/* TV display — no auth required, no nav */}
       <Route path="/tv-display" element={<TVDisplay />} />
 
@@ -196,6 +201,7 @@ function App() {
 
                 {/* Utility */}
                 <Route path="/checkin"           element={<CheckIn />} />
+                <Route path="/rewards"           element={<Rewards />} />
 
                 <Route path="*"                  element={<Navigate to="/" replace />} />
               </Routes>
