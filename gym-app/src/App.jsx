@@ -23,6 +23,7 @@ import Progress from './pages/Progress';
 import Community from './pages/Community';
 import Notifications from './pages/Notifications';
 import Rewards from './pages/Rewards';
+import PersonalRecords from './pages/PersonalRecords';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
@@ -199,6 +200,7 @@ function App() {
                 <Route path="/profile"           element={<Profile />} />
                 <Route path="/metrics"           element={<BodyMetrics />} />
                 <Route path="/strength"          element={<Strength />} />
+                <Route path="/personal-records"  element={<PersonalRecords />} />
                 <Route path="/nutrition"         element={<Nutrition />} />
 
                 {/* Utility */}

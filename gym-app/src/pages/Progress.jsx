@@ -12,7 +12,7 @@ import {
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPoints, getLeaderboard, getRewardTier } from '../lib/rewardsEngine';
+import { getUserPoints } from '../lib/rewardsEngine';
 import { LevelCard } from '../components/LevelBadge';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import { format, parseISO, subDays, startOfWeek, endOfWeek } from 'date-fns';
@@ -106,8 +106,7 @@ const OverviewTab = () => {
   const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: 0 });
   const [weekStats, setWeekStats] = useState({ sessions: 0, volume: 0, prs: 0 });
   const [volumeChart, setVolumeChart] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [userRank, setUserRank] = useState(null);
+  const [challengeRankings, setChallengeRankings] = useState([]);
   const [earnedAchievements, setEarnedAchievements] = useState([]);
 
   useEffect(() => {
@@ -121,9 +120,8 @@ const OverviewTab = () => {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-      const [pts, lb, weekSessions, volumeData, achievementData] = await Promise.all([
+      const [pts, weekSessions, volumeData, achievementData, myChallenges] = await Promise.all([
         getUserPoints(user.id),
-        profile?.gym_id ? getLeaderboard(profile.gym_id, 20) : [],
         // This week's completed sessions
         supabase
           .from('workout_sessions')
@@ -149,6 +147,13 @@ const OverviewTab = () => {
           .select('id', { count: 'exact', head: true })
           .eq('profile_id', user.id)
           .eq('status', 'completed'),
+        // Challenges the user has joined
+        profile?.gym_id
+          ? supabase
+              .from('challenge_participants')
+              .select('challenge_id, challenges(*)')
+              .eq('profile_id', user.id)
+          : { data: [] },
       ]);
 
       if (cancelled) return;
@@ -180,10 +185,75 @@ const OverviewTab = () => {
         }))
       );
 
-      // Leaderboard
-      setLeaderboard(lb.slice(0, 3));
-      const myEntry = lb.find(e => e.profileId === user.id);
-      setUserRank(myEntry ?? null);
+      // Challenge rankings — find live challenges user is in and compute their rank
+      const now = new Date();
+      const liveChallenges = (myChallenges.data ?? [])
+        .map(r => r.challenges)
+        .filter(c => c && new Date(c.start_date) <= now && new Date(c.end_date) >= now);
+
+      const rankings = [];
+      for (const challenge of liveChallenges) {
+        const { data: participants } = await supabase
+          .from('challenge_participants')
+          .select('profile_id, profiles(full_name)')
+          .eq('challenge_id', challenge.id);
+
+        const participantMap = {};
+        (participants || []).forEach(p => { participantMap[p.profile_id] = p.profiles?.full_name ?? '—'; });
+        const participantIds = Object.keys(participantMap);
+        if (participantIds.length === 0) continue;
+
+        let list = [];
+        const SCORE_UNIT_MAP = { consistency: 'workouts', volume: 'lbs', pr_count: 'PRs', team: 'pts', specific_lift: 'lbs' };
+
+        if (challenge.type === 'consistency' || challenge.type === 'volume') {
+          const { data } = await supabase
+            .from('workout_sessions')
+            .select('profile_id, total_volume_lbs')
+            .eq('gym_id', profile.gym_id)
+            .eq('status', 'completed')
+            .gte('started_at', challenge.start_date)
+            .lte('started_at', challenge.end_date)
+            .in('profile_id', participantIds);
+
+          const agg = {};
+          participantIds.forEach(id => { agg[id] = { name: participantMap[id], count: 0, volume: 0 }; });
+          (data || []).forEach(s => {
+            agg[s.profile_id].count++;
+            agg[s.profile_id].volume += parseFloat(s.total_volume_lbs || 0);
+          });
+          list = Object.entries(agg)
+            .map(([id, v]) => ({ id, name: v.name, score: challenge.type === 'volume' ? Math.round(v.volume) : v.count }))
+            .sort((a, b) => b.score - a.score);
+        } else if (challenge.type === 'pr_count') {
+          const { data } = await supabase
+            .from('pr_history')
+            .select('profile_id')
+            .eq('gym_id', profile.gym_id)
+            .gte('achieved_at', challenge.start_date)
+            .lte('achieved_at', challenge.end_date)
+            .in('profile_id', participantIds);
+
+          const agg = {};
+          participantIds.forEach(id => { agg[id] = { name: participantMap[id], score: 0 }; });
+          (data || []).forEach(r => { agg[r.profile_id].score++; });
+          list = Object.entries(agg).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.score - a.score);
+        }
+
+        const myIdx = list.findIndex(e => e.id === user.id);
+        if (myIdx >= 0) {
+          rankings.push({
+            challengeId: challenge.id,
+            challengeName: challenge.name,
+            challengeType: challenge.type,
+            rank: myIdx + 1,
+            total: list.length,
+            score: list[myIdx].score,
+            unit: SCORE_UNIT_MAP[challenge.type] ?? '',
+          });
+        }
+      }
+      setChallengeRankings(rankings);
 
       // Achievements — compute earned ones
       const totalSessions = achievementData.count ?? 0;
@@ -276,10 +346,10 @@ const OverviewTab = () => {
         </div>
       )}
 
-      {/* Leaderboard preview */}
+      {/* Challenge Rankings */}
       <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[13px] font-semibold text-[#E5E7EB]">Leaderboard</p>
+          <p className="text-[13px] font-semibold text-[#E5E7EB]">Challenge Rankings</p>
           <button
             onClick={() => navigate('/leaderboard')}
             className="text-[11px] font-semibold text-[#D4AF37]"
@@ -287,59 +357,41 @@ const OverviewTab = () => {
             View all
           </button>
         </div>
-        {leaderboard.length === 0 ? (
-          <p className="text-[12px] text-[#6B7280] text-center py-4">No leaderboard data yet</p>
+        {challengeRankings.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-[12px] text-[#6B7280]">No live challenges</p>
+            <p className="text-[11px] text-[#4B5563] mt-1">Join a challenge to see your ranking</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {leaderboard.map((entry, i) => {
-              const medals = ['🥇', '🥈', '🥉'];
-              const isMe = entry.profileId === user?.id;
+            {challengeRankings.map(cr => {
+              const isTop3 = cr.rank <= 3;
+              const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
               return (
                 <div
-                  key={entry.profileId}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-xl ${
-                    isMe ? 'bg-[#D4AF37]/8 border border-[#D4AF37]/20' : 'bg-[#111827]'
-                  }`}
+                  key={cr.challengeId}
+                  className="flex items-center gap-3 px-3 py-3 rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/20"
                 >
-                  <span className="text-[14px] w-5 text-center">{medals[i]}</span>
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${entry.tier.color}15` }}
-                  >
-                    {entry.avatarUrl ? (
-                      <img src={entry.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
+                  <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
+                    {isTop3 ? (
+                      <span className="text-[16px]">{medals[cr.rank]}</span>
                     ) : (
-                      <span className="text-[10px] font-bold" style={{ color: entry.tier.color }}>
-                        {entry.name[0]?.toUpperCase()}
-                      </span>
+                      <span className="text-[14px] font-black text-[#D4AF37]">#{cr.rank}</span>
                     )}
                   </div>
-                  <p className={`flex-1 text-[12px] font-semibold truncate ${isMe ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                    {isMe ? 'You' : entry.name}
-                  </p>
-                  <span className="text-[11px] font-bold text-[#9CA3AF]">
-                    {entry.totalPoints.toLocaleString()} pts
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{cr.challengeName}</p>
+                    <p className="text-[11px] text-[#6B7280]">
+                      {cr.score.toLocaleString()} {cr.unit} · {cr.total} competitor{cr.total !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-[16px] font-black text-[#D4AF37]">#{cr.rank}</p>
+                    <p className="text-[10px] text-[#6B7280]">of {cr.total}</p>
+                  </div>
                 </div>
               );
             })}
-            {userRank && userRank.rank > 3 && (
-              <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/20 mt-1">
-                <span className="text-[12px] font-bold w-5 text-center text-[#6B7280]">{userRank.rank}</span>
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: `${userRank.tier.color}15` }}
-                >
-                  <span className="text-[10px] font-bold" style={{ color: userRank.tier.color }}>
-                    {userRank.name[0]?.toUpperCase()}
-                  </span>
-                </div>
-                <p className="flex-1 text-[12px] font-semibold text-[#D4AF37] truncate">You</p>
-                <span className="text-[11px] font-bold text-[#D4AF37]">
-                  {userRank.totalPoints.toLocaleString()} pts
-                </span>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -482,6 +534,7 @@ const HistoryTab = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedMonths, setExpandedMonths] = useState(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -504,6 +557,9 @@ const HistoryTab = () => {
 
       if (!cancelled) {
         setSessions(data ?? []);
+        // Auto-expand the current month
+        const currentMonth = formatMonthYear(new Date().toISOString());
+        setExpandedMonths(new Set([currentMonth]));
         setLoading(false);
       }
     };
@@ -519,6 +575,15 @@ const HistoryTab = () => {
     return acc;
   }, {});
   const months = Object.keys(grouped);
+
+  const toggleMonth = (month) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(month)) next.delete(month);
+      else next.add(month);
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -553,18 +618,45 @@ const HistoryTab = () => {
       <p className="text-[12px] mb-4 text-[#9CA3AF]">
         {sessions.length} workout{sessions.length !== 1 ? 's' : ''} completed
       </p>
-      {months.map(month => (
-        <div key={month} className="mb-8">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-3 text-[#9CA3AF]">
-            {month}
-          </p>
-          <div className="flex flex-col gap-3">
-            {grouped[month].map(session => (
-              <SessionCard key={session.id} session={session} />
-            ))}
+      {months.map(month => {
+        const isExpanded = expandedMonths.has(month);
+        const count = grouped[month].length;
+        return (
+          <div key={month} className="mb-4">
+            <button
+              onClick={() => toggleMonth(month)}
+              className="w-full flex items-center justify-between mb-3 group"
+            >
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9CA3AF]">
+                  {month}
+                </p>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/6 text-[#6B7280]">
+                  {count}
+                </span>
+              </div>
+              <ChevronDown
+                size={15}
+                className="text-[#4B5563] transition-transform duration-200"
+                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+            </button>
+            {isExpanded ? (
+              <div className="flex flex-col gap-3">
+                {grouped[month].map(session => (
+                  <SessionCard key={session.id} session={session} />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-[#0F172A] rounded-[14px] border border-white/8 px-4 py-3">
+                <p className="text-[12px] text-[#6B7280]">
+                  {count} workout{count !== 1 ? 's' : ''} · Tap to expand
+                </p>
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
@@ -733,6 +825,7 @@ const StrengthTab = () => {
   const [prHistory, setPrHistory] = useState({});
   const [bodyweight, setBodyweight] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showAllPrs, setShowAllPrs] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -795,7 +888,17 @@ const StrengthTab = () => {
       {/* Strength standards */}
       <div className="mb-2">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[15px] font-bold text-[#E5E7EB]">Strength Standards</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[15px] font-bold text-[#E5E7EB]">Strength Standards</p>
+            <button
+              onClick={() => navigate('/personal-records')}
+              className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-xl transition-colors"
+              style={{ background: 'rgba(212,175,55,0.08)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+            >
+              <Trophy size={11} />
+              Personal Records
+            </button>
+          </div>
           {!bodyweight && (
             <button
               onClick={() => navigate('/metrics')}
@@ -826,7 +929,7 @@ const StrengthTab = () => {
 
       {/* All PRs */}
       <p className="text-[15px] font-bold mb-3 text-[#E5E7EB]">
-        All Personal Records
+        Top Exercises
         {prs.length > 0 && (
           <span
             className="ml-2 text-[12px] font-semibold px-2 py-0.5 rounded-full"
@@ -844,11 +947,21 @@ const StrengthTab = () => {
           <p className="text-[12px] text-[#6B7280]">Complete workouts to start tracking</p>
         </div>
       ) : (
-        <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden divide-y divide-white/4">
-          {prs.map(pr => (
-            <PRRow key={pr.exercise_id} pr={pr} history={prHistory[pr.exercise_id] ?? []} />
-          ))}
-        </div>
+        <>
+          <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden divide-y divide-white/4">
+            {(showAllPrs ? prs : prs.slice(0, 5)).map(pr => (
+              <PRRow key={pr.exercise_id} pr={pr} history={prHistory[pr.exercise_id] ?? []} />
+            ))}
+          </div>
+          {prs.length > 5 && !showAllPrs && (
+            <button
+              onClick={() => setShowAllPrs(true)}
+              className="w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/15 transition-colors hover:bg-[#D4AF37]/12"
+            >
+              Show {prs.length - 5} more exercise{prs.length - 5 !== 1 ? 's' : ''}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -1048,8 +1161,19 @@ const BodyTab = () => {
 
   return (
     <div>
-      {/* Monthly report button */}
-      <div className="flex justify-end mb-4">
+      {/* Quick actions row */}
+      <div className="flex items-center gap-2 mb-4">
+        <button
+          onClick={() => {
+            const el = document.getElementById('body-log-weight');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors"
+          style={{ background: 'rgba(212,175,55,0.15)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }}
+        >
+          <Scale size={14} />
+          Log Weight
+        </button>
         <button
           onClick={() => setShowMonthlyReport(true)}
           className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors"
@@ -1143,7 +1267,7 @@ const BodyTab = () => {
       </div>
 
       {/* Log weight */}
-      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5 mb-5">
+      <div id="body-log-weight" className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5 mb-5">
         <p className="text-[14px] font-semibold mb-3 text-[#E5E7EB]">Log Today's Weight</p>
         <div className="flex gap-2">
           <div className="relative flex-1">
