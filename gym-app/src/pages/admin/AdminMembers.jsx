@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, X, ChevronRight, Trophy, FileText, Save, Link, Mail, UserX, UserCheck, Ban, Send, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createNotification } from '../../lib/notifications';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { churnScore, riskLabel } from './AdminOverview';
+import { calculateChurnScore, getRiskTier } from '../../lib/churnScore';
 
 // ── Membership status helpers ───────────────────────────────
 const statusConfig = {
@@ -577,9 +579,43 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
   );
 };
 
+// ── Churn risk badge (links to Churn Intel page) ──────────
+const ChurnRiskBadge = ({ member, navigate }) => {
+  // Compute score using the new library's model for a consistent display.
+  // We have enough data on member from the existing scoring pass to derive
+  // approximate inputs. We reuse the AdminOverview score (member.score) for
+  // the tier classification but display a small badge here.
+  const score = member.score ?? 0;
+  const tier = getRiskTier(
+    // Map the existing 0-100 AdminOverview score through our tier thresholds.
+    // AdminOverview uses 61+ = At Risk, 31-60 = Watch — translate to new 70/40 thresholds:
+    score >= 61 ? 72 : score >= 31 ? 50 : 20
+  );
+  if (score < 31) return null; // Only show badge for Watch+ members
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        navigate('/admin/churn');
+      }}
+      title={`${tier.label} — click to view in Churn Intel`}
+      className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors hover:opacity-80 flex-shrink-0"
+      style={{
+        color: tier.color,
+        background: tier.bg,
+        borderColor: `${tier.color}33`,
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+      {tier.label}
+    </button>
+  );
+};
+
 // ── Main ──────────────────────────────────────────────────
 export default function AdminMembers() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [members,      setMembers]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
@@ -837,9 +873,10 @@ export default function AdminMembers() {
                     <span className="text-[13px] font-bold text-[#9CA3AF]">{m.full_name[0]}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
                       <StatusBadge status={m.membership_status} />
+                      <ChurnRiskBadge member={m} navigate={navigate} />
                       {m.admin_note && (
                         <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 flex-shrink-0" title="Has note" />
                       )}

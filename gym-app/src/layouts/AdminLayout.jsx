@@ -1,14 +1,17 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert,
+  TrendingUp, ShieldAlert, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const NAV = [
   { to: '/admin',              label: 'Overview',      icon: LayoutDashboard, exact: true },
   { to: '/admin/members',      label: 'Members',       icon: Users },
+  { to: '/admin/churn',        label: 'Churn Intel',   icon: AlertTriangle },
   { to: '/admin/attendance',   label: 'Attendance',    icon: CalendarCheck },
   { to: '/admin/challenges',   label: 'Challenges',    icon: Trophy },
   { to: '/admin/programs',     label: 'Programs',      icon: Dumbbell },
@@ -34,6 +37,42 @@ const linkClass = (active) =>
 export default function AdminLayout({ children }) {
   const { profile, gymName, gymLogoUrl, signOut } = useAuth();
   const navigate = useNavigate();
+  const [highRiskCount, setHighRiskCount] = useState(0);
+
+  // Fetch high-risk member count on mount (quick heuristic: inactive 21+ days)
+  useEffect(() => {
+    if (!profile?.gym_id) return;
+    const fetchHighRisk = async () => {
+      try {
+        const cutoff = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
+        // Count members who haven't checked in for 21+ days as a proxy for high churn risk
+        const { data: memberIds } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('gym_id', profile.gym_id)
+          .eq('role', 'member');
+
+        if (!memberIds?.length) return;
+
+        const ids = memberIds.map(m => m.id);
+
+        // Find members who have at least one check-in but their last one was 21+ days ago
+        const { data: recentCheckins } = await supabase
+          .from('attendance')
+          .select('user_id')
+          .eq('gym_id', profile.gym_id)
+          .gte('checked_in_at', cutoff)
+          .in('user_id', ids);
+
+        const recentSet = new Set((recentCheckins || []).map(r => r.user_id));
+        const count = ids.filter(id => !recentSet.has(id)).length;
+        setHighRiskCount(count);
+      } catch (_) {
+        // Fail silently — badge is non-critical
+      }
+    };
+    fetchHighRisk();
+  }, [profile?.gym_id]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -72,7 +111,12 @@ export default function AdminLayout({ children }) {
               className={({ isActive }) => linkClass(isActive)}
             >
               <Icon size={17} />
-              {label}
+              <span className="flex-1">{label}</span>
+              {to === '/admin/churn' && highRiskCount > 0 && (
+                <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#EF4444] text-white leading-none">
+                  {highRiskCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

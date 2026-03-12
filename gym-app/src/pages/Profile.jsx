@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData } from '../lib/achievements';
 
 // ── Setup option data ─────────────────────────────────────────────────────────
 const FITNESS_LEVELS = [
@@ -90,34 +91,7 @@ const MUSCLE_COLORS = {
   Hamstrings: '#34D399', Quads: '#6EE7B7', Calves: '#FCD34D',
 };
 
-const ACHIEVEMENT_DEFS = [
-  { key: 'first_workout', label: 'First Workout',   icon: Dumbbell,  desc: 'Log your first session',          check: (d) => d.sessions >= 1 },
-  { key: 'sessions_10',   label: '10 Workouts',     icon: Dumbbell,  desc: 'Complete 10 sessions',            check: (d) => d.sessions >= 10 },
-  { key: 'sessions_50',   label: '50 Workouts',     icon: Dumbbell,  desc: 'Complete 50 sessions',            check: (d) => d.sessions >= 50 },
-  { key: 'century_club',  label: 'Century Club',    icon: Trophy,    desc: '100 workouts completed',          check: (d) => d.sessions >= 100 },
-  { key: 'streak_7',      label: '7-Day Streak',    icon: Flame,     desc: 'Train 7 days in a row',           check: (d) => d.streak >= 7 },
-  { key: 'streak_30',     label: '30-Day Streak',   icon: Flame,     desc: 'Train 30 days in a row',          check: (d) => d.streak >= 30 },
-  { key: 'first_pr',      label: 'First PR',        icon: Star,      desc: 'Set your first personal record',  check: (d) => d.prCount >= 1 },
-  { key: 'pr_machine',    label: 'PR Machine',      icon: Star,      desc: 'Set 10 personal records',         check: (d) => d.prCount >= 10 },
-  { key: 'volume_100k',   label: '100k Club',       icon: BarChart2, desc: '100,000 lbs total volume',        check: (d) => d.totalVolume >= 100_000 },
-  { key: 'volume_king',   label: 'Volume King',     icon: BarChart2, desc: '1 million lbs total volume',      check: (d) => d.totalVolume >= 1_000_000 },
-  { key: 'early_bird',    label: 'Early Bird',      icon: Flame,     desc: 'Complete a workout before 7am',   check: (d) => d.earlyBird === true },
-];
-
-// Fixed UUIDs matching migration 0019_seed_achievement_definitions.sql
-const ACHIEVEMENT_UUID_MAP = {
-  first_workout: 'a1000000-0000-0000-0000-000000000001',
-  streak_7:      'a1000000-0000-0000-0000-000000000002',
-  streak_30:     'a1000000-0000-0000-0000-000000000003',
-  century_club:  'a1000000-0000-0000-0000-000000000004',
-  volume_king:   'a1000000-0000-0000-0000-000000000005',
-  pr_machine:    'a1000000-0000-0000-0000-000000000006',
-  sessions_10:   'a1000000-0000-0000-0000-000000000007',
-  sessions_50:   'a1000000-0000-0000-0000-000000000008',
-  first_pr:      'a1000000-0000-0000-0000-000000000009',
-  volume_100k:   'a1000000-0000-0000-0000-000000000010',
-  early_bird:    'a1000000-0000-0000-0000-000000000011',
-};
+// ACHIEVEMENT_DEFS and ACHIEVEMENT_CATEGORIES are imported from ../lib/achievements
 
 // ── Hero stat block ───────────────────────────────────────────────────────────
 const HeroStat = ({ label, value, sub }) => (
@@ -144,6 +118,10 @@ const Profile = () => {
   const [weeklyChart, setWeeklyChart]                 = useState([]);
   const [loading, setLoading]                         = useState(true);
   const [unlockedAchievementIds, setUnlockedAchievementIds] = useState(new Set());
+  // Map of achievement_key -> earned_at (ISO string) for earned ones
+  const [earnedAchievements, setEarnedAchievements]   = useState({});
+  // Live achievement data for progress bars
+  const [achievementStats, setAchievementStats]       = useState(null);
 
   // Goals state
   const [onboarding, setOnboarding]     = useState(null);
@@ -212,37 +190,27 @@ const Profile = () => {
         .single();
       setOnboarding(ob ?? null);
 
-      // 6. Load already-unlocked achievements from DB
-      const { data: dbUnlocked } = await supabase
-        .from('user_achievements')
-        .select('achievement_id')
-        .eq('profile_id', user.id);
-      const alreadyUnlockedIds = new Set((dbUnlocked ?? []).map(a => a.achievement_id));
-      setUnlockedAchievementIds(alreadyUnlockedIds);
-
-      // 7. Persist newly unlocked achievements
-      const earlyBird = allSessions.some(s => {
-        const h = new Date(s.completed_at).getHours();
-        return h < 7;
-      });
-      const achData = {
-        sessions:    allSessions.length,
-        streak:      computeStreak(allSessions),
-        totalVolume: allSessions.reduce((s, x) => s + (parseFloat(x.total_volume_lbs) || 0), 0),
-        prCount:     (prData ?? []).length,
-        earlyBird,
-      };
-      const newlyUnlocked = ACHIEVEMENT_DEFS
-        .filter(a => a.check(achData) && !alreadyUnlockedIds.has(ACHIEVEMENT_UUID_MAP[a.key]))
-        .map(a => ({ profile_id: user.id, gym_id: profile.gym_id, achievement_id: ACHIEVEMENT_UUID_MAP[a.key] }));
-      if (newlyUnlocked.length > 0) {
-        await supabase
+      // 6. Load earned achievements (key-based schema) and live achievement stats
+      const [{ data: dbUnlocked }, achStats] = await Promise.all([
+        supabase
           .from('user_achievements')
-          .upsert(newlyUnlocked, { onConflict: 'profile_id,achievement_id', ignoreDuplicates: true });
-        // Merge into local set so UI reflects immediately
-        newlyUnlocked.forEach(u => alreadyUnlockedIds.add(u.achievement_id));
-        setUnlockedAchievementIds(new Set(alreadyUnlockedIds));
-      }
+          .select('achievement_key, earned_at')
+          .eq('user_id', user.id)
+          .eq('gym_id', profile.gym_id),
+        fetchAchievementData(user.id, profile.gym_id, supabase),
+      ]);
+
+      // Build a map of key -> earned_at and a set of earned keys
+      const earnedMap = {};
+      (dbUnlocked ?? []).forEach(row => {
+        earnedMap[row.achievement_key] = row.earned_at;
+      });
+      setEarnedAchievements(earnedMap);
+      setAchievementStats(achStats);
+
+      // Also populate the legacy unlockedAchievementIds set (keyed on achievement_key)
+      // so any references to it still resolve correctly
+      setUnlockedAchievementIds(new Set(Object.keys(earnedMap)));
 
       setLoading(false);
     };
@@ -258,8 +226,6 @@ const Profile = () => {
     : totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(0)}k`
     : `${Math.round(totalVolume)}`;
 
-  const earlyBirdLive = sessions.some(s => new Date(s.completed_at).getHours() < 7);
-  const achievementData = { sessions: sessions.length, streak, totalVolume, prCount: prs.length, earlyBird: earlyBirdLive };
   const prGroups = prs.reduce((acc, pr) => {
     const group = pr.exercises?.muscle_group ?? 'Other';
     if (!acc[group]) acc[group] = [];
@@ -458,37 +424,179 @@ const Profile = () => {
 
       {/* ── Achievements Tab ─────────────────────────────────────────────── */}
       {activeTab === 'achievements' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 animate-fade-in">
-          {ACHIEVEMENT_DEFS.map(a => {
-            // Unlocked if DB says so OR live data satisfies the check
-            const uuid = ACHIEVEMENT_UUID_MAP[a.key];
-            const unlocked = unlockedAchievementIds.has(uuid) || a.check(achievementData);
-            const Icon = a.icon;
-            return (
-              <div key={a.key}
-                className={`rounded-[14px] border p-5 flex flex-col items-center text-center gap-3 transition-all ${
-                  unlocked
-                    ? 'bg-[#0F172A] border-[#D4AF37]/30'
-                    : 'bg-[#111827] border-white/6 opacity-60'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  unlocked ? 'bg-amber-900/40 text-[#D4AF37]' : 'bg-[#0F172A] text-[#6B7280]'
-                }`}>
-                  {unlocked ? <Icon size={22} /> : <Lock size={20} />}
-                </div>
-                <div>
-                  <p className={`font-semibold text-[14px] ${unlocked ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
-                    {a.label}
-                  </p>
-                  <p className="text-[12px] mt-1 leading-snug text-[#9CA3AF]">{a.desc}</p>
-                </div>
-                {unlocked && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">Unlocked</span>
-                )}
+        <div className="flex flex-col gap-8 animate-fade-in">
+          {/* Summary bar */}
+          {!loading && (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-[22px] font-black text-[#D4AF37] leading-none">
+                  {Object.keys(earnedAchievements).length}
+                  <span className="text-[14px] font-semibold text-[#6B7280] ml-1">
+                    / {ACHIEVEMENT_DEFS.length}
+                  </span>
+                </p>
+                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mt-1">
+                  Achievements Earned
+                </p>
               </div>
-            );
-          })}
+              {/* Overall progress bar */}
+              <div className="flex-1 mx-5">
+                <div className="h-2 rounded-full bg-[#111827] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${(Object.keys(earnedAchievements).length / ACHIEVEMENT_DEFS.length) * 100}%`,
+                      background: 'linear-gradient(90deg, #D4AF37, #F59E0B)',
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-[#6B7280] mt-1 text-right">
+                  {Math.round((Object.keys(earnedAchievements).length / ACHIEVEMENT_DEFS.length) * 100)}% complete
+                </p>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="flex flex-col gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-24 rounded-[14px] bg-[#0F172A] border border-white/8 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            ACHIEVEMENT_CATEGORIES.map(category => {
+              const defs = ACHIEVEMENT_DEFS.filter(a => a.category === category);
+              if (defs.length === 0) return null;
+              const earnedInCategory = defs.filter(a => earnedAchievements[a.key]).length;
+              return (
+                <section key={category}>
+                  {/* Category header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">
+                      {category}
+                    </h3>
+                    <span className="text-[11px] font-semibold text-[#6B7280]">
+                      {earnedInCategory}/{defs.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {defs.map(a => {
+                      const earned = !!earnedAchievements[a.key];
+                      const earnedAt = earnedAchievements[a.key];
+
+                      // Progress calculation
+                      let progressValue = 0;
+                      let progressTarget = 1;
+                      let progressPct = earned ? 100 : 0;
+                      if (!earned && a.progressOf && achievementStats) {
+                        progressValue = Math.min(
+                          achievementStats[a.progressOf.key] ?? 0,
+                          a.progressOf.target
+                        );
+                        progressTarget = a.progressOf.target;
+                        progressPct = Math.min((progressValue / progressTarget) * 100, 100);
+                      }
+
+                      return (
+                        <div
+                          key={a.key}
+                          className="rounded-[14px] border flex items-center gap-4 px-4 py-4 transition-all"
+                          style={{
+                            background: earned ? '#0F172A' : '#0A0D14',
+                            borderColor: earned ? `${a.color}40` : 'rgba(255,255,255,0.06)',
+                            boxShadow: earned ? `0 0 20px ${a.color}12` : 'none',
+                            opacity: earned ? 1 : 0.75,
+                          }}
+                        >
+                          {/* Icon badge */}
+                          <div
+                            className="relative flex-shrink-0 flex items-center justify-center"
+                            style={{
+                              width: 52,
+                              height: 52,
+                              borderRadius: 14,
+                              background: earned ? `${a.color}18` : 'rgba(255,255,255,0.04)',
+                              border: earned ? `1.5px solid ${a.color}40` : '1.5px solid rgba(255,255,255,0.08)',
+                              filter: earned ? 'none' : 'grayscale(1)',
+                            }}
+                          >
+                            <span style={{ fontSize: 26, lineHeight: 1, userSelect: 'none' }}>
+                              {a.icon}
+                            </span>
+                            {!earned && (
+                              <div
+                                className="absolute inset-0 flex items-center justify-center rounded-[13px]"
+                                style={{ background: 'rgba(5,7,11,0.55)' }}
+                              >
+                                <Lock size={14} style={{ color: '#6B7280' }} />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Text + progress */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p
+                                className="font-semibold text-[14px] truncate"
+                                style={{ color: earned ? '#E5E7EB' : '#9CA3AF' }}
+                              >
+                                {a.label}
+                              </p>
+                              {earned && (
+                                <span
+                                  className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                                  style={{
+                                    background: `${a.color}20`,
+                                    color: a.color,
+                                    border: `1px solid ${a.color}40`,
+                                  }}
+                                >
+                                  Earned
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[12px] mt-0.5 leading-snug text-[#6B7280]">
+                              {a.desc}
+                            </p>
+
+                            {/* Progress bar for countable achievements */}
+                            {!earned && a.progressOf && progressValue > 0 && (
+                              <div className="mt-2">
+                                <div className="h-1.5 rounded-full bg-[#1F2937] overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all duration-700"
+                                    style={{
+                                      width: `${progressPct}%`,
+                                      background: `linear-gradient(90deg, ${a.color}88, ${a.color})`,
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-[10px] mt-1" style={{ color: a.color + 'CC' }}>
+                                  {a.progressOf.key === 'totalVolumeLbs'
+                                    ? `${Math.round(progressValue).toLocaleString()} / ${progressTarget.toLocaleString()} lbs`
+                                    : `${progressValue} / ${progressTarget}`}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Earned date */}
+                            {earned && earnedAt && (
+                              <p className="text-[11px] mt-1" style={{ color: `${a.color}99` }}>
+                                Earned {new Date(earnedAt).toLocaleDateString('en-US', {
+                                  month: 'short', day: 'numeric', year: 'numeric',
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })
+          )}
         </div>
       )}
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Timer, Flame, Zap, Dumbbell } from 'lucide-react';
+import { ChevronRight, Timer, Flame, Zap, Dumbbell, Trophy, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEK_SHORT  = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // Mon-Sun display order
 
 const formatTime = (s) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -41,7 +42,6 @@ const buildWeekChart = (sessions) => {
   sessions.forEach(s => {
     const d = new Date(s.completed_at);
     const dayIdx = d.getDay(); // 0=Sun
-    // Only include if within this calendar week
     if (d >= startOfWeek && d < new Date(startOfWeek.getTime() + 7 * 86400000)) {
       buckets[dayIdx].volume += parseFloat(s.total_volume_lbs) || 0;
     }
@@ -69,6 +69,34 @@ const computeStreak = (sessions) => {
   return streak;
 };
 
+// Returns true if the user trained yesterday but NOT today yet
+const isStreakAtRisk = (sessions) => {
+  const today    = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  const dates    = new Set(sessions.map(s => new Date(s.completed_at).toDateString()));
+  return dates.has(yesterday) && !dates.has(today);
+};
+
+// Days trained this week (Mon=0 … Sun=6 in display order)
+const buildWeekDayChips = (sessions) => {
+  const now = new Date();
+  // Sunday of current week
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const trained = new Set();
+  sessions.forEach(s => {
+    const d = new Date(s.completed_at);
+    if (d >= startOfWeek) {
+      // convert Sun=0 → Mon=0…Sun=6 for display
+      const idx = (d.getDay() + 6) % 7;
+      trained.add(idx);
+    }
+  });
+  return trained;
+};
+
 /* ── Main ───────────────────────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile } = useAuth();
@@ -79,12 +107,22 @@ const Dashboard = () => {
     DAY_LABELS.map(day => ({ day, volume: 0 }))
   );
 
-  const [nextRoutine, setNextRoutine]         = useState(null);
+  const [nextRoutine, setNextRoutine]                     = useState(null);
   const [lastSessionForRoutine, setLastSessionForRoutine] = useState(null);
-  const [loading, setLoading]                 = useState(true);
-  const [recentSessions, setRecentSessions]   = useState([]);
-  const [readiness, setReadiness]       = useState('Loading…');
-  const [readinessScore, setReadinessScore] = useState(5);
+  const [loading, setLoading]                             = useState(true);
+  const [recentSessions, setRecentSessions]               = useState([]);
+  const [readiness, setReadiness]                         = useState('Loading…');
+  const [readinessScore, setReadinessScore]               = useState(5);
+
+  // New state for retention features
+  const [streakAtRisk, setStreakAtRisk]     = useState(false);
+  const [weekDaysTrained, setWeekDaysTrained] = useState(new Set());
+  const [isNewMember, setIsNewMember]       = useState(false);
+  const [memberDaysOld, setMemberDaysOld]   = useState(0);
+  const [habitSessions, setHabitSessions]   = useState(0); // sessions within first 42 days
+  const [friendActivity, setFriendActivity] = useState([]);
+  const [milestone, setMilestone]           = useState(null);
+  const [totalVolume, setTotalVolume]       = useState(0);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -101,7 +139,7 @@ const Dashboard = () => {
     const load = async () => {
       setLoading(true);
 
-      // 1. Load all completed sessions (lightweight — just what we need for stats + cards)
+      // 1. Load all completed sessions
       const { data: sessions } = await supabase
         .from('workout_sessions')
         .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
@@ -114,6 +152,11 @@ const Dashboard = () => {
       const totalSessions = allSessions.length;
       const streak        = computeStreak(allSessions);
       const weekly        = buildWeekChart(allSessions);
+      const atRisk        = isStreakAtRisk(allSessions);
+      const dayChips      = buildWeekDayChips(allSessions);
+
+      // Total volume lifted (all time)
+      const volTotal = allSessions.reduce((acc, s) => acc + (parseFloat(s.total_volume_lbs) || 0), 0);
 
       // Count sessions completed this calendar week (Sun–Sat)
       const now2 = new Date();
@@ -132,11 +175,14 @@ const Dashboard = () => {
 
       setStats({ sessions: totalSessions, streak, weekSessions, weekGoal });
       setChartData(weekly);
+      setStreakAtRisk(atRisk);
+      setWeekDaysTrained(dayChips);
+      setTotalVolume(Math.round(volTotal));
 
       // 1b. Recent sessions for activity cards (top 4)
       setRecentSessions(allSessions.slice(0, 4));
 
-      // 1c. Simple readiness heuristic based on recent training load vs goal
+      // 1c. Simple readiness heuristic
       let rScore = 5;
       let rText = 'Great day to start a new streak';
       if (weekGoal > 0) {
@@ -171,7 +217,80 @@ const Dashboard = () => {
       setReadiness(rText);
       setReadinessScore(rScore);
 
-      // 2. Most recent routine for the hero card
+      // 2. New member + habit tracking
+      const createdAt   = profile?.created_at ? new Date(profile.created_at) : null;
+      const daysOld     = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 999;
+      const newMember   = daysOld <= 42;
+      setMemberDaysOld(daysOld);
+      setIsNewMember(newMember);
+
+      if (newMember && createdAt) {
+        const habitEnd = new Date(createdAt.getTime() + 42 * 86400000);
+        const habitCount = allSessions.filter(s => {
+          const d = new Date(s.completed_at);
+          return d >= createdAt && d <= habitEnd;
+        }).length;
+        setHabitSessions(Math.min(habitCount, 9));
+      }
+
+      // 3. Milestone detection
+      const milestoneTargets = [10, 25, 50, 100, 250, 500];
+      const nextSessionMilestone = milestoneTargets.find(t => t > totalSessions);
+      const distanceToMilestone  = nextSessionMilestone ? nextSessionMilestone - totalSessions : null;
+
+      const streakMilestones = [7, 14, 30, 60, 100];
+      const nextStreakMilestone = streakMilestones.find(t => t > streak);
+      const distanceToStreakMilestone = nextStreakMilestone ? nextStreakMilestone - streak : null;
+
+      const volumeMilestones = [10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+      const nextVolMilestone = volumeMilestones.find(t => t > volTotal);
+      const distanceToVolMilestone = nextVolMilestone ? nextVolMilestone - volTotal : null;
+
+      // Pick the milestone the user is closest to (within 20%)
+      let chosenMilestone = null;
+
+      if (distanceToMilestone !== null && nextSessionMilestone) {
+        const pct = distanceToMilestone / nextSessionMilestone;
+        if (pct <= 0.2) {
+          chosenMilestone = {
+            type: 'sessions',
+            distance: distanceToMilestone,
+            target: nextSessionMilestone,
+            label: `${distanceToMilestone} more workout${distanceToMilestone === 1 ? '' : 's'} to hit ${nextSessionMilestone} sessions`,
+          };
+        }
+      }
+      if (!chosenMilestone && distanceToStreakMilestone !== null && nextStreakMilestone) {
+        const pct = distanceToStreakMilestone / nextStreakMilestone;
+        if (pct <= 0.2) {
+          chosenMilestone = {
+            type: 'streak',
+            distance: distanceToStreakMilestone,
+            target: nextStreakMilestone,
+            label: `${distanceToStreakMilestone} more day${distanceToStreakMilestone === 1 ? '' : 's'} to complete your ${nextStreakMilestone}-day streak`,
+          };
+        }
+      }
+      if (!chosenMilestone && distanceToVolMilestone !== null && nextVolMilestone) {
+        const pct = distanceToVolMilestone / nextVolMilestone;
+        if (pct <= 0.2) {
+          const distK = distanceToVolMilestone >= 1000
+            ? `${(distanceToVolMilestone / 1000).toFixed(1)}k`
+            : `${Math.round(distanceToVolMilestone)}`;
+          const targetK = nextVolMilestone >= 1000
+            ? `${(nextVolMilestone / 1000).toFixed(0)}k`
+            : `${nextVolMilestone}`;
+          chosenMilestone = {
+            type: 'volume',
+            distance: distanceToVolMilestone,
+            target: nextVolMilestone,
+            label: `${distK} more lbs to hit ${targetK} total volume`,
+          };
+        }
+      }
+      setMilestone(chosenMilestone);
+
+      // 4. Most recent routine for the hero card
       const { data: routines } = await supabase
         .from('routines')
         .select('id, name, routine_exercises(id)')
@@ -184,6 +303,63 @@ const Dashboard = () => {
         setNextRoutine(routines[0]);
         setLastSessionForRoutine(allSessions.find(s => s.routine_id === routines[0].id) ?? null);
       }
+
+      // 5. Friend activity this week
+      try {
+        const { data: friendships } = await supabase
+          .from('friendships')
+          .select('friend_id, user_id')
+          .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+          .eq('status', 'accepted');
+
+        if (friendships?.length > 0) {
+          const friendIds = friendships.map(f =>
+            f.user_id === user.id ? f.friend_id : f.user_id
+          );
+
+          const weekStart = new Date();
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          weekStart.setHours(0, 0, 0, 0);
+
+          const { data: friendSessions } = await supabase
+            .from('workout_sessions')
+            .select('profile_id, name, completed_at, total_volume_lbs')
+            .in('profile_id', friendIds)
+            .eq('status', 'completed')
+            .gte('completed_at', weekStart.toISOString())
+            .order('completed_at', { ascending: false })
+            .limit(10);
+
+          if (friendSessions?.length > 0) {
+            // Fetch friend profiles for names
+            const { data: friendProfiles } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url')
+              .in('id', friendIds);
+
+            const profileMap = {};
+            (friendProfiles || []).forEach(p => { profileMap[p.id] = p; });
+
+            // De-dupe: one entry per friend (their most recent session this week)
+            const seen = new Set();
+            const activity = [];
+            for (const s of friendSessions) {
+              if (seen.has(s.profile_id)) continue;
+              seen.add(s.profile_id);
+              const fp = profileMap[s.profile_id];
+              activity.push({
+                profileId: s.profile_id,
+                name: fp?.full_name ?? 'Friend',
+                workout: s.name || 'Workout',
+                completedAt: s.completed_at,
+                volume: Math.round(parseFloat(s.total_volume_lbs) || 0),
+              });
+              if (activity.length >= 3) break;
+            }
+            setFriendActivity(activity);
+          }
+        }
+      } catch { /* friendships table may not exist yet — fail silently */ }
 
       setLoading(false);
     };
@@ -217,6 +393,16 @@ const Dashboard = () => {
     ? "Two days off. Your body's recovered. Go."
     : `${daysSinceLast} days since your last session. Don't lose it.`;
 
+  // Smart motivational context line (feature #6)
+  const smartMotivation = (() => {
+    if (loading) return null;
+    if (memberDaysOld <= 7) return "Welcome! Your fitness journey starts now.";
+    if (daysSinceLast === 0) return "Great start! Every session counts.";
+    if (stats.streak >= 7) return "You're on fire 🔥 Keep the momentum.";
+    if (daysSinceLast !== null && daysSinceLast >= 2) return "Pick up where you left off 💪";
+    return null;
+  })();
+
   // Streak visual intensity
   const streakColor = !loading
     ? stats.streak >= 14 ? '#FF6B35'
@@ -242,6 +428,18 @@ const Dashboard = () => {
     : '#F59E0B'
     : '#4B5563';
 
+  // Habit tracker derived values
+  const memberWeek = isNewMember ? Math.min(6, Math.ceil((memberDaysOld + 1) / 7)) : 1;
+  const habitFormed = habitSessions >= 9;
+
+  // Time-ago helper for friend activity
+  const timeAgo = (iso) => {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (diff < 60) return `${diff}m ago`;
+    if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
+    return `${Math.floor(diff / 1440)}d ago`;
+  };
+
   return (
     <div className="min-h-screen bg-[#05070B]">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 animate-fade-in">
@@ -254,6 +452,75 @@ const Dashboard = () => {
           <p className="text-[13px] text-[#9CA3AF] mt-1 leading-snug">
             {loading ? '…' : coachLine}
           </p>
+          {/* Smart motivational context */}
+          {!loading && smartMotivation && (
+            <p className="text-[12px] text-[#D4AF37] mt-1 font-medium leading-snug">
+              {smartMotivation}
+            </p>
+          )}
+        </section>
+
+        {/* ── STREAK COUNTER (prominent) ───────────────────────────────────────── */}
+        <section className="mb-5">
+          {loading ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-24 animate-pulse" />
+          ) : (
+            <div
+              className="rounded-[14px] bg-[#0F172A] border p-4 flex items-center gap-4 transition-all"
+              style={{
+                borderColor: stats.streak >= 7 ? `${streakColor}40` : 'rgba(255,255,255,0.08)',
+                boxShadow: stats.streak >= 7 ? `0 0 24px ${streakColor}18` : undefined,
+              }}
+            >
+              {/* Flame + number */}
+              <div className="flex flex-col items-center justify-center min-w-[72px]">
+                <span className="text-[42px] leading-none" role="img" aria-label="streak">🔥</span>
+                <span
+                  className="text-[36px] font-black leading-none -mt-1"
+                  style={{ color: streakColor }}
+                >
+                  {stats.streak}
+                </span>
+              </div>
+
+              {/* Labels */}
+              <div className="flex-1 min-w-0">
+                {stats.streak === 0 ? (
+                  <>
+                    <p className="text-[16px] font-bold text-[#E5E7EB]">Start your streak today</p>
+                    <p className="text-[12px] text-[#6B7280] mt-0.5">Train today to ignite your first streak</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[16px] font-bold" style={{ color: streakColor }}>
+                      {stats.streak} day streak
+                    </p>
+                    <p className="text-[12px] text-[#9CA3AF] mt-0.5">
+                      {stats.streak >= 14 ? 'Absolutely unstoppable 🏆'
+                        : stats.streak >= 7  ? 'Consistency is your superpower'
+                        : stats.streak >= 3  ? 'Building real momentum'
+                        : 'Keep showing up'}
+                    </p>
+                    {streakAtRisk && (
+                      <p className="text-[11px] font-bold text-amber-400 mt-1">
+                        ⚠️ At risk — train today to keep it
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Mini badge for big streaks */}
+              {stats.streak >= 7 && (
+                <div
+                  className="rounded-xl px-2.5 py-1 text-[11px] font-black tracking-wide shrink-0"
+                  style={{ background: `${streakColor}18`, color: streakColor, border: `1px solid ${streakColor}30` }}
+                >
+                  {stats.streak >= 30 ? 'LEGEND' : stats.streak >= 14 ? 'ELITE' : 'ON FIRE'}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Hero workout card */}
@@ -346,6 +613,139 @@ const Dashboard = () => {
           </div>
         </section>
 
+        {/* ── WEEKLY SUMMARY CARD ──────────────────────────────────────────────── */}
+        <section className="mb-5">
+          <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4">
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em]">
+                This week
+              </span>
+              {!loading && stats.weekGoal > 0 && (
+                <span className="text-[12px] font-bold" style={{ color: weekColor }}>
+                  {stats.weekSessions} of {stats.weekGoal} sessions
+                </span>
+              )}
+              {!loading && stats.weekGoal === 0 && (
+                <span className="text-[12px] font-bold text-[#9CA3AF]">
+                  {stats.weekSessions} session{stats.weekSessions !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            {/* Progress bar */}
+            {!loading && stats.weekGoal > 0 && (
+              <div className="w-full h-2 bg-[#1E293B] rounded-full mb-3 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, (stats.weekSessions / stats.weekGoal) * 100)}%`,
+                    background: weekColor,
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Day chips — Mon–Sun */}
+            <div className="flex gap-1.5">
+              {WEEK_SHORT.map((label, i) => {
+                const trained = weekDaysTrained.has(i);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <div
+                      className="w-full aspect-square rounded-lg flex items-center justify-center text-[10px] font-bold transition-all"
+                      style={{
+                        background: trained ? '#D4AF37' : '#1E293B',
+                        color: trained ? '#000' : '#4B5563',
+                      }}
+                    >
+                      {/* intentionally empty — color tells the story */}
+                    </div>
+                    <span className="text-[9px] font-medium text-[#4B5563]">{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ── HABIT FORMATION TRACKER (new members only, first 42 days) ─────── */}
+        {!loading && isNewMember && (
+          <section className="mb-5">
+            <div
+              className="rounded-[14px] bg-[#0F172A] border p-4"
+              style={{ borderColor: habitFormed ? '#D4AF3740' : 'rgba(255,255,255,0.08)' }}
+            >
+              {habitFormed ? (
+                <div className="text-center py-2">
+                  <p className="text-[28px] mb-1">🧠</p>
+                  <p className="text-[16px] font-black text-[#D4AF37]">Habit Formed!</p>
+                  <p className="text-[12px] text-[#9CA3AF] mt-1">
+                    You've completed 9 workouts — fitness is now part of who you are.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em]">
+                      Habit Formation
+                    </span>
+                    <span className="text-[11px] font-semibold text-[#9CA3AF]">
+                      Week {memberWeek} of 6
+                    </span>
+                  </div>
+                  <p className="text-[13px] font-bold text-[#E5E7EB] mb-3">
+                    {habitSessions} of 9 workouts completed
+                  </p>
+                  {/* 9 circles */}
+                  <div className="flex gap-2">
+                    {Array.from({ length: 9 }, (_, i) => {
+                      const filled = i < habitSessions;
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 aspect-square rounded-full transition-all"
+                          style={{
+                            background: filled ? '#D4AF37' : '#1E293B',
+                            border: filled ? '2px solid #D4AF37' : '2px solid #374151',
+                            boxShadow: filled ? '0 0 8px #D4AF3740' : undefined,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-[#6B7280] mt-2">
+                    Research says 9 visits in 6 weeks = a lasting habit. You're on your way.
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ── MILESTONE APPROACHING ────────────────────────────────────────────── */}
+        {!loading && milestone && (
+          <section className="mb-5">
+            <div className="rounded-[14px] bg-[#0F172A] border p-4 flex items-center gap-3"
+              style={{ borderColor: '#D4AF3730' }}
+            >
+              <div className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: '#D4AF3715' }}
+              >
+                <Trophy size={18} style={{ color: '#D4AF37' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-[0.15em] mb-0.5">
+                  Milestone approaching
+                </p>
+                <p className="text-[13px] font-bold text-[#E5E7EB] leading-snug">
+                  {milestone.label}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* 2 shortcut cards */}
         <section className="grid grid-cols-2 gap-3 mb-5">
           <Link
@@ -390,6 +790,66 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ── FRIENDS THIS WEEK ────────────────────────────────────────────────── */}
+        <section className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em]">
+              Friends this week
+            </span>
+            <Link to="/social" className="text-xs font-semibold text-[#D4AF37] flex items-center gap-0.5">
+              View all <ChevronRight size={12} />
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-20 animate-pulse" />
+          ) : friendActivity.length === 0 ? (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#1E293B] flex items-center justify-center shrink-0">
+                <Users size={18} className="text-[#4B5563]" />
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-[#9CA3AF]">No friend activity yet</p>
+                <Link to="/social" className="text-[12px] text-[#D4AF37] font-medium">
+                  Add friends to see their workouts →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 divide-y divide-white/[0.05] overflow-hidden">
+              {friendActivity.map((f, idx) => {
+                const initials = f.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                return (
+                  <div key={f.profileId} className="p-3 flex items-center gap-3">
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-[#1E293B] flex items-center justify-center shrink-0 text-[13px] font-bold text-[#D4AF37]">
+                      {initials}
+                    </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{f.name}</p>
+                      <p className="text-[11px] text-[#6B7280] truncate">
+                        {f.workout}
+                        {f.volume > 0 ? ` · ${(f.volume / 1000).toFixed(1)}k lbs` : ''}
+                        {' · '}{timeAgo(f.completedAt)}
+                      </p>
+                    </div>
+                    {/* Like button */}
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-xl px-2.5 py-1.5 text-[12px] font-bold transition-all active:scale-95"
+                      style={{ background: '#1E293B', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.06)' }}
+                      onClick={() => {/* like action — wired up if like endpoint exists */}}
+                    >
+                      👍
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* 7. Recent activity — single card preview + View all */}

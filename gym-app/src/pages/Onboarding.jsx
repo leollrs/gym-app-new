@@ -61,7 +61,35 @@ const INJURY_OPTIONS = [
   { value: 'ankles',      label: 'Ankles' },
 ];
 
-const TOTAL_STEPS = 4;
+const DAYS_OF_WEEK = [
+  { short: 'Mon', full: 'Monday' },
+  { short: 'Tue', full: 'Tuesday' },
+  { short: 'Wed', full: 'Wednesday' },
+  { short: 'Thu', full: 'Thursday' },
+  { short: 'Fri', full: 'Friday' },
+  { short: 'Sat', full: 'Saturday' },
+  { short: 'Sun', full: 'Sunday' },
+];
+
+const TIME_PREFERENCES = [
+  { value: 'morning',   label: 'Morning',   sub: '6am – 12pm',  emoji: '🌅' },
+  { value: 'afternoon', label: 'Afternoon', sub: '12pm – 5pm',  emoji: '☀️' },
+  { value: 'evening',   label: 'Evening',   sub: '5pm – 10pm',  emoji: '🌙' },
+];
+
+// Returns a pre-selected set of day strings based on training frequency
+function getDefaultDays(freq) {
+  const allDays = DAYS_OF_WEEK.map(d => d.full);
+  if (freq <= 1) return ['Monday'];
+  if (freq === 2) return ['Monday', 'Thursday'];
+  if (freq === 3) return ['Monday', 'Wednesday', 'Friday'];
+  if (freq === 4) return ['Monday', 'Wednesday', 'Friday', 'Sunday'];
+  if (freq === 5) return ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday'];
+  if (freq === 6) return allDays.filter(d => d !== 'Sunday');
+  return allDays;
+}
+
+const TOTAL_STEPS = 6;
 
 // ── STEP INDICATOR ─────────────────────────────────────────
 const StepDots = ({ current }) => (
@@ -125,12 +153,16 @@ const Onboarding = () => {
   const [error, setError]   = useState('');
 
   const [data, setData] = useState({
-    fitness_level:          null,
-    primary_goal:           null,
-    training_days_per_week: 4,
-    available_equipment:    ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'],
-    initial_weight_lbs:     '',
-    injury_areas:           [],   // array of injury_option values
+    fitness_level:              null,
+    primary_goal:               null,
+    training_days_per_week:     4,
+    available_equipment:        ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'],
+    initial_weight_lbs:         '',
+    injury_areas:               [],
+    preferred_training_days:    getDefaultDays(4),
+    preferred_training_time:    null,
+    has_workout_buddy:          null,
+    workout_buddy_username:     '',
   });
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
@@ -151,10 +183,28 @@ const Onboarding = () => {
         : [...d.injury_areas, val],
     }));
 
+  const toggleTrainingDay = (fullDay) =>
+    setData(d => ({
+      ...d,
+      preferred_training_days: d.preferred_training_days.includes(fullDay)
+        ? d.preferred_training_days.filter(day => day !== fullDay)
+        : [...d.preferred_training_days, fullDay],
+    }));
+
+  // When frequency changes on step 2, also reset the pre-selected days
+  const setFrequency = (n) => {
+    setData(d => ({
+      ...d,
+      training_days_per_week:  n,
+      preferred_training_days: getDefaultDays(n),
+    }));
+  };
+
   const canAdvance = () => {
     if (step === 0) return !!data.fitness_level;
     if (step === 1) return !!data.primary_goal;
     if (step === 2) return data.available_equipment.length > 0;
+    if (step === 3) return data.preferred_training_days.length > 0 && !!data.preferred_training_time;
     return true;
   };
 
@@ -186,9 +236,16 @@ const Onboarding = () => {
 
       if (onboardingErr) throw onboardingErr;
 
+      const profileUpdate = {
+        is_onboarded:             true,
+        preferred_training_days:  data.preferred_training_days,
+        preferred_training_time:  data.preferred_training_time,
+        workout_buddy_username:   data.workout_buddy_username?.trim() || null,
+      };
+
       const { error: profileErr } = await supabase
         .from('profiles')
-        .update({ is_onboarded: true })
+        .update(profileUpdate)
         .eq('id', user.id);
 
       if (profileErr) throw profileErr;
@@ -292,7 +349,7 @@ const Onboarding = () => {
                   <button
                     key={n}
                     type="button"
-                    onClick={() => set('training_days_per_week', n)}
+                    onClick={() => setFrequency(n)}
                     className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all ${
                       data.training_days_per_week === n
                         ? 'bg-[#D4AF37] text-black'
@@ -341,8 +398,138 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 3: BODY STATS + INJURIES ── */}
+        {/* ── STEP 3: LOCK IN YOUR SCHEDULE ── */}
         {step === 3 && (
+          <div className="animate-fade-in">
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">Lock In Your Schedule</h2>
+            <p className="text-[13px] text-[#6B7280] mb-5">
+              Members who commit to specific days are 2x more likely to stick with it
+            </p>
+
+            {/* Day selector */}
+            <div className="mb-7">
+              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                Which days will you train?
+              </p>
+              <p className="text-[12px] text-[#4B5563] mb-3">
+                Pre-filled based on your frequency — adjust as needed.
+              </p>
+              <div className="flex gap-2">
+                {DAYS_OF_WEEK.map(day => {
+                  const active = data.preferred_training_days.includes(day.full);
+                  return (
+                    <button
+                      key={day.full}
+                      type="button"
+                      onClick={() => toggleTrainingDay(day.full)}
+                      className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all ${
+                        active
+                          ? 'bg-[#D4AF37] text-black'
+                          : 'bg-[#0F172A] border border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                      }`}
+                    >
+                      {day.short}
+                    </button>
+                  );
+                })}
+              </div>
+              {data.preferred_training_days.length === 0 && (
+                <p className="text-[11px] text-red-400 mt-2 text-center">Select at least one day to continue.</p>
+              )}
+              {data.preferred_training_days.length > 0 && (
+                <p className="text-[11px] text-[#4B5563] mt-2 text-center">
+                  {data.preferred_training_days.length} day{data.preferred_training_days.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
+
+            {/* Time preference */}
+            <div className="mb-7">
+              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                I prefer to train in the...
+              </p>
+              <p className="text-[12px] text-[#4B5563] mb-3">We'll time your reminders to match.</p>
+              <div className="flex flex-col gap-2">
+                {TIME_PREFERENCES.map(tp => {
+                  const active = data.preferred_training_time === tp.value;
+                  return (
+                    <button
+                      key={tp.value}
+                      type="button"
+                      onClick={() => set('preferred_training_time', tp.value)}
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-[14px] border transition-all ${
+                        active
+                          ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 shadow-[0_0_0_1px_rgba(212,175,55,0.3)]'
+                          : 'bg-[#0F172A] border-white/6 hover:border-white/14'
+                      }`}
+                    >
+                      <span className="text-xl">{tp.emoji}</span>
+                      <div className="flex-1 text-left">
+                        <p className={`font-semibold text-[14px] ${active ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                          {tp.label}
+                        </p>
+                        <p className="text-[12px] text-[#6B7280]">{tp.sub}</p>
+                      </div>
+                      {active && <Check size={16} className="text-[#D4AF37] flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Workout buddy prompt */}
+            <div>
+              <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                Workout partner
+              </p>
+              <p className="text-[12px] text-[#4B5563] mb-3">Do you have a workout partner at this gym?</p>
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => set('has_workout_buddy', true)}
+                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
+                    data.has_workout_buddy === true
+                      ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
+                      : 'bg-[#0F172A] border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    set('has_workout_buddy', false);
+                    set('workout_buddy_username', '');
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
+                    data.has_workout_buddy === false
+                      ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
+                      : 'bg-[#0F172A] border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  No
+                </button>
+              </div>
+              {data.has_workout_buddy === true && (
+                <input
+                  type="text"
+                  placeholder="Their username (optional)"
+                  value={data.workout_buddy_username}
+                  onChange={e => set('workout_buddy_username', e.target.value)}
+                  className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                />
+              )}
+              {data.has_workout_buddy === false && (
+                <div className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 text-center">
+                  <p className="text-[13px] text-[#9CA3AF]">We'll help you find one 💪</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 4: BODY STATS + INJURIES ── */}
+        {step === 4 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">
               Almost done <span className="text-[#4B5563] font-normal text-[15px]">(optional)</span>
@@ -412,6 +599,92 @@ const Onboarding = () => {
           </div>
         )}
 
+        {/* ── STEP 5: FIND YOUR GYM SQUAD (final step) ── */}
+        {step === 5 && (
+          <div className="animate-fade-in">
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">Find Your Gym Squad</h2>
+            <p className="text-[13px] text-[#6B7280] mb-6">
+              Members with 3+ gym friends stay 56% longer
+            </p>
+
+            <Hint>
+              Head to the Social tab after setup to add friends — members who train together, stay together.
+            </Hint>
+
+            {/* Social feed mockup */}
+            <div className="mb-6">
+              <p className="text-[11px] font-semibold text-[#4B5563] uppercase tracking-wider mb-3">
+                What you'll see in your social feed
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {/* Mock activity card 1 */}
+                <div className="bg-[#0F172A] rounded-[14px] border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[13px]">A</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <p className="text-[13px] font-semibold text-[#E5E7EB]">Alex</p>
+                      <p className="text-[12px] text-[#4B5563]">hit a new PR</p>
+                      <span className="text-[13px]">🏆</span>
+                    </div>
+                    <p className="text-[12px] text-[#6B7280]">Bench Press — 225 lbs × 5 reps</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-[11px] text-[#4B5563]">2 min ago</span>
+                      <button className="text-[11px] text-[#6B7280] hover:text-[#D4AF37] transition-colors">👏 Nice</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mock activity card 2 */}
+                <div className="bg-[#0F172A] rounded-[14px] border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[13px]">J</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <p className="text-[13px] font-semibold text-[#E5E7EB]">Jordan</p>
+                      <p className="text-[12px] text-[#4B5563]">completed a session</p>
+                      <span className="text-[13px]">🔥</span>
+                    </div>
+                    <p className="text-[12px] text-[#6B7280]">Upper Body — 14 sets · 42 min</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-[11px] text-[#4B5563]">18 min ago</span>
+                      <button className="text-[11px] text-[#6B7280] hover:text-[#D4AF37] transition-colors">💪 Crush it</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mock activity card 3 */}
+                <div className="bg-[#0F172A] rounded-[14px] border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[13px]">M</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <p className="text-[13px] font-semibold text-[#E5E7EB]">Morgan</p>
+                      <p className="text-[12px] text-[#4B5563]">is on a</p>
+                      <p className="text-[13px] font-bold text-[#D4AF37]">14-day streak</p>
+                      <span className="text-[13px]">🔥</span>
+                    </div>
+                    <p className="text-[12px] text-[#6B7280]">Hasn't missed a day in two weeks</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-[11px] text-[#4B5563]">1 hr ago</span>
+                      <button className="text-[11px] text-[#6B7280] hover:text-[#D4AF37] transition-colors">🙌 Insane</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+                <p className="text-[13px] text-red-400">{error}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── NAV BUTTONS ── */}
         <div className="flex gap-3 mt-8">
           {step > 0 && (
@@ -441,18 +714,17 @@ const Onboarding = () => {
               className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-[15px] py-3.5 rounded-xl transition-all"
             >
               {saving ? 'Saving…' : (
-                <><Check size={17} strokeWidth={2.5} /> Let's go!</>
+                <>Got it, let's go! <ChevronRight size={17} /></>
               )}
             </button>
           )}
         </div>
 
-        {/* Skip on last step */}
-        {step === 3 && (
+        {/* Skip on body stats step */}
+        {step === 4 && (
           <button
             type="button"
-            onClick={handleFinish}
-            disabled={saving}
+            onClick={() => setStep(5)}
             className="w-full text-center text-[12px] text-[#4B5563] hover:text-[#6B7280] mt-3 py-2 transition-colors"
           >
             Skip for now
