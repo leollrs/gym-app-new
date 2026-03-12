@@ -61,6 +61,7 @@ const SessionSummary = () => {
     totalExercises = 0,
     sessionPRs     = [],
     completedAt    = new Date().toISOString(),
+    xpEarned       = 0,
   } = location.state ?? {};
 
   // Entrance animation
@@ -253,6 +254,25 @@ const SessionSummary = () => {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── XP Earned ─────────────────────────────────────────── */}
+        {xpEarned > 0 && (
+          <div
+            className="w-full max-w-sm rounded-2xl px-5 py-4 mb-6 flex items-center gap-3"
+            style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)' }}
+          >
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-[16px]"
+              style={{ backgroundColor: 'rgba(212,175,55,0.15)', color: '#D4AF37', border: '2px solid rgba(212,175,55,0.4)' }}
+            >
+              +
+            </div>
+            <div>
+              <p className="text-[18px] font-black text-[#D4AF37]">{xpEarned} XP earned</p>
+              <p className="text-[11px] text-[#9CA3AF] mt-0.5">Keep training to level up</p>
             </div>
           </div>
         )}

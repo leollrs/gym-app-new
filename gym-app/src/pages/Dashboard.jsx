@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
 import WorkoutOfTheDay from '../components/WorkoutOfTheDay';
 import GymPulse from '../components/GymPulse';
+import { LevelCard } from '../components/LevelBadge';
+import { getUserPoints } from '../lib/rewardsEngine';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const WEEK_SHORT  = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // Mon-Sun display order
@@ -94,6 +96,7 @@ const Dashboard = () => {
   const [friendActivity, setFriendActivity] = useState([]);
   const [milestone, setMilestone]           = useState(null);
   const [totalVolume, setTotalVolume]       = useState(0);
+  const [userPoints, setUserPoints]         = useState({ total_points: 0, lifetime_points: 0 });
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -295,6 +298,9 @@ const Dashboard = () => {
         }
       } catch { /* friendships table may not exist yet — fail silently */ }
 
+      // Fetch XP/level data
+      getUserPoints(user.id).then(pts => setUserPoints(pts)).catch(() => {});
+
       setLoading(false);
 
       // Run smart notification scheduler (fire-and-forget)
@@ -457,6 +463,16 @@ const Dashboard = () => {
             </div>
           )}
         </section>
+
+        {/* ── LEVEL / XP ────────────────────────────────────────────────────── */}
+        {!loading && (
+          <Link to="/rewards" className="block mb-5">
+            <LevelCard
+              totalPoints={userPoints.total_points}
+              lifetimePoints={userPoints.lifetime_points}
+            />
+          </Link>
+        )}
 
         {/* Hero workout card */}
         <section className="mb-5">

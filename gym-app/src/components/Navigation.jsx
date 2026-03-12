@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, Activity, User, Trophy, MapPin, PlayCircle, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { LevelBadgeCompact } from './LevelBadge';
+import { getUserPoints } from '../lib/rewardsEngine';
 
 // ── Member nav schema (Strava-style) ──────────────────────────────────────────
 // We keep a single source of truth for main tabs used on both desktop and mobile.
@@ -46,6 +48,12 @@ const Navigation = () => {
   const { gymName, gymLogoUrl, user, profile, unreadNotifications } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [totalPoints, setTotalPoints] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getUserPoints(user.id).then(pts => setTotalPoints(pts.total_points || 0)).catch(() => {});
+  }, [user?.id, location.pathname]); // refresh on nav so it updates after a workout
 
   const isRecordActive =
     location.pathname.startsWith('/record') ||
@@ -142,6 +150,7 @@ const Navigation = () => {
                 </span>
               )}
             </button>
+            <LevelBadgeCompact totalPoints={totalPoints} size="sm" />
           </div>
         </div>
       </div>
@@ -201,6 +210,7 @@ const Navigation = () => {
             </span>
           )}
         </button>
+        <LevelBadgeCompact totalPoints={totalPoints} size="xs" />
       </div>
     </header>
 

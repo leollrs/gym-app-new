@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
+import { addPoints, calculatePointsForAction } from '../lib/rewardsEngine';
 import BodyDiagram from '../components/BodyDiagram';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises } from '../data/exercises';
@@ -792,6 +793,48 @@ const ActiveSession = () => {
         .update({ last_active_at: new Date().toISOString() })
         .eq('id', user.id);
 
+      // ── Award XP ──────────────────────────────────────────────────────────
+      let xpEarned = 0;
+      // Workout completed
+      const workoutXP = calculatePointsForAction('workout_completed');
+      await addPoints(user.id, profile.gym_id, 'workout_completed', workoutXP, `Completed ${routineName}`);
+      xpEarned += workoutXP;
+      // PRs
+      for (const pr of sessionPRs) {
+        const prXP = calculatePointsForAction('pr_hit');
+        await addPoints(user.id, profile.gym_id, 'pr_hit', prXP, `New PR: ${pr.exercise}`);
+        xpEarned += prXP;
+      }
+      // First workout of the week bonus
+      const startOfWeek = new Date();
+      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      const { count: weekSessions } = await supabase
+        .from('workout_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .eq('status', 'completed')
+        .gte('completed_at', startOfWeek.toISOString());
+      if (weekSessions === 1) {
+        const weeklyXP = calculatePointsForAction('first_weekly_workout');
+        await addPoints(user.id, profile.gym_id, 'first_weekly_workout', weeklyXP, 'First workout this week');
+        xpEarned += weeklyXP;
+      }
+      // Streak milestones — re-read the updated streak
+      const { data: updatedStreak } = await supabase
+        .from('streak_cache')
+        .select('current_streak_days')
+        .eq('profile_id', user.id)
+        .single();
+      const finalStreak = updatedStreak?.current_streak_days ?? 1;
+      if (finalStreak === 7) {
+        await addPoints(user.id, profile.gym_id, 'streak_7', calculatePointsForAction('streak_7'), '7-day streak!');
+        xpEarned += calculatePointsForAction('streak_7');
+      } else if (finalStreak === 30) {
+        await addPoints(user.id, profile.gym_id, 'streak_30', calculatePointsForAction('streak_30'), '30-day streak!');
+        xpEarned += calculatePointsForAction('streak_30');
+      }
+
       localStorage.removeItem(sessionKey);
       // Clean up DB draft — fire-and-forget
       supabase.from('session_drafts')
@@ -805,6 +848,7 @@ const ActiveSession = () => {
           totalSets,
           totalExercises: Object.values(loggedSets).filter(sets => sets.some(s => s.completed)).length, sessionPRs,
           completedAt: new Date().toISOString(),
+          xpEarned,
         },
       });
     } catch (err) {
