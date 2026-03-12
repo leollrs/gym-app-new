@@ -141,7 +141,7 @@ const Workouts = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
-  const [showPrograms, setShowPrograms]       = useState(false);
+  const [activeTab, setActiveTab]             = useState('routines');
 
   // Gym programs
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -261,155 +261,167 @@ const Workouts = () => {
       </div>
 
       {/* ── Current Program (highlighted box) ──────────────── */}
-      {!programLoading && (programActive || programExpired || !generatedProgram) && (
-        <div className="mb-6">
-          {/* Active program */}
-          {programActive && (
-            <div className="rounded-[14px] border border-[#D4AF37]/25 bg-gradient-to-br from-[#D4AF37]/8 to-[#D4AF37]/3 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-widest">Current Program</p>
-                  <p className="text-[20px] font-bold text-[#E5E7EB] mt-1">
-                    Week {Math.min(currentWeekNum, 6)} of 6
-                  </p>
-                  <p className="text-[12px] text-[#9CA3AF] mt-0.5">Routine {isWeekA ? 'A' : 'B'} this week</p>
+      {!programLoading && programActive && (
+        <div className="mb-6 rounded-[14px] border border-[#D4AF37]/25 bg-gradient-to-br from-[#D4AF37]/8 to-[#D4AF37]/3 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-widest">Current Program</p>
+              <p className="text-[20px] font-bold text-[#E5E7EB] mt-1">
+                Week {Math.min(currentWeekNum, 6)} of 6
+              </p>
+              <p className="text-[12px] text-[#9CA3AF] mt-0.5">Routine {isWeekA ? 'A' : 'B'} this week</p>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/25 flex items-center justify-center">
+              <Zap size={20} className="text-[#D4AF37]" />
+            </div>
+          </div>
+          {thisWeekRoutines.length > 0 && (
+            <div className="space-y-2">
+              {thisWeekRoutines.map(routine => (
+                <div key={routine.id} className="rounded-xl border border-white/8 bg-[#0F172A]/80 flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
+                    <Dumbbell size={14} className="text-[#D4AF37]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{routine.name.replace('Auto: ', '')}</p>
+                    <p className="text-[11px] text-[#6B7280]">{routine.exerciseCount} exercises</p>
+                  </div>
+                  <Link to={`/workouts/${routine.id}/edit`} className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+                    <Pencil size={12} />
+                  </Link>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/25 flex items-center justify-center">
-                  <Zap size={20} className="text-[#D4AF37]" />
-                </div>
-              </div>
-              {thisWeekRoutines.length > 0 && (
-                <div className="space-y-2">
-                  {thisWeekRoutines.map(routine => (
-                    <div
-                      key={routine.id}
-                      className="rounded-xl border border-white/8 bg-[#0F172A]/80 flex items-center gap-3 px-4 py-3"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
-                        <Dumbbell size={14} className="text-[#D4AF37]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{routine.name.replace('Auto: ', '')}</p>
-                        <p className="text-[11px] text-[#6B7280]">{routine.exerciseCount} exercises</p>
-                      </div>
-                      <Link
-                        to={`/workouts/${routine.id}/edit`}
-                        className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
-                      >
-                        <Pencil size={12} />
-                      </Link>
-                    </div>
-                  ))}
-                  {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
-                    <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#0F172A]/80 px-4 py-3">
-                      <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
-                        <Heart size={14} className="text-[#D4AF37]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-semibold text-[#E5E7EB]">Active Recovery</p>
-                        <p className="text-[11px] text-[#6B7280]">{generatedProgram.cardio_days.description}</p>
-                      </div>
-                    </div>
-                  )}
+              ))}
+              {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
+                <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#0F172A]/80 px-4 py-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
+                    <Heart size={14} className="text-[#D4AF37]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#E5E7EB]">Active Recovery</p>
+                    <p className="text-[11px] text-[#6B7280]">{generatedProgram.cardio_days.description}</p>
+                  </div>
                 </div>
               )}
             </div>
           )}
+        </div>
+      )}
 
-          {/* Expired program */}
-          {programExpired && (
-            <button onClick={() => setShowGenerator(true)} className="w-full flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-4 text-left active:scale-[0.98] transition-transform">
-              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                <RefreshCw size={17} className="text-[#D4AF37]" />
+      {/* ── No program / expired — two options side by side ── */}
+      {!programLoading && !programActive && (
+        <div className="mb-6">
+          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">
+            {programExpired ? 'Program ended — what\'s next?' : 'Get started with a program'}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowGenerator(true)}
+              className="text-left rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 p-4 active:scale-[0.97] transition-transform"
+            >
+              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center mb-3">
+                <Zap size={18} className="text-[#D4AF37]" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-semibold text-[#E5E7EB]">Program ended</p>
-                <p className="text-[12px] text-[#9CA3AF] mt-0.5">Tap to reassess & generate a new one</p>
-              </div>
-              <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
+              <p className="text-[14px] font-semibold text-[#E5E7EB] leading-tight">Custom Program</p>
+              <p className="text-[11px] text-[#9CA3AF] mt-1 leading-snug">Built around your goals and experience</p>
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab('programs')}
+              className="text-left rounded-[14px] border border-white/8 bg-[#0F172A] p-4 active:scale-[0.97] transition-transform"
+            >
+              <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-3">
+                <BookOpen size={18} className="text-[#9CA3AF]" />
+              </div>
+              <p className="text-[14px] font-semibold text-[#E5E7EB] leading-tight">Gym Programs</p>
+              <p className="text-[11px] text-[#9CA3AF] mt-1 leading-snug">Follow a program from your gym</p>
+            </button>
+          </div>
+        </div>
+      )}
 
-          {/* No program yet */}
-          {!generatedProgram && (
-            <button onClick={() => setShowGenerator(true)} className="w-full flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-4 text-left active:scale-[0.98] transition-transform">
-              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                <Zap size={17} className="text-[#D4AF37]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-semibold text-[#E5E7EB]">Generate a personalized program</p>
-                <p className="text-[12px] text-[#9CA3AF] mt-0.5">6-week AI plan based on your goals</p>
-              </div>
-              <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
-            </button>
+      {/* ── Tab bar: My Routines / Programs ────────────────── */}
+      <div className="flex gap-1 bg-[#111827] p-1 rounded-xl mb-4">
+        {[
+          { key: 'routines', label: 'My Routines' },
+          { key: 'programs', label: `Programs${enrolledIds.size ? ` (${enrolledIds.size})` : ''}` },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${
+              activeTab === t.key
+                ? 'bg-[#D4AF37] text-black'
+                : 'text-[#6B7280] hover:text-[#9CA3AF]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── My Routines tab ────────────────────────────────── */}
+      {activeTab === 'routines' && (
+        <div className="animate-fade-in">
+          {loading ? (
+            <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[68px] animate-pulse" />)}</div>
+          ) : routines.length === 0 ? (
+            <div className="text-center py-14">
+              <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
+              <p className="text-[14px] text-[#9CA3AF]">No routines yet</p>
+              <p className="text-[12px] text-[#6B7280] mt-1">Tap "New" to create your first routine</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {routines.map(routine => (
+                <div
+                  key={routine.id}
+                  className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                    <Dumbbell size={16} className="text-[#D4AF37]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">{routine.name}</p>
+                    <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-2">
+                      <span>{routine.exerciseCount} exercises</span>
+                      <span className="text-white/10">·</span>
+                      <span>{timeAgo(routine.lastPerformedAt)}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={(e) => handleDelete(e, routine.id)}
+                      disabled={deletingId === routine.id}
+                      className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center text-[#6B7280] hover:text-red-400 transition-colors border border-white/6 disabled:opacity-40"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                    <Link
+                      to={`/workouts/${routine.id}/edit`}
+                      className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6"
+                    >
+                      <Pencil size={13} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      {/* ── My Routines ────────────────────────────────────── */}
-      <div className="mb-6">
-        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">My Routines</p>
-        {loading ? (
-          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[68px] animate-pulse" />)}</div>
-        ) : routines.length === 0 ? (
-          <div className="text-center py-14">
-            <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
-            <p className="text-[14px] text-[#9CA3AF]">No routines yet</p>
-            <p className="text-[12px] text-[#6B7280] mt-1">Tap "New" to create your first routine</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {routines.map(routine => (
-              <div
-                key={routine.id}
-                className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5"
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
-                  <Dumbbell size={16} className="text-[#D4AF37]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">{routine.name}</p>
-                  <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-2">
-                    <span>{routine.exerciseCount} exercises</span>
-                    <span className="text-white/10">·</span>
-                    <span>{timeAgo(routine.lastPerformedAt)}</span>
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <button
-                    onClick={(e) => handleDelete(e, routine.id)}
-                    disabled={deletingId === routine.id}
-                    className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center text-[#6B7280] hover:text-red-400 transition-colors border border-white/6 disabled:opacity-40"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                  <Link
-                    to={`/workouts/${routine.id}/edit`}
-                    className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6"
-                  >
-                    <Pencil size={13} />
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Gym Programs (collapsible) ─────────────────────── */}
-      {gymPrograms.length > 0 && (
-        <div className="mb-5">
-          <button
-            onClick={() => setShowPrograms(p => !p)}
-            className="w-full flex items-center justify-between mb-3"
-          >
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">
-              Gym Programs {enrolledIds.size > 0 && `(${enrolledIds.size} enrolled)`}
-            </p>
-            <ChevronDown size={14} className={`text-[#6B7280] transition-transform ${showPrograms ? 'rotate-180' : ''}`} />
-          </button>
-          {showPrograms && (
-            <div className="space-y-2 animate-fade-in">
+      {/* ── Programs tab ───────────────────────────────────── */}
+      {activeTab === 'programs' && (
+        <div className="animate-fade-in">
+          {programsLoading ? (
+            <div className="space-y-2">{[1, 2].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[80px] animate-pulse" />)}</div>
+          ) : gymPrograms.length === 0 ? (
+            <div className="text-center py-14">
+              <BookOpen size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
+              <p className="text-[14px] text-[#9CA3AF]">No programs yet</p>
+              <p className="text-[12px] text-[#6B7280] mt-1">Your gym hasn't published any programs</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
               {gymPrograms.map(prog => {
                 const enrolled = enrolledIds.has(prog.id);
                 return (
