@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp, MessageSquare, Activity, Video } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp, MessageSquare, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import BodyDiagram from '../components/BodyDiagram';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
-import ExerciseVideoModal from '../components/ExerciseVideoModal';
 import { exercises as localExercises } from '../data/exercises';
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
@@ -147,7 +146,6 @@ const ActiveSession = () => {
   const [expandedNotesSet, setExpandedNotesSet] = useState(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showProgressChart, setShowProgressChart] = useState(null); // { exerciseId, exerciseName }
-  const [showDemoExercise, setShowDemoExercise] = useState(null);   // exercise object
   const restNotificationScheduled = useRef(false);
 
   // ── Notification permission ─────────────────────────────────────────────────
@@ -1012,15 +1010,7 @@ const ActiveSession = () => {
                       <Trophy size={11} /> PR: {knownPR.weight} lbs × {knownPR.reps}
                     </p>
                   )}
-                  {currentExercise && (
-                    <button
-                      onClick={() => setShowDemoExercise(currentExercise)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all active:scale-95 bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-transparent hover:border-slate-300 dark:hover:border-white/20"
-                    >
-                      <Video size={11} />
-                      Watch Demo
-                    </button>
-                  )}
+
                 </div>
               </div>
 
@@ -1370,15 +1360,6 @@ const ActiveSession = () => {
           exerciseId={showProgressChart.exerciseId}
           exerciseName={showProgressChart.exerciseName}
           onClose={() => setShowProgressChart(null)}
-        />
-      )}
-
-      {/* Exercise video demo modal */}
-      {showDemoExercise && (
-        <ExerciseVideoModal
-          exerciseName={showDemoExercise.name}
-          instructions={showDemoExercise.instructions}
-          onClose={() => setShowDemoExercise(null)}
         />
       )}
 
