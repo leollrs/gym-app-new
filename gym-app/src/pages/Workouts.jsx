@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, Pencil, X, Trash2, CheckCircle2,
-  Calendar, Zap, RefreshCw, Heart, ChevronDown, BookOpen,
+  Calendar, Zap, RefreshCw, Heart, ChevronDown, BookOpen, AlertTriangle,
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { supabase } from '../lib/supabase';
@@ -149,10 +149,12 @@ const Workouts = () => {
   const [enrolledIds, setEnrolledIds]       = useState(new Set());
   const [selectedProgram, setSelectedProgram] = useState(null);
 
-  // Generated program
-  const [generatedProgram, setGeneratedProgram] = useState(null);
+  // Generated programs (all user programs)
+  const [generatedProgram, setGeneratedProgram] = useState(null);    // latest/active
+  const [allPrograms, setAllPrograms]           = useState([]);      // all user programs
   const [programLoading, setProgramLoading]     = useState(true);
   const [onboardingData, setOnboardingData]     = useState(null);
+  const [goalsMismatch, setGoalsMismatch]       = useState(false);
 
   // ── Load gym programs ──
   const loadPrograms = useCallback(async () => {
@@ -169,24 +171,36 @@ const Workouts = () => {
 
   useEffect(() => { loadPrograms(); }, [loadPrograms]);
 
-  // ── Load generated program + onboarding ──
+  // ── Load generated programs + onboarding ──
   useEffect(() => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
-      const [{ data: gp }, { data: ob }] = await Promise.all([
-        supabase.from('generated_programs').select('*').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      const [{ data: allGp }, { data: ob }] = await Promise.all([
+        supabase.from('generated_programs').select('*').eq('profile_id', user.id).order('created_at', { ascending: false }),
         supabase.from('member_onboarding').select('*').eq('profile_id', user.id).maybeSingle(),
       ]);
-      setGeneratedProgram(gp || null);
+      const programs = allGp || [];
+      setAllPrograms(programs);
+      const latest = programs[0] || null;
+      setGeneratedProgram(latest);
       setOnboardingData(ob || null);
       setProgramLoading(false);
 
-      if (gp && new Date(gp.expires_at) <= new Date() && !gp.expiry_notified) {
+      // Check if active program was built with different goals than current onboarding
+      if (latest && ob && new Date(latest.expires_at) > new Date()) {
+        const programCreated = new Date(latest.created_at);
+        const onboardingUpdated = ob.updated_at ? new Date(ob.updated_at) : new Date(ob.created_at);
+        if (onboardingUpdated > programCreated) {
+          setGoalsMismatch(true);
+        }
+      }
+
+      if (latest && new Date(latest.expires_at) <= new Date() && !latest.expiry_notified) {
         supabase.from('notifications').insert({
           profile_id: user.id, gym_id: profile.gym_id, type: 'milestone',
           title: 'Your 6-week program has ended',
           body: 'Great work finishing your program! Head to Workouts to reassess and generate your next one.',
-        }).then(() => supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', gp.id));
+        }).then(() => supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', latest.id));
       }
     };
     load();
@@ -411,49 +425,168 @@ const Workouts = () => {
 
       {/* ── Programs tab ───────────────────────────────────── */}
       {activeTab === 'programs' && (
-        <div className="animate-fade-in">
-          {programsLoading ? (
-            <div className="space-y-2">{[1, 2].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[80px] animate-pulse" />)}</div>
-          ) : gymPrograms.length === 0 ? (
-            <div className="text-center py-14">
-              <BookOpen size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
-              <p className="text-[14px] text-[#9CA3AF]">No programs yet</p>
-              <p className="text-[12px] text-[#6B7280] mt-1">Your gym hasn't published any programs</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {gymPrograms.map(prog => {
-                const enrolled = enrolledIds.has(prog.id);
-                return (
+        <div className="animate-fade-in space-y-6">
+
+          {/* Goals mismatch alert */}
+          {goalsMismatch && programActive && (
+            <div className="rounded-[14px] border border-amber-500/25 bg-amber-500/5 p-4 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <AlertTriangle size={16} className="text-amber-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-semibold text-[#E5E7EB]">Your goals have changed</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5 leading-relaxed">
+                  Your current program may no longer match your updated goals.
+                </p>
+                <div className="flex gap-2 mt-3">
                   <button
-                    key={prog.id}
-                    onClick={() => setSelectedProgram(prog)}
-                    className={`w-full text-left rounded-[14px] border bg-[#0F172A] px-4 py-3.5 flex items-center gap-3 transition-colors ${
-                      enrolled ? 'border-[#D4AF37]/30' : 'border-white/8'
-                    }`}
+                    onClick={() => setShowGenerator(true)}
+                    className="px-3.5 py-2 rounded-xl text-[12px] font-bold bg-[#D4AF37] text-black active:scale-95 transition-transform"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
-                      <Dumbbell size={16} className={enrolled ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[15px] font-semibold text-[#E5E7EB] truncate">{prog.name}</p>
-                        {enrolled && (
-                          <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 flex-shrink-0">
-                            <CheckCircle2 size={9} /> Enrolled
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-1">
-                        <Clock size={11} /> {prog.duration_weeks} weeks
-                      </p>
-                    </div>
-                    <ChevronRight size={16} className="text-[#4B5563] flex-shrink-0" />
+                    Create New Program
                   </button>
-                );
-              })}
+                  <button
+                    onClick={() => setGoalsMismatch(false)}
+                    className="px-3.5 py-2 rounded-xl text-[12px] font-semibold border border-white/8 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+                  >
+                    Keep Current
+                  </button>
+                </div>
+              </div>
             </div>
           )}
+
+          {/* ── My Programs ──────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">My Programs</p>
+              <button
+                onClick={() => setShowGenerator(true)}
+                className="flex items-center gap-1 text-[12px] font-semibold text-[#D4AF37] hover:text-[#f2d36b] transition-colors"
+              >
+                <Plus size={13} />
+                New Program
+              </button>
+            </div>
+
+            {allPrograms.length === 0 ? (
+              <div className="rounded-[14px] border border-dashed border-white/10 bg-[#0F172A]/50 py-10 text-center">
+                <Zap size={32} className="mx-auto mb-3 text-[#6B7280] opacity-30" />
+                <p className="text-[14px] text-[#9CA3AF]">No programs yet</p>
+                <p className="text-[12px] text-[#6B7280] mt-1 mb-4">Create one tailored to your goals and schedule</p>
+                <button
+                  onClick={() => setShowGenerator(true)}
+                  className="px-4 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black active:scale-95 transition-transform"
+                >
+                  Create Your First Program
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {allPrograms.map(prog => {
+                  const isActive = new Date(prog.expires_at) > new Date();
+                  const isExpired = !isActive;
+                  const weekNum = isActive
+                    ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6)
+                    : 6;
+                  const daysTotal = 42;
+                  const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), daysTotal);
+                  const progress = Math.round((daysElapsed / daysTotal) * 100);
+
+                  return (
+                    <div
+                      key={prog.id}
+                      className={`rounded-[14px] border px-4 py-4 ${
+                        isActive
+                          ? 'border-[#D4AF37]/25 bg-gradient-to-br from-[#D4AF37]/6 to-transparent'
+                          : 'border-white/8 bg-[#0F172A]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[15px] font-semibold text-[#E5E7EB]">
+                            {prog.split_type ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Custom'} Program
+                          </p>
+                          {isActive && (
+                            <span className="text-[10px] font-bold text-[#10B981] bg-[#10B981]/10 px-1.5 py-0.5 rounded-full">Active</span>
+                          )}
+                          {isExpired && (
+                            <span className="text-[10px] font-bold text-[#6B7280] bg-white/5 px-1.5 py-0.5 rounded-full">Completed</span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[12px] text-[#6B7280] flex items-center gap-2 mb-3">
+                        <span className="flex items-center gap-1"><Calendar size={11} /> 6 weeks</span>
+                        <span className="text-white/10">·</span>
+                        <span>{isActive ? `Week ${weekNum} of 6` : 'Finished'}</span>
+                        {prog.routines_a_count > 0 && (
+                          <>
+                            <span className="text-white/10">·</span>
+                            <span>{prog.routines_a_count} routines</span>
+                          </>
+                        )}
+                      </p>
+                      {/* Progress bar */}
+                      <div className="w-full h-1.5 rounded-full bg-white/6 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${isActive ? 'bg-[#D4AF37]' : 'bg-[#6B7280]'}`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Gym Programs ─────────────────────────────────── */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Gym Programs</p>
+            {programsLoading ? (
+              <div className="space-y-2">{[1, 2].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[80px] animate-pulse" />)}</div>
+            ) : gymPrograms.length === 0 ? (
+              <div className="text-center py-10">
+                <BookOpen size={32} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
+                <p className="text-[14px] text-[#9CA3AF]">No gym programs</p>
+                <p className="text-[12px] text-[#6B7280] mt-1">Your gym hasn't published any programs yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {gymPrograms.map(prog => {
+                  const enrolled = enrolledIds.has(prog.id);
+                  return (
+                    <button
+                      key={prog.id}
+                      onClick={() => setSelectedProgram(prog)}
+                      className={`w-full text-left rounded-[14px] border bg-[#0F172A] px-4 py-3.5 flex items-center gap-3 transition-colors ${
+                        enrolled ? 'border-[#D4AF37]/30' : 'border-white/8'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                        <Dumbbell size={16} className={enrolled ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[15px] font-semibold text-[#E5E7EB] truncate">{prog.name}</p>
+                          {enrolled && (
+                            <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 flex-shrink-0">
+                              <CheckCircle2 size={9} /> Enrolled
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-1">
+                          <Clock size={11} /> {prog.duration_weeks} weeks
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-[#4B5563] flex-shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -483,8 +616,13 @@ const Workouts = () => {
         onClose={() => setShowGenerator(false)}
         onGenerated={() => {
           if (user?.id) {
-            supabase.from('generated_programs').select('*').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
-              .then(({ data }) => setGeneratedProgram(data || null));
+            supabase.from('generated_programs').select('*').eq('profile_id', user.id).order('created_at', { ascending: false })
+              .then(({ data }) => {
+                const programs = data || [];
+                setAllPrograms(programs);
+                setGeneratedProgram(programs[0] || null);
+                setGoalsMismatch(false);
+              });
           }
           refetch();
         }}
