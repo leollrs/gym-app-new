@@ -19,6 +19,8 @@ import CheckIn from './pages/CheckIn';
 import { ExerciseLibraryPage } from './pages/ExerciseLibrary';
 import Leaderboard from './pages/Leaderboard';
 import Challenges from './pages/Challenges';
+import Progress from './pages/Progress';
+import Community from './pages/Community';
 import Notifications from './pages/Notifications';
 import Rewards from './pages/Rewards';
 import Login from './pages/Login';
@@ -184,10 +186,14 @@ function App() {
                 <Route path="/workout-log"       element={<WorkoutLog />} />
 
                 {/* Social & community */}
+                <Route path="/community"         element={<Community />} />
                 <Route path="/social"            element={<SocialFeed />} />
                 <Route path="/leaderboard"       element={<Leaderboard />} />
                 <Route path="/challenges"        element={<Challenges />} />
                 <Route path="/notifications"     element={<Notifications />} />
+
+                {/* Progress (consolidated) */}
+                <Route path="/progress"          element={<Progress />} />
 
                 {/* You / self */}
                 <Route path="/profile"           element={<Profile />} />

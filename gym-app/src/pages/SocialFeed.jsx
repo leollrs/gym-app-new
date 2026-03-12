@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Heart, MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
+  MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Share2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -615,7 +615,7 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting }) => {
 };
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-const SocialFeed = () => {
+const SocialFeed = ({ embedded = false }) => {
   const { user, profile } = useAuth();
   const [feed, setFeed]               = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -853,10 +853,11 @@ const SocialFeed = () => {
   const activeFeed  = tab === 'friends' ? friendsFeed : myFeed;
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
-      <div className="max-w-[680px] mx-auto px-4 pt-6 pb-8">
+    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
+      <div className={`max-w-[680px] mx-auto px-4 ${embedded ? 'pt-0 pb-0' : 'pt-6 pb-8'}`}>
 
         {/* Header */}
+        {!embedded && (
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-[14px] bg-amber-900/40 flex items-center justify-center">
@@ -885,6 +886,7 @@ const SocialFeed = () => {
             )}
           </button>
         </header>
+        )}
 
         {/* Find Friends panel */}
         {showFriends && (
@@ -917,6 +919,36 @@ const SocialFeed = () => {
             </button>
           ))}
         </div>
+
+        {/* Friends Streaks */}
+        {friendStreaks.length > 0 && (
+          <div className="mb-6">
+            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Friends Streaks</p>
+            <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
+              {friendStreaks.map(f => (
+                <div key={f.id} className="flex flex-col items-center flex-shrink-0" style={{ width: 64 }}>
+                  {f.avatar_url ? (
+                    <img
+                      src={f.avatar_url}
+                      alt={f.name}
+                      className="rounded-full object-cover border-2 border-[#D4AF37]/30"
+                      style={{ width: 40, height: 40 }}
+                    />
+                  ) : (
+                    <div
+                      className="rounded-full flex items-center justify-center font-bold bg-amber-900/40 text-[#D4AF37] border-2 border-[#D4AF37]/20"
+                      style={{ width: 40, height: 40, fontSize: 15 }}
+                    >
+                      {(f.name ?? '?')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-[#9CA3AF] mt-1.5 truncate w-full text-center">{f.name.split(' ')[0]}</p>
+                  <p className="text-[11px] font-semibold text-[#D4AF37]">{f.streak} 🔥</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Loading skeletons */}
         {loading && (
@@ -963,7 +995,8 @@ const SocialFeed = () => {
                 key={item.id}
                 item={item}
                 currentUserId={user.id}
-                onToggleLike={handleToggleLike}
+                onToggleLike={handleReact}
+                onReact={handleReact}
               />
             ))}
             <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, Activity, User, Trophy, MapPin, PlayCircle, Bell } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { LevelBadgeCompact } from './LevelBadge';
 import { getUserPoints } from '../lib/rewardsEngine';
@@ -8,38 +8,11 @@ import { getUserPoints } from '../lib/rewardsEngine';
 // ── Member nav schema (Strava-style) ──────────────────────────────────────────
 // We keep a single source of truth for main tabs used on both desktop and mobile.
 const MEMBER_TABS = [
-  {
-    id: 'home',
-    to: '/',
-    icon: Home,
-    label: 'Home',
-    end: true,
-  },
-  {
-    id: 'workouts',
-    to: '/workouts',
-    icon: Dumbbell,
-    label: 'Workouts',
-  },
-  {
-    id: 'record',
-    to: '/record',
-    icon: PlayCircle,
-    label: 'Start',
-    isPrimary: true,
-  },
-  {
-    id: 'social',
-    to: '/social',
-    icon: Activity,
-    label: 'Social',
-  },
-  {
-    id: 'challenges',
-    to: '/challenges',
-    icon: Trophy,
-    label: 'Challenges',
-  },
+  { id: 'home', to: '/', icon: Home, label: 'Home', end: true },
+  { id: 'workouts', to: '/workouts', icon: Dumbbell, label: 'Workouts' },
+  { id: 'record', to: '/record', icon: PlayCircle, label: 'Start', isPrimary: true },
+  { id: 'progress', to: '/progress', icon: BarChart2, label: 'Progress' },
+  { id: 'community', to: '/community', icon: Users, label: 'Community' },
 ];
 
 const DESKTOP_TABS = MEMBER_TABS.filter(tab => tab.id !== 'record');

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Target } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
@@ -205,6 +205,182 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
   );
 };
 
+// ── Daily Challenge ───────────────────────────────────────
+const DAILY_CHALLENGES = [
+  { name: 'Volume Crusher',    desc: 'Hit 10,000 lbs total volume today',     target: 10000, unit: 'lbs',       metric: 'volume'      },
+  { name: 'Rep Master',        desc: 'Complete 100 total reps today',          target: 100,   unit: 'reps',      metric: 'reps'        },
+  { name: 'Iron Will',         desc: 'Log at least 3 exercises today',         target: 3,     unit: 'exercises', metric: 'exercises'   },
+  { name: 'Speed Demon',       desc: 'Finish a workout in under 30 minutes',  target: 1,     unit: 'workout',   metric: 'speed'       },
+  { name: 'Consistency King',  desc: 'Check in at the gym today',             target: 1,     unit: 'check-in',  metric: 'checkin'     },
+  { name: 'PR Hunter',         desc: 'Hit a new personal record today',        target: 1,     unit: 'PR',        metric: 'pr'          },
+  { name: 'Early Bird',        desc: 'Complete a workout before noon',         target: 1,     unit: 'workout',   metric: 'early'       },
+];
+
+function seededIndex(dateStr) {
+  let hash = 0;
+  for (let i = 0; i < dateStr.length; i++) {
+    hash = ((hash << 5) - hash) + dateStr.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % DAILY_CHALLENGES.length;
+}
+
+const DailyChallenge = ({ userId, gymId }) => {
+  const today = new Date();
+  const dateString = format(today, 'yyyy-MM-dd');
+  const todayStart = startOfDay(today).toISOString();
+  const challenge = DAILY_CHALLENGES[seededIndex(dateString)];
+  const storageKey = `daily_challenge_${userId}_${dateString}`;
+
+  const [progress, setProgress] = useState(0);
+  const [completed, setCompleted] = useState(() => localStorage.getItem(storageKey) === 'true');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId || completed) { setLoading(false); return; }
+
+    const fetchProgress = async () => {
+      try {
+        let value = 0;
+
+        if (challenge.metric === 'volume') {
+          const { data: sets } = await supabase
+            .from('workout_sets')
+            .select('weight_kg, reps, workout_sessions!inner(profile_id, completed_at, status)')
+            .eq('workout_sessions.profile_id', userId)
+            .eq('workout_sessions.status', 'completed')
+            .gte('workout_sessions.completed_at', todayStart)
+            .eq('completed', true);
+          value = (sets || []).reduce((sum, s) => sum + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
+
+        } else if (challenge.metric === 'reps') {
+          const { data: sets } = await supabase
+            .from('workout_sets')
+            .select('reps, workout_sessions!inner(profile_id, completed_at, status)')
+            .eq('workout_sessions.profile_id', userId)
+            .eq('workout_sessions.status', 'completed')
+            .gte('workout_sessions.completed_at', todayStart)
+            .eq('completed', true);
+          value = (sets || []).reduce((sum, s) => sum + (s.reps ?? 0), 0);
+
+        } else if (challenge.metric === 'exercises') {
+          const { data: sets } = await supabase
+            .from('workout_sets')
+            .select('exercise_id, workout_sessions!inner(profile_id, completed_at, status)')
+            .eq('workout_sessions.profile_id', userId)
+            .eq('workout_sessions.status', 'completed')
+            .gte('workout_sessions.completed_at', todayStart)
+            .eq('completed', true);
+          const unique = new Set((sets || []).map(s => s.exercise_id));
+          value = unique.size;
+
+        } else if (challenge.metric === 'speed') {
+          const { data: sessions } = await supabase
+            .from('workout_sessions')
+            .select('started_at, completed_at')
+            .eq('profile_id', userId)
+            .eq('status', 'completed')
+            .gte('completed_at', todayStart);
+          const fast = (sessions || []).some(s => {
+            if (!s.started_at || !s.completed_at) return false;
+            return (new Date(s.completed_at) - new Date(s.started_at)) < 30 * 60 * 1000;
+          });
+          value = fast ? 1 : 0;
+
+        } else if (challenge.metric === 'checkin') {
+          const { count } = await supabase
+            .from('check_ins')
+            .select('id', { count: 'exact', head: true })
+            .eq('profile_id', userId)
+            .gte('created_at', todayStart);
+          value = count ?? 0;
+
+        } else if (challenge.metric === 'pr') {
+          const { count } = await supabase
+            .from('personal_records')
+            .select('id', { count: 'exact', head: true })
+            .eq('profile_id', userId)
+            .gte('achieved_at', todayStart);
+          value = count ?? 0;
+
+        } else if (challenge.metric === 'early') {
+          const noonToday = new Date(today);
+          noonToday.setHours(12, 0, 0, 0);
+          const { count } = await supabase
+            .from('workout_sessions')
+            .select('id', { count: 'exact', head: true })
+            .eq('profile_id', userId)
+            .eq('status', 'completed')
+            .gte('completed_at', todayStart)
+            .lt('completed_at', noonToday.toISOString());
+          value = count ?? 0;
+        }
+
+        setProgress(value);
+
+        if (value >= challenge.target && !completed) {
+          localStorage.setItem(storageKey, 'true');
+          setCompleted(true);
+          addPoints(userId, gymId, 'workout_completed', 25, 'Daily challenge completed').catch(() => {});
+        }
+      } catch (_) {
+        // silently fail
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProgress();
+  }, [userId, gymId, challenge, todayStart, completed, storageKey]);
+
+  const pct = Math.min((progress / challenge.target) * 100, 100);
+  const progressLabel = challenge.target >= 1000
+    ? `${progress.toLocaleString()} / ${challenge.target.toLocaleString()} ${challenge.unit}`
+    : `${progress} / ${challenge.target} ${challenge.unit}`;
+
+  return (
+    <div className="rounded-[14px] bg-gradient-to-r from-[#0F172A] to-[#1a1a2e] border border-[#D4AF37]/20 p-5 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">Daily Challenge</p>
+        <span className="text-[10px] text-[#6B7280] font-medium">{format(today, 'MMM d')}</span>
+      </div>
+
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-[12px] bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+          {completed
+            ? <Check size={20} className="text-emerald-400" strokeWidth={2.5} />
+            : <Flame size={20} className="text-[#D4AF37]" strokeWidth={2} />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[16px] font-bold text-[#E5E7EB]">{challenge.name}</p>
+          <p className="text-[13px] text-[#9CA3AF] mt-0.5">{challenge.desc}</p>
+        </div>
+      </div>
+
+      {completed ? (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <Check size={16} className="text-emerald-400" strokeWidth={2.5} />
+          <span className="text-[14px] font-semibold text-emerald-400">Completed! +25 pts</span>
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[12px] text-[#9CA3AF] font-medium">{loading ? '...' : progressLabel}</span>
+            <span className="text-[12px] text-[#6B7280] font-medium">{Math.round(pct)}%</span>
+          </div>
+          <div className="h-2 bg-[#1E293B] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#D4AF37] rounded-full transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Challenge card ─────────────────────────────────────────
 const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoin }) => {
   const [open, setOpen] = useState(false);
@@ -310,7 +486,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 // ── Main ───────────────────────────────────────────────────
 const TABS = ['live', 'upcoming', 'ended'];
 
-export default function Challenges() {
+export default function Challenges({ embedded = false }) {
   const { profile, user } = useAuth();
   const [challenges, setChallenges]       = useState([]);
   const [participants, setParticipants]   = useState([]);
@@ -394,8 +570,9 @@ export default function Challenges() {
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
+    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
       {/* Header */}
+      {!embedded && (
       <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
         <div className="max-w-2xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
@@ -433,8 +610,12 @@ export default function Challenges() {
           </div>
         </div>
       </div>
+      )}
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className={`max-w-2xl mx-auto px-4 ${embedded ? 'py-0' : 'py-6'}`}>
+        {user?.id && profile?.gym_id && (
+          <DailyChallenge userId={user.id} gymId={profile.gym_id} />
+        )}
         {loading ? (
           <div className="flex justify-center py-28">
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />

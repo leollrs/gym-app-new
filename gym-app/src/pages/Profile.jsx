@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Trophy, Dumbbell, Calendar,
   Lock, BarChart2, Star, LogOut, Edit2, Check, Scale, Flame,
+  UtensilsCrossed, QrCode, Gift, Settings, ChevronRight,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -108,7 +109,7 @@ const HeroStat = ({ label, value, sub }) => (
 const Profile = () => {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('prs');
+  const [activeTab, setActiveTab] = useState('achievements');
 
   // Data state
   const [gymName, setGymName]                         = useState('');
@@ -329,27 +330,35 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* ── Body Metrics shortcut ────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={() => navigate('/metrics')}
-        className="w-full flex items-center gap-3 px-4 py-4 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/12 transition-all text-left mb-6"
-      >
-        <div className="w-10 h-10 rounded-xl bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-          <Scale size={18} className="text-[#D4AF37]" strokeWidth={2} />
-        </div>
-        <div>
-          <p className="text-[14px] font-semibold text-[#E5E7EB]">Body Metrics</p>
-          <p className="text-[12px] text-[#9CA3AF]">Weight & measurements</p>
-        </div>
-      </button>
+      {/* ── Quick-access cards ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        {[
+          { to: '/metrics',   icon: Scale,            label: 'Metrics',   color: '#D4AF37' },
+          { to: '/nutrition',  icon: UtensilsCrossed,  label: 'Nutrition', color: '#10B981' },
+          { to: '/checkin',    icon: QrCode,           label: 'Check-in',  color: '#3B82F6' },
+          { to: '/rewards',    icon: Gift,             label: 'Rewards',   color: '#F59E0B' },
+        ].map(item => (
+          <button
+            key={item.to}
+            type="button"
+            onClick={() => navigate(item.to)}
+            className="flex flex-col items-center gap-2 py-4 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/12 transition-all active:scale-95"
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: `${item.color}18` }}
+            >
+              <item.icon size={18} style={{ color: item.color }} strokeWidth={2} />
+            </div>
+            <span className="text-[11px] font-semibold text-[#9CA3AF]">{item.label}</span>
+          </button>
+        ))}
+      </div>
 
       {/* ── Pill tabs ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 mb-6 bg-[#111827] p-1 rounded-xl">
         {[
-          { key: 'prs',          label: 'Records' },
           { key: 'achievements', label: 'Achievements' },
-          { key: 'stats',        label: 'Stats' },
           { key: 'goals',        label: 'Goals' },
         ].map(t => (
           <button
@@ -366,61 +375,6 @@ const Profile = () => {
           </button>
         ))}
       </div>
-
-      {/* ── Records Tab ──────────────────────────────────────────────────── */}
-      {activeTab === 'prs' && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          {loading ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-16 rounded-[14px] bg-[#0F172A] border border-white/8 animate-pulse" />
-              ))}
-            </div>
-          ) : Object.keys(prGroups).length === 0 ? (
-            <div className="text-center py-16 rounded-[14px] bg-[#0F172A] border border-white/8">
-              <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-                <Trophy size={28} className="text-[#6B7280]" />
-              </div>
-              <p className="font-semibold text-[#E5E7EB]">No records yet</p>
-              <p className="text-[13px] mt-1 text-[#9CA3AF]">Complete sets to start tracking your PRs</p>
-            </div>
-          ) : (
-            Object.entries(prGroups).map(([group, groupPrs]) => (
-              <section key={group}>
-                <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{group}</h3>
-                <div className="flex flex-col gap-3">
-                  {groupPrs.map(pr => (
-                    <div key={pr.exercise_id}
-                      className="rounded-[14px] flex items-center gap-4 px-5 py-4 bg-[#0F172A] border border-white/8">
-                      <div className="w-11 h-11 rounded-xl bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                        <Trophy size={18} className="text-[#D4AF37]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
-                          {pr.exercises?.name ?? pr.exercise_id}
-                        </p>
-                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
-                          {pr.achieved_at
-                            ? new Date(pr.achieved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                            : '—'}
-                          {pr.estimated_1rm > 0 && <span className="ml-2">· e1RM {Math.round(pr.estimated_1rm)} lbs</span>}
-                        </p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-black text-[22px] leading-none text-[#D4AF37]">
-                          {pr.weight_lbs}
-                          <span className="text-[12px] font-normal ml-1 text-[#6B7280]">lbs</span>
-                        </p>
-                        <p className="text-[12px] mt-0.5 text-[#9CA3AF]">× {pr.reps} reps</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-        </div>
-      )}
 
       {/* ── Achievements Tab ─────────────────────────────────────────────── */}
       {activeTab === 'achievements' && (
@@ -597,68 +551,6 @@ const Profile = () => {
               );
             })
           )}
-        </div>
-      )}
-
-      {/* ── Stats Tab ────────────────────────────────────────────────────── */}
-      {activeTab === 'stats' && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Volume — Last 8 Weeks</h3>
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 h-[224px]">
-              {loading ? (
-                <div className="h-full animate-pulse rounded-xl bg-[#111827]" />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyChart} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.25} />
-                        <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="week" axisLine={false} tickLine={false}
-                      tick={{ fill: '#6B7280', fontSize: 10 }} />
-                    <YAxis axisLine={false} tickLine={false}
-                      tick={{ fill: '#6B7280', fontSize: 10 }}
-                      tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-                    <Tooltip
-                      cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
-                      contentStyle={{ backgroundColor: '#0F172A', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#E5E7EB' }}
-                      formatter={v => [`${v.toLocaleString()} lbs`, 'Volume']}
-                    />
-                    <Area type="monotone" dataKey="volume" stroke="#D4AF37" strokeWidth={2} fill="url(#volGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Muscle Balance · This Month</h3>
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
-              {loading ? (
-                <div className="flex flex-col gap-4">
-                  {[1, 2, 3].map(i => <div key={i} className="h-4 rounded-full animate-pulse bg-[#111827]" />)}
-                </div>
-              ) : muscleBalance.length === 0 ? (
-                <p className="text-center text-[13px] py-6 text-[#9CA3AF]">No workout data for this month yet</p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {muscleBalance.map(({ muscle, sets }) => (
-                    <div key={muscle} className="flex items-center gap-4">
-                      <div className="w-20 text-[12px] text-right flex-shrink-0 text-[#9CA3AF]">{muscle}</div>
-                      <div className="flex-1 h-2 rounded-full overflow-hidden bg-[#111827]">
-                        <div className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${(sets / maxMuscleSets) * 100}%`, background: MUSCLE_COLORS[muscle] ?? '#D4AF37' }} />
-                      </div>
-                      <div className="w-6 text-[12px] text-right flex-shrink-0 text-[#6B7280]">{sets}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -926,6 +818,31 @@ const Profile = () => {
           )}
         </div>
       )}
+
+      {/* ── Settings ──────────────────────────────────────────────────────── */}
+      <div className="mt-8">
+        <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Settings</h3>
+        <div className="rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          {[
+            { label: 'Notification Preferences', to: '/notifications' },
+            { label: 'Body Metrics', to: '/metrics' },
+            { label: 'Strength Standards', to: '/strength' },
+          ].map(item => (
+            <button
+              key={item.to}
+              type="button"
+              onClick={() => navigate(item.to)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/4 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Settings size={16} className="text-[#6B7280]" />
+                <span className="text-[14px] font-semibold text-[#E5E7EB]">{item.label}</span>
+              </div>
+              <ChevronRight size={16} className="text-[#6B7280]" />
+            </button>
+          ))}
+        </div>
+      </div>
 
       </div>
     </div>
