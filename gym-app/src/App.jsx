@@ -28,7 +28,7 @@ import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
 import FirstWorkoutWelcome from './components/FirstWorkoutWelcome';
 import TVDisplay from './pages/TVDisplay';
-import QuickStart from './pages/QuickStart';
+// QuickStart removed — merged into Workouts page
 
 // Trainer pages
 import TrainerLayout from './layouts/TrainerLayout';
@@ -180,7 +180,7 @@ function App() {
                 <Route path="/exercises"         element={<ExerciseLibraryPage />} />
 
                 {/* Record / sessions */}
-                <Route path="/record"            element={<QuickStart />} />
+                <Route path="/record"            element={<Navigate to="/workouts" replace />} />
                 <Route path="/session/:id"       element={<ActiveSession />} />
                 <Route path="/session-summary"   element={<SessionSummary />} />
                 <Route path="/workout-log"       element={<WorkoutLog />} />
