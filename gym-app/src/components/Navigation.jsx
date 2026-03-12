@@ -10,7 +10,7 @@ import { getUserPoints } from '../lib/rewardsEngine';
 const MEMBER_TABS = [
   { id: 'home', to: '/', icon: Home, label: 'Home', end: true },
   { id: 'workouts', to: '/workouts', icon: Dumbbell, label: 'Workouts' },
-  { id: 'record', to: '/workouts', icon: PlayCircle, label: 'Start', isPrimary: true },
+  { id: 'record', to: '/record', icon: PlayCircle, label: 'Start', isPrimary: true },
   { id: 'progress', to: '/progress', icon: BarChart2, label: 'Progress' },
   { id: 'community', to: '/community', icon: Users, label: 'Community' },
 ];
@@ -29,7 +29,7 @@ const Navigation = () => {
   }, [user?.id, location.pathname]); // refresh on nav so it updates after a workout
 
   const isRecordActive =
-    location.pathname.startsWith('/workouts') ||
+    location.pathname.startsWith('/record') ||
     location.pathname.startsWith('/session/');
 
   return (
@@ -84,7 +84,7 @@ const Navigation = () => {
           {/* Desktop Record button */}
           <button
             type="button"
-            onClick={() => navigate('/workouts')}
+            onClick={() => navigate('/record')}
             className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-black text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors"
           >
             <PlayCircle size={16} className="flex-shrink-0" />
@@ -198,7 +198,7 @@ const Navigation = () => {
             <button
               key={id}
               type="button"
-              onClick={() => navigate('/workouts')}
+              onClick={() => navigate('/record')}
               className="flex flex-col items-center justify-end min-w-[64px]"
               style={{ paddingBottom: '2px' }}
               aria-label="Start"

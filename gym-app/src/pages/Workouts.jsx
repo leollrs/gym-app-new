@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, X, Trash2, CheckCircle2,
-  Calendar, Zap, RefreshCw, Heart, RotateCcw, ChevronDown, Trophy,
+  Plus, Dumbbell, Clock, ChevronRight, Pencil, X, Trash2, CheckCircle2,
+  Calendar, Zap, RefreshCw, Heart, ChevronDown, BookOpen,
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { supabase } from '../lib/supabase';
@@ -19,17 +19,6 @@ const timeAgo = (iso) => {
   if (d < 7)  return `${d}d ago`;
   if (d < 30) return `${Math.floor(d / 7)}w ago`;
   return `${Math.floor(d / 30)}mo ago`;
-};
-
-const fmtDuration = (s) => {
-  if (!s) return '—';
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
-};
-
-const fmtVolume = (v) => {
-  if (!v) return '—';
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}k lbs` : `${Math.round(v)} lbs`;
 };
 
 // ── Program detail modal ────────────────────────────────────
@@ -165,11 +154,6 @@ const Workouts = () => {
   const [programLoading, setProgramLoading]     = useState(true);
   const [onboardingData, setOnboardingData]     = useState(null);
 
-  // QuickStart data (merged)
-  const [lastSession, setLastSession]       = useState(null);
-  const [suggested, setSuggested]           = useState(null);
-  const [recentSessions, setRecentSessions] = useState([]);
-
   // ── Load gym programs ──
   const loadPrograms = useCallback(async () => {
     if (!profile?.gym_id) return;
@@ -207,45 +191,6 @@ const Workouts = () => {
     };
     load();
   }, [user?.id, profile?.gym_id]);
-
-  // ── Load sessions: last session, suggested routine, recent history ──
-  useEffect(() => {
-    if (!user?.id) return;
-    const load = async () => {
-      const { data: sessions } = await supabase
-        .from('workout_sessions')
-        .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
-        .eq('profile_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false })
-        .limit(20);
-
-      if (!sessions?.length) return;
-
-      // Recent sessions (last 5 for the preview)
-      setRecentSessions(sessions.slice(0, 5));
-
-      // Last session with routine verification
-      const mostRecent = sessions[0];
-      if (mostRecent?.routine_id) {
-        const { data: routine } = await supabase.from('routines').select('id, name').eq('id', mostRecent.routine_id).maybeSingle();
-        if (routine) setLastSession({ ...mostRecent, routineName: routine.name });
-      }
-    };
-    load();
-  }, [user?.id, routines]);
-
-  // ── Compute suggested next routine ──
-  useEffect(() => {
-    if (routines.length === 0) { setSuggested(null); return; }
-    const sorted = [...routines].sort((a, b) => {
-      if (!a.lastPerformedAt && !b.lastPerformedAt) return 0;
-      if (!a.lastPerformedAt) return -1;
-      if (!b.lastPerformedAt) return 1;
-      return new Date(a.lastPerformedAt) - new Date(b.lastPerformedAt);
-    });
-    setSuggested(sorted[0]);
-  }, [routines]);
 
   // Program state
   const today = new Date();
@@ -290,9 +235,6 @@ const Workouts = () => {
     finally { setDeletingId(null); }
   };
 
-  // Non-suggested routines for the list
-  const userRoutines = routines.filter(r => r.id !== suggested?.id);
-
   return (
     <>
     <div className="mx-auto w-full max-w-[600px] px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
@@ -300,141 +242,116 @@ const Workouts = () => {
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-[26px] font-bold text-[#E5E7EB] tracking-tight">Workouts</h1>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black active:scale-95 transition-transform"
-        >
-          <Plus size={15} />
-          New
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/exercises"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-semibold border border-white/8 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+          >
+            <BookOpen size={14} />
+            Exercises
+          </Link>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black active:scale-95 transition-transform"
+          >
+            <Plus size={15} />
+            New
+          </button>
+        </div>
       </div>
 
-      {/* ── Program alerts ─────────────────────────────────── */}
-      {!programLoading && programExpired && (
-        <button onClick={() => setShowGenerator(true)} className="w-full mb-4 flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-3.5 text-left active:scale-[0.98] transition-transform">
-          <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-            <RefreshCw size={16} className="text-[#D4AF37]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-[#E5E7EB]">Program ended</p>
-            <p className="text-[12px] text-[#9CA3AF]">Tap to reassess & generate a new one</p>
-          </div>
-          <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
-        </button>
-      )}
-
-      {!programLoading && !generatedProgram && (
-        <button onClick={() => setShowGenerator(true)} className="w-full mb-4 flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-3.5 text-left active:scale-[0.98] transition-transform">
-          <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-            <Zap size={16} className="text-[#D4AF37]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-[#E5E7EB]">Generate a personalized program</p>
-            <p className="text-[12px] text-[#9CA3AF]">6-week AI plan based on your goals</p>
-          </div>
-          <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
-        </button>
-      )}
-
-      {/* ── Active Program: This Week ──────────────────────── */}
-      {programActive && thisWeekRoutines.length > 0 && (
-        <div className="mb-5">
-          <div className="flex items-baseline justify-between mb-2.5">
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">
-              Current Program · Week {Math.min(currentWeekNum, 6)}/6
-            </p>
-            <p className="text-[11px] font-semibold text-[#D4AF37]">Routine {isWeekA ? 'A' : 'B'}</p>
-          </div>
-          <div className="space-y-2">
-            {thisWeekRoutines.map(routine => (
-              <button
-                key={routine.id}
-                onClick={() => navigate(`/session/${routine.id}`)}
-                className="w-full text-left rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5 active:scale-[0.98] transition-transform"
-              >
-                <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
-                  <Dumbbell size={15} className="text-[#D4AF37]" />
+      {/* ── Current Program (highlighted box) ──────────────── */}
+      {!programLoading && (programActive || programExpired || !generatedProgram) && (
+        <div className="mb-6">
+          {/* Active program */}
+          {programActive && (
+            <div className="rounded-[14px] border border-[#D4AF37]/25 bg-gradient-to-br from-[#D4AF37]/8 to-[#D4AF37]/3 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-widest">Current Program</p>
+                  <p className="text-[20px] font-bold text-[#E5E7EB] mt-1">
+                    Week {Math.min(currentWeekNum, 6)} of 6
+                  </p>
+                  <p className="text-[12px] text-[#9CA3AF] mt-0.5">Routine {isWeekA ? 'A' : 'B'} this week</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">{routine.name.replace('Auto: ', '')}</p>
-                  <p className="text-[11px] mt-0.5 text-[#6B7280]">{routine.exerciseCount} exercises</p>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-[#D4AF37] flex items-center justify-center flex-shrink-0">
-                  <Play size={13} fill="black" stroke="black" />
-                </div>
-              </button>
-            ))}
-            {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
-              <div className="flex items-center gap-3 rounded-[14px] border border-white/8 bg-[#0F172A] px-4 py-3">
-                <div className="w-9 h-9 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
-                  <Heart size={15} className="text-[#D4AF37]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-[#E5E7EB]">Active Recovery</p>
-                  <p className="text-[12px] text-[#6B7280]">{generatedProgram.cardio_days.description}</p>
+                <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/25 flex items-center justify-center">
+                  <Zap size={20} className="text-[#D4AF37]" />
                 </div>
               </div>
-            )}
-          </div>
+              {thisWeekRoutines.length > 0 && (
+                <div className="space-y-2">
+                  {thisWeekRoutines.map(routine => (
+                    <div
+                      key={routine.id}
+                      className="rounded-xl border border-white/8 bg-[#0F172A]/80 flex items-center gap-3 px-4 py-3"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
+                        <Dumbbell size={14} className="text-[#D4AF37]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{routine.name.replace('Auto: ', '')}</p>
+                        <p className="text-[11px] text-[#6B7280]">{routine.exerciseCount} exercises</p>
+                      </div>
+                      <Link
+                        to={`/workouts/${routine.id}/edit`}
+                        className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                      >
+                        <Pencil size={12} />
+                      </Link>
+                    </div>
+                  ))}
+                  {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
+                    <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#0F172A]/80 px-4 py-3">
+                      <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
+                        <Heart size={14} className="text-[#D4AF37]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-[#E5E7EB]">Active Recovery</p>
+                        <p className="text-[11px] text-[#6B7280]">{generatedProgram.cardio_days.description}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Expired program */}
+          {programExpired && (
+            <button onClick={() => setShowGenerator(true)} className="w-full flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-4 text-left active:scale-[0.98] transition-transform">
+              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                <RefreshCw size={17} className="text-[#D4AF37]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-semibold text-[#E5E7EB]">Program ended</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5">Tap to reassess & generate a new one</p>
+              </div>
+              <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
+            </button>
+          )}
+
+          {/* No program yet */}
+          {!generatedProgram && (
+            <button onClick={() => setShowGenerator(true)} className="w-full flex items-center gap-3 rounded-[14px] border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-4 py-4 text-left active:scale-[0.98] transition-transform">
+              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                <Zap size={17} className="text-[#D4AF37]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-semibold text-[#E5E7EB]">Generate a personalized program</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5">6-week AI plan based on your goals</p>
+              </div>
+              <ChevronRight size={16} className="text-[#D4AF37] flex-shrink-0" />
+            </button>
+          )}
         </div>
       )}
 
-      {/* ── Up Next (hero) ─────────────────────────────────── */}
-      {suggested && (
-        <button
-          onClick={() => navigate(`/session/${suggested.id}`)}
-          className="w-full text-left mb-4 bg-gradient-to-br from-[#D4AF37]/15 to-[#D4AF37]/5 border border-[#D4AF37]/25 rounded-[14px] p-5 active:scale-[0.98] transition-transform"
-        >
-          <div className="flex items-center gap-1.5 mb-3">
-            <Zap size={13} className="text-[#D4AF37]" />
-            <span className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-widest">Up Next</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[20px] font-bold text-[#E5E7EB]">{suggested.name}</p>
-              <p className="text-[12px] text-[#9CA3AF] mt-1 flex items-center gap-2">
-                <span className="flex items-center gap-1"><Dumbbell size={11} /> {suggested.exerciseCount} exercises</span>
-                {suggested.lastPerformedAt && (
-                  <>
-                    <span className="text-white/15">·</span>
-                    <span className="flex items-center gap-1"><Clock size={11} /> {timeAgo(suggested.lastPerformedAt)}</span>
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-full bg-[#D4AF37] flex items-center justify-center shadow-lg shadow-[#D4AF37]/25 flex-shrink-0">
-              <Play size={20} fill="black" stroke="black" />
-            </div>
-          </div>
-        </button>
-      )}
-
-      {/* ── Repeat Last ────────────────────────────────────── */}
-      {lastSession && lastSession.routine_id !== suggested?.id && (
-        <button
-          onClick={() => navigate(`/session/${lastSession.routine_id}`)}
-          className="w-full text-left mb-5 bg-[#0F172A] border border-white/8 rounded-[14px] p-4 flex items-center gap-4 active:scale-[0.98] transition-transform"
-        >
-          <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-            <RotateCcw size={18} className="text-[#9CA3AF]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{lastSession.routineName}</p>
-            <p className="text-[12px] text-[#6B7280] mt-0.5">
-              Repeat last · {timeAgo(lastSession.completed_at)}
-              {lastSession.total_volume_lbs > 0 && ` · ${fmtVolume(lastSession.total_volume_lbs)}`}
-            </p>
-          </div>
-          <ChevronRight size={16} className="text-[#4B5563] flex-shrink-0" />
-        </button>
-      )}
-
       {/* ── My Routines ────────────────────────────────────── */}
-      <div className="mb-5">
+      <div className="mb-6">
         <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">My Routines</p>
         {loading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[68px] animate-pulse" />)}</div>
-        ) : userRoutines.length === 0 && !suggested ? (
+        ) : routines.length === 0 ? (
           <div className="text-center py-14">
             <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
             <p className="text-[14px] text-[#9CA3AF]">No routines yet</p>
@@ -442,7 +359,7 @@ const Workouts = () => {
           </div>
         ) : (
           <div className="space-y-2">
-            {userRoutines.map(routine => (
+            {routines.map(routine => (
               <div
                 key={routine.id}
                 className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5"
@@ -453,7 +370,7 @@ const Workouts = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">{routine.name}</p>
                   <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-2">
-                    <span>{routine.exerciseCount} ex</span>
+                    <span>{routine.exerciseCount} exercises</span>
                     <span className="text-white/10">·</span>
                     <span>{timeAgo(routine.lastPerformedAt)}</span>
                   </p>
@@ -471,12 +388,6 @@ const Workouts = () => {
                     className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors border border-white/6"
                   >
                     <Pencil size={13} />
-                  </Link>
-                  <Link
-                    to={`/session/${routine.id}`}
-                    className="w-8 h-8 rounded-xl bg-[#D4AF37] flex items-center justify-center active:scale-95 transition-transform"
-                  >
-                    <Play size={13} fill="black" stroke="black" />
                   </Link>
                 </div>
               </div>
@@ -531,41 +442,6 @@ const Workouts = () => {
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── Recent Sessions ────────────────────────────────── */}
-      {recentSessions.length > 0 && (
-        <div>
-          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Recent Sessions</p>
-          <div className="space-y-2">
-            {recentSessions.map(s => (
-              <div key={s.id} className="rounded-[14px] border border-white/8 bg-[#0F172A] px-4 py-3 flex items-center gap-3">
-                <div className="flex-shrink-0 w-9 text-center">
-                  <p className="text-[10px] font-bold uppercase text-[#D4AF37]">
-                    {new Date(s.completed_at).toLocaleDateString('en-US', { month: 'short' })}
-                  </p>
-                  <p className="text-[20px] font-black leading-none text-[#E5E7EB]">
-                    {new Date(s.completed_at).getDate()}
-                  </p>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{s.name}</p>
-                  <p className="text-[11px] text-[#6B7280] mt-0.5 flex items-center gap-2">
-                    <span className="flex items-center gap-1"><Clock size={10} /> {fmtDuration(s.duration_seconds)}</span>
-                    <span className="text-white/10">·</span>
-                    <span className="flex items-center gap-1"><Zap size={10} /> {fmtVolume(s.total_volume_lbs)}</span>
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <Link
-            to="/workout-log"
-            className="mt-3 flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
-          >
-            View All History <ChevronRight size={14} />
-          </Link>
         </div>
       )}
 
