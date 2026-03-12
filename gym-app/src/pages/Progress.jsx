@@ -981,6 +981,73 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanPreview, setScanPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleScan = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setScanPreview(ev.target.result);
+    reader.readAsDataURL(file);
+
+    setScanning(true);
+    setError('');
+
+    try {
+      // Compress image for upload
+      const compressed = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxW = 1200;
+          const scale = Math.min(1, maxW / img.width);
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(resolve, 'image/jpeg', 0.8);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+
+      // Convert to base64
+      const base64 = await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(',')[1]);
+        r.readAsDataURL(compressed);
+      });
+
+      // Call Supabase edge function for AI analysis
+      const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', {
+        body: { image: base64, existingMeasurements: form },
+      });
+
+      if (fnError) throw fnError;
+
+      if (data?.estimates) {
+        // Pre-fill form with AI estimates
+        const est = data.estimates;
+        setForm(prev => {
+          const next = { ...prev };
+          MEASUREMENT_FIELDS.forEach(f => {
+            if (est[f.key] != null && (prev[f.key] === '' || prev[f.key] === undefined)) {
+              next[f.key] = String(est[f.key]);
+            }
+          });
+          return next;
+        });
+      }
+    } catch (err) {
+      setError(err.message || 'Photo analysis failed — enter measurements manually');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -1016,29 +1083,72 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           </p>
           <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
         </div>
-        <div className="p-5 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-          {MEASUREMENT_FIELDS.map(f => (
-            <div key={f.key}>
-              <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
-                {f.label} ({f.unit})
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                placeholder="—"
-                value={form[f.key]}
-                onChange={e => {
-                  const v = e.target.value;
-                  if (v === '' || v === '-') return setForm(p => ({ ...p, [f.key]: v }));
-                  const n = parseFloat(v);
-                  setForm(p => ({ ...p, [f.key]: !isNaN(n) && n < 0 ? '0' : v }));
-                }}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
-              />
-            </div>
-          ))}
+
+        <div className="p-5 max-h-[65vh] overflow-y-auto">
+          {/* AI Photo Scan */}
+          <div className="mb-4">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={scanning}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed transition-colors"
+              style={{
+                borderColor: scanPreview ? 'rgba(212,175,55,0.3)' : 'rgba(255,255,255,0.12)',
+                background: scanPreview ? 'rgba(212,175,55,0.06)' : 'rgba(255,255,255,0.02)',
+              }}
+            >
+              {scanning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+                  <span className="text-[12px] font-semibold text-[#D4AF37]">Analyzing photo...</span>
+                </>
+              ) : scanPreview ? (
+                <>
+                  <Check size={14} className="text-[#10B981]" />
+                  <span className="text-[12px] font-semibold text-[#10B981]">Estimates applied — verify & adjust below</span>
+                </>
+              ) : (
+                <>
+                  <Camera size={16} className="text-[#D4AF37]" />
+                  <span className="text-[12px] font-semibold text-[#D4AF37]">Estimate from Photo</span>
+                  <span className="text-[10px] text-[#6B7280] ml-1">(AI body fat estimate)</span>
+                </>
+              )}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic"
+              className="hidden"
+              onChange={handleScan}
+            />
+          </div>
+
+          {/* Manual fields */}
+          <div className="grid grid-cols-2 gap-3">
+            {MEASUREMENT_FIELDS.map(f => (
+              <div key={f.key}>
+                <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
+                  {f.label} ({f.unit})
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  placeholder="—"
+                  value={form[f.key]}
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (v === '' || v === '-') return setForm(p => ({ ...p, [f.key]: v }));
+                    const n = parseFloat(v);
+                    setForm(p => ({ ...p, [f.key]: !isNaN(n) && n < 0 ? '0' : v }));
+                  }}
+                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                />
+              </div>
+            ))}
+          </div>
         </div>
+
         {error && <p className="text-[12px] text-red-400 px-5 pb-2">{error}</p>}
         <div className="px-5 pb-5">
           <button
@@ -1161,28 +1271,54 @@ const BodyTab = () => {
 
   return (
     <div>
-      {/* Quick actions row */}
+      {/* Log weight bar + monthly report */}
       <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={() => {
-            const el = document.getElementById('body-log-weight');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }}
-          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors"
-          style={{ background: 'rgba(212,175,55,0.15)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }}
-        >
-          <Scale size={14} />
-          Log Weight
-        </button>
+        <div className="flex-1 flex items-center gap-1.5 bg-[#0F172A] border border-white/8 rounded-xl px-3 py-1.5">
+          <Scale size={14} className="text-[#D4AF37] flex-shrink-0" />
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            placeholder={weightLogs[0]?.logged_at === today() ? fmtW(weightLogs[0].weight_lbs) : 'Log weight...'}
+            value={weightInput}
+            onChange={e => {
+              const v = e.target.value;
+              setWeightError('');
+              if (v === '' || v === '-') return setWeightInput(v);
+              const n = parseFloat(v);
+              setWeightInput(!isNaN(n) && n < 0 ? '0' : v);
+            }}
+            onKeyDown={e => e.key === 'Enter' && handleLogWeight()}
+            className="flex-1 min-w-0 bg-transparent text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none"
+          />
+          <span className="text-[11px] text-[#6B7280] flex-shrink-0 mr-1">lbs</span>
+          <button
+            onClick={handleLogWeight}
+            disabled={loggingWeight || !weightInput}
+            className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-[#D4AF37] disabled:opacity-30 transition-opacity"
+          >
+            {loggingWeight ? (
+              <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            ) : (
+              <Check size={14} strokeWidth={2.5} className="text-black" />
+            )}
+          </button>
+        </div>
         <button
           onClick={() => setShowMonthlyReport(true)}
-          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-colors"
+          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2.5 rounded-xl transition-colors flex-shrink-0"
           style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
         >
           <BarChart3 size={14} />
           Monthly Report
         </button>
       </div>
+      {weightError && <p className="text-[12px] text-red-400 -mt-2 mb-3">{weightError}</p>}
+      {!weightError && weightLogs[0]?.logged_at === today() && (
+        <p className="text-[11px] text-[#6B7280] -mt-2 mb-3">
+          Today: <span className="text-[#D4AF37]">{fmtW(weightLogs[0].weight_lbs)} lbs</span> — enter a new value to update
+        </p>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
@@ -1263,52 +1399,6 @@ const BodyTab = () => {
               />
             </AreaChart>
           </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Log weight */}
-      <div id="body-log-weight" className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5 mb-5">
-        <p className="text-[14px] font-semibold mb-3 text-[#E5E7EB]">Log Today's Weight</p>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              placeholder="e.g. 185.5"
-              value={weightInput}
-              onChange={e => {
-                const v = e.target.value;
-                setWeightError('');
-                if (v === '' || v === '-') return setWeightInput(v);
-                const n = parseFloat(v);
-                setWeightInput(!isNaN(n) && n < 0 ? '0' : v);
-              }}
-              onKeyDown={e => e.key === 'Enter' && handleLogWeight()}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 pr-12"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-[#6B7280]">
-              lbs
-            </span>
-          </div>
-          <button
-            onClick={handleLogWeight}
-            disabled={loggingWeight}
-            className="px-5 py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-50 transition-opacity flex items-center gap-2"
-          >
-            {loggingWeight ? (
-              <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-            ) : (
-              <Check size={16} strokeWidth={2.5} />
-            )}
-            Log
-          </button>
-        </div>
-        {weightError && <p className="text-[12px] text-red-400 mt-2">{weightError}</p>}
-        {weightLogs[0]?.logged_at === today() && (
-          <p className="text-[12px] mt-2 text-[#6B7280]">
-            Today's entry: <span className="text-[#D4AF37]">{fmtW(weightLogs[0].weight_lbs)} lbs</span> — saving again will update it.
-          </p>
         )}
       </div>
 
