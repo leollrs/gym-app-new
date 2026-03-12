@@ -211,7 +211,7 @@ const OverviewTab = () => {
     : `${Math.round(weekStats.volume)}`;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 stagger-fade-in">
       {/* Level / XP Card */}
       <LevelCard totalPoints={pointsData.total_points} lifetimePoints={pointsData.lifetime_points} />
 
@@ -227,7 +227,7 @@ const OverviewTab = () => {
             className="bg-[#0F172A] rounded-[14px] border border-white/8 p-3 flex flex-col items-center gap-1 text-center"
           >
             <Icon size={14} style={{ color }} strokeWidth={2} />
-            <p className="text-[18px] font-black leading-none text-white">{value}</p>
+            <p className="text-[28px] font-black leading-none text-white">{value}</p>
             <p className="text-[9px] font-semibold uppercase tracking-wider text-[#6B7280]">{label}</p>
           </div>
         ))}

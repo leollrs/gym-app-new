@@ -9,6 +9,7 @@ import { addPoints, calculatePointsForAction } from '../lib/rewardsEngine';
 import BodyDiagram from '../components/BodyDiagram';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises } from '../data/exercises';
+import Confetti from '../components/Confetti';
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
 const epley1RM = (weight, reps) => {
@@ -27,7 +28,7 @@ const isPR = (exerciseId, weight, reps, knownPRs) => {
 
 // ── PR Celebration Banner ─────────────────────────────────────────────────────
 const PRBanner = ({ exercise, weight, reps, onDismiss }) => (
-  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
+  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] animate-scale-pop">
     <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 max-w-xs">
       <Trophy size={24} className="flex-shrink-0 text-white" />
       <div className="flex-1">
@@ -195,6 +196,7 @@ const ActiveSession = () => {
   const [saveError, setSaveError]             = useState('');
 
   const [activePRBanner, setActivePRBanner] = useState(null);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [sessionPRs, setSessionPRs]         = useState(savedSession?.sessionPRs ?? []);
   const livePRs = useRef({});
   // Always holds the latest state so beforeunload/visibilitychange can save without stale closures
@@ -552,6 +554,7 @@ const ActiveSession = () => {
           const prEntry = { exerciseId, exercise: exerciseName, ...newPR };
           setSessionPRs(s => [...s.filter(p => p.exerciseId !== exerciseId), prEntry]);
           setActivePRBanner(prEntry);
+          setShowConfetti(true);
           setTimeout(() => setActivePRBanner(null), 4000);
         }
 
@@ -888,6 +891,7 @@ const ActiveSession = () => {
           onDismiss={() => setActivePRBanner(null)}
         />
       )}
+      <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
       {/* Finish Modal */}
       {showFinishModal && (

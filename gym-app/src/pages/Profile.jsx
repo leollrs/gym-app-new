@@ -97,7 +97,7 @@ const MUSCLE_COLORS = {
 // ── Hero stat block ───────────────────────────────────────────────────────────
 const HeroStat = ({ label, value, sub }) => (
   <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
-    <p className="text-[26px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap">
+    <p className="text-[32px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap">
       {value}
       {sub && <span className="text-[12px] font-semibold text-[#6B7280] normal-case">{sub}</span>}
     </p>
@@ -323,7 +323,7 @@ const Profile = () => {
             <HeroStat label="Streak"   value={loading ? '—' : streak} sub="days" />
             <HeroStat label="Volume"   value={loading ? '—' : volumeStr} sub="lbs" />
             <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
-              <p className="text-[26px] font-black leading-none text-[#D4AF37]">{loading ? '—' : prs.length}</p>
+              <p className="text-[32px] font-black leading-none text-[#D4AF37]">{loading ? '—' : prs.length}</p>
               <p className="text-[11px] font-medium mt-1.5 text-[#6B7280] uppercase tracking-wider">Records</p>
             </div>
           </div>
@@ -331,7 +331,7 @@ const Profile = () => {
       </div>
 
       {/* ── Quick-access cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-6 stagger-fade-in">
         {[
           { to: '/metrics',   icon: Scale,            label: 'Metrics',   color: '#D4AF37' },
           { to: '/nutrition',  icon: UtensilsCrossed,  label: 'Nutrition', color: '#10B981' },
@@ -378,7 +378,7 @@ const Profile = () => {
 
       {/* ── Achievements Tab ─────────────────────────────────────────────── */}
       {activeTab === 'achievements' && (
-        <div className="flex flex-col gap-8 animate-fade-in">
+        <div className="flex flex-col gap-8 animate-fade-in stagger-fade-in">
           {/* Summary bar */}
           {!loading && (
             <div className="rounded-[14px] bg-[#0F172A] border border-white/8 px-5 py-4 flex items-center justify-between">
@@ -434,7 +434,7 @@ const Profile = () => {
                     </span>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-3 stagger-fade-in">
                     {defs.map(a => {
                       const earned = !!earnedAchievements[a.key];
                       const earnedAt = earnedAchievements[a.key];

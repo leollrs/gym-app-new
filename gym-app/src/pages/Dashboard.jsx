@@ -248,7 +248,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 animate-fade-in">
+      <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
 
         {/* ── 1. GREETING + STREAK (merged compact row) ──────────────────────── */}
         <section className="mb-4 mt-2">
@@ -276,9 +276,9 @@ const Dashboard = () => {
             {/* Right: streak counter */}
             {!loading && (
               <div className="flex flex-col items-center shrink-0 pt-0.5">
-                <span className="text-[28px] leading-none" role="img" aria-label="streak">🔥</span>
+                <span className="text-[28px] leading-none animate-flame inline-block" role="img" aria-label="streak">🔥</span>
                 <span
-                  className="text-[24px] font-black leading-none -mt-0.5"
+                  className="text-[32px] font-black leading-none -mt-0.5"
                   style={{ color: streakColor }}
                 >
                   {stats.streak}
@@ -366,7 +366,7 @@ const Dashboard = () => {
                 <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2">
                   {liftCount} exercises · ~{estimatedMin} min
                 </p>
-                <h2 className="text-[24px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                <h2 className="text-[28px] font-black text-[#E5E7EB] tracking-tight mb-1">
                   {nextRoutine.name}
                 </h2>
                 {lastSummary ? (

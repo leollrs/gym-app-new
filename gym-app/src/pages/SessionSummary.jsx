@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createNotification } from '../lib/notifications';
 import { awardAchievements } from '../lib/achievements';
 import AchievementToast from '../components/AchievementToast';
+import AnimatedCounter from '../components/AnimatedCounter';
 
 const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
 
@@ -39,7 +40,7 @@ const formatVolume = (lbs) => {
 const StatCard = ({ icon: Icon, label, value, accent }) => (
   <div className="bg-white/5 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
     <Icon size={18} style={{ color: accent || '#D4AF37' }} strokeWidth={2} />
-    <p className="text-[26px] font-black text-white leading-none">{value}</p>
+    <p className="text-[32px] font-black text-white leading-none">{value}</p>
     <p className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{label}</p>
   </div>
 );
@@ -201,7 +202,7 @@ const SessionSummary = () => {
       >
         {/* ── Checkmark ──────────────────────────────────────────── */}
         <div
-          className="w-20 h-20 rounded-full flex items-center justify-center mb-6 mt-4"
+          className="w-20 h-20 rounded-full flex items-center justify-center mb-6 mt-4 animate-scale-pop"
           style={{
             background: 'rgba(212,175,55,0.15)',
             border: '2px solid rgba(212,175,55,0.4)',
@@ -216,7 +217,7 @@ const SessionSummary = () => {
           {routineName}
         </p>
         <h1
-          className="text-[28px] font-black text-white text-center leading-tight mb-1"
+          className="text-[32px] font-black text-white text-center leading-tight mb-1"
           style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
         >
           {coachHeadline}
@@ -224,7 +225,7 @@ const SessionSummary = () => {
         <p className="text-[13px] text-[#6B7280] mb-10">{dateStr}</p>
 
         {/* ── Stats grid ─────────────────────────────────────────── */}
-        <div className="w-full max-w-sm grid grid-cols-2 gap-3 mb-6">
+        <div className="w-full max-w-sm grid grid-cols-2 gap-3 mb-6 stagger-fade-in">
           <StatCard icon={Clock}    label="Duration"   value={formatTime(elapsedTime)}   accent="#60A5FA" />
           <StatCard icon={BarChart2} label="Volume"    value={`${formatVolume(totalVolume)} lbs`} accent="#D4AF37" />
           <StatCard icon={Zap}      label="Sets Done"  value={totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets} accent="#34D399" />
@@ -271,7 +272,7 @@ const SessionSummary = () => {
               +
             </div>
             <div>
-              <p className="text-[18px] font-black text-[#D4AF37]">{xpEarned} XP earned</p>
+              <p className="text-[18px] font-black text-[#D4AF37]"><AnimatedCounter value={xpEarned} duration={1000} /> XP earned</p>
               <p className="text-[11px] text-[#9CA3AF] mt-0.5">Keep training to level up</p>
             </div>
           </div>

@@ -109,11 +109,11 @@ const QuickStart = () => {
 
   return (
     <div className="min-h-screen bg-[#05070B] px-4 pt-[calc(80px+env(safe-area-inset-top))] pb-[calc(100px+env(safe-area-inset-bottom))]">
-      <div className="max-w-lg mx-auto space-y-5">
+      <div className="max-w-lg mx-auto space-y-5 stagger-fade-in">
 
         {/* Header */}
         <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Start Workout</h1>
+          <h1 className="text-[26px] font-bold text-[#E5E7EB]">Start Workout</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">Pick a routine and get lifting</p>
         </div>
 
@@ -129,7 +129,7 @@ const QuickStart = () => {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[17px] font-bold text-[#E5E7EB]">{suggested.name}</p>
+                <p className="text-[20px] font-bold text-[#E5E7EB]">{suggested.name}</p>
                 <p className="text-[12px] text-[#9CA3AF] mt-1 flex items-center gap-2">
                   <span className="flex items-center gap-1"><Dumbbell size={11} /> {suggested.exerciseCount} exercises</span>
                   {suggested.lastPerformedAt && (
