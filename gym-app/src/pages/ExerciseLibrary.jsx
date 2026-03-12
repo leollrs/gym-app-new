@@ -130,12 +130,12 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
             </div>
           </div>
           {exercise.videoUrl && (
-            <div className="mt-4 rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '9/16', maxHeight: 360 }}>
+            <div className="mt-4 rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '16/9' }}>
               <video
                 src={exercise.videoUrl}
                 controls
                 playsInline
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
               />
             </div>
           )}
