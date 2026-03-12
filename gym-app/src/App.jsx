@@ -26,6 +26,7 @@ import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
 import FirstWorkoutWelcome from './components/FirstWorkoutWelcome';
 import TVDisplay from './pages/TVDisplay';
+import QuickStart from './pages/QuickStart';
 
 // Trainer pages
 import TrainerLayout from './layouts/TrainerLayout';
@@ -101,12 +102,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-// ── RECORD ENTRY ────────────────────────────────────────────
-// Central handler for the Record tab / FAB.
-// Later we can inspect in-progress sessions and deep-link into ActiveSession.
-const RecordEntry = () => {
-  return <Navigate to="/workouts" replace />;
-};
+// RecordEntry removed — /record now renders QuickStart directly
 
 // ── APP ────────────────────────────────────────────────────
 function App() {
@@ -182,7 +178,7 @@ function App() {
                 <Route path="/exercises"         element={<ExerciseLibraryPage />} />
 
                 {/* Record / sessions */}
-                <Route path="/record"            element={<RecordEntry />} />
+                <Route path="/record"            element={<QuickStart />} />
                 <Route path="/session/:id"       element={<ActiveSession />} />
                 <Route path="/session-summary"   element={<SessionSummary />} />
                 <Route path="/workout-log"       element={<WorkoutLog />} />
