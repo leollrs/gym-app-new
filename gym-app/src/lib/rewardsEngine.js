@@ -195,9 +195,9 @@ export async function getLeaderboard(gymId, limit = 10) {
 
 // ── Placeholder rewards catalog ──────────────────────────────────────────────
 export const REWARDS_CATALOG = [
-  { id: 'smoothie',  name: 'Free Smoothie',              cost: 500,   icon: '🥤', description: 'Redeem at the gym bar' },
-  { id: 'guest',     name: 'Guest Pass',                 cost: 1000,  icon: '🎟️', description: 'Bring a friend for a day' },
-  { id: 'merch',     name: 'Gym Merch',                  cost: 2000,  icon: '👕', description: 'T-shirt or water bottle' },
-  { id: 'pt',        name: 'Personal Training Session',  cost: 5000,  icon: '🏋️', description: '1-on-1 with a trainer' },
-  { id: 'month',     name: 'Free Month',                 cost: 10000, icon: '🏅', description: 'One month membership' },
+  { id: 'smoothie',  name: 'Free Smoothie',              cost: 2000,  icon: '🥤', description: 'Redeem at the gym bar' },
+  { id: 'guest',     name: 'Guest Pass',                 cost: 3500,  icon: '🎟️', description: 'Bring a friend for a day' },
+  { id: 'merch',     name: 'Gym Merch',                  cost: 7500,  icon: '👕', description: 'T-shirt or water bottle' },
+  { id: 'pt',        name: 'Personal Training Session',  cost: 15000, icon: '🏋️', description: '1-on-1 with a trainer' },
+  { id: 'month',     name: 'Free Month',                 cost: 30000, icon: '🏅', description: 'One month membership' },
 ];

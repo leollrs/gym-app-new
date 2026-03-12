@@ -584,33 +584,36 @@ export default function Challenges({ embedded = false }) {
               <p className="text-[13px] text-[#9CA3AF] mt-0.5">Compete with your gym</p>
             </div>
           </div>
-
-          {/* Tab bar */}
-          <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
-            {TABS.map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold capitalize transition-all ${
-                  tab === t
-                    ? 'bg-[#D4AF37] text-black font-semibold'
-                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                }`}
-              >
-                {t}
-                {t === 'live' && liveCount > 0 && (
-                  <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold ${
-                    tab === t ? 'bg-black/20 text-black' : 'bg-white/10 text-[#9CA3AF]'
-                  }`}>
-                    {liveCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
       )}
+
+      {/* Tab bar — always visible */}
+      <div className={`max-w-2xl mx-auto px-4 ${embedded ? 'pt-2 pb-3' : ''}`}>
+        {!embedded && <div className="h-0" />}
+        <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
+          {TABS.map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold capitalize transition-all ${
+                tab === t
+                  ? 'bg-[#D4AF37] text-black font-semibold'
+                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
+              }`}
+            >
+              {t}
+              {t === 'live' && liveCount > 0 && (
+                <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold ${
+                  tab === t ? 'bg-black/20 text-black' : 'bg-white/10 text-[#9CA3AF]'
+                }`}>
+                  {liveCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className={`max-w-2xl mx-auto px-4 ${embedded ? 'py-0' : 'py-6'}`}>
         {user?.id && profile?.gym_id && (

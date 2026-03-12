@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 
 const METHOD_LABELS = { manual: 'Manual', qr: 'QR Scan', gps: 'GPS' };
@@ -47,6 +48,7 @@ export default function CheckIn() {
       checked_in_at: new Date().toISOString(),
     });
     if (err) { setError(err.message); setChecking(false); return; }
+    addPoints(user.id, profile.gym_id, 'check_in', 20, 'Gym check-in').catch(() => {});
     supabase.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id);
     setConfirmed(true);
     await load();

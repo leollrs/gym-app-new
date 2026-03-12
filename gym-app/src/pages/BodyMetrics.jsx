@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { addPoints } from '../lib/rewardsEngine';
 import { format, parseISO, subDays } from 'date-fns';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -220,6 +221,7 @@ export default function BodyMetrics() {
       );
 
     if (error) { setWeightError(error.message); setLoggingWeight(false); return; }
+    addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight').catch(() => {});
     setWeightInput('');
     loadData();
     setLoggingWeight(false);
