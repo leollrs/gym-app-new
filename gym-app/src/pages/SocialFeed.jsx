@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Heart, MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
-  Search, UserPlus, Check, X, Users,
+  Search, UserPlus, Check, X, Users, Share2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ReactionPicker from '../components/ReactionPicker';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -187,7 +188,7 @@ const CommentRow = ({ comment }) => (
 );
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
-const FeedCard = ({ item, currentUserId, onToggleLike }) => {
+const FeedCard = ({ item, currentUserId, onToggleLike, onReact }) => {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
@@ -248,14 +249,13 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
 
       {/* Action bar */}
       <div className="flex items-center gap-6 px-5 py-3 border-t border-white/8">
-        <button
-          type="button"
-          onClick={() => onToggleLike(item.id, item.hasLiked)}
-          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${item.hasLiked ? 'text-red-400' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}
-        >
-          <Heart size={16} fill={item.hasLiked ? 'currentColor' : 'none'} />
-          {item.likeCount > 0 ? item.likeCount : 'Like'}
-        </button>
+        <ReactionPicker
+          feedItemId={item.id}
+          currentUserId={currentUserId}
+          currentReaction={item.currentReaction ?? null}
+          reactionCounts={item.reactionCounts ?? {}}
+          onReact={onReact}
+        />
         <button
           type="button"
           onClick={handleToggleComments}
@@ -263,6 +263,24 @@ const FeedCard = ({ item, currentUserId, onToggleLike }) => {
         >
           <MessageCircle size={16} />
           {item.commentCount > 0 ? item.commentCount : 'Comment'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const name = item.profiles?.full_name ?? 'Someone';
+            const workoutName = item.data?.routine_name ?? 'a workout';
+            const volume = fmtVolume(item.data?.total_volume_lbs);
+            const text = `${name} just crushed ${workoutName} — ${volume} total volume! 💪`;
+            if (navigator.share) {
+              navigator.share({ text }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(text).catch(() => {});
+            }
+          }}
+          className="flex items-center gap-2 text-[13px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+        >
+          <Share2 size={16} />
+          Share
         </button>
       </div>
 
@@ -604,6 +622,7 @@ const SocialFeed = () => {
   const [friendships, setFriendships] = useState([]);
   const [showFriends, setShowFriends]   = useState(false);
   const [tab, setTab]                 = useState('friends');
+  const [friendStreaks, setFriendStreaks] = useState([]);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {
@@ -625,29 +644,121 @@ const SocialFeed = () => {
 
     const actorIds = [user.id, ...acceptedIds];
 
-    const { data: items } = await supabase
-      .from('activity_feed_items')
-      .select('*, profiles!actor_id(full_name, username, avatar_url)')
-      .in('actor_id', actorIds)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    // Fetch feed items and friend streaks in parallel
+    const [{ data: items }, streakData] = await Promise.all([
+      supabase
+        .from('activity_feed_items')
+        .select('*, profiles!actor_id(full_name, username, avatar_url)')
+        .in('actor_id', actorIds)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      // Fetch recent sessions for friends to compute streaks
+      acceptedIds.length > 0
+        ? supabase
+            .from('workout_sessions')
+            .select('user_id, completed_at')
+            .in('user_id', acceptedIds)
+            .not('completed_at', 'is', null)
+            .order('completed_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    // Compute friend streaks
+    if (streakData.data?.length && acceptedIds.length > 0) {
+      // Group sessions by user
+      const sessionsByUser = {};
+      streakData.data.forEach(s => {
+        if (!sessionsByUser[s.user_id]) sessionsByUser[s.user_id] = [];
+        sessionsByUser[s.user_id].push(s.completed_at);
+      });
+
+      // Fetch friend profiles
+      const { data: friendProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', acceptedIds);
+
+      const profileMap = {};
+      (friendProfiles ?? []).forEach(p => { profileMap[p.id] = p; });
+
+      // Calculate streak per friend (consecutive days working out, counting from today backwards)
+      const streaks = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      for (const friendId of acceptedIds) {
+        const dates = sessionsByUser[friendId];
+        if (!dates?.length) continue;
+
+        // Get unique workout dates (local date strings)
+        const uniqueDays = [...new Set(dates.map(d => {
+          const dt = new Date(d);
+          return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+        }))].sort().reverse();
+
+        // Count consecutive days from today or yesterday
+        let streak = 0;
+        const checkDate = new Date(today);
+
+        // Allow starting from today or yesterday
+        const firstDayKey = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
+
+        if (!uniqueDays.includes(firstDayKey) && !uniqueDays.includes(yesterdayKey)) continue;
+
+        // Start from today if they trained today, else from yesterday
+        if (!uniqueDays.includes(firstDayKey)) {
+          checkDate.setDate(checkDate.getDate() - 1);
+        }
+
+        for (let i = 0; i < 365; i++) {
+          const key = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+          if (uniqueDays.includes(key)) {
+            streak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+
+        if (streak >= 1) {
+          const p = profileMap[friendId];
+          streaks.push({
+            id: friendId,
+            name: p?.full_name ?? 'Friend',
+            avatar_url: p?.avatar_url ?? null,
+            streak,
+          });
+        }
+      }
+
+      // Sort by highest streak first
+      streaks.sort((a, b) => b.streak - a.streak);
+      setFriendStreaks(streaks);
+    } else {
+      setFriendStreaks([]);
+    }
 
     if (!items?.length) { setFeed([]); setLoading(false); return; }
 
     const itemIds = items.map(i => i.id);
 
-    const [{ data: allLikes }, { data: commentCounts }] = await Promise.all([
-      supabase.from('feed_likes').select('feed_item_id, profile_id').in('feed_item_id', itemIds),
+    const [{ data: allReactions }, { data: commentCounts }] = await Promise.all([
+      supabase.from('feed_reactions').select('feed_item_id, profile_id, reaction_type').in('feed_item_id', itemIds),
       supabase.from('feed_comments').select('feed_item_id').in('feed_item_id', itemIds).eq('is_deleted', false),
     ]);
 
-    const likeCountMap    = {};
-    const myLikedSet      = new Set();
-    const commentCountMap = {};
+    const reactionCountsMap = {};
+    const myReactionMap     = {};
+    const commentCountMap   = {};
 
-    allLikes?.forEach(l => {
-      likeCountMap[l.feed_item_id] = (likeCountMap[l.feed_item_id] ?? 0) + 1;
-      if (l.profile_id === user.id) myLikedSet.add(l.feed_item_id);
+    (allReactions ?? []).forEach(r => {
+      if (!reactionCountsMap[r.feed_item_id]) reactionCountsMap[r.feed_item_id] = {};
+      reactionCountsMap[r.feed_item_id][r.reaction_type] = (reactionCountsMap[r.feed_item_id][r.reaction_type] ?? 0) + 1;
+      if (r.profile_id === user.id) myReactionMap[r.feed_item_id] = r.reaction_type;
     });
     commentCounts?.forEach(c => {
       commentCountMap[c.feed_item_id] = (commentCountMap[c.feed_item_id] ?? 0) + 1;
@@ -655,9 +766,9 @@ const SocialFeed = () => {
 
     setFeed(items.map(item => ({
       ...item,
-      likeCount:    likeCountMap[item.id]    ?? 0,
-      commentCount: commentCountMap[item.id] ?? 0,
-      hasLiked:     myLikedSet.has(item.id),
+      reactionCounts:  reactionCountsMap[item.id] ?? {},
+      currentReaction: myReactionMap[item.id] ?? null,
+      commentCount:    commentCountMap[item.id] ?? 0,
     })));
     setLoading(false);
   }, [user, profile]);
@@ -687,16 +798,49 @@ const SocialFeed = () => {
     });
   };
 
-  const handleToggleLike = async (itemId, currentlyLiked) => {
-    setFeed(prev => prev.map(item =>
-      item.id === itemId
-        ? { ...item, hasLiked: !currentlyLiked, likeCount: currentlyLiked ? item.likeCount - 1 : item.likeCount + 1 }
-        : item
-    ));
-    if (currentlyLiked) {
-      await supabase.from('feed_likes').delete().eq('feed_item_id', itemId).eq('profile_id', user.id);
+  const handleReact = async (feedItemId, reactionType) => {
+    setFeed(prev => prev.map(item => {
+      if (item.id !== feedItemId) return item;
+      const counts = { ...(item.reactionCounts ?? {}) };
+      const prev_reaction = item.currentReaction;
+
+      if (prev_reaction === reactionType) {
+        // Remove reaction (toggle off)
+        counts[reactionType] = Math.max((counts[reactionType] ?? 1) - 1, 0);
+        if (counts[reactionType] === 0) delete counts[reactionType];
+        return { ...item, currentReaction: null, reactionCounts: counts };
+      }
+      // Remove old reaction if any
+      if (prev_reaction) {
+        counts[prev_reaction] = Math.max((counts[prev_reaction] ?? 1) - 1, 0);
+        if (counts[prev_reaction] === 0) delete counts[prev_reaction];
+      }
+      // Add new reaction
+      counts[reactionType] = (counts[reactionType] ?? 0) + 1;
+      return { ...item, currentReaction: reactionType, reactionCounts: counts };
+    }));
+
+    // Find the current reaction before this action
+    const currentItem = feed.find(i => i.id === feedItemId);
+    const prevReaction = currentItem?.currentReaction;
+
+    if (prevReaction === reactionType) {
+      // Toggle off — delete
+      await supabase.from('feed_reactions').delete()
+        .eq('feed_item_id', feedItemId)
+        .eq('profile_id', user.id);
     } else {
-      await supabase.from('feed_likes').insert({ feed_item_id: itemId, profile_id: user.id });
+      // Upsert reaction
+      if (prevReaction) {
+        await supabase.from('feed_reactions').delete()
+          .eq('feed_item_id', feedItemId)
+          .eq('profile_id', user.id);
+      }
+      await supabase.from('feed_reactions').insert({
+        feed_item_id: feedItemId,
+        profile_id: user.id,
+        reaction_type: reactionType,
+      });
     }
   };
 

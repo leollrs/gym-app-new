@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, X, Trash2, CheckCircle2, Calendar, Zap, RefreshCw, Heart
+  Play, Plus, Dumbbell, Clock, ChevronRight, Pencil, BookOpen, X, Trash2, CheckCircle2, Calendar, Zap, RefreshCw, Heart, RotateCcw
 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { supabase } from '../lib/supabase';
@@ -192,6 +192,7 @@ const Workouts = () => {
   const [generatedProgram, setGeneratedProgram] = useState(null);
   const [programLoading, setProgramLoading] = useState(true);
   const [onboardingData, setOnboardingData] = useState(null);
+  const [lastSession, setLastSession]       = useState(null);
 
   const loadPrograms = useCallback(async () => {
     if (!profile?.gym_id) return;
@@ -252,6 +253,34 @@ const Workouts = () => {
     };
     load();
   }, [user?.id, profile?.gym_id]);
+
+  // Fetch most recent completed workout session
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchLastSession = async () => {
+      const { data: session } = await supabase
+        .from('workout_sessions')
+        .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
+        .eq('profile_id', user.id)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!session?.routine_id) { setLastSession(null); return; }
+      // Verify the routine still exists
+      const { data: routine } = await supabase
+        .from('routines')
+        .select('id, name')
+        .eq('id', session.routine_id)
+        .maybeSingle();
+      if (routine) {
+        setLastSession({ ...session, routineName: routine.name });
+      } else {
+        setLastSession(null);
+      }
+    };
+    fetchLastSession();
+  }, [user?.id, routines]);
 
   // Derived program state
   const today        = new Date();
@@ -434,6 +463,39 @@ const Workouts = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Repeat Last Workout ── */}
+      {lastSession && (
+        <div className="mb-6">
+          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em] mb-2">
+            Repeat Last Workout
+          </p>
+          <div className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-4 px-5 py-4">
+            <div className="w-10 h-10 rounded-full bg-[#111827] flex items-center justify-center flex-shrink-0">
+              <RotateCcw size={18} className="text-[#D4AF37]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-bold text-[#E5E7EB] truncate">
+                {lastSession.routineName}
+              </p>
+              <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
+                Last performed: {formatLastPerformed(lastSession.completed_at)}
+                {lastSession.total_volume_lbs > 0 && (
+                  <> · {lastSession.total_volume_lbs >= 1000
+                    ? `${(lastSession.total_volume_lbs / 1000).toFixed(1)}k`
+                    : lastSession.total_volume_lbs} lbs</>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => navigate(`/session/${lastSession.routine_id}`)}
+              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-opacity hover:opacity-90 active:scale-95"
+            >
+              Start Again
+            </button>
           </div>
         </div>
       )}

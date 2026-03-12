@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { format, isPast, isFuture, formatDistanceToNow } from 'date-fns';
+import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
+import { addPoints } from '../lib/rewardsEngine';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -77,6 +78,12 @@ const ParticipantList = ({ challengeId }) => {
 };
 
 // ── Leaderboard ────────────────────────────────────────────
+const REWARD_BADGES = [
+  { label: '🏆 500 pts', points: 500 },
+  { label: '🥈 300 pts', points: 300 },
+  { label: '🥉 150 pts', points: 150 },
+];
+
 const Leaderboard = ({ challenge, gymId, myId }) => {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +135,11 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
             <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
               {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[#9CA3AF]">{unit}</span>
             </p>
+            {status === 'ended' && myRank < 3 && (
+              <p className="text-[12px] font-semibold text-[#D4AF37] mt-1">
+                You earned {REWARD_BADGES[myRank].points} points!
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -168,6 +180,11 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
                 <p className={`text-[13px] font-bold relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[#9CA3AF]'}`}>
                   {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[#6B7280]">{unit}</span>
                 </p>
+                {status === 'ended' && i < 3 && (
+                  <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
+                    {REWARD_BADGES[i].label}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -361,7 +378,10 @@ export default function Challenges() {
       .insert({ challenge_id: challengeId, profile_id: user.id, gym_id: profile.gym_id, score })
       .select('challenge_id, profile_id, score')
       .single();
-    if (!error && data) setParticipants(prev => [...prev, data]);
+    if (!error && data) {
+      setParticipants(prev => [...prev, data]);
+      addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
+    }
   };
 
   const myJoinedIds = new Set(participants.filter(p => p.profile_id === user?.id).map(p => p.challenge_id));

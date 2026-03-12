@@ -38,8 +38,51 @@ const PRBanner = ({ exercise, weight, reps, onDismiss }) => (
   </div>
 );
 
+// ── Plate Calculator ─────────────────────────────────────────────────────────
+const PlateCalculator = ({ targetWeight }) => {
+  const barWeight = 45;
+  const availablePlates = [45, 35, 25, 10, 5, 2.5];
+
+  if (!targetWeight || targetWeight <= barWeight) {
+    return <p className="text-[11px] text-[#9CA3AF] mt-1">Empty bar (45 lbs)</p>;
+  }
+
+  let remaining = (targetWeight - barWeight) / 2;
+  const plates = [];
+  for (const plate of availablePlates) {
+    while (remaining >= plate) {
+      plates.push(plate);
+      remaining -= plate;
+    }
+  }
+
+  if (remaining > 0) {
+    // Not achievable exactly — find nearest
+    const achievable = barWeight + plates.reduce((a, b) => a + b, 0) * 2;
+    return (
+      <p className="text-[11px] text-[#9CA3AF] mt-1">
+        Nearest: {achievable} lbs — Each side: {plates.length > 0 ? plates.join(' + ') : 'none'}
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-[11px] text-[#9CA3AF] mt-1">
+      Each side: {plates.join(' + ')}
+    </p>
+  );
+};
+
 // ── Finish Modal ──────────────────────────────────────────────────────────────
-const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error }) => (
+const RATING_EMOJIS = [
+  { value: 1, emoji: '\u{1F62B}' },
+  { value: 2, emoji: '\u{1F615}' },
+  { value: 3, emoji: '\u{1F610}' },
+  { value: 4, emoji: '\u{1F4AA}' },
+  { value: 5, emoji: '\u{1F525}' },
+];
+
+const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, sessionRating, onRatingChange }) => (
   <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm">
     <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in bg-[#0F172A] border-t border-white/10 shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
       <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-white/20" />
@@ -72,6 +115,26 @@ const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets
           ))}
         </div>
       )}
+
+      {/* ── Session Rating ── */}
+      <div className="mb-6">
+        <p className="text-[13px] font-semibold text-[#9CA3AF] mb-2">How did this session feel?</p>
+        <div className="flex items-center justify-center gap-3">
+          {RATING_EMOJIS.map(({ value, emoji }) => (
+            <button
+              key={value}
+              onClick={() => onRatingChange(value)}
+              className={`w-11 h-11 rounded-xl text-[22px] flex items-center justify-center transition-all ${
+                sessionRating === value
+                  ? 'border-2 border-[#D4AF37] bg-[#D4AF37]/10 scale-110'
+                  : 'border border-white/8 bg-white/5'
+              }`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {error && (
         <div className="bg-red-900/30 border border-red-800 rounded-2xl p-3 mb-4 text-[13px] text-red-400">
@@ -146,6 +209,8 @@ const ActiveSession = () => {
   const [expandedNotesSet, setExpandedNotesSet] = useState(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showProgressChart, setShowProgressChart] = useState(null); // { exerciseId, exerciseName }
+  const [sessionRating, setSessionRating] = useState(null);
+  const [showPlateCalc, setShowPlateCalc] = useState(false);
   const restNotificationScheduled = useRef(false);
 
   // ── Notification permission ─────────────────────────────────────────────────
@@ -593,6 +658,7 @@ const ActiveSession = () => {
           name: routineName, status: 'completed',
           started_at: startedAt.current, completed_at: new Date().toISOString(),
           duration_seconds: elapsedTime, total_volume_lbs: totalVolume,
+          session_rating: sessionRating,
         })
         .select().single();
 
@@ -787,6 +853,7 @@ const ActiveSession = () => {
           completedSets={completedSets} totalSets={totalSets}
           onConfirm={handleFinish} onCancel={() => setShowFinishModal(false)}
           saving={saving} error={saveError}
+          sessionRating={sessionRating} onRatingChange={setSessionRating}
         />
       )}
 
@@ -1026,23 +1093,29 @@ const ActiveSession = () => {
                   </div>
                 );
                 return (
-                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50">
-                    <TrendingUp size={14} className="text-amber-700 dark:text-amber-400 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider leading-none mb-0.5 text-amber-700 dark:text-amber-400">
-                        {s.note === 'increase_weight' ? 'Increase weight ↑' : 'Add reps →'}
-                      </p>
-                      <p className="text-[14px] font-bold leading-tight text-[#0F172A] dark:text-slate-100">
-                        {s.suggestedWeight} lbs × {s.suggestedReps} reps
-                      </p>
-                      <p className="text-[11px] mt-0.5 text-[#64748B] dark:text-slate-400">{s.label}</p>
-                    </div>
-                    <button
-                      onClick={() => handleFillSuggestion(currentExercise.id, s)}
-                      className="text-[12px] font-bold px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-all bg-amber-100 dark:bg-amber-800/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600"
+                  <div className="mb-4">
+                    <div
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 cursor-pointer"
+                      onClick={() => setShowPlateCalc(v => !v)}
                     >
-                      Fill
-                    </button>
+                      <TrendingUp size={14} className="text-amber-700 dark:text-amber-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider leading-none mb-0.5 text-amber-700 dark:text-amber-400">
+                          {s.note === 'increase_weight' ? 'Increase weight ↑' : 'Add reps →'}
+                        </p>
+                        <p className="text-[14px] font-bold leading-tight text-[#0F172A] dark:text-slate-100">
+                          {s.suggestedWeight} lbs × {s.suggestedReps} reps
+                        </p>
+                        <p className="text-[11px] mt-0.5 text-[#64748B] dark:text-slate-400">{s.label}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleFillSuggestion(currentExercise.id, s); }}
+                        className="text-[12px] font-bold px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-all bg-amber-100 dark:bg-amber-800/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600"
+                      >
+                        Fill
+                      </button>
+                    </div>
+                    {showPlateCalc && <PlateCalculator targetWeight={s.suggestedWeight} />}
                   </div>
                 );
               })()}
