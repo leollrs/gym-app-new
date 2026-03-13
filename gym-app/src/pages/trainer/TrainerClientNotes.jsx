@@ -393,11 +393,13 @@ export default function TrainerClientNotes() {
                   </p>
                 )}
                 {[
-                  { label: 'Chest', value: measurements.chest_in },
-                  { label: 'Waist', value: measurements.waist_in },
-                  { label: 'Hips', value: measurements.hips_in },
-                  { label: 'Arms', value: measurements.arms_in },
-                  { label: 'Legs', value: measurements.legs_in },
+                  { label: 'Chest', value: measurements.chest_cm },
+                  { label: 'Waist', value: measurements.waist_cm },
+                  { label: 'Hips', value: measurements.hips_cm },
+                  { label: 'Left Arm', value: measurements.left_arm_cm },
+                  { label: 'Right Arm', value: measurements.right_arm_cm },
+                  { label: 'Left Thigh', value: measurements.left_thigh_cm },
+                  { label: 'Right Thigh', value: measurements.right_thigh_cm },
                 ]
                   .filter((m) => m.value != null)
                   .map((m, i) => (
@@ -407,7 +409,7 @@ export default function TrainerClientNotes() {
                     >
                       <span className="text-[13px] text-[#9CA3AF]">{m.label}</span>
                       <span className="text-[14px] font-medium text-[#E5E7EB]">
-                        {m.value} in
+                        {m.value} cm
                       </span>
                     </div>
                   ))}

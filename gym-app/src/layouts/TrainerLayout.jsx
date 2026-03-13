@@ -1,12 +1,18 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Dumbbell, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Dumbbell, LogOut, CalendarDays, ClipboardList, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV = [
-  { to: '/trainer',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/trainer/clients',  label: 'Clients',   icon: Users },
-  { to: '/trainer/programs', label: 'Programs',  icon: Dumbbell },
+  { to: '/trainer',           label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/trainer/clients',   label: 'Clients',   icon: Users },
+  { to: '/trainer/schedule',  label: 'Schedule',  icon: CalendarDays },
+  { to: '/trainer/plans',     label: 'Plans',     icon: ClipboardList },
+  { to: '/trainer/analytics', label: 'Analytics', icon: TrendingUp },
+  { to: '/trainer/programs',  label: 'Programs',  icon: Dumbbell },
 ];
+
+// Show top 5 on mobile bottom nav (exclude Programs)
+const MOBILE_NAV = NAV.slice(0, 5);
 
 const linkClass = (active) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
@@ -89,7 +95,7 @@ export default function TrainerLayout({ children }) {
       {/* ── Mobile bottom nav ───────────────────────── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        {NAV.map(({ to, label, icon: Icon, exact }) => (
+        {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
           <NavLink key={to} to={to} end={exact}
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${isActive ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`

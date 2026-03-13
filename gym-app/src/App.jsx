@@ -37,6 +37,9 @@ import TrainerDashboard from './pages/trainer/TrainerDashboard';
 import TrainerClients from './pages/trainer/TrainerClients';
 import TrainerPrograms from './pages/trainer/TrainerPrograms';
 import TrainerClientNotes from './pages/trainer/TrainerClientNotes';
+import TrainerAnalytics from './pages/trainer/TrainerAnalytics';
+import TrainerSchedule from './pages/trainer/TrainerSchedule';
+import TrainerWorkoutPlans from './pages/trainer/TrainerWorkoutPlans';
 
 // Admin pages
 import AdminLayout from './layouts/AdminLayout';
@@ -163,6 +166,9 @@ function App() {
                 <Route path="/"                element={<TrainerDashboard />} />
                 <Route path="/clients"         element={<TrainerClients />} />
                 <Route path="/client/:clientId" element={<TrainerClientNotes />} />
+                <Route path="/schedule"        element={<TrainerSchedule />} />
+                <Route path="/plans"           element={<TrainerWorkoutPlans />} />
+                <Route path="/analytics"       element={<TrainerAnalytics />} />
                 <Route path="/programs"        element={<TrainerPrograms />} />
               </Routes>
             </TrainerLayout>

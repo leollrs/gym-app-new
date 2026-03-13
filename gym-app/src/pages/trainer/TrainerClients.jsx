@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, Trophy, Dumbbell, ChevronRight, Send, FileText } from 'lucide-react';
+import { Users, X, Trophy, Dumbbell, ChevronRight, FileText, Search, Filter, SortAsc } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
@@ -215,6 +215,21 @@ const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
   );
 };
 
+// ── Filter / sort constants ──────────────────────────────────────────────────
+const FILTERS = [
+  { key: 'all',        label: 'All' },
+  { key: 'active',     label: 'Active' },
+  { key: 'at_risk',    label: 'At Risk' },
+  { key: 'has_program',label: 'Has Program' },
+  { key: 'no_program', label: 'No Program' },
+];
+
+const SORTS = [
+  { key: 'last_active', label: 'Last Active' },
+  { key: 'name',        label: 'Name' },
+  { key: 'workouts',    label: 'Recent Workouts' },
+];
+
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function TrainerClients() {
   const { profile } = useAuth();
@@ -222,24 +237,46 @@ export default function TrainerClients() {
   const [clients,  setClients]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState(null);
+  const [search,   setSearch]   = useState('');
+  const [filter,   setFilter]   = useState('all');
+  const [sortBy,   setSortBy]   = useState('last_active');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    if (!profile?.gym_id) return;
+    if (!profile?.gym_id || !profile?.id) return;
     const load = async () => {
       setLoading(true);
       const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
 
-      const { data: memberRows } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, last_active_at, created_at, assigned_program_id')
-        .eq('gym_id', profile.gym_id)
-        .eq('role', 'member')
-        .order('last_active_at', { ascending: false, nullsFirst: false });
+      // Fetch only assigned clients via trainer_clients join
+      const { data: tcRows } = await supabase
+        .from('trainer_clients')
+        .select(`
+          client_id,
+          notes,
+          profiles!trainer_clients_client_id_fkey (
+            id, full_name, username, last_active_at, created_at, assigned_program_id
+          )
+        `)
+        .eq('trainer_id', profile.id)
+        .eq('is_active', true);
+
+      const assignedClients = (tcRows || [])
+        .map(tc => tc.profiles)
+        .filter(Boolean);
+
+      if (assignedClients.length === 0) {
+        setClients([]);
+        setLoading(false);
+        return;
+      }
+
+      const clientIds = assignedClients.map(c => c.id);
 
       const { data: recentSessions } = await supabase
         .from('workout_sessions')
         .select('profile_id')
-        .eq('gym_id', profile.gym_id)
+        .in('profile_id', clientIds)
         .eq('status', 'completed')
         .gte('started_at', fourteenDaysAgo);
 
@@ -248,18 +285,119 @@ export default function TrainerClients() {
         recentCounts[s.profile_id] = (recentCounts[s.profile_id] || 0) + 1;
       });
 
-      setClients((memberRows || []).map(m => ({ ...m, recentWorkouts: recentCounts[m.id] ?? 0 })));
+      setClients(assignedClients.map(m => ({ ...m, recentWorkouts: recentCounts[m.id] ?? 0 })));
       setLoading(false);
     };
     load();
-  }, [profile?.gym_id]);
+  }, [profile?.gym_id, profile?.id]);
+
+  // Client-side search, filter, sort
+  const filtered = useMemo(() => {
+    let list = [...clients];
+
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        c.full_name?.toLowerCase().includes(q) ||
+        c.username?.toLowerCase().includes(q)
+      );
+    }
+
+    // Filter
+    const now = Date.now();
+    if (filter === 'active') {
+      list = list.filter(c => c.last_active_at && (now - new Date(c.last_active_at)) / 86400000 <= 7);
+    } else if (filter === 'at_risk') {
+      list = list.filter(c => !c.last_active_at || (now - new Date(c.last_active_at)) / 86400000 > 14);
+    } else if (filter === 'has_program') {
+      list = list.filter(c => c.assigned_program_id);
+    } else if (filter === 'no_program') {
+      list = list.filter(c => !c.assigned_program_id);
+    }
+
+    // Sort
+    if (sortBy === 'name') {
+      list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    } else if (sortBy === 'workouts') {
+      list.sort((a, b) => b.recentWorkouts - a.recentWorkouts);
+    } else {
+      list.sort((a, b) => {
+        const aT = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+        const bT = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+        return bT - aT;
+      });
+    }
+
+    return list;
+  }, [clients, search, filter, sortBy]);
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB]">Clients</h1>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">{clients.length} members · tap to view progress or assign a program</p>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB]">My Clients</h1>
+        <p className="text-[13px] text-[#6B7280] mt-0.5">{clients.length} assigned client{clients.length !== 1 ? 's' : ''}</p>
       </div>
+
+      {/* Search + Filter bar */}
+      {!loading && clients.length > 0 && (
+        <div className="mb-4 space-y-3">
+          {/* Search */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search clients…"
+              className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
+            />
+          </div>
+
+          {/* Filter / Sort row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                filter !== 'all'
+                  ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
+                  : 'bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB]'
+              }`}
+            >
+              <Filter size={12} />
+              {FILTERS.find(f => f.key === filter)?.label || 'Filter'}
+            </button>
+            <button
+              onClick={() => {
+                const idx = SORTS.findIndex(s => s.key === sortBy);
+                setSortBy(SORTS[(idx + 1) % SORTS.length].key);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+            >
+              <SortAsc size={12} />
+              {SORTS.find(s => s.key === sortBy)?.label}
+            </button>
+          </div>
+
+          {/* Filter pills */}
+          {showFilters && (
+            <div className="flex gap-1.5 flex-wrap">
+              {FILTERS.map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => { setFilter(f.key); setShowFilters(false); }}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                    filter === f.key
+                      ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
+                      : 'bg-[#111827] text-[#6B7280] hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-24">
@@ -268,16 +406,27 @@ export default function TrainerClients() {
       ) : clients.length === 0 ? (
         <div className="text-center py-20">
           <Users size={32} className="text-[#4B5563] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">No members yet</p>
+          <p className="text-[14px] text-[#6B7280]">No clients assigned yet</p>
+          <p className="text-[12px] text-[#4B5563] mt-1">Ask your admin to assign clients to you</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16">
+          <Search size={24} className="text-[#4B5563] mx-auto mb-3" />
+          <p className="text-[14px] text-[#6B7280]">No clients match your filters</p>
+          <button onClick={() => { setSearch(''); setFilter('all'); }}
+            className="text-[12px] text-[#D4AF37] mt-2 hover:text-[#E5C94B] transition-colors">
+            Clear filters
+          </button>
         </div>
       ) : (
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
           <div className="divide-y divide-white/4">
-            {clients.map(c => {
+            {filtered.map(c => {
               const daysInactive = c.last_active_at
                 ? Math.floor((Date.now() - new Date(c.last_active_at)) / 86400000)
                 : null;
               const isActive = daysInactive !== null && daysInactive <= 7;
+              const isAtRisk = daysInactive === null || daysInactive > 14;
               return (
                 <button
                   key={c.id}
@@ -286,7 +435,9 @@ export default function TrainerClients() {
                 >
                   <div className="w-9 h-9 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0 relative">
                     <span className="text-[13px] font-bold text-[#9CA3AF]">{c.full_name[0]}</span>
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#05070B] ${isActive ? 'bg-emerald-400' : 'bg-[#374151]'}`} />
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#05070B] ${
+                      isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[#374151]'
+                    }`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{c.full_name}</p>
