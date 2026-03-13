@@ -33,8 +33,10 @@ import QuickStart from './pages/QuickStart';
 
 // Trainer pages
 import TrainerLayout from './layouts/TrainerLayout';
+import TrainerDashboard from './pages/trainer/TrainerDashboard';
 import TrainerClients from './pages/trainer/TrainerClients';
 import TrainerPrograms from './pages/trainer/TrainerPrograms';
+import TrainerClientNotes from './pages/trainer/TrainerClientNotes';
 
 // Admin pages
 import AdminLayout from './layouts/AdminLayout';
@@ -156,8 +158,10 @@ function App() {
           <TrainerRoute>
             <TrainerLayout>
               <Routes>
-                <Route path="/"         element={<TrainerClients />} />
-                <Route path="/programs" element={<TrainerPrograms />} />
+                <Route path="/"                element={<TrainerDashboard />} />
+                <Route path="/clients"         element={<TrainerClients />} />
+                <Route path="/client/:clientId" element={<TrainerClientNotes />} />
+                <Route path="/programs"        element={<TrainerPrograms />} />
               </Routes>
             </TrainerLayout>
           </TrainerRoute>

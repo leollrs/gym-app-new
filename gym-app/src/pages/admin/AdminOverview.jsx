@@ -1,76 +1,21 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, AlertTriangle, Dumbbell, ChevronRight, Activity,
-  Bell, ToggleLeft, ToggleRight, Play, Save, CheckCircle,
+  Bell, ToggleLeft, ToggleRight, Save, CheckCircle, Clock,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { format, subDays } from 'date-fns';
-
-// ── Churn score (0–100) ────────────────────────────────────
-// signals: sessionsLast14, sessionsPrior14, streakBrokenAt, lastCheckinAt, hadAnyCheckins
-export const churnScore = (member, {
-  sessionsLast14   = 0,
-  sessionsPrior14  = 0,
-  streakBrokenAt   = null,
-  lastCheckinAt    = null,
-  hadAnyCheckins   = false,
-} = {}) => {
-  const now = Date.now();
-  let score = 0;
-
-  // 1. Days since last session (40 pts)
-  const daysInactive = member.last_active_at
-    ? (now - new Date(member.last_active_at)) / 86400000
-    : 999;
-  if      (daysInactive > 21) score += 40;
-  else if (daysInactive > 14) score += 30;
-  else if (daysInactive > 7)  score += 15;
-
-  // 2. Workout frequency trend — last 14d vs prior 14d (30 pts)
-  if (sessionsLast14 === 0 && sessionsPrior14 > 0) score += 30;
-  else if (sessionsLast14 === 0 && sessionsPrior14 === 0) score += 12;
-  else if (sessionsPrior14 > 0) {
-    const decline = (sessionsPrior14 - sessionsLast14) / sessionsPrior14;
-    if      (decline > 0.75) score += 22;
-    else if (decline > 0.5)  score += 14;
-    else if (decline > 0.25) score += 6;
-  }
-
-  // 3. Streak broken in last 14 days (15 pts)
-  if (streakBrokenAt) {
-    const daysSinceBreak = (now - new Date(streakBrokenAt)) / 86400000;
-    if (daysSinceBreak <= 14) score += 15;
-  }
-
-  // 4. Check-in drop (15 pts)
-  if (hadAnyCheckins && lastCheckinAt) {
-    const daysSinceCheckin = (now - new Date(lastCheckinAt)) / 86400000;
-    if      (daysSinceCheckin > 14) score += 15;
-    else if (daysSinceCheckin > 7)  score += 7;
-  }
-
-  // 5. New member grace — joined <14 days ago
-  const daysSinceJoined = (now - new Date(member.created_at)) / 86400000;
-  if (daysSinceJoined < 14) score = Math.max(0, score - 20);
-
-  return Math.min(Math.round(score), 100);
-};
-
-export const riskLabel = (score) => {
-  if (score >= 61) return { label: 'At Risk',  color: 'text-red-400',     bg: 'bg-red-500/10',     dot: 'bg-red-400' };
-  if (score >= 31) return { label: 'Watch',    color: 'text-amber-400',   bg: 'bg-amber-500/10',   dot: 'bg-amber-400' };
-  return                  { label: 'Healthy',  color: 'text-emerald-400', bg: 'bg-emerald-500/10', dot: 'bg-emerald-400' };
-};
+import { format, subDays, formatDistanceToNow } from 'date-fns';
+import { getRiskTier } from '../../lib/churnScore';
 
 // ── Stat card ─────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, sub, accent }) => (
+const StatCard = ({ icon: IconCmp, label, value, sub, accent }) => (
   <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
     <div className="flex items-start justify-between mb-3">
       <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${accent ?? 'bg-[#D4AF37]/10'}`}>
-        <Icon size={17} className={accent ? 'text-white' : 'text-[#D4AF37]'} />
+        <IconCmp size={17} className={accent ? 'text-white' : 'text-[#D4AF37]'} />
       </div>
     </div>
     <p className="text-[28px] font-bold text-[#E5E7EB] leading-none">{value}</p>
@@ -79,10 +24,24 @@ const StatCard = ({ icon: Icon, label, value, sub, accent }) => (
   </div>
 );
 
+// ── Risk tier mini-bar for the churn summary ────────────────
+const TierRow = ({ label, count, color, total }) => {
+  const pct = total > 0 ? (count / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-[12px] font-medium w-16 text-right" style={{ color }}>{label}</span>
+      <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-[12px] font-bold text-[#9CA3AF] w-8 text-right">{count}</span>
+    </div>
+  );
+};
+
 // ── Default follow-up settings ─────────────────────────────
 const DEFAULT_SETTINGS = {
   enabled: false,
-  threshold: 61,
+  threshold: 55,
   cooldown_days: 7,
   message_template: "Hey! We noticed you haven't been in lately. We miss you — come back and crush your goals. Your progress is waiting!",
   last_run_at: null,
@@ -96,87 +55,18 @@ export default function AdminOverview() {
   const [loading, setLoading]           = useState(true);
   const [stats, setStats]               = useState({});
   const [atRisk, setAtRisk]             = useState([]);
+  const [riskTiers, setRiskTiers]       = useState({ critical: 0, high: 0, medium: 0, low: 0 });
   const [chartData, setChartData]       = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [topExercises, setTopExercises] = useState([]);
 
-  // All scored members (needed for follow-up)
-  const scoredMembersRef = useRef([]);
-  const churnDataRef     = useRef({ followupMap: {}, lastCheckinMap: {}, hadCheckinSet: new Set() });
-
   // Follow-up settings
   const [fupSettings, setFupSettings]   = useState(DEFAULT_SETTINGS);
   const [fupDraft, setFupDraft]         = useState(DEFAULT_SETTINGS);
-  const [fupSettingsId, setFupSettingsId] = useState(null); // whether row exists
   const [savingFup, setSavingFup]       = useState(false);
-  const [runningFup, setRunningFup]     = useState(false);
-  const [fupResult, setFupResult]       = useState(null); // { count, ts }
   const [fupSaved, setFupSaved]         = useState(false);
 
-  // ── Run follow-ups ─────────────────────────────────────
-  const runFollowups = useCallback(async (settings, scored, gymId) => {
-    setRunningFup(true);
-    setFupResult(null);
-    try {
-      const now         = new Date();
-      const cooldownMs  = settings.cooldown_days * 86400000;
-      const { followupMap } = churnDataRef.current;
-
-      const toFollowUp = scored.filter(m => {
-        if (m.score < settings.threshold) return false;
-        if (settings.cooldown_days === 0) return true;
-        const lastSent = followupMap[m.id];
-        if (!lastSent) return true;
-        return (now - new Date(lastSent)) >= cooldownMs;
-      });
-
-      if (toFollowUp.length > 0) {
-        // Send in-app notifications
-        await supabase.from('notifications').insert(
-          toFollowUp.map(m => ({
-            profile_id: m.id,
-            gym_id:     gymId,
-            type:       'churn_followup',
-            title:      'We miss you! 👋',
-            body:       settings.message_template,
-          }))
-        );
-
-        // Upsert churn_risk_scores with followup_sent_at
-        await supabase.from('churn_risk_scores').upsert(
-          toFollowUp.map(m => ({
-            profile_id:       m.id,
-            gym_id:           gymId,
-            risk_score:       m.score / 100,
-            is_flagged:       true,
-            followup_sent_at: now.toISOString(),
-            computed_at:      now.toISOString(),
-          })),
-          { onConflict: 'profile_id' }
-        );
-
-        // Update local followup map so we don't double-send on re-run
-        toFollowUp.forEach(m => { churnDataRef.current.followupMap[m.id] = now.toISOString(); });
-      }
-
-      // Update last_run_at and count
-      const runMeta = { last_run_at: now.toISOString(), last_run_count: toFollowUp.length, updated_at: now.toISOString() };
-      if (fupSettingsId) {
-        await supabase.from('churn_followup_settings').update(runMeta).eq('gym_id', gymId);
-      } else {
-        await supabase.from('churn_followup_settings').upsert({ gym_id: gymId, ...settings, ...runMeta });
-      }
-
-      setFupSettings(s => ({ ...s, ...runMeta }));
-      setFupDraft(s => ({ ...s, ...runMeta }));
-      setFupResult({ count: toFollowUp.length, ts: now });
-    } catch (err) {
-      console.error('Follow-up run failed:', err);
-    }
-    setRunningFup(false);
-  }, [fupSettingsId]);
-
-  // ── Save settings ──────────────────────────────────────
+  // ── Save follow-up settings ──────────────────────────────
   const saveSettings = async () => {
     if (!profile?.gym_id) return;
     setSavingFup(true);
@@ -190,7 +80,6 @@ export default function AdminOverview() {
     };
     await supabase.from('churn_followup_settings').upsert(payload, { onConflict: 'gym_id' });
     setFupSettings(s => ({ ...s, ...fupDraft }));
-    setFupSettingsId(true);
     setSavingFup(false);
     setFupSaved(true);
     setTimeout(() => setFupSaved(false), 2500);
@@ -205,112 +94,117 @@ export default function AdminOverview() {
       const now            = new Date();
       const thirtyDaysAgo      = subDays(now, 30).toISOString();
       const twentyEightDaysAgo = subDays(now, 28).toISOString();
-      const fourteenDaysAgo    = subDays(now, 14).toISOString();
 
-      // All members
-      const { data: members } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, last_active_at, created_at, role')
-        .eq('gym_id', gymId)
-        .eq('role', 'member');
+      // ── Parallel fetches ──────────────────────────────────
+      const [
+        membersRes,
+        sessionsRes,
+        churnScoresRes,
+        fupRes,
+      ] = await Promise.all([
+        // All members
+        supabase
+          .from('profiles')
+          .select('id, full_name, username, last_active_at, created_at, role')
+          .eq('gym_id', gymId)
+          .eq('role', 'member'),
 
-      // Workouts
-      const { data: sessions } = await supabase
-        .from('workout_sessions')
-        .select('profile_id, started_at, total_volume_lbs')
-        .eq('gym_id', gymId)
-        .eq('status', 'completed')
-        .gte('started_at', twentyEightDaysAgo)
-        .order('started_at', { ascending: false });
+        // Workouts (last 28 days)
+        supabase
+          .from('workout_sessions')
+          .select('profile_id, started_at, total_volume_lbs')
+          .eq('gym_id', gymId)
+          .eq('status', 'completed')
+          .gte('started_at', twentyEightDaysAgo)
+          .order('started_at', { ascending: false }),
 
-      const activeIds      = new Set((sessions || []).map(s => s.profile_id));
-      const sessionsLast14  = {};
-      const sessionsPrior14 = {};
-      (sessions || []).forEach(s => {
-        if (s.started_at >= fourteenDaysAgo) {
-          sessionsLast14[s.profile_id] = (sessionsLast14[s.profile_id] || 0) + 1;
-        } else {
-          sessionsPrior14[s.profile_id] = (sessionsPrior14[s.profile_id] || 0) + 1;
+        // Pre-computed churn scores (from cron edge function)
+        supabase
+          .from('churn_risk_scores')
+          .select('profile_id, score, risk_tier, key_signals, computed_at')
+          .eq('gym_id', gymId)
+          .order('score', { ascending: false }),
+
+        // Follow-up settings
+        supabase
+          .from('churn_followup_settings')
+          .select('*')
+          .eq('gym_id', gymId)
+          .single(),
+      ]);
+
+      const members  = membersRes.data || [];
+      const sessions = sessionsRes.data || [];
+      const churnScores = churnScoresRes.data || [];
+
+      // De-duplicate churn scores (keep latest per profile)
+      const latestScoreMap = {};
+      churnScores.forEach(row => {
+        if (!latestScoreMap[row.profile_id] || row.computed_at > latestScoreMap[row.profile_id].computed_at) {
+          latestScoreMap[row.profile_id] = row;
         }
       });
+      const latestScores = Object.values(latestScoreMap);
 
-      // Streak data
-      const { data: streakRows } = await supabase
-        .from('streak_cache')
-        .select('profile_id, streak_broken_at')
-        .in('profile_id', (members || []).map(m => m.id));
-      const streakMap = {};
-      (streakRows || []).forEach(r => { streakMap[r.profile_id] = r.streak_broken_at; });
-
-      // Check-in data
-      const { data: checkinRows } = await supabase
-        .from('check_ins')
-        .select('profile_id, checked_in_at')
-        .eq('gym_id', gymId)
-        .order('checked_in_at', { ascending: false });
-      const lastCheckinMap = {};
-      const hadCheckinSet  = new Set();
-      (checkinRows || []).forEach(r => {
-        hadCheckinSet.add(r.profile_id);
-        if (!lastCheckinMap[r.profile_id]) lastCheckinMap[r.profile_id] = r.checked_in_at;
+      // ── Churn risk tier counts ─────────────────────────────
+      const tiers = { critical: 0, high: 0, medium: 0, low: 0 };
+      latestScores.forEach(row => {
+        if (tiers[row.risk_tier] !== undefined) tiers[row.risk_tier]++;
       });
+      setRiskTiers(tiers);
 
-      // Existing churn follow-up timestamps
-      const { data: churnRows } = await supabase
-        .from('churn_risk_scores')
-        .select('profile_id, followup_sent_at')
-        .eq('gym_id', gymId);
-      const followupMap = {};
-      (churnRows || []).forEach(r => { if (r.followup_sent_at) followupMap[r.profile_id] = r.followup_sent_at; });
+      // ── At-risk members (critical + high) ──────────────────
+      const memberMap = {};
+      members.forEach(m => { memberMap[m.id] = m; });
 
-      // Store for follow-up runner
-      churnDataRef.current = { followupMap, lastCheckinMap, hadCheckinSet };
-
-      // Compute churn scores
-      const scored = (members || []).map(m => ({
-        ...m,
-        score: churnScore(m, {
-          sessionsLast14:  sessionsLast14[m.id]  ?? 0,
-          sessionsPrior14: sessionsPrior14[m.id] ?? 0,
-          streakBrokenAt:  streakMap[m.id]       ?? null,
-          lastCheckinAt:   lastCheckinMap[m.id]  ?? null,
-          hadAnyCheckins:  hadCheckinSet.has(m.id),
-        }),
-        recentWorkouts: sessionsLast14[m.id] ?? 0,
-      }));
-
-      scoredMembersRef.current = scored;
-
-      const atRiskMembers = scored
-        .filter(m => m.score >= 61)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6);
+      const nowMs = Date.now();
+      const atRiskMembers = latestScores
+        .filter(row => row.risk_tier === 'critical' || row.risk_tier === 'high')
+        .slice(0, 6)
+        .map(row => {
+          const member = memberMap[row.profile_id];
+          if (!member) return null;
+          const lastSeenAt = member.last_active_at ?? member.created_at;
+          return {
+            ...member,
+            score: row.score,
+            risk_tier: row.risk_tier,
+            key_signals: row.key_signals,
+            computed_at: row.computed_at,
+            daysInactive: Math.floor((nowMs - new Date(lastSeenAt)) / 86400000),
+            neverActive: !member.last_active_at,
+          };
+        })
+        .filter(Boolean);
 
       setAtRisk(atRiskMembers);
 
-      const total = (members || []).length;
+      // ── Stats ──────────────────────────────────────────────
+      const activeIds = new Set(sessions.map(s => s.profile_id));
+      const total = members.length;
+      const atRiskCount = tiers.critical + tiers.high;
       setStats({
         totalMembers:  total,
         activeMembers: activeIds.size,
         retentionPct:  total > 0 ? Math.round((activeIds.size / total) * 100) : 0,
-        atRiskCount:   scored.filter(m => m.score >= 61).length,
-        workoutsMonth: (sessions || []).length,
+        atRiskCount,
+        workoutsMonth: sessions.length,
       });
 
-      // Chart: workouts per day last 14 days
+      // ── Chart: workouts per day last 14 days ────────────────
       const dayMap = {};
       for (let i = 13; i >= 0; i--) {
         const d = format(subDays(now, i), 'MMM d');
         dayMap[d] = 0;
       }
-      (sessions || []).forEach(s => {
+      sessions.forEach(s => {
         const d = format(new Date(s.started_at), 'MMM d');
         if (d in dayMap) dayMap[d]++;
       });
       setChartData(Object.entries(dayMap).map(([date, count]) => ({ date, count })));
-      setRecentActivity((sessions || []).slice(0, 8));
+      setRecentActivity(sessions.slice(0, 8));
 
-      // Top exercises (last 30d)
+      // ── Top exercises (last 30d) ────────────────────────────
       const { data: sessionRows } = await supabase
         .from('workout_sessions')
         .select('id')
@@ -337,34 +231,17 @@ export default function AdminOverview() {
         );
       }
 
-      // Load follow-up settings
-      const { data: fupRow } = await supabase
-        .from('churn_followup_settings')
-        .select('*')
-        .eq('gym_id', gymId)
-        .single();
-
-      let activeSettings = DEFAULT_SETTINGS;
-      if (fupRow) {
-        activeSettings = { ...DEFAULT_SETTINGS, ...fupRow };
+      // ── Follow-up settings ──────────────────────────────────
+      if (fupRes.data) {
+        const activeSettings = { ...DEFAULT_SETTINGS, ...fupRes.data };
         setFupSettings(activeSettings);
         setFupDraft(activeSettings);
-        setFupSettingsId(true);
       }
 
       setLoading(false);
-
-      // Auto-trigger if enabled and hasn't run in >23h
-      if (activeSettings.enabled) {
-        const lastRun = activeSettings.last_run_at ? new Date(activeSettings.last_run_at) : null;
-        const hoursAgo = lastRun ? (Date.now() - lastRun) / 3600000 : Infinity;
-        if (hoursAgo >= 23) {
-          runFollowups(activeSettings, scored, gymId);
-        }
-      }
     };
     load();
-  }, [profile?.gym_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profile?.gym_id]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -372,9 +249,12 @@ export default function AdminOverview() {
     </div>
   );
 
-  const lastRunAgo = fupSettings.last_run_at
-    ? Math.round((Date.now() - new Date(fupSettings.last_run_at)) / 3600000)
+  // How long ago was cron last run
+  const lastRunLabel = fupSettings.last_run_at
+    ? formatDistanceToNow(new Date(fupSettings.last_run_at), { addSuffix: true })
     : null;
+
+  const totalScored = riskTiers.critical + riskTiers.high + riskTiers.medium + riskTiers.low;
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
@@ -387,11 +267,11 @@ export default function AdminOverview() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Users}         label="Total Members"    value={stats.totalMembers}             sub="all time" />
         <StatCard icon={TrendingUp}    label="Retention (30d)"  value={`${stats.retentionPct ?? 0}%`}  sub="logged ≥1 workout" />
-        <StatCard icon={AlertTriangle} label="At Risk"          value={stats.atRiskCount}              sub="churn score ≥ 61" accent="bg-red-500/15" />
+        <StatCard icon={AlertTriangle} label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk" accent="bg-red-500/15" />
         <StatCard icon={Dumbbell}      label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions" />
       </div>
 
-      {/* Chart + At-risk */}
+      {/* Chart + Churn Risk Summary */}
       <div className="grid md:grid-cols-[1fr_320px] gap-4 mb-4">
 
         {/* Activity chart */}
@@ -417,11 +297,50 @@ export default function AdminOverview() {
           </ResponsiveContainer>
         </div>
 
+        {/* Churn Risk Summary — reads from pre-computed churn_risk_scores */}
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">Churn Risk</p>
+            <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
+              View all <ChevronRight size={12} />
+            </button>
+          </div>
+
+          {totalScored === 0 ? (
+            <div className="flex flex-col items-center justify-center h-28 text-center">
+              <Clock size={20} className="text-[#4B5563] mb-2" />
+              <p className="text-[13px] text-[#6B7280]">No scores yet</p>
+              <p className="text-[11px] text-[#4B5563] mt-1">Scores are computed daily at 2 AM UTC</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <TierRow label="Critical" count={riskTiers.critical} color="#DC2626" total={totalScored} />
+              <TierRow label="High"     count={riskTiers.high}     color="#EF4444" total={totalScored} />
+              <TierRow label="Medium"   count={riskTiers.medium}   color="#F59E0B" total={totalScored} />
+              <TierRow label="Low"      count={riskTiers.low}      color="#10B981" total={totalScored} />
+            </div>
+          )}
+
+          {/* Cron status */}
+          {fupSettings.last_run_at && (
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/6">
+              <Activity size={11} className="text-emerald-500 flex-shrink-0" />
+              <p className="text-[11px] text-[#6B7280]">
+                Auto follow-up ran {lastRunLabel} · {fupSettings.last_run_count} sent
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* At-risk members + Top exercises */}
+      <div className="grid md:grid-cols-[1fr_300px] gap-4 mb-4">
+
         {/* At-risk members */}
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[14px] font-semibold text-[#E5E7EB]">At Risk</p>
-            <button onClick={() => navigate('/admin/members')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">At-Risk Members</p>
+            <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
               View all <ChevronRight size={12} />
             </button>
           </div>
@@ -433,59 +352,30 @@ export default function AdminOverview() {
           ) : (
             <div className="space-y-2.5">
               {atRisk.map(m => {
-                const risk = riskLabel(m.score);
-                const lastSeenAt = m.last_active_at ?? m.created_at;
-                const daysInactive = Math.floor((Date.now() - new Date(lastSeenAt)) / 86400000);
-                const neverActive = !m.last_active_at;
-                const followedUp = churnDataRef.current.followupMap[m.id];
+                const tier = getRiskTier(m.score);
+                const keySignal = m.key_signals?.[0] ?? null;
                 return (
                   <div key={m.id} className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => navigate('/admin/members')}>
-                    <div className="w-7 h-7 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0">
-                      <span className="text-[11px] font-bold text-[#9CA3AF]">{m.full_name[0]}</span>
+                    onClick={() => navigate('/admin/churn')}>
+                    <div className="w-8 h-8 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0">
+                      <span className="text-[11px] font-bold text-[#9CA3AF]">{m.full_name?.[0]}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name}</p>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {daysInactive}d inactive{neverActive ? ' (never logged)' : ''}
-                        {followedUp && <span className="text-emerald-500/70"> · notified</span>}
+                      <p className="text-[11px] text-[#6B7280] truncate">
+                        {m.daysInactive}d inactive{m.neverActive ? ' (never logged)' : ''}
+                        {keySignal && <span className="text-[#4B5563]"> · {keySignal}</span>}
                       </p>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${risk.color} ${risk.bg}`}>
-                      {m.score}
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ color: tier.color, background: tier.bg }}
+                    >
+                      {m.score}%
                     </span>
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Recent sessions + Top exercises */}
-      <div className="grid md:grid-cols-[1fr_300px] gap-4 mb-4">
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">Recent Workouts</p>
-          {recentActivity.length === 0 ? (
-            <p className="text-[13px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
-          ) : (
-            <div className="divide-y divide-white/4">
-              {recentActivity.map(s => (
-                <div key={s.started_at + s.profile_id} className="flex items-center justify-between py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                    <div>
-                      <p className="text-[13px] text-[#E5E7EB]">Workout completed</p>
-                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
-                    </div>
-                  </div>
-                  {s.total_volume_lbs > 0 && (
-                    <span className="text-[12px] font-semibold text-[#9CA3AF]">
-                      {Math.round(s.total_volume_lbs).toLocaleString()} lbs
-                    </span>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </div>
@@ -503,7 +393,7 @@ export default function AdminOverview() {
                   <div key={ex.id}>
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-[13px] text-[#E5E7EB] truncate flex-1 mr-2">{ex.name}</p>
-                      <p className="text-[11px] text-[#6B7280] flex-shrink-0">{ex.count}×</p>
+                      <p className="text-[11px] text-[#6B7280] flex-shrink-0">{ex.count}x</p>
                     </div>
                     <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
                       <div
@@ -522,7 +412,34 @@ export default function AdminOverview() {
         </div>
       </div>
 
-      {/* ── Automated Follow-Up ─────────────────────────────── */}
+      {/* Recent workouts */}
+      <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-4">
+        <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">Recent Workouts</p>
+        {recentActivity.length === 0 ? (
+          <p className="text-[13px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
+        ) : (
+          <div className="divide-y divide-white/4">
+            {recentActivity.map(s => (
+              <div key={s.started_at + s.profile_id} className="flex items-center justify-between py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-[13px] text-[#E5E7EB]">Workout completed</p>
+                    <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
+                  </div>
+                </div>
+                {s.total_volume_lbs > 0 && (
+                  <span className="text-[12px] font-semibold text-[#9CA3AF]">
+                    {Math.round(s.total_volume_lbs).toLocaleString()} lbs
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Follow-Up Settings (configures cron behavior) ──────── */}
       <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
@@ -532,11 +449,10 @@ export default function AdminOverview() {
             <div>
               <p className="text-[14px] font-semibold text-[#E5E7EB]">Automated Follow-Up</p>
               <p className="text-[11px] text-[#6B7280]">
-                Sends in-app notifications to at-risk members automatically
+                Runs daily at 2 AM UTC — sends in-app notifications to at-risk members
               </p>
             </div>
           </div>
-          {/* Enable toggle */}
           <button
             onClick={() => setFupDraft(d => ({ ...d, enabled: !d.enabled }))}
             className="flex items-center gap-1.5 text-[12px] font-medium transition-colors"
@@ -550,25 +466,13 @@ export default function AdminOverview() {
           </button>
         </div>
 
-        {/* Status line */}
+        {/* Last run status */}
         {fupSettings.last_run_at && (
           <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-emerald-500/8 border border-emerald-500/15 rounded-xl">
             <Activity size={12} className="text-emerald-400 flex-shrink-0" />
             <p className="text-[12px] text-emerald-400">
-              Last run {lastRunAgo === 0 ? 'just now' : `${lastRunAgo}h ago`}
+              Last run {lastRunLabel}
               {' · '}{fupSettings.last_run_count} notification{fupSettings.last_run_count !== 1 ? 's' : ''} sent
-            </p>
-          </div>
-        )}
-
-        {/* Run result flash */}
-        {fupResult && (
-          <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-xl">
-            <CheckCircle size={12} className="text-[#D4AF37] flex-shrink-0" />
-            <p className="text-[12px] text-[#D4AF37]">
-              {fupResult.count === 0
-                ? 'No members need a follow-up right now.'
-                : `${fupResult.count} member${fupResult.count !== 1 ? 's' : ''} notified successfully.`}
             </p>
           </div>
         )}
@@ -578,7 +482,11 @@ export default function AdminOverview() {
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Risk Threshold</label>
             <div className="flex gap-2">
-              {[{ label: 'Watch (31+)', value: 31 }, { label: 'At Risk (61+)', value: 61 }].map(opt => (
+              {[
+                { label: 'Medium (30%+)', value: 30 },
+                { label: 'High (55%+)', value: 55 },
+                { label: 'Critical (80%+)', value: 80 },
+              ].map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setFupDraft(d => ({ ...d, threshold: opt.value }))}
@@ -598,7 +506,7 @@ export default function AdminOverview() {
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Cooldown Between Notifications</label>
             <div className="flex gap-2">
-              {[0, 3, 7, 14, 30].map(days => (
+              {[3, 7, 14, 30].map(days => (
                 <button
                   key={days}
                   onClick={() => setFupDraft(d => ({ ...d, cooldown_days: days }))}
@@ -608,7 +516,7 @@ export default function AdminOverview() {
                       : 'border-white/6 text-[#6B7280] hover:text-[#9CA3AF]'
                   }`}
                 >
-                  {days === 0 ? 'None' : `${days}d`}
+                  {`${days}d`}
                 </button>
               ))}
             </div>
@@ -629,7 +537,7 @@ export default function AdminOverview() {
           </p>
         </div>
 
-        {/* Actions */}
+        {/* Save */}
         <div className="flex items-center gap-3">
           <button
             onClick={saveSettings}
@@ -644,17 +552,8 @@ export default function AdminOverview() {
             {savingFup ? 'Saving…' : fupSaved ? 'Saved!' : 'Save Settings'}
           </button>
 
-          <button
-            onClick={() => runFollowups(fupDraft, scoredMembersRef.current, profile.gym_id)}
-            disabled={runningFup}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold border border-white/8 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors disabled:opacity-50"
-          >
-            <Play size={13} />
-            {runningFup ? 'Running…' : 'Run Now'}
-          </button>
-
           <p className="text-[11px] text-[#4B5563] ml-auto">
-            {stats.atRiskCount ?? 0} member{(stats.atRiskCount ?? 0) !== 1 ? 's' : ''} currently at risk
+            {stats.atRiskCount ?? 0} member{(stats.atRiskCount ?? 0) !== 1 ? 's' : ''} at critical/high risk
           </p>
         </div>
       </div>

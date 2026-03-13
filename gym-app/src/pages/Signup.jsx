@@ -38,16 +38,16 @@ const Signup = () => {
   const [globalError, setGlobalError] = useState('');
   const [loading,     setLoading]     = useState(false);
 
-  // If coming via invite link, resolve gym name for context
+  // If coming via invite link, verify gym exists (don't leak gym name to unauthenticated users)
   useEffect(() => {
     if (!inviteSlug) return;
     supabase
       .from('gyms')
-      .select('name')
+      .select('id')
       .eq('slug', inviteSlug.toLowerCase())
       .eq('is_active', true)
       .single()
-      .then(({ data }) => { if (data) setGymName(data.name); });
+      .then(({ data }) => { if (data) setGymName('your gym'); });
   }, [inviteSlug]);
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
@@ -58,7 +58,7 @@ const Signup = () => {
     if (!form.username.trim())              errs.username    = 'Required';
     if (form.username.includes(' '))        errs.username    = 'No spaces allowed';
     if (!form.email.trim())                 errs.email       = 'Required';
-    if (form.password.length < 6)           errs.password    = 'At least 6 characters';
+    if (form.password.length < 8)           errs.password    = 'At least 8 characters';
     if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
     if (!form.gymSlug.trim())               errs.gymSlug     = 'Required';
     return errs;

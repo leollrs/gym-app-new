@@ -1,10 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, Dumbbell, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Dumbbell, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV = [
-  { to: '/trainer',         label: 'Clients',  icon: Users,    exact: true },
-  { to: '/trainer/programs', label: 'Programs', icon: Dumbbell },
+  { to: '/trainer',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/trainer/clients',  label: 'Clients',   icon: Users },
+  { to: '/trainer/programs', label: 'Programs',  icon: Dumbbell },
 ];
 
 const linkClass = (active) =>

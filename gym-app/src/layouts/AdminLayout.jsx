@@ -39,34 +39,17 @@ export default function AdminLayout({ children }) {
   const navigate = useNavigate();
   const [highRiskCount, setHighRiskCount] = useState(0);
 
-  // Fetch high-risk member count on mount (quick heuristic: inactive 21+ days)
+  // Fetch critical + high risk count from pre-computed churn scores
   useEffect(() => {
     if (!profile?.gym_id) return;
     const fetchHighRisk = async () => {
       try {
-        const cutoff = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
-        // Count members who haven't checked in for 21+ days as a proxy for high churn risk
-        const { data: memberIds } = await supabase
-          .from('profiles')
-          .select('id')
+        const { count } = await supabase
+          .from('churn_risk_scores')
+          .select('id', { count: 'exact', head: true })
           .eq('gym_id', profile.gym_id)
-          .eq('role', 'member');
-
-        if (!memberIds?.length) return;
-
-        const ids = memberIds.map(m => m.id);
-
-        // Find members who have at least one check-in but their last one was 21+ days ago
-        const { data: recentCheckins } = await supabase
-          .from('attendance')
-          .select('user_id')
-          .eq('gym_id', profile.gym_id)
-          .gte('checked_in_at', cutoff)
-          .in('user_id', ids);
-
-        const recentSet = new Set((recentCheckins || []).map(r => r.user_id));
-        const count = ids.filter(id => !recentSet.has(id)).length;
-        setHighRiskCount(count);
+          .in('risk_tier', ['critical', 'high']);
+        setHighRiskCount(count ?? 0);
       } catch (_) {
         // Fail silently — badge is non-critical
       }

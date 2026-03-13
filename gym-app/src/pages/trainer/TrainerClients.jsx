@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Users, X, Trophy, Dumbbell, ChevronRight, Send } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Users, X, Trophy, Dumbbell, ChevronRight, Send, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 
 // ── Client detail modal ─────────────────────────────────────────────────────
-const ClientModal = ({ client, gymId, onClose }) => {
+const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
   const [tab,      setTab]      = useState('workouts');
   const [sessions, setSessions] = useState([]);
   const [prs,      setPrs]      = useState([]);
@@ -77,7 +78,12 @@ const ClientModal = ({ client, gymId, onClose }) => {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={20} /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={onViewProfile} className="text-[11px] font-medium text-[#D4AF37] hover:text-[#E5C94B] flex items-center gap-1 transition-colors">
+              <FileText size={13} /> Full Profile
+            </button>
+            <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={20} /></button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -212,6 +218,7 @@ const ClientModal = ({ client, gymId, onClose }) => {
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function TrainerClients() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [clients,  setClients]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState(null);
@@ -310,6 +317,10 @@ export default function TrainerClients() {
           client={selected}
           gymId={profile.gym_id}
           onClose={() => setSelected(null)}
+          onViewProfile={() => {
+            setSelected(null);
+            navigate(`/trainer/client/${selected.id}`);
+          }}
         />
       )}
     </div>

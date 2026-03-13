@@ -6,8 +6,8 @@ import { applyBranding } from '../../lib/branding';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-// Signed URL expiry for logos (7 days)
-const LOGO_URL_EXPIRY_SECONDS = 60 * 60 * 24 * 7;
+// Signed URL expiry for logos (1 day — shorter to limit exposure if URL leaks)
+const LOGO_URL_EXPIRY_SECONDS = 60 * 60 * 24;
 
 // Compress image on the client before upload
 async function compressImage(file, maxSize = 512, quality = 0.8) {
@@ -123,6 +123,14 @@ export default function AdminSettings() {
 
   const handleLogoUpload = async (file) => {
     if (!file) return;
+
+    // Validate file type to prevent malicious SVG uploads (stored XSS)
+    const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError('Only PNG, JPEG, and WebP images are allowed');
+      return;
+    }
+
     setUploadingLogo(true);
     try {
       // Compress before upload to save bandwidth & storage
@@ -241,7 +249,7 @@ export default function AdminSettings() {
                     {uploadingLogo ? 'Uploading…' : logoFile ? logoFile.name : 'Upload logo'}
                   </span>
                   <input
-                    type="file" accept="image/*" className="hidden"
+                    type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
                     disabled={uploadingLogo}
                     onChange={e => {
                       const f = e.target.files?.[0];

@@ -38,15 +38,16 @@ const RiskBadge = ({ score }) => {
 // ── Score bar ──────────────────────────────────────────────
 const ScoreBar = ({ score }) => {
   const tier = getRiskTier(score);
+  const display = score % 1 === 0 ? score : score.toFixed(1);
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${score}%`, background: tier.color }}
+          style={{ width: `${Math.min(100, score)}%`, background: tier.color }}
         />
       </div>
-      <span className="text-[11px] font-bold text-[#9CA3AF] w-6 text-right">{score}</span>
+      <span className="text-[11px] font-bold text-[#9CA3AF] w-10 text-right">{display}%</span>
     </div>
   );
 };
@@ -363,11 +364,12 @@ export default function AdminChurn() {
 
   // ── Derived lists ────────────────────────────────────────
 
-  // At-risk: churnScore >= 40
+  // At-risk: churnScore >= 30 (new v2 threshold)
   const atRiskMembers = useMemo(() => {
-    let list = members.filter(m => m.churnScore >= 40);
-    if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 70);
-    if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 40 && m.churnScore < 70);
+    let list = members.filter(m => m.churnScore >= 30);
+    if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
+    if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55);
+    if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 30 && m.churnScore < 55);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(m => m.full_name.toLowerCase().includes(q));
@@ -391,8 +393,9 @@ export default function AdminChurn() {
     return map;
   }, [winBackAttempts]);
 
-  const highRiskCount = members.filter(m => m.churnScore >= 70).length;
-  const medRiskCount = members.filter(m => m.churnScore >= 40 && m.churnScore < 70).length;
+  const criticalCount = members.filter(m => m.churnScore >= 80).length;
+  const highRiskCount = members.filter(m => m.churnScore >= 55 && m.churnScore < 80).length;
+  const medRiskCount = members.filter(m => m.churnScore >= 30 && m.churnScore < 55).length;
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -451,26 +454,33 @@ export default function AdminChurn() {
         <p className="text-[13px] text-[#6B7280] pl-1">
           {loading
             ? 'Analyzing member activity…'
-            : `${highRiskCount} high risk · ${medRiskCount} medium risk · ${churnedMembers.length} churned`}
+            : `${criticalCount} critical · ${highRiskCount} high risk · ${medRiskCount} medium risk · ${churnedMembers.length} churned`}
         </p>
       </div>
 
       {/* ── Summary cards ────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
+          {
+            label: 'Critical',
+            value: loading ? '—' : criticalCount,
+            color: '#DC2626',
+            bg: 'rgba(220,38,38,0.08)',
+            sub: 'score ≥ 80',
+          },
           {
             label: 'High Risk',
             value: loading ? '—' : highRiskCount,
             color: '#EF4444',
             bg: 'rgba(239,68,68,0.08)',
-            sub: 'score ≥ 70',
+            sub: 'score 55–79',
           },
           {
             label: 'Medium Risk',
             value: loading ? '—' : medRiskCount,
             color: '#F59E0B',
             bg: 'rgba(245,158,11,0.08)',
-            sub: 'score 40–69',
+            sub: 'score 30–54',
           },
           {
             label: 'Churned',
@@ -540,6 +550,7 @@ export default function AdminChurn() {
             <div className="flex gap-1.5 flex-wrap">
               {[
                 { key: 'all', label: 'All' },
+                { key: 'critical', label: 'Critical' },
                 { key: 'high', label: 'High' },
                 { key: 'medium', label: 'Medium' },
               ].map(f => (
@@ -596,12 +607,16 @@ export default function AdminChurn() {
                           <div className="mb-2">
                             <ScoreBar score={m.churnScore} />
                           </div>
-                          {/* Key signal */}
-                          <p className="text-[12px] text-[#9CA3AF] mb-1">
-                            <span className="text-[#6B7280]">Signal: </span>
-                            {m.keySignal}
-                          </p>
-                          {/* Days since visit */}
+                          {/* Key signals */}
+                          <div className="mb-1 space-y-0.5">
+                            {(m.keySignals || [m.keySignal]).slice(0, 3).map((sig, i) => (
+                              <p key={i} className="text-[12px] text-[#9CA3AF]">
+                                <span className="text-[#6B7280]">{i === 0 ? 'Signal: ' : '· '}</span>
+                                {sig}
+                              </p>
+                            ))}
+                          </div>
+                          {/* Days since visit + velocity */}
                           <p className="text-[11px] text-[#6B7280]">
                             {m.daysSinceLastCheckIn === null
                               ? 'Never checked in'
@@ -610,6 +625,11 @@ export default function AdminChurn() {
                               : `Last visit ${Math.round(m.daysSinceLastCheckIn)}d ago`}
                             {' · '}
                             {Math.round(m.tenureMonths)}mo tenure
+                            {m.velocityTrend && m.velocityTrend !== 'stable' && (
+                              <span className={m.velocityTrend === 'rising' ? 'text-[#EF4444] ml-1.5' : 'text-[#10B981] ml-1.5'}>
+                                {m.velocityTrend === 'rising' ? '↑' : '↓'} {m.velocityLabel}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

@@ -5,8 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createNotification } from '../../lib/notifications';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
-import { churnScore, riskLabel } from './AdminOverview';
-import { calculateChurnScore, getRiskTier } from '../../lib/churnScore';
+import { getRiskTier } from '../../lib/churnScore';
 
 // ── Membership status helpers ───────────────────────────────
 const statusConfig = {
@@ -301,11 +300,9 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
     cancelled:   { label: 'Cancelled',       color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
   };
 
-  const risk = riskLabel(member.score);
-  // Use last_active_at, fall back to most recent session in 28d window, then created_at
-  const effectiveLastActive = member.last_active_at ?? member.lastSessionAt ?? member.created_at;
-  const daysInactive = Math.floor((Date.now() - new Date(effectiveLastActive)) / 86400000);
-  const neverActive = !member.last_active_at && !member.lastSessionAt;
+  const risk = getRiskTier(member.score);
+  const daysInactive = member.daysInactive ?? 0;
+  const neverActive = member.neverActive ?? false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -334,7 +331,7 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
         {/* Stats row */}
         <div className="grid grid-cols-4 border-b border-white/6 flex-shrink-0">
           {[
-            { label: 'Risk',       value: <span className={risk.color}>{risk.label}</span>, sub: `score ${member.score}` },
+            { label: 'Risk',       value: <span className={risk.textClass}>{risk.label}</span>, sub: `score ${member.score}%` },
             { label: 'Inactive',   value: `${daysInactive}d`, sub: neverActive ? 'never logged' : 'days' },
             { label: 'Workouts',   value: member.recentWorkouts ?? 0, sub: 'last 14d' },
             { label: 'Challenges', value: challenges, sub: 'joined' },
@@ -633,72 +630,65 @@ export default function AdminMembers() {
       setLoading(true);
       const gymId = profile.gym_id;
 
-      const { data: memberRows } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, last_active_at, created_at, admin_note, membership_status')
-        .eq('gym_id', gymId)
-        .eq('role', 'member')
-        .order('last_active_at', { ascending: false, nullsFirst: false });
+      // Fetch members and pre-computed churn scores in parallel
+      const [membersRes, churnRes, sessionsRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, full_name, username, last_active_at, created_at, admin_note, membership_status')
+          .eq('gym_id', gymId)
+          .eq('role', 'member')
+          .order('last_active_at', { ascending: false, nullsFirst: false }),
 
-      const now = new Date();
-      const fourteenDaysAgo    = subDays(now, 14).toISOString();
-      const twentyEightDaysAgo = subDays(now, 28).toISOString();
+        supabase
+          .from('churn_risk_scores')
+          .select('profile_id, score, risk_tier, key_signals')
+          .eq('gym_id', gymId)
+          .order('score', { ascending: false }),
 
-      const { data: recentSessions } = await supabase
-        .from('workout_sessions')
-        .select('profile_id, started_at')
-        .eq('gym_id', gymId)
-        .eq('status', 'completed')
-        .gte('started_at', twentyEightDaysAgo);
+        supabase
+          .from('workout_sessions')
+          .select('profile_id, started_at')
+          .eq('gym_id', gymId)
+          .eq('status', 'completed')
+          .gte('started_at', subDays(new Date(), 14).toISOString()),
+      ]);
 
-      const sessionsLast14  = {};
-      const sessionsPrior14 = {};
-      const lastSessionAt   = {};
-      (recentSessions || []).forEach(s => {
-        if (s.started_at >= fourteenDaysAgo) {
-          sessionsLast14[s.profile_id]  = (sessionsLast14[s.profile_id]  || 0) + 1;
-        } else {
-          sessionsPrior14[s.profile_id] = (sessionsPrior14[s.profile_id] || 0) + 1;
-        }
+      const memberRows = membersRes.data || [];
+      const churnRows = churnRes.data || [];
+      const recentSessions = sessionsRes.data || [];
+
+      // Build churn score lookup (latest per profile)
+      const churnMap = {};
+      churnRows.forEach(row => {
+        if (!churnMap[row.profile_id]) churnMap[row.profile_id] = row;
+      });
+
+      // Recent workout counts & last session
+      const sessionsLast14 = {};
+      const lastSessionAt  = {};
+      recentSessions.forEach(s => {
+        sessionsLast14[s.profile_id] = (sessionsLast14[s.profile_id] || 0) + 1;
         if (!lastSessionAt[s.profile_id] || s.started_at > lastSessionAt[s.profile_id]) {
           lastSessionAt[s.profile_id] = s.started_at;
         }
       });
 
-      const memberIds = (memberRows || []).map(m => m.id);
-
-      const { data: streakRows } = await supabase
-        .from('streak_cache')
-        .select('profile_id, streak_broken_at')
-        .in('profile_id', memberIds);
-      const streakMap = {};
-      (streakRows || []).forEach(r => { streakMap[r.profile_id] = r.streak_broken_at; });
-
-      const { data: checkinRows } = await supabase
-        .from('check_ins')
-        .select('profile_id, checked_in_at')
-        .eq('gym_id', gymId)
-        .order('checked_in_at', { ascending: false });
-      const lastCheckinMap = {};
-      const hadCheckinSet  = new Set();
-      (checkinRows || []).forEach(r => {
-        hadCheckinSet.add(r.profile_id);
-        if (!lastCheckinMap[r.profile_id]) lastCheckinMap[r.profile_id] = r.checked_in_at;
+      const nowMs = Date.now();
+      const scored = memberRows.map(m => {
+        const churn = churnMap[m.id];
+        const effectiveLast = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
+        return {
+          ...m,
+          recentWorkouts:    sessionsLast14[m.id] ?? 0,
+          lastSessionAt:     lastSessionAt[m.id] ?? null,
+          score:             churn?.score ?? 0,
+          risk_tier:         churn?.risk_tier ?? 'low',
+          key_signals:       churn?.key_signals ?? [],
+          membership_status: m.membership_status ?? 'active',
+          daysInactive:      Math.floor((nowMs - new Date(effectiveLast)) / 86400000),
+          neverActive:       !m.last_active_at && !lastSessionAt[m.id],
+        };
       });
-
-      const scored = (memberRows || []).map(m => ({
-        ...m,
-        recentWorkouts:    sessionsLast14[m.id] ?? 0,
-        lastSessionAt:     lastSessionAt[m.id] ?? null,
-        score: churnScore(m, {
-          sessionsLast14:  sessionsLast14[m.id]  ?? 0,
-          sessionsPrior14: sessionsPrior14[m.id] ?? 0,
-          streakBrokenAt:  streakMap[m.id]       ?? null,
-          lastCheckinAt:   lastCheckinMap[m.id]  ?? null,
-          hadAnyCheckins:  hadCheckinSet.has(m.id),
-        }),
-        membership_status: m.membership_status ?? 'active',
-      }));
 
       setMembers(scored);
       setLoading(false);
@@ -862,7 +852,7 @@ export default function AdminMembers() {
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
           <div className="divide-y divide-white/4">
             {filtered.map(m => {
-              const risk = riskLabel(m.score);
+              const tier = getRiskTier(m.score);
               return (
                 <button
                   key={m.id}
@@ -891,9 +881,12 @@ export default function AdminMembers() {
                     <div className="text-right hidden sm:block">
                       <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
                     </div>
-                    <span className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ${risk.color} ${risk.bg}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />
-                      {m.score}
+                    <span
+                      className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+                      style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+                      {m.score}%
                     </span>
                     <ChevronRight size={14} className="text-[#4B5563]" />
                   </div>

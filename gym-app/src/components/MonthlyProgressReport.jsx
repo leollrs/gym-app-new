@@ -143,8 +143,9 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // ══ MonthlyProgressReport ════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════════
-const MonthlyProgressReport = ({ isOpen, onClose }) => {
+const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) => {
   const { user, profile } = useAuth();
+  const targetId = profileIdProp || user?.id;
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -156,7 +157,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
 
   // ── Fetch all data for selected month ────────────────────────────────────
   const fetchData = useCallback(async () => {
-    if (!user) return;
+    if (!targetId) return;
     setLoading(true);
 
     const monthStart = startOfMonth(month).toISOString();
@@ -181,7 +182,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('workout_sessions')
           .select('id, completed_at, total_volume_lbs, duration_seconds, status')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .eq('status', 'completed')
           .gte('completed_at', monthStart)
           .lte('completed_at', monthEnd)
@@ -190,7 +191,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('workout_sessions')
           .select('id, completed_at, total_volume_lbs, duration_seconds, status')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .eq('status', 'completed')
           .gte('completed_at', prevMonthStart)
           .lte('completed_at', prevMonthEnd),
@@ -198,7 +199,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('pr_history')
           .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('achieved_at', monthStart)
           .lte('achieved_at', monthEnd)
           .order('achieved_at', { ascending: true }),
@@ -206,7 +207,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('pr_history')
           .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('achieved_at', prevMonthStart)
           .lte('achieved_at', prevMonthEnd)
           .order('achieved_at', { ascending: true }),
@@ -214,7 +215,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('body_weight_logs')
           .select('weight_lbs, logged_at')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('logged_at', monthStart.slice(0, 10))
           .lte('logged_at', monthEnd.slice(0, 10))
           .order('logged_at', { ascending: true }),
@@ -222,7 +223,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('body_measurements')
           .select('*')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('measured_at', monthStart.slice(0, 10))
           .lte('measured_at', monthEnd.slice(0, 10))
           .order('measured_at', { ascending: true }),
@@ -230,7 +231,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('progress_photos')
           .select('id, storage_path, view_angle, taken_at')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('taken_at', monthStart.slice(0, 10))
           .lte('taken_at', monthEnd.slice(0, 10))
           .order('taken_at', { ascending: true }),
@@ -238,7 +239,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('user_achievements')
           .select('achievement_key, earned_at')
-          .eq('user_id', user.id)
+          .eq('user_id', targetId)
           .gte('earned_at', monthStart)
           .lte('earned_at', monthEnd)
           .order('earned_at', { ascending: true }),
@@ -246,7 +247,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
         supabase
           .from('check_ins')
           .select('checked_in_at')
-          .eq('profile_id', user.id)
+          .eq('profile_id', targetId)
           .gte('checked_in_at', monthStart)
           .lte('checked_in_at', monthEnd),
         // Session exercises with sets for volume-by-exercise
@@ -439,7 +440,7 @@ const MonthlyProgressReport = ({ isOpen, onClose }) => {
     } finally {
       setLoading(false);
     }
-  }, [user, profile, month]);
+  }, [targetId, profile, month]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

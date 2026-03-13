@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
         const { data: signed, error } = await supabase
           .storage
           .from('gym-logos')
-          .createSignedUrl(branding.logo_url, 60 * 60 * 24 * 7); // 7 days
+          .createSignedUrl(branding.logo_url, 60 * 60 * 24); // 1 day
         if (!error && signed?.signedUrl) {
           setGymLogoUrl(signed.signedUrl);
         } else {
@@ -125,6 +125,18 @@ export const AuthProvider = ({ children }) => {
 
   // ── SIGN OUT ───────────────────────────────────────────────
   const signOut = async () => {
+    // Clear session drafts and preferences from localStorage to prevent data leakage
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('gym_session_') || key.startsWith('notification_prefs_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch { /* localStorage may be unavailable */ }
+
     await supabase.auth.signOut();
   };
 
