@@ -659,30 +659,92 @@ export default function AdminAnalytics() {
     });
   };
 
-  // ── Download monthly report as CSV ─────────────────────
+  // ── Download monthly report as PDF (print) ────────────
   const handleDownloadReport = () => {
     if (!summary) return;
-    exportCSV({
-      filename: `monthly-report-${summary.label.replace(/\s+/g, '-').toLowerCase()}`,
-      columns: [
-        { key: 'metric', label: 'Metric' },
-        { key: 'value', label: 'Value' },
-      ],
-      data: [
-        { metric: 'Month', value: summary.label },
-        { metric: 'Total Members', value: summary.totalMembers },
-        { metric: 'Active Members', value: summary.uniqueActive },
-        { metric: 'Active Rate', value: `${summary.activeRate}%` },
-        { metric: 'New Members', value: summary.newMembers },
-        { metric: 'Total Workouts', value: summary.totalWorkouts },
-        { metric: 'Avg Workouts / Active Member', value: summary.avgWorkoutsPerActive },
-        { metric: 'Total Volume (lbs)', value: Math.round(summary.totalVolume) },
-        { metric: 'Check-ins', value: summary.checkIns },
-        { metric: 'PRs Hit', value: summary.prs },
-        { metric: 'Challenge Joins', value: summary.challengeJoins },
-        { metric: 'Total Training Time (min)', value: summary.totalDuration },
-      ],
-    });
+    const s = summary;
+    const fmtVol = s.totalVolume >= 1_000_000 ? `${(s.totalVolume / 1_000_000).toFixed(1)}M` : s.totalVolume >= 1_000 ? `${(s.totalVolume / 1_000).toFixed(1)}K` : s.totalVolume.toLocaleString();
+    const fmtTime = s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)} hours` : `${s.totalDuration} min`;
+    const generated = format(new Date(), 'MMMM d, yyyy');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Monthly Report – ${s.label}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a2e;background:#fff;padding:48px 56px;max-width:800px;margin:0 auto}
+.header{border-bottom:3px solid #D4AF37;padding-bottom:20px;margin-bottom:32px}
+.header h1{font-size:28px;font-weight:800;color:#0A0D14;letter-spacing:-0.5px}
+.header .subtitle{font-size:14px;color:#64748b;margin-top:4px}
+.header .date{font-size:11px;color:#94a3b8;margin-top:8px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center}
+.kpi .value{font-size:28px;font-weight:800;color:#0A0D14}
+.kpi .label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px}
+.kpi .sub{font-size:10px;color:#94a3b8;margin-top:2px}
+.kpi.highlight{background:linear-gradient(135deg,#fefce8,#fef9c3);border-color:#D4AF37}
+.kpi.highlight .value{color:#92700c}
+.section{margin-bottom:28px}
+.section h2{font-size:16px;font-weight:700;color:#0A0D14;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #e2e8f0}
+table{width:100%;border-collapse:collapse}
+table th{text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;padding:8px 12px;border-bottom:2px solid #e2e8f0}
+table td{padding:10px 12px;font-size:13px;color:#1e293b;border-bottom:1px solid #f1f5f9}
+table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.insight{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin-top:20px}
+.insight p{font-size:12px;color:#166534;line-height:1.5}
+.insight strong{color:#14532d}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8}
+@media print{body{padding:32px 40px}@page{margin:0.5in}}
+</style></head><body>
+<div class="header">
+  <h1>Monthly Performance Report</h1>
+  <div class="subtitle">${s.label}</div>
+  <div class="date">Generated ${generated}</div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi highlight"><div class="value">${s.totalMembers}</div><div class="label">Total Members</div></div>
+  <div class="kpi"><div class="value">${s.uniqueActive}</div><div class="label">Active Members</div><div class="sub">${s.activeRate}% of total</div></div>
+  <div class="kpi"><div class="value">${s.newMembers}</div><div class="label">New Members</div></div>
+  <div class="kpi"><div class="value">${s.checkIns.toLocaleString()}</div><div class="label">Gym Check-ins</div></div>
+</div>
+
+<div class="section">
+  <h2>Training Activity</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Workouts Completed</td><td>${s.totalWorkouts.toLocaleString()}</td></tr>
+      <tr><td>Average per Active Member</td><td>${s.avgWorkoutsPerActive}</td></tr>
+      <tr><td>Total Volume Lifted</td><td>${fmtVol} lbs</td></tr>
+      <tr><td>Total Training Time</td><td>${fmtTime}</td></tr>
+      <tr><td>Personal Records Hit</td><td>${s.prs}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Engagement</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Active Rate</td><td>${s.activeRate}%</td></tr>
+      <tr><td>Challenge Participations</td><td>${s.challengeJoins}</td></tr>
+      <tr><td>Check-ins</td><td>${s.checkIns.toLocaleString()}</td></tr>
+      <tr><td>Personal Records</td><td>${s.prs}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="insight">
+  <p><strong>Highlights:</strong> ${s.uniqueActive} of ${s.totalMembers} members were active this month (${s.activeRate}% active rate). Members completed ${s.totalWorkouts.toLocaleString()} workouts totaling ${fmtVol} lbs of volume and ${fmtTime} of training. ${s.prs} personal records were set and ${s.newMembers} new member${s.newMembers !== 1 ? 's' : ''} joined.</p>
+</div>
+
+<div class="footer">Confidential — For internal use only</div>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=820,height=1000');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
   };
 
   // ─────────────────────────────────────────────────────────
@@ -1162,91 +1224,137 @@ export default function AdminAnalytics() {
       </FadeIn>
 
       {/* ── Monthly Report Modal ─────────────────────────────── */}
-      {showReport && summary && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
-          <div className="w-full max-w-lg my-4 md:my-12" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="bg-[#0F172A] border border-white/8 rounded-t-xl p-4 flex items-center justify-between sticky top-0 z-10 backdrop-blur-2xl bg-[#0F172A]/95">
-              <div className="flex items-center gap-2">
-                <FileText size={18} className="text-[#D4AF37]" />
-                <h2 className="text-[16px] font-bold text-[#E5E7EB]">Monthly Report — {summary.label}</h2>
-              </div>
-              <button onClick={() => setShowReport(false)} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                <X size={16} className="text-[#9CA3AF]" />
-              </button>
-            </div>
+      {showReport && summary && (() => {
+        const s = summary;
+        const fmtVol = s.totalVolume >= 1_000_000 ? `${(s.totalVolume / 1_000_000).toFixed(1)}M` : s.totalVolume >= 1_000 ? `${(s.totalVolume / 1_000).toFixed(1)}K` : s.totalVolume.toLocaleString();
+        const fmtTime = s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)} hours` : `${s.totalDuration} min`;
+        return (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
+          <div className="w-full max-w-2xl my-4 md:my-10" onClick={e => e.stopPropagation()}>
 
-            {/* Body */}
-            <div className="bg-[#0F172A] border-x border-white/8 p-5 space-y-5">
-              {/* Overview stats */}
-              <div>
-                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Overview</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: 'Total Members', value: summary.totalMembers },
-                    { label: 'Active Members', value: summary.uniqueActive, sub: `${summary.activeRate}% active rate` },
-                    { label: 'New Members', value: summary.newMembers },
-                    { label: 'Check-ins', value: summary.checkIns.toLocaleString() },
-                  ].map((s, i) => (
-                    <div key={i} className="bg-[#111827] rounded-xl p-3">
-                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
-                      <p className="text-[22px] font-bold text-[#E5E7EB] leading-none">{s.value}</p>
-                      {s.sub && <p className="text-[10px] text-[#4B5563] mt-1">{s.sub}</p>}
-                    </div>
-                  ))}
+            {/* ─ Report document (white paper style) ─ */}
+            <div className="bg-[#fafbfc] rounded-xl overflow-hidden shadow-2xl">
+
+              {/* Report header — gold accent bar */}
+              <div className="bg-gradient-to-r from-[#D4AF37] to-[#B8941F] px-6 py-5 flex items-start justify-between">
+                <div>
+                  <h2 className="text-[20px] font-extrabold text-[#0A0D14] tracking-tight">Monthly Performance Report</h2>
+                  <p className="text-[13px] text-[#0A0D14]/70 mt-0.5">{s.label}</p>
+                </div>
+                <button onClick={() => setShowReport(false)} className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 transition-colors mt-0.5">
+                  <X size={16} className="text-[#0A0D14]" />
+                </button>
+              </div>
+
+              {/* KPI row */}
+              <div className="grid grid-cols-4 gap-0 border-b border-[#e2e8f0]">
+                {[
+                  { label: 'Total Members', value: s.totalMembers, accent: false },
+                  { label: 'Active Members', value: s.uniqueActive, sub: `${s.activeRate}% active`, accent: true },
+                  { label: 'New Members', value: s.newMembers, accent: false },
+                  { label: 'Gym Check-ins', value: s.checkIns.toLocaleString(), accent: false },
+                ].map((k, i) => (
+                  <div key={i} className={`px-5 py-4 text-center ${i < 3 ? 'border-r border-[#e2e8f0]' : ''} ${k.accent ? 'bg-[#fefce8]' : ''}`}>
+                    <p className="text-[26px] font-extrabold text-[#0f172a] leading-none tabular-nums">{k.value}</p>
+                    <p className="text-[10px] text-[#64748b] uppercase tracking-wider font-semibold mt-1.5">{k.label}</p>
+                    {k.sub && <p className="text-[10px] text-[#92700c] font-medium mt-0.5">{k.sub}</p>}
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-6 py-5 space-y-5">
+
+                {/* Training Activity table */}
+                <div>
+                  <h3 className="text-[13px] font-bold text-[#0f172a] uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Dumbbell size={14} className="text-[#D4AF37]" />
+                    Training Activity
+                  </h3>
+                  <div className="border border-[#e2e8f0] rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-[#f1f5f9]">
+                          <th className="text-left text-[10px] text-[#64748b] uppercase tracking-wider font-semibold px-4 py-2.5">Metric</th>
+                          <th className="text-right text-[10px] text-[#64748b] uppercase tracking-wider font-semibold px-4 py-2.5">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Workouts Completed', s.totalWorkouts.toLocaleString()],
+                          ['Avg per Active Member', s.avgWorkoutsPerActive],
+                          ['Total Volume Lifted', `${fmtVol} lbs`],
+                          ['Total Training Time', fmtTime],
+                          ['Personal Records Hit', s.prs],
+                        ].map(([label, val], i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
+                            <td className="px-4 py-2.5 text-[12px] text-[#334155]">{label}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[#0f172a] font-semibold text-right tabular-nums">{val}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Engagement table */}
+                <div>
+                  <h3 className="text-[13px] font-bold text-[#0f172a] uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <TrendingUp size={14} className="text-[#D4AF37]" />
+                    Engagement
+                  </h3>
+                  <div className="border border-[#e2e8f0] rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-[#f1f5f9]">
+                          <th className="text-left text-[10px] text-[#64748b] uppercase tracking-wider font-semibold px-4 py-2.5">Metric</th>
+                          <th className="text-right text-[10px] text-[#64748b] uppercase tracking-wider font-semibold px-4 py-2.5">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Active Rate', `${s.activeRate}%`],
+                          ['Challenge Participations', s.challengeJoins],
+                          ['Gym Check-ins', s.checkIns.toLocaleString()],
+                          ['Personal Records', s.prs],
+                        ].map(([label, val], i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
+                            <td className="px-4 py-2.5 text-[12px] text-[#334155]">{label}</td>
+                            <td className="px-4 py-2.5 text-[12px] text-[#0f172a] font-semibold text-right tabular-nums">{val}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Highlights callout */}
+                <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-lg px-4 py-3.5">
+                  <p className="text-[11px] font-semibold text-[#14532d] mb-1">Key Highlights</p>
+                  <p className="text-[11px] text-[#166534] leading-relaxed">
+                    {s.uniqueActive} of {s.totalMembers} members were active this month ({s.activeRate}% active rate).
+                    Members completed {s.totalWorkouts.toLocaleString()} workouts totaling {fmtVol} lbs of volume
+                    and {fmtTime} of training. {s.prs} personal record{s.prs !== 1 ? 's were' : ' was'} set
+                    and {s.newMembers} new member{s.newMembers !== 1 ? 's' : ''} joined.
+                  </p>
                 </div>
               </div>
 
-              {/* Training stats */}
-              <div>
-                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Training</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: 'Workouts Completed', value: summary.totalWorkouts.toLocaleString() },
-                    { label: 'Avg / Active Member', value: summary.avgWorkoutsPerActive },
-                    { label: 'Total Volume', value: summary.totalVolume >= 1000000 ? `${(summary.totalVolume / 1000000).toFixed(1)}M lbs` : summary.totalVolume >= 1000 ? `${(summary.totalVolume / 1000).toFixed(1)}K lbs` : `${summary.totalVolume.toLocaleString()} lbs` },
-                    { label: 'Training Time', value: summary.totalDuration >= 60 ? `${(summary.totalDuration / 60).toFixed(0)} hours` : `${summary.totalDuration} min` },
-                  ].map((s, i) => (
-                    <div key={i} className="bg-[#111827] rounded-xl p-3">
-                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
-                      <p className="text-[18px] font-bold text-[#E5E7EB] leading-none">{s.value}</p>
-                    </div>
-                  ))}
-                </div>
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
+                <p className="text-[10px] text-[#94a3b8]">Generated {format(new Date(), 'MMMM d, yyyy')} — Confidential</p>
+                <button
+                  onClick={handleDownloadReport}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold bg-[#0f172a] text-white hover:bg-[#1e293b] transition-colors"
+                >
+                  <Download size={14} />
+                  Download PDF
+                </button>
               </div>
-
-              {/* Engagement stats */}
-              <div>
-                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Engagement</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'PRs Hit', value: summary.prs, color: '#EF4444' },
-                    { label: 'Challenge Joins', value: summary.challengeJoins, color: '#D4AF37' },
-                    { label: 'Check-ins', value: summary.checkIns.toLocaleString(), color: '#8B5CF6' },
-                  ].map((s, i) => (
-                    <div key={i} className="bg-[#111827] rounded-xl p-3 text-center">
-                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
-                      <p className="text-[20px] font-bold leading-none" style={{ color: s.color }}>{s.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-[#0F172A] border border-white/8 rounded-b-xl p-4 flex items-center justify-between">
-              <p className="text-[11px] text-[#4B5563]">Generated {format(new Date(), 'MMM d, yyyy')}</p>
-              <button
-                onClick={handleDownloadReport}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors"
-              >
-                <Download size={14} />
-                Download CSV
-              </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, AlertTriangle, Dumbbell, ChevronRight, Activity,
   Bell, ToggleLeft, ToggleRight, Save, CheckCircle, Clock,
-  Zap, UserPlus, Trophy, Plus, X, ChevronDown,
+  Zap, UserPlus, Trophy, Plus, X, ChevronDown, CalendarCheck,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
@@ -250,8 +250,16 @@ export default function AdminOverview() {
           .from('check_ins')
           .select('profile_id')
           .eq('gym_id', gymId)
-          .gte('created_at', subDays(now, 30).toISOString()),
+          .gte('checked_in_at', subDays(now, 30).toISOString()),
       ]);
+
+      // Today's check-ins (separate query — lightweight)
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const { data: todayCheckins } = await supabase
+        .from('check_ins')
+        .select('id')
+        .eq('gym_id', gymId)
+        .gte('checked_in_at', todayStart);
 
       const members  = membersRes.data || [];
       const sessions = sessionsRes.data || [];
@@ -334,6 +342,7 @@ export default function AdminOverview() {
         retentionDetail: `${retentionBest.retained}/${retentionBest.starting}`,
         atRiskCount,
         workoutsMonth: sessions.length,
+        checkInsToday: (todayCheckins || []).length,
       });
 
       // ── Action items (Today's Priorities) ─────────────────
@@ -489,12 +498,13 @@ export default function AdminOverview() {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         <StatCard label="Total Members"    value={stats.totalMembers}             sub="registered"                                              borderColor="#6366F1" delay={100} />
         <StatCard label="Active (30d)"     value={`${stats.activePct ?? 0}%`}     sub={`${stats.activeMembers ?? 0} checked in`}                borderColor="#3B82F6" delay={130} />
         <StatCard label={`Retention (${stats.retentionDays ?? 30}d)`} value={`${stats.retentionPct ?? 0}%`} sub={stats.retentionDetail ?? ''}  borderColor="#10B981" delay={160} />
         <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high"                                         borderColor="#EF4444" delay={190} />
-        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"                                      borderColor="#D4AF37" delay={220} />
+        <StatCard label="Check-ins Today"  value={stats.checkInsToday ?? 0}       sub="gym visits"                                              borderColor="#8B5CF6" delay={220} />
+        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"                                      borderColor="#D4AF37" delay={250} />
       </div>
 
       {/* Chart + Churn Risk Summary */}
