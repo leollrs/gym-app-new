@@ -8,8 +8,9 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
  *   activeIndex  – current tab index (controlled)
  *   onChangeIndex – called with new index on swipe complete
  *   children     – one element per tab panel
+ *   tabKeys      – optional array of tab keys for aria-labelledby linkage
  */
-export default function SwipeableTabView({ activeIndex, onChangeIndex, children }) {
+export default function SwipeableTabView({ activeIndex, onChangeIndex, children, tabKeys }) {
   const containerRef = useRef(null);
   const touchRef = useRef({ startX: 0, startY: 0, currentX: 0, dragging: false, locked: null });
   const [offset, setOffset] = useState(0);
@@ -114,6 +115,10 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children 
         {React.Children.map(children, (child, i) => (
           <div
             key={i}
+            role="tabpanel"
+            id={tabKeys?.[i] ? `tabpanel-${tabKeys[i]}` : undefined}
+            aria-labelledby={tabKeys?.[i] ? `tab-${tabKeys[i]}` : undefined}
+            aria-hidden={i !== activeIndex}
             className="w-full shrink-0"
             style={{ minHeight: i === activeIndex ? 'auto' : 0 }}
           >

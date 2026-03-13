@@ -196,6 +196,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search exercises…"
+          aria-label="Search exercises"
           className="w-full rounded-xl pl-10 pr-10 py-3 text-[14px] focus:outline-none transition-colors bg-[#111827] border border-white/6 text-[#E5E7EB] placeholder-[#4B5563]"
         />
         {query && (

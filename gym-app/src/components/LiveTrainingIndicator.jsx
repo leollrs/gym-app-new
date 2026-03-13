@@ -145,6 +145,8 @@ const LiveTrainingIndicator = () => {
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4"
+      aria-live="polite"
+      aria-label="Friends currently training"
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">

@@ -8,6 +8,7 @@ import ExerciseLibrary from './ExerciseLibrary';
 import { getExerciseById } from '../data/exercises';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
@@ -148,6 +149,7 @@ const WorkoutBuilder = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const { showToast } = useToast();
   const [showLibrary, setShowLibrary] = useState(false);
   const [pickerTab, setPickerTab]     = useState('library');
 
@@ -329,9 +331,11 @@ const WorkoutBuilder = () => {
       } else {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+        showToast('Routine saved', 'success');
       }
     } catch (err) {
       setError(err.message || 'Save failed');
+      showToast(err.message || 'Save failed', 'error');
     } finally {
       setSaving(false);
     }

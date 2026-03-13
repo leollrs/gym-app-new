@@ -47,6 +47,8 @@ export default function AchievementToast({ achievements, onDone }) {
 
   return (
     <div
+      role="alert"
+      aria-live="assertive"
       className="fixed inset-0 z-[200] flex items-center justify-center"
       onClick={advance}
       style={{

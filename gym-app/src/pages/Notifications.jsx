@@ -4,6 +4,9 @@ import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLe
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
+import { sanitize } from '../lib/sanitize';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
 
 const TYPE_META = {
   announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
@@ -145,8 +148,8 @@ export default function Notifications() {
                   className="bg-[#0F172A] rounded-[14px] border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px]"
                   style={{ borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}
                 >
-                  <p className="text-[15px] font-semibold text-[#E5E7EB] leading-snug">{ann.title}</p>
-                  <p className="text-[13px] text-[#6B7280] mt-1.5 leading-relaxed">{ann.message}</p>
+                  <p className="text-[15px] font-semibold text-[#E5E7EB] leading-snug">{sanitize(ann.title)}</p>
+                  <p className="text-[13px] text-[#6B7280] mt-1.5 leading-relaxed">{sanitize(ann.message)}</p>
                 </div>
               ))}
             </div>
@@ -159,15 +162,13 @@ export default function Notifications() {
             Your notifications
           </h2>
         {loading ? (
-          <div className="flex justify-center py-24">
-            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          </div>
+          <Skeleton variant="list-item" count={4} />
         ) : items.length === 0 ? (
-          <div className="text-center py-24">
-            <Bell size={32} className="text-[#4B5563] mx-auto mb-3" />
-            <p className="text-[14px] text-[#6B7280]">No notifications yet</p>
-            <p className="text-[12px] text-[#4B5563] mt-1">You'll see workout milestones, PRs, and gym announcements here</p>
-          </div>
+          <EmptyState
+            icon={Bell}
+            title="No notifications yet"
+            description="You'll see workout milestones, PRs, and gym announcements here"
+          />
         ) : (
           <div className="space-y-1.5">
             {items.map(n => {
@@ -189,14 +190,14 @@ export default function Notifications() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <p className={`text-[13px] font-semibold leading-snug ${n.read_at ? 'text-[#9CA3AF]' : 'text-[#E5E7EB]'}`}>
-                        {n.title}
+                        {sanitize(n.title)}
                       </p>
                       {!n.read_at && (
                         <span className="w-2 h-2 rounded-full bg-[#D4AF37] flex-shrink-0 mt-1" />
                       )}
                     </div>
                     {n.body && (
-                      <p className="text-[12px] text-[#6B7280] mt-0.5 leading-relaxed">{n.body}</p>
+                      <p className="text-[12px] text-[#6B7280] mt-0.5 leading-relaxed">{sanitize(n.body)}</p>
                     )}
                     <p className="text-[11px] text-[#4B5563] mt-1">
                       {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}

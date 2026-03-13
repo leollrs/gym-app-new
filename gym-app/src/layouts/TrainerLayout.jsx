@@ -32,6 +32,9 @@ export default function TrainerLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-[#05070B] flex">
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
 
       {/* ── Desktop sidebar ─────────────────────────── */}
       <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-white/6 min-h-screen sticky top-0 h-screen">
@@ -50,7 +53,7 @@ export default function TrainerLayout({ children }) {
             </p>
           </div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
+        <nav aria-label="Trainer sidebar navigation" className="flex-1 px-3 py-4 space-y-0.5">
           {NAV.map(({ to, label, icon: Icon, exact }) => (
             <NavLink key={to} to={to} end={exact} className={({ isActive }) => linkClass(isActive)}>
               <Icon size={17} /> {label}
@@ -77,13 +80,13 @@ export default function TrainerLayout({ children }) {
       </aside>
 
       {/* ── Main ────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <header
           className="md:hidden flex items-center justify-between px-4 border-b border-white/6 bg-[#05070B]/95 backdrop-blur-xl flex-shrink-0"
           style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: '12px', height: 'calc(52px + env(safe-area-inset-top))' }}
         >
           <p className="text-[15px] font-bold text-[#E5E7EB]">Trainer</p>
-          <button onClick={handleSignOut} className="text-[#6B7280] hover:text-[#EF4444] transition-colors">
+          <button onClick={handleSignOut} aria-label="Sign out" className="text-[#6B7280] hover:text-[#EF4444] transition-colors">
             <LogOut size={18} />
           </button>
         </header>
@@ -93,7 +96,7 @@ export default function TrainerLayout({ children }) {
       </main>
 
       {/* ── Mobile bottom nav ───────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
+      <nav aria-label="Trainer mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
           <NavLink key={to} to={to} end={exact}

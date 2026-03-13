@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import Navigation from './components/Navigation';
 import Dashboard from './pages/Dashboard';
@@ -137,6 +138,7 @@ function App() {
         element={
           <AdminRoute>
             <AdminLayout>
+              <ErrorBoundary>
               <Routes>
                 <Route path="/"             element={<AdminOverview />} />
                 <Route path="/members"      element={<AdminMembers />} />
@@ -151,6 +153,7 @@ function App() {
                 <Route path="/moderation"   element={<AdminModeration />} />
                 <Route path="/settings"     element={<AdminSettings />} />
               </Routes>
+              </ErrorBoundary>
             </AdminLayout>
           </AdminRoute>
         }
@@ -162,6 +165,7 @@ function App() {
         element={
           <TrainerRoute>
             <TrainerLayout>
+              <ErrorBoundary>
               <Routes>
                 <Route path="/"                element={<TrainerDashboard />} />
                 <Route path="/clients"         element={<TrainerClients />} />
@@ -171,6 +175,7 @@ function App() {
                 <Route path="/analytics"       element={<TrainerAnalytics />} />
                 <Route path="/programs"        element={<TrainerPrograms />} />
               </Routes>
+              </ErrorBoundary>
             </TrainerLayout>
           </TrainerRoute>
         }
@@ -182,7 +187,12 @@ function App() {
         element={
           <ProtectedRoute>
             <div className="app-wrapper">
+              <a href="#main-content" className="skip-to-content">
+                Skip to main content
+              </a>
               <Navigation />
+              <div id="main-content" role="main">
+              <ErrorBoundary>
               <Routes>
                 {/* Home */}
                 <Route path="/"                  element={<Dashboard />} />
@@ -221,6 +231,8 @@ function App() {
 
                 <Route path="*"                  element={<Navigate to="/" replace />} />
               </Routes>
+              </ErrorBoundary>
+              </div>
             </div>
           </ProtectedRoute>
         }

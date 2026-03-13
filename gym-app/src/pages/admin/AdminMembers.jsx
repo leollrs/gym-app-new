@@ -71,6 +71,9 @@ const InviteModal = ({ gymId, onClose }) => {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="invite-member-title"
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
@@ -78,7 +81,7 @@ const InviteModal = ({ gymId, onClose }) => {
         <div className="flex items-center justify-between p-5 border-b border-white/6">
           <div className="flex items-center gap-2">
             <Link size={16} className="text-[#D4AF37]" />
-            <p className="text-[15px] font-bold text-[#E5E7EB]">Invite Member</p>
+            <p id="invite-member-title" className="text-[15px] font-bold text-[#E5E7EB]">Invite Member</p>
           </div>
           <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
             <X size={20} />
@@ -307,7 +310,7 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -318,7 +321,7 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-[15px] font-bold text-[#E5E7EB]">{member.full_name}</p>
+                <p id="member-detail-title" className="text-[15px] font-bold text-[#E5E7EB]">{member.full_name}</p>
                 <StatusBadge status={memberStatus} />
               </div>
               <p className="text-[11px] text-[#6B7280]">@{member.username} · joined {format(new Date(member.created_at), 'MMM yyyy')}</p>
@@ -834,6 +837,7 @@ export default function AdminMembers() {
           <input
             type="text"
             placeholder="Search members…"
+            aria-label="Search members"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"

@@ -8,25 +8,12 @@ import { useAuth } from '../contexts/AuthContext';
 import ReactionPicker from '../components/ReactionPicker';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
+import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
+import { sanitize } from '../lib/sanitize';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const timeAgo = (iso) => {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-};
-
-const fmtDuration = (s) => {
-  if (!s) return '';
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
-};
 
 const fmtVolume = (lbs) => {
   if (!lbs) return '0 lbs';
@@ -39,7 +26,7 @@ const FeedContent = ({ type, data }) => {
     return (
       <div className="rounded-[14px] p-4 border-l-4 border-[#D4AF37] bg-amber-900/20">
         <p className="font-bold text-[16px] leading-tight mb-3 text-[#E5E7EB]">
-          {data.routine_name ?? 'Workout'}
+          {sanitize(data.routine_name ?? 'Workout')}
         </p>
         <div className="flex flex-wrap gap-4">
           {data.duration_seconds > 0 && (
@@ -72,7 +59,7 @@ const FeedContent = ({ type, data }) => {
           <Trophy size={14} className="text-[#D4AF37] flex-shrink-0" />
           <p className="font-bold text-[13px] text-[#D4AF37]">New Personal Record</p>
         </div>
-        <p className="font-black text-[20px] text-[#E5E7EB]">{data.exercise_name}</p>
+        <p className="font-black text-[20px] text-[#E5E7EB]">{sanitize(data.exercise_name)}</p>
         <p className="text-[15px] font-semibold mt-1 text-[#D4AF37]">
           {data.weight_lbs} lbs × {data.reps}{' '}
           {data.estimated_1rm > 0 && (
@@ -87,9 +74,9 @@ const FeedContent = ({ type, data }) => {
     return (
       <div className="rounded-[14px] p-4 border-l-4 border-purple-500 bg-purple-900/20">
         <p className="font-bold text-[13px] text-purple-300 mb-1">Achievement Unlocked 🎖️</p>
-        <p className="font-bold text-[16px] text-[#E5E7EB]">{data.achievement_name ?? 'New Achievement'}</p>
+        <p className="font-bold text-[16px] text-[#E5E7EB]">{sanitize(data.achievement_name ?? 'New Achievement')}</p>
         {data.achievement_desc && (
-          <p className="text-[13px] mt-0.5 text-[#9CA3AF]">{data.achievement_desc}</p>
+          <p className="text-[13px] mt-0.5 text-[#9CA3AF]">{sanitize(data.achievement_desc)}</p>
         )}
       </div>
     );
@@ -99,7 +86,7 @@ const FeedContent = ({ type, data }) => {
     return (
       <div className="rounded-[14px] p-4 border-l-4 border-emerald-500 bg-emerald-900/20">
         <p className="font-semibold text-[15px] text-[#E5E7EB]">
-          ✅ Checked in at the gym{data.gym_name ? ` — ${data.gym_name}` : ''}
+          ✅ Checked in at the gym{data.gym_name ? ` — ${sanitize(data.gym_name)}` : ''}
         </p>
       </div>
     );
@@ -109,7 +96,7 @@ const FeedContent = ({ type, data }) => {
     return (
       <div className="rounded-[14px] p-4 border-l-4 border-blue-500 bg-blue-900/20">
         <p className="font-semibold text-[15px] text-[#E5E7EB]">
-          🚀 Started <span className="font-bold">{data.program_name ?? 'a new program'}</span>
+          🚀 Started <span className="font-bold">{sanitize(data.program_name ?? 'a new program')}</span>
         </p>
       </div>
     );
@@ -184,7 +171,7 @@ const CommentRow = ({ comment }) => (
       <span className="font-semibold text-[13px] text-[#E5E7EB]">
         {comment.profiles?.full_name ?? 'Member'}{' '}
       </span>
-      <span className="text-[13px] text-[#9CA3AF]">{comment.content}</span>
+      <span className="text-[13px] text-[#9CA3AF]">{sanitize(comment.content)}</span>
     </div>
   </div>
 );
@@ -481,6 +468,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose }) 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search members at your gym…"
+              aria-label="Search members"
               className="w-full rounded-xl border border-white/6 bg-[#111827] pl-11 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37]/40"
             />
           </div>
@@ -953,33 +941,22 @@ const SocialFeed = ({ embedded = false }) => {
 
         {/* Loading skeletons */}
         {loading && (
-          <div className="flex flex-col gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-[14px] h-40 bg-[#0F172A] border border-white/8 animate-pulse" />
-            ))}
-          </div>
+          <Skeleton variant="feed" count={3} />
         )}
 
         {/* Swipeable feed panels */}
         {!loading && (
-          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe}>
+          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['friends', 'mine']}>
             {/* Friends tab */}
             <div>
               {friendsFeed.length === 0 ? (
-                <div className="text-center py-20 px-4">
-                  <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-                    <Users size={32} className="text-[#6B7280]" />
-                  </div>
-                  <p className="text-[16px] font-semibold text-[#E5E7EB]">No friend activity yet</p>
-                  <p className="text-[14px] text-[#9CA3AF] mt-2">Add friends to see their workouts and PRs here.</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowFriends(true)}
-                    className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black"
-                  >
-                    <UserPlus size={16} /> Find Friends
-                  </button>
-                </div>
+                <EmptyState
+                  icon={Users}
+                  title="No friend activity yet"
+                  description="Add friends to see their workouts and PRs here."
+                  actionLabel="Find Friends"
+                  onAction={() => setShowFriends(true)}
+                />
               ) : (
                 <div className="flex flex-col gap-5">
                   {friendsFeed.map((item) => (
@@ -999,13 +976,11 @@ const SocialFeed = ({ embedded = false }) => {
             {/* My Posts tab */}
             <div>
               {myFeed.length === 0 ? (
-                <div className="text-center py-20 px-4">
-                  <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-                    <Dumbbell size={32} className="text-[#6B7280]" />
-                  </div>
-                  <p className="text-[16px] font-semibold text-[#E5E7EB]">No posts yet</p>
-                  <p className="text-[14px] text-[#9CA3AF] mt-2">Finish a workout to post your first activity.</p>
-                </div>
+                <EmptyState
+                  icon={Dumbbell}
+                  title="No posts yet"
+                  description="Finish a workout to post your first activity."
+                />
               ) : (
                 <div className="flex flex-col gap-5">
                   {myFeed.map((item) => (

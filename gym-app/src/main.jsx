@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
+import { ToastProvider } from './contexts/ToastContext.jsx';
+import Toast from './components/Toast.jsx';
 import './index.css';
 
 // iOS: reset viewport zoom after leaving an input field
@@ -27,9 +29,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ThemeProvider>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+          <Toast />
+        </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>

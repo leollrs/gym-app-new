@@ -11,17 +11,9 @@ import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
-
-// ── Helpers ─────────────────────────────────────────────────
-const timeAgo = (iso) => {
-  if (!iso) return 'Never';
-  const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
-  if (d === 0) return 'Today';
-  if (d === 1) return 'Yesterday';
-  if (d < 7)  return `${d}d ago`;
-  if (d < 30) return `${Math.floor(d / 7)}w ago`;
-  return `${Math.floor(d / 30)}mo ago`;
-};
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
+import { timeAgo } from '../lib/dateUtils';
 
 // ── Program detail modal ────────────────────────────────────
 const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
@@ -61,10 +53,10 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="program-modal-title" className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div className="flex-1 min-w-0 pr-4">
-            <p className="text-[17px] font-bold text-[#E5E7EB]">{program.name}</p>
+            <p id="program-modal-title" className="text-[17px] font-bold text-[#E5E7EB]">{program.name}</p>
             <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-1.5">
               <Calendar size={11} /> {program.duration_weeks} week program
             </p>
@@ -370,17 +362,19 @@ const Workouts = () => {
       </div>
 
       {/* ── Tab content (swipeable) ─────────────────────────── */}
-      <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleTabSwipe}>
+      <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleTabSwipe} tabKeys={['routines', 'programs']}>
         {/* ── My Routines tab ────────────────────────────────── */}
         <div>
           {loading ? (
-            <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[68px] animate-pulse" />)}</div>
+            <Skeleton variant="list-item" count={3} />
           ) : routines.length === 0 ? (
-            <div className="text-center py-14">
-              <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
-              <p className="text-[14px] text-[#9CA3AF]">No routines yet</p>
-              <p className="text-[12px] text-[#6B7280] mt-1">Tap "New" to create your first routine</p>
-            </div>
+            <EmptyState
+              icon={Dumbbell}
+              title="No routines yet"
+              description='Tap "New" to create your first routine'
+              actionLabel="Create Routine"
+              onAction={() => setShowCreateModal(true)}
+            />
           ) : (
             <div className="space-y-2">
               {routines.map(routine => (
@@ -550,13 +544,14 @@ const Workouts = () => {
               <p className="text-[14px] font-bold text-[#E5E7EB]">Gym Programs</p>
             </div>
             {programsLoading ? (
-              <div className="space-y-2">{[1, 2].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[80px] animate-pulse" />)}</div>
+              <Skeleton variant="list-item" count={2} />
             ) : gymPrograms.length === 0 ? (
-              <div className="text-center py-10">
-                <BookOpen size={32} className="mx-auto mb-3 text-[#6B7280] opacity-20" />
-                <p className="text-[14px] text-[#9CA3AF]">No gym programs</p>
-                <p className="text-[12px] text-[#6B7280] mt-1">Your gym hasn't published any programs yet</p>
-              </div>
+              <EmptyState
+                icon={BookOpen}
+                title="No gym programs"
+                description="Your gym hasn't published any programs yet"
+                compact
+              />
             ) : (
               <div className="space-y-2">
                 {gymPrograms.map(prog => {

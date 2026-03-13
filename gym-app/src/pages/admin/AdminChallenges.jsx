@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Trophy, X, ChevronDown, Users, Clock, Gift } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { format, isPast, isFuture } from 'date-fns';
 
 // ── Participant list panel ─────────────────────────────────
@@ -65,6 +66,7 @@ const statusBadge = (c) => {
 
 // ── Create modal ──────────────────────────────────────────
 const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
+  const { showToast } = useToast();
   const [form, setForm] = useState({
     name: '', type: 'consistency', starts_at: '', ends_at: '', description: '',
     enableRewards: false,
@@ -82,6 +84,7 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
   const handleSave = async () => {
     if (!form.name || !form.starts_at || !form.ends_at) {
       setError('Name, start date, and end date are required.');
+      showToast('Name, start date, and end date are required', 'error');
       return;
     }
     setSaving(true);
@@ -101,18 +104,19 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
       end_date:   new Date(form.ends_at).toISOString(),
       status:     'active',
     });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    showToast('Challenge created', 'success');
     onCreated();
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="new-challenge-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">New Challenge</p>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <p id="new-challenge-title" className="text-[16px] font-bold text-[#E5E7EB]">New Challenge</p>
+          <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>

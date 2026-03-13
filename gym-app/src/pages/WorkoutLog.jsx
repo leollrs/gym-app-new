@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronRight, Trophy, Dumbbell, Clock, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const formatDuration = (seconds) => {
@@ -201,30 +203,18 @@ const WorkoutLog = () => {
 
       {/* Loading */}
       {loading && (
-        <div className="flex flex-col gap-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 rounded-[14px] animate-pulse bg-[#111827]" />
-          ))}
-        </div>
+        <Skeleton variant="list-item" count={3} />
       )}
 
       {/* Empty state */}
       {!loading && sessions.length === 0 && (
-        <div className="text-center py-20">
-          <Dumbbell size={40} className="mx-auto mb-4 text-[#9CA3AF] opacity-40" />
-          <p className="font-semibold text-[16px] text-[#E5E7EB]">
-            No workouts yet
-          </p>
-          <p className="text-[13px] mt-1.5 text-[#9CA3AF]">
-            Complete your first session to see it here
-          </p>
-          <button
-            onClick={() => navigate('/workouts')}
-            className="mt-6 font-bold text-[14px] px-6 py-2.5 rounded-xl transition-colors bg-[#D4AF37] text-black"
-          >
-            Go to Workouts
-          </button>
-        </div>
+        <EmptyState
+          icon={Dumbbell}
+          title="No workouts yet"
+          description="Complete your first session to see it here"
+          actionLabel="Go to Workouts"
+          onAction={() => navigate('/workouts')}
+        />
       )}
 
       {/* Sessions grouped by month */}

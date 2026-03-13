@@ -355,6 +355,7 @@ export default function AdminTrainers() {
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
                                 placeholder="Search members..."
+                                aria-label="Search members"
                                 className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#4B5563] outline-none"
                                 autoFocus
                               />
@@ -447,11 +448,11 @@ export default function AdminTrainers() {
       {showAddTrainer && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowAddTrainer(false)}>
           <div className="w-full max-w-md my-8 md:my-16" onClick={e => e.stopPropagation()}>
-            <div className="bg-[#0F172A] border border-white/8 rounded-xl overflow-hidden">
+            <div role="dialog" aria-modal="true" aria-labelledby="add-trainer-title" className="bg-[#0F172A] border border-white/8 rounded-xl overflow-hidden">
               {/* Header */}
               <div className="px-5 py-4 border-b border-white/6 flex items-center justify-between">
                 <div>
-                  <h2 className="text-[16px] font-bold text-[#E5E7EB]">Add Trainer</h2>
+                  <h2 id="add-trainer-title" className="text-[16px] font-bold text-[#E5E7EB]">Add Trainer</h2>
                   <p className="text-[11px] text-[#6B7280] mt-0.5">Promote an existing member to the trainer role</p>
                 </div>
                 <button onClick={() => setShowAddTrainer(false)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
@@ -468,6 +469,7 @@ export default function AdminTrainers() {
                     value={addSearch}
                     onChange={e => setAddSearch(e.target.value)}
                     placeholder="Search members by name or email..."
+                    aria-label="Search members by name or email"
                     className="flex-1 bg-transparent text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none"
                     autoFocus
                   />
@@ -538,12 +540,12 @@ export default function AdminTrainers() {
         return (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDemote(null)}>
             <div className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
-              <div className="bg-[#0F172A] border border-white/8 rounded-xl overflow-hidden">
+              <div role="dialog" aria-modal="true" aria-labelledby="remove-trainer-title" className="bg-[#0F172A] border border-white/8 rounded-xl overflow-hidden">
                 <div className="px-5 py-5 text-center">
                   <div className="w-10 h-10 rounded-full bg-[#EF4444]/10 flex items-center justify-center mx-auto mb-3">
                     <AlertTriangle size={18} className="text-[#EF4444]" />
                   </div>
-                  <h3 className="text-[15px] font-bold text-[#E5E7EB]">Remove Trainer</h3>
+                  <h3 id="remove-trainer-title" className="text-[15px] font-bold text-[#E5E7EB]">Remove Trainer</h3>
                   <p className="text-[12px] text-[#9CA3AF] mt-2">
                     This will demote <span className="font-semibold text-[#E5E7EB]">{trainer.name}</span> back to a regular member.
                   </p>

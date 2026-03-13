@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { Plus, Megaphone, X, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { broadcastNotification } from '../../lib/notifications';
 import { format, isFuture } from 'date-fns';
+import { sanitize } from '../../lib/sanitize';
 
 // Must match the announcement_type enum in the DB schema
 const TYPE_OPTS = [
@@ -14,13 +16,14 @@ const TYPE_OPTS = [
 ];
 
 const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
+  const { showToast } = useToast();
   const [form, setForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
-    if (!form.title || !form.message) { setError('Title and message are required.'); return; }
+    if (!form.title || !form.message) { setError('Title and message are required.'); showToast('Title and message are required', 'error'); return; }
     setSaving(true);
     setError('');
     const { error: err } = await supabase.from('announcements').insert({
@@ -33,7 +36,8 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
         ? new Date(form.scheduled_for).toISOString()
         : new Date().toISOString(),
     });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    showToast('Announcement published', 'success');
     // Notify all members
     broadcastNotification({
       gymId,
@@ -47,11 +51,11 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="new-announcement-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">New Announcement</p>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <p id="new-announcement-title" className="text-[16px] font-bold text-[#E5E7EB]">New Announcement</p>
+          <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
@@ -156,7 +160,7 @@ export default function AdminAnnouncements() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB]">{a.title}</p>
+                      <p className="text-[14px] font-semibold text-[#E5E7EB]">{sanitize(a.title)}</p>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
                         {a.type}
                       </span>
@@ -166,7 +170,7 @@ export default function AdminAnnouncements() {
                         </span>
                       )}
                     </div>
-                    <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{a.message}</p>
+                    <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{sanitize(a.message)}</p>
                     {a.published_at && (
                       <div className="flex items-center gap-1 mt-2">
                         <Calendar size={11} className="text-[#4B5563]" />

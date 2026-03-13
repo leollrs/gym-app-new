@@ -3,16 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Play, RotateCcw, Dumbbell, ChevronRight, Zap, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-
-const formatTimeAgo = (isoDate) => {
-  if (!isoDate) return '';
-  const diff = Math.floor((Date.now() - new Date(isoDate)) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  if (diff < 7) return `${diff}d ago`;
-  if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
-  return `${Math.floor(diff / 30)}mo ago`;
-};
+import { timeAgo as formatTimeAgo } from '../lib/dateUtils';
 
 const QuickStart = () => {
   const { user, profile } = useAuth();

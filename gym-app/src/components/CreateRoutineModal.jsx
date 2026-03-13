@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Zap, Trash2, Dumbbell, AlertCircle } from 'lucide-react';
 import { MUSCLE_GROUPS, getExerciseById } from '../data/exercises';
 import { generateRoutineFromMuscles } from '../lib/workoutGenerator';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 const WORKOUT_LENGTHS = [
   { key: 'quick', label: 'Quick', desc: '~30 min' },
@@ -16,6 +17,7 @@ const CreateRoutineModal = ({ onClose, onSave }) => {
   const [exercises, setExercises] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const focusTrapRef = useFocusTrap(true, onClose);
 
   const toggleMuscle = (m) => {
     setSelectedMuscles(prev =>
@@ -61,16 +63,21 @@ const CreateRoutineModal = ({ onClose, onSave }) => {
       onClick={onClose}
     >
       <div
+        ref={focusTrapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-routine-title"
         className="bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-black/5 dark:border-white/10 flex-shrink-0">
-          <h2 className="text-[18px] font-bold text-[#0F172A] dark:text-slate-100">
+          <h2 id="create-routine-title" className="text-[18px] font-bold text-[#0F172A] dark:text-slate-100">
             Create routine
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <X size={20} className="text-[#6B7280] dark:text-slate-400" />

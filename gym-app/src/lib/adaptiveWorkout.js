@@ -10,6 +10,7 @@
 
 import { supabase } from './supabase';
 import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { INJURY_EXCLUSIONS } from './exerciseConstants';
 
 // ── Muscle group classification ─────────────────────────────────────────────
 const MUSCLE_SIZE = {
@@ -77,17 +78,6 @@ const META = {
   ex_abwh:  { tier: 'primary'   },
   ex_scr:   { tier: 'secondary' },
   ex_secr:  { tier: 'isolation' },
-};
-
-// ── Injury exclusions — same as workoutGenerator.js ─────────────────────────
-const INJURY_EXCLUSIONS = {
-  lower_back: new Set(['ex_dl', 'ex_rdl', 'ex_bbr']),
-  knees:      new Set(['ex_sq', 'ex_fsq', 'ex_lp_l', 'ex_lunge', 'ex_bdl']),
-  shoulders:  new Set(['ex_ohp', 'ex_lr', 'ex_fr', 'ex_dips']),
-  wrists:     new Set(['ex_bbc', 'ex_fr']),
-  elbows:     new Set(['ex_ske', 'ex_oe', 'ex_cgp', 'ex_tpd']),
-  hips:       new Set(['ex_hth', 'ex_sq', 'ex_fsq']),
-  ankles:     new Set(['ex_scr', 'ex_secr']),
 };
 
 // ── Volume config by goal — same as workoutGenerator.js ─────────────────────

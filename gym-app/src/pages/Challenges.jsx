@@ -6,6 +6,9 @@ import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-
 import { addPoints } from '../lib/rewardsEngine';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
+import Skeleton from '../components/Skeleton';
+import EmptyState from '../components/EmptyState';
+import { sanitize } from '../lib/sanitize';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -154,7 +157,7 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
                   You earned {rewards[myRank].points} pts!
                 </p>
                 {rewards[myRank].prize && (
-                  <p className="text-[11px] text-[#D4AF37]/80">+ {rewards[myRank].prize}</p>
+                  <p className="text-[11px] text-[#D4AF37]/80">+ {sanitize(rewards[myRank].prize)}</p>
                 )}
               </div>
             )}
@@ -200,7 +203,7 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
                 </p>
                 {status === 'ended' && i < 3 && rewards[i] && (
                   <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
-                    {rewards[i].prize ? `${rewards[i].points} pts + ${rewards[i].prize}` : `${MEDAL[i]} ${rewards[i].points} pts`}
+                    {rewards[i].prize ? `${rewards[i].points} pts + ${sanitize(rewards[i].prize)}` : `${MEDAL[i]} ${rewards[i].points} pts`}
                   </span>
                 )}
               </div>
@@ -371,7 +374,7 @@ const DailyChallenge = ({ userId, gymId }) => {
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">{challenge.name}</p>
+          <p className="text-[16px] font-bold text-[#E5E7EB]">{sanitize(challenge.name)}</p>
           <p className="text-[13px] text-[#9CA3AF] mt-0.5">{challenge.desc}</p>
         </div>
       </div>
@@ -438,7 +441,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <p className="text-[16px] font-semibold text-[#E5E7EB] truncate">{challenge.name}</p>
+            <p className="text-[16px] font-semibold text-[#E5E7EB] truncate">{sanitize(challenge.name)}</p>
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusStyle}`}>
               {statusLabel}
             </span>
@@ -496,7 +499,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
       {open && (
         <div className="px-5 pb-5 pt-1 border-t border-white/6 bg-[#111827]/50">
           {challenge.description && (
-            <p className="text-[14px] text-[#9CA3AF] leading-relaxed mt-4">{challenge.description}</p>
+            <p className="text-[14px] text-[#9CA3AF] leading-relaxed mt-4">{sanitize(challenge.description)}</p>
           )}
           <div className="mt-3 text-[12px] text-[#6B7280] font-medium">
             {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
@@ -517,7 +520,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
                       <span className="text-[18px]">{medals[i]}</span>
                       <div className="flex-1">
                         <span className="text-[13px] font-semibold text-[#E5E7EB]">{r.points} pts</span>
-                        {r.prize && <span className="text-[13px] text-[#D4AF37] ml-2">+ {r.prize}</span>}
+                        {r.prize && <span className="text-[13px] text-[#D4AF37] ml-2">+ {sanitize(r.prize)}</span>}
                       </div>
                     </div>
                   );
@@ -626,29 +629,23 @@ export default function Challenges({ embedded = false }) {
           <DailyChallenge userId={user.id} gymId={profile.gym_id} />
         )}
         {loading ? (
-          <div className="flex justify-center py-28">
-            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          </div>
+          <Skeleton variant="card" count={3} height="h-[90px]" />
         ) : (
-          <SwipeableTabView activeIndex={chalTabIndex} onChangeIndex={handleChalSwipe}>
+          <SwipeableTabView activeIndex={chalTabIndex} onChangeIndex={handleChalSwipe} tabKeys={TABS}>
             {TABS.map(tabKey => {
               const items = challenges.filter(c => statusOf(c) === tabKey);
               return (
                 <div key={tabKey}>
                   {items.length === 0 ? (
-                    <div className="text-center py-24 px-6">
-                      <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-                        <Trophy size={32} className="text-[#6B7280]" />
-                      </div>
-                      <p className="text-[16px] font-semibold text-[#E5E7EB]">
-                        {tabKey === 'live'     && 'No active challenges right now'}
-                        {tabKey === 'upcoming' && 'No upcoming challenges'}
-                        {tabKey === 'ended'    && 'No past challenges'}
-                      </p>
-                      {tabKey === 'live' && (
-                        <p className="text-[14px] text-[#9CA3AF] mt-2">Your gym admin will post challenges here</p>
-                      )}
-                    </div>
+                    <EmptyState
+                      icon={Trophy}
+                      title={
+                        tabKey === 'live'     ? 'No active challenges right now' :
+                        tabKey === 'upcoming' ? 'No upcoming challenges' :
+                        'No past challenges'
+                      }
+                      description={tabKey === 'live' ? 'Your gym admin will post challenges here' : undefined}
+                    />
                   ) : (
                     <div className="space-y-4">
                       {items.map(c => (

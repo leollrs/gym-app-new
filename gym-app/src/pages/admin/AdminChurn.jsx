@@ -106,14 +106,14 @@ const SendMessageModal = ({ member, gymId, adminId, onClose, onSent }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="send-message-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/12 flex items-center justify-center">
               <MessageSquare size={15} className="text-[#D4AF37]" />
             </div>
             <div>
-              <p className="text-[15px] font-bold text-[#E5E7EB]">Send Message</p>
+              <p id="send-message-title" className="text-[15px] font-bold text-[#E5E7EB]">Send Message</p>
               <p className="text-[11px] text-[#6B7280]">to {member.full_name}</p>
             </div>
           </div>
@@ -215,14 +215,14 @@ const WinBackModal = ({ member, gymId, adminId, onClose, onSent }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="winback-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#EF4444]/12 flex items-center justify-center">
               <RotateCcw size={15} className="text-[#EF4444]" />
             </div>
             <div>
-              <p className="text-[15px] font-bold text-[#E5E7EB]">Win-Back Campaign</p>
+              <p id="winback-title" className="text-[15px] font-bold text-[#E5E7EB]">Win-Back Campaign</p>
               <p className="text-[11px] text-[#6B7280]">Re-engage {member.full_name}</p>
             </div>
           </div>
@@ -568,6 +568,7 @@ export default function AdminChurn() {
               <input
                 type="text"
                 placeholder="Search members…"
+                aria-label="Search members"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"

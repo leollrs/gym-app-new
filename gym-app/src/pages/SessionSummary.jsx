@@ -7,30 +7,9 @@ import { createNotification } from '../lib/notifications';
 import { awardAchievements } from '../lib/achievements';
 import AchievementToast from '../components/AchievementToast';
 import AnimatedCounter from '../components/AnimatedCounter';
+import { formatDurationLong as formatTime } from '../lib/dateUtils';
 
 const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
-
-const computeStreak = (sessions) => {
-  const dates = new Set(sessions.map(s => new Date(s.completed_at).toDateString()));
-  let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    if (dates.has(d.toDateString())) streak++;
-    else if (i > 0) break;
-  }
-  return streak;
-};
-
-const formatTime = (s) => {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${sec > 0 ? `${sec}s` : ''}`.trim();
-  return `${sec}s`;
-};
 
 const formatVolume = (lbs) => {
   if (lbs >= 1000) return `${(lbs / 1000).toFixed(1)}k`;

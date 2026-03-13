@@ -187,7 +187,7 @@ export function checkNewAchievements(data, earnedKeys) {
 }
 
 // ── Compute streak from an array of session objects with completed_at ─────────
-function computeStreakFromSessions(sessions) {
+export function computeStreakFromSessions(sessions) {
   const dates = new Set(
     sessions.map((s) => new Date(s.completed_at).toDateString())
   );

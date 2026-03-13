@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { addPoints } from '../lib/rewardsEngine';
 import { format, parseISO, subDays } from 'date-fns';
 
@@ -43,7 +44,7 @@ const PERIOD_OPTIONS = [
 ];
 
 // ── Measurements modal ───────────────────────────────────────────────────────
-const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => {
+const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showToast }) => {
   const empty = MEASUREMENT_FIELDS.reduce((a, f) => ({ ...a, [f.key]: '' }), {});
   const [form, setForm]   = useState(() => {
     if (!existing) return empty;
@@ -68,7 +69,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     const { error: err } = await supabase
       .from('body_measurements')
       .upsert(payload, { onConflict: 'profile_id,measured_at' });
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(err.message); setSaving(false); showToast?.(err.message, 'error'); return; }
+    showToast?.('Measurements saved', 'success');
     onSaved();
     onClose();
   };
@@ -79,14 +81,17 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="measurements-title"
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-5 border-b border-white/6">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">
+          <p id="measurements-title" className="text-[16px] font-bold text-[#E5E7EB]">
             {existing ? 'Update Measurements' : 'Add Measurements'}
           </p>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
         <div className="p-5 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
@@ -129,6 +134,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 export default function BodyMetrics() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const { showToast } = useToast();
 
   // Weight state
   const [weightLogs,    setWeightLogs]    = useState([]);
@@ -780,6 +786,7 @@ export default function BodyMetrics() {
           profileId={user.id}
           onSaved={loadData}
           onClose={() => setShowMeasurements(false)}
+          showToast={showToast}
         />
       )}
 

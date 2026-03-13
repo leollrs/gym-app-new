@@ -85,6 +85,9 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notif-prefs-title"
         className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-md overflow-hidden shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
@@ -92,7 +95,7 @@ const NotificationPreferences = ({ isOpen, onClose, userId }) => {
         <div className="flex items-center justify-between p-5 border-b border-white/8">
           <div className="flex items-center gap-2.5">
             <Bell size={20} className="text-[#D4AF37]" />
-            <h2 className="text-[17px] font-bold text-[#E5E7EB]">
+            <h2 id="notif-prefs-title" className="text-[17px] font-bold text-[#E5E7EB]">
               Notification Preferences
             </h2>
           </div>

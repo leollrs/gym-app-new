@@ -131,6 +131,8 @@ const GymPulse = () => {
       transition={{ duration: 0.35, ease: 'easeOut' }}
       onClick={() => navigate('/social')}
       className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 cursor-pointer hover:border-white/12 transition-colors"
+      aria-live="polite"
+      aria-label="Gym activity pulse"
     >
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">

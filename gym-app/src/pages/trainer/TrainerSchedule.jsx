@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   format, addWeeks, subWeeks, startOfWeek, endOfWeek, addDays,
   isSameDay, isToday, isBefore, setHours, setMinutes,
@@ -19,6 +20,7 @@ const DURATIONS = [30, 45, 60, 90, 120];
 
 // ── Session Modal ─────────────────────────────────────────────────────────
 const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId }) => {
+  const { showToast } = useToast();
   const isEdit = !!session;
   const [clientId, setClientId] = useState(session?.client_id || '');
   const [title, setTitle]       = useState(session?.title || 'Training Session');
@@ -36,7 +38,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [error, setError]       = useState('');
 
   const handleSave = async () => {
-    if (!clientId) { setError('Please select a client'); return; }
+    if (!clientId) { setError('Please select a client'); showToast('Please select a client', 'error'); return; }
     setSaving(true);
     setError('');
 
@@ -57,7 +59,8 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       ? await supabase.from('trainer_sessions').update(payload).eq('id', session.id)
       : await supabase.from('trainer_sessions').insert(payload);
 
-    if (err) { setError(err.message); setSaving(false); return; }
+    if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    showToast(isEdit ? 'Session updated' : 'Session scheduled', 'success');
     onSaved();
   };
 
@@ -70,12 +73,12 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Session' : 'New Session'}</p>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <p id="session-modal-title" className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Session' : 'New Session'}</p>
+          <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">

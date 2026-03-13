@@ -7,45 +7,61 @@
   --font-sans: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOKENS
+   Light values in :root, dark overrides in html.dark.
+   Components use var(--color-*) directly or the remapped utility classes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
   /* ── Backgrounds ─────────────────────────── */
-  --bg-main:      #F8FAFC;
-  --bg-secondary: #EFF6FF;
-  --bg-card:      #FFFFFF;
-  --bg-elevated:  #F1F5F9;
+  --color-bg-primary:    #F8FAFC;
+  --color-bg-secondary:  #F1F5F9;
+  --color-bg-card:       #FFFFFF;
+  --color-bg-input:      #F1F5F9;
+  --color-bg-elevated:   #EFF6FF;
+  --color-bg-inset:      #E2E8F0;
+  --color-bg-deep:       #F9FAFB;
 
-  /* ── Gold accent ─────────────────────────── */
-  --accent-gold:      #D4AF37;
-  --accent-gold-soft: #E6C766;
-  --accent-gold-dark: #9F7F1D;
-  --accent-gold-glow: rgba(212, 175, 55, 0.2);
+  /* Translucent surfaces (nav bars, sticky headers, overlays) */
+  --color-bg-nav:        rgba(255, 255, 255, 0.92);
+  --color-bg-overlay:    rgba(255, 255, 255, 0.95);
+  --color-bg-hover:      rgba(0, 0, 0, 0.04);
+  --color-bg-active:     rgba(0, 0, 0, 0.06);
+  --color-bg-subtle:     rgba(0, 0, 0, 0.03);
 
-  /* ── Blue (charts / secondary only) ─────── */
-  --accent-blue:      #3B82F6;
-  --accent-blue-soft: #60A5FA;
+  /* ── Gold accent (same both themes) ──────── */
+  --color-accent:        #D4AF37;
+  --color-accent-soft:   #E6C766;
+  --color-accent-dark:   #9F7F1D;
+  --color-accent-glow:   rgba(212, 175, 55, 0.2);
+
+  /* ── Blue (charts / secondary) ───────────── */
+  --color-blue:          #3B82F6;
+  --color-blue-soft:     #60A5FA;
 
   /* ── Text ────────────────────────────────── */
-  --text-primary:   #0F172A;
-  --text-secondary: #374151;
-  --text-muted:     #64748B;
+  --color-text-primary:   #0F172A;
+  --color-text-secondary: #1E293B;
+  --color-text-muted:     #475569;
+  --color-text-subtle:    #64748B;
+  --color-text-faint:     #94A3B8;
 
   /* ── Borders ─────────────────────────────── */
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.14);
-
-  /* ── Legacy aliases (keep for components not yet updated) */
-  --bg-primary:   var(--bg-main);
-  --bg-tertiary:  var(--bg-elevated);
-  --accent-primary:   var(--accent-gold);
-  --accent-secondary: var(--accent-gold-soft);
-  --accent-glow:      var(--accent-gold-glow);
-  --border-color: var(--border-subtle);
-  --glass-bg:     rgba(255, 255, 255, 0.9);
+  --color-border-subtle:  rgba(0, 0, 0, 0.08);
+  --color-border-default: rgba(0, 0, 0, 0.12);
+  --color-border-strong:  rgba(0, 0, 0, 0.18);
 
   /* ── Status ──────────────────────────────── */
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger:  #EF4444;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger:  #EF4444;
+
+  /* ── Shadows ─────────────────────────────── */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 16px var(--color-accent-glow);
 
   /* ── Radius ──────────────────────────────── */
   --radius-sm:  0.5rem;
@@ -54,43 +70,235 @@
   --radius-xl:  1rem;
   --radius-2xl: 1.25rem;
 
-  /* ── Shadows ─────────────────────────────── */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.1);
-  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 16px var(--accent-gold-glow);
+  /* ══ Legacy aliases (backward compat) ══════ */
+  --bg-main:          var(--color-bg-primary);
+  --bg-secondary:     var(--color-bg-secondary);
+  --bg-card:          var(--color-bg-card);
+  --bg-elevated:      var(--color-bg-elevated);
+  --bg-primary:       var(--color-bg-primary);
+  --bg-tertiary:      var(--color-bg-elevated);
+  --text-primary:     var(--color-text-primary);
+  --text-secondary:   var(--color-text-secondary);
+  --text-muted:       var(--color-text-muted);
+  --accent-gold:      var(--color-accent);
+  --accent-gold-soft: var(--color-accent-soft);
+  --accent-gold-dark: var(--color-accent-dark);
+  --accent-gold-glow: var(--color-accent-glow);
+  --accent-primary:   var(--color-accent);
+  --accent-secondary: var(--color-accent-soft);
+  --accent-glow:      var(--color-accent-glow);
+  --accent-blue:      var(--color-blue);
+  --accent-blue-soft: var(--color-blue-soft);
+  --border-subtle:    var(--color-border-subtle);
+  --border-strong:    var(--color-border-strong);
+  --border-color:     var(--color-border-subtle);
+  --glass-bg:         rgba(255, 255, 255, 0.9);
+  --success:          var(--color-success);
+  --warning:          var(--color-warning);
+  --danger:           var(--color-danger);
 }
 
-/* ── Dark theme (when html has class "dark") ───────────────────────────── */
+/* ── Dark theme ──────────────────────────────────────────────────────────── */
 html.dark {
-  --bg-main:      #0F172A;
-  --bg-secondary:  #1E293B;
-  --bg-card:       #1E293B;
-  --bg-elevated:   #334155;
+  --color-bg-primary:    #05070B;
+  --color-bg-secondary:  #0A0D14;
+  --color-bg-card:       #0F172A;
+  --color-bg-input:      #1E293B;
+  --color-bg-elevated:   #0B1220;
+  --color-bg-inset:      #1E293B;
+  --color-bg-deep:       #111827;
 
-  --text-primary:   #F1F5F9;
-  --text-secondary:  #E2E8F0;
-  --text-muted:     #94A3B8;
+  --color-bg-nav:        rgba(5, 7, 11, 0.92);
+  --color-bg-overlay:    rgba(5, 7, 11, 0.95);
+  --color-bg-hover:      rgba(255, 255, 255, 0.04);
+  --color-bg-active:     rgba(255, 255, 255, 0.06);
+  --color-bg-subtle:     rgba(255, 255, 255, 0.03);
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  --color-text-primary:   #E5E7EB;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted:     #9CA3AF;
+  --color-text-subtle:    #6B7280;
+  --color-text-faint:     #4B5563;
 
-  --glass-bg: rgba(30, 41, 59, 0.95);
+  --color-border-subtle:  rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.08);
+  --color-border-strong:  rgba(255, 255, 255, 0.14);
 
   --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.5);
   --shadow-glow: 0 0 20px rgba(212, 175, 55, 0.25);
+
+  /* Legacy */
+  --glass-bg: rgba(30, 41, 59, 0.95);
 }
 
-/* ── Base ─────────────────────────────────────────────────────────── */
-/* Tailwind v4 Preflight already handles box-sizing, margin, padding reset */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BACKWARD-COMPATIBLE CLASS REMAPPING
+   Intercept hardcoded Tailwind arbitrary-value classes used across all
+   components and point them at CSS variables so they auto-adapt to theme.
+   This replaces the old html:not(.dark) override block.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Background remapping ──────────────────────────────────────────────── */
+.bg-\[\#05070B\]   { background-color: var(--color-bg-primary)   !important; }
+.bg-\[\#03050A\]   { background-color: var(--color-bg-primary)   !important; }
+.bg-\[\#0A0D14\]   { background-color: var(--color-bg-secondary) !important; }
+.bg-\[\#0B1220\]   { background-color: var(--color-bg-elevated)  !important; }
+.bg-\[\#0F172A\]   { background-color: var(--color-bg-card)      !important; }
+.bg-\[\#111827\]   { background-color: var(--color-bg-deep)      !important; }
+.bg-\[\#131929\]   { background-color: var(--color-bg-primary)   !important; }
+.bg-\[\#131D2E\]   { background-color: var(--color-bg-secondary) !important; }
+.bg-\[\#1C1C1E\]   { background-color: var(--color-bg-card)      !important; }
+.bg-\[\#1E293B\]   { background-color: var(--color-bg-inset)     !important; }
+.bg-\[\#2C2C2E\]   { background-color: var(--color-bg-inset)     !important; }
+.bg-\[\#3A3A3C\]   { background-color: var(--color-bg-input)     !important; }
+.bg-\[\#0f172a\]   { background-color: var(--color-bg-card)      !important; }
+.bg-\[\#1e293b\]   { background-color: var(--color-bg-inset)     !important; }
+.bg-\[\#374151\]   { background-color: var(--color-bg-input)     !important; }
+
+/* Gradient stop remapping */
+.to-\[\#0F172A\]   { --tw-gradient-to: var(--color-bg-card) !important; }
+.from-\[\#0F172A\] { --tw-gradient-from: var(--color-bg-card) !important; }
+.to-\[\#05070B\]   { --tw-gradient-to: var(--color-bg-primary) !important; }
+.from-\[\#05070B\] { --tw-gradient-from: var(--color-bg-primary) !important; }
+
+/* Nav / overlay alpha backgrounds */
+.bg-\[\#05070B\]\/90  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#05070B\]\/95  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#03050A\]\/90  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#0A0D14\]\/80  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#1C1C1E\]\/95  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/80  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#0F172A\]\/95  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/96  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/97  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/50  { background-color: color-mix(in srgb, var(--color-bg-card) 50%, transparent) !important; }
+.bg-\[\#0A0D14\]\/50  { background-color: color-mix(in srgb, var(--color-bg-secondary) 50%, transparent) !important; }
+
+/* white/N alpha backgrounds → theme-aware surfaces */
+.bg-white\/3           { background-color: var(--color-bg-subtle) !important; }
+.bg-white\/4           { background-color: var(--color-bg-hover)  !important; }
+.bg-white\/5           { background-color: var(--color-bg-hover)  !important; }
+.bg-white\/6           { background-color: var(--color-bg-active) !important; }
+.bg-white\/8           { background-color: var(--color-bg-active) !important; }
+.bg-white\/10          { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.02\]   { background-color: var(--color-bg-subtle) !important; }
+.bg-white\/\[0\.03\]   { background-color: var(--color-bg-subtle) !important; }
+.bg-white\/\[0\.04\]   { background-color: var(--color-bg-hover)  !important; }
+
+/* ── Text remapping ────────────────────────────────────────────────────── */
+.text-\[\#E5E7EB\]    { color: var(--color-text-primary)   !important; }
+.text-\[\#CBD5E1\]    { color: var(--color-text-secondary) !important; }
+.text-\[\#9CA3AF\]    { color: var(--color-text-muted)     !important; }
+.text-\[\#6B7280\]    { color: var(--color-text-subtle)    !important; }
+.text-\[\#4B5563\]    { color: var(--color-text-faint)     !important; }
+.text-\[\#0F172A\]    { color: var(--color-text-primary)   !important; }
+.text-\[\#0f172a\]    { color: var(--color-text-primary)   !important; }
+.text-\[\#0A0D14\]    { color: var(--color-text-primary)   !important; }
+.text-\[\#05070B\]    { color: var(--color-text-primary)   !important; }
+.text-\[\#64748B\]    { color: var(--color-text-subtle)    !important; }
+.text-\[\#64748b\]    { color: var(--color-text-subtle)    !important; }
+
+/* Slate utility remapping */
+.text-slate-200 { color: var(--color-text-primary)   !important; }
+.text-slate-300 { color: var(--color-text-secondary) !important; }
+.text-slate-500 { color: var(--color-text-subtle)    !important; }
+.text-slate-700 { color: var(--color-text-secondary) !important; }
+
+/* ── Border remapping ──────────────────────────────────────────────────── */
+.border-white\/5         { border-color: var(--color-border-subtle)  !important; }
+.border-white\/6         { border-color: var(--color-border-subtle)  !important; }
+.border-white\/8         { border-color: var(--color-border-default) !important; }
+.border-white\/10        { border-color: var(--color-border-default) !important; }
+.border-white\/12        { border-color: var(--color-border-strong)  !important; }
+.border-white\/20        { border-color: var(--color-border-strong)  !important; }
+.border-white\/25        { border-color: var(--color-border-strong)  !important; }
+.border-white\/\[0\.06\] { border-color: var(--color-border-subtle)  !important; }
+
+/* Hardcoded hex border colors that should match bg */
+.border-\[\#0F172A\] { border-color: var(--color-bg-card)    !important; }
+.border-\[\#05070B\] { border-color: var(--color-bg-primary) !important; }
+
+.border-black\/5  { border-color: var(--color-border-subtle)  !important; }
+.border-black\/8  { border-color: var(--color-border-default) !important; }
+.border-black\/10 { border-color: var(--color-border-default) !important; }
+.border-black\/20 { border-color: var(--color-border-strong)  !important; }
+
+/* ── Divide remapping ──────────────────────────────────────────────────── */
+.divide-white\/6 > :not(:first-child)  { border-color: var(--color-border-subtle)  !important; }
+.divide-white\/8 > :not(:first-child)  { border-color: var(--color-border-default) !important; }
+
+/* ── Ring remapping ────────────────────────────────────────────────────── */
+.ring-white\/10 { --tw-ring-color: var(--color-border-default) !important; }
+
+/* ── Placeholder remapping ─────────────────────────────────────────────── */
+input::placeholder  { color: var(--color-text-subtle); }
+.placeholder-\[\#6B7280\]::placeholder { color: var(--color-text-subtle) !important; }
+.placeholder-\[\#4B5563\]::placeholder { color: var(--color-text-faint)  !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   text-white / text-black
+   We do NOT remap text-white globally because it's legitimately used on
+   colored backgrounds (emerald badges, red buttons, gold CTAs, etc.).
+   Components that need theme-aware "primary" text should use text-[#E5E7EB]
+   (which IS remapped above) or the CSS variable directly.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Skip-to-content link ─────────────────────────────────────────── */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-accent);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  text-decoration: none;
+}
+
+.skip-to-content:focus {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  overflow: visible;
+  outline: 2px solid #D4AF37;
+  outline-offset: 2px;
+}
+
+/* ── Focus-visible styles ─────────────────────────────────────────── */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+[role="tab"]:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid #D4AF37;
+  outline-offset: 2px;
+}
+
+/* ── Base resets ──────────────────────────────────────────────────── */
 html { -webkit-text-size-adjust: 100%; }
 
 body {
   font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--bg-main);
-  color: var(--text-primary);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -101,17 +309,17 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Barlow Condensed', 'Barlow', sans-serif;
   font-weight: 700;
   line-height: 1.15;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   letter-spacing: -0.01em;
 }
 
 a {
-  color: var(--accent-gold);
+  color: var(--color-accent);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
-a:hover { color: var(--accent-gold-soft); }
+a:hover { color: var(--color-accent-soft); }
 
 button {
   cursor: pointer;
@@ -122,35 +330,34 @@ button {
 
 /* ── Card ─────────────────────────────────────────────────────────── */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 14px;
   padding: 18px;
   transition: border-color 0.2s ease;
 }
 
-.card:hover { border-color: var(--border-strong); }
+.card:hover { border-color: var(--color-border-strong); }
 
 /* ── Legacy glass (backwards compat) ─────────────────────────────── */
 .glass {
   background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--color-border-subtle);
   box-shadow: var(--shadow-md);
 }
 
 .glass-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl);
   padding: 1.5rem;
   box-shadow: var(--shadow-md);
   transition: border-color 0.2s ease;
 }
 
-.glass-card:hover { border-color: var(--border-strong); }
+.glass-card:hover { border-color: var(--color-border-strong); }
 
 /* ── Layout ───────────────────────────────────────────────────────── */
-/* .container kept for legacy use in TVDisplay / ActiveSession */
 .container {
   width: 100%;
   max-width: 1200px;
@@ -158,20 +365,17 @@ button {
   padding: 0 1.25rem;
 }
 
-/* Pages use explicit Tailwind utilities for padding instead of .main-content */
 .app-wrapper {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
   overflow-x: hidden;
-  background-color: var(--bg-main);
-  /* Mobile: offset the fixed top header (64px + safe area inset) */
+  background-color: var(--color-bg-primary);
   padding-top: calc(64px + env(safe-area-inset-top));
 }
 
 @media (min-width: 768px) {
   .app-wrapper {
-    /* Desktop: sticky nav is in normal flow, no offset needed */
     padding-top: 0;
   }
 }
@@ -189,13 +393,13 @@ button {
 .text-large   { font-size: 1.0625rem; }
 .text-regular { font-size: 0.9375rem; }
 .text-small   { font-size: 0.875rem; }
-.text-meta    { font-size: 0.8125rem; color: var(--text-muted); }
+.text-meta    { font-size: 0.8125rem; color: var(--color-text-muted); }
 
-.text-muted  { color: var(--text-muted); }
-.text-accent { color: var(--accent-gold); }
+.text-muted  { color: var(--color-text-muted) !important; }
+.text-accent { color: var(--color-accent); }
 
 .text-gradient {
-  background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-soft));
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-soft));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -209,7 +413,7 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────── */
@@ -218,7 +422,7 @@ button {
   align-items: center;
   justify-content: center;
   padding: 0.625rem 1.25rem;
-  background: var(--accent-gold);
+  background: var(--color-accent);
   color: #000;
   font-weight: 700;
   font-size: 0.9375rem;
@@ -229,7 +433,7 @@ button {
 }
 
 .btn-primary:hover {
-  background: var(--accent-gold-soft);
+  background: var(--color-accent-soft);
   box-shadow: var(--shadow-glow);
   transform: translateY(-1px);
 }
@@ -242,18 +446,18 @@ button {
   justify-content: center;
   padding: 0.625rem 1.25rem;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   font-weight: 600;
   font-size: 0.9375rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--color-border-strong);
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -272,7 +476,7 @@ button {
 .animate-fade-in-up { animation: fadeInUp 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
 
 @keyframes pulse-glow {
-  0%   { box-shadow: 0 0 0 0   var(--accent-gold-glow); }
+  0%   { box-shadow: 0 0 0 0   var(--color-accent-glow); }
   70%  { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0);   }
   100% { box-shadow: 0 0 0 0   rgba(212, 175, 55, 0);   }
 }
@@ -326,70 +530,11 @@ button {
 
 .animate-flame { animation: flameFlicker 1.5s ease-in-out infinite; }
 
+/* ── Skeleton shimmer ───────────────────────────────────── */
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────── */
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
-
-/* ═══════════════════════════════════════════════════════════════════
-   LIGHT THEME OVERRIDES
-   Maps all hardcoded dark Tailwind arbitrary colors to light
-   equivalents without touching individual JSX files.
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* ── Light theme only: force light backgrounds when NOT dark ─────────────── */
-html:not(.dark) .bg-\[\#05070B\]  { background-color: #F8FAFC !important; }
-html:not(.dark) .bg-\[\#0A0D14\]  { background-color: #F1F5F9 !important; }
-html:not(.dark) .bg-\[\#0B1220\]  { background-color: #EFF6FF !important; }
-html:not(.dark) .bg-\[\#0F172A\]  { background-color: #FFFFFF !important; }
-html:not(.dark) .bg-\[\#111827\]  { background-color: #F9FAFB !important; }
-html:not(.dark) .bg-\[\#131929\]  { background-color: #F8FAFC !important; }
-html:not(.dark) .bg-\[\#131D2E\]  { background-color: #F1F5F9 !important; }
-html:not(.dark) .bg-\[\#1C1C1E\]  { background-color: #FFFFFF !important; }
-html:not(.dark) .bg-\[\#2C2C2E\]  { background-color: #E2E8F0 !important; }
-html:not(.dark) .bg-\[\#3A3A3C\]  { background-color: #CBD5E1 !important; }
-
-html:not(.dark) .bg-\[\#05070B\]\/90  { background-color: rgba(248,250,252,0.95) !important; }
-html:not(.dark) .bg-\[\#0A0D14\]\/80  { background-color: rgba(241,245,249,0.9)  !important; }
-html:not(.dark) .bg-\[\#1C1C1E\]\/95  { background-color: rgba(255,255,255,0.95) !important; }
-
-html:not(.dark) .bg-white\/4   { background-color: rgba(0,0,0,0.04) !important; }
-html:not(.dark) .bg-white\/5   { background-color: rgba(0,0,0,0.05) !important; }
-html:not(.dark) .bg-white\/6   { background-color: rgba(0,0,0,0.06) !important; }
-html:not(.dark) .bg-white\/8   { background-color: rgba(0,0,0,0.06) !important; }
-html:not(.dark) .bg-white\/10  { background-color: rgba(0,0,0,0.07) !important; }
-html:not(.dark) .bg-white\/12  { background-color: rgba(0,0,0,0.08) !important; }
-html:not(.dark) .bg-white\/14  { background-color: rgba(0,0,0,0.09) !important; }
-html:not(.dark) .bg-black\/10  { background-color: rgba(0,0,0,0.04) !important; }
-html:not(.dark) .bg-black\/30  { background-color: rgba(0,0,0,0.06) !important; }
-html:not(.dark) .bg-black\/60  { background-color: rgba(0,0,0,0.45) !important; }
-
-html:not(.dark) .text-white          { color: #0F172A !important; }
-html:not(.dark) .text-\[\#E5E7EB\]   { color: #0F172A !important; }
-html:not(.dark) .text-\[\#CBD5E1\]   { color: #1E293B !important; }
-html:not(.dark) .text-\[\#9CA3AF\]   { color: #475569 !important; }
-html:not(.dark) .text-\[\#6B7280\]   { color: #64748B !important; }
-html:not(.dark) .text-\[\#4B5563\]   { color: #94A3B8 !important; }
-
-html:not(.dark) .border-white\/5    { border-color: rgba(0,0,0,0.08) !important; }
-html:not(.dark) .border-white\/6    { border-color: rgba(0,0,0,0.09) !important; }
-html:not(.dark) .border-white\/8    { border-color: rgba(0,0,0,0.10) !important; }
-html:not(.dark) .border-white\/10   { border-color: rgba(0,0,0,0.12) !important; }
-html:not(.dark) .border-white\/12   { border-color: rgba(0,0,0,0.14) !important; }
-html:not(.dark) .border-white\/25   { border-color: rgba(0,0,0,0.20) !important; }
-
-html:not(.dark) input::placeholder  { color: #94A3B8 !important; }
-html:not(.dark) .placeholder-\[\#6B7280\]::placeholder { color: #94A3B8 !important; }
-html:not(.dark) .placeholder-\[\#4B5563\]::placeholder { color: #CBD5E1 !important; }
-
-/* ── Keep gold & status colors as-is ───────────────────────────── */
-/* .text-[#D4AF37], .bg-[#D4AF37], .text-[#10B981], .text-red-* etc. untouched */
-
-/* ── btn-secondary (light only) ─────────────────────────────────────── */
-html:not(.dark) .btn-secondary {
-  color: var(--text-primary);
-  border-color: rgba(0,0,0,0.18);
-}
-html:not(.dark) .btn-secondary:hover {
-  background: rgba(0,0,0,0.04);
-  border-color: rgba(0,0,0,0.28);
-}

@@ -1,0 +1,325 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Trophy, ChevronDown, TrendingUp,
+} from 'lucide-react';
+import Skeleton from '../../components/Skeleton';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid,
+} from 'recharts';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { format, parseISO } from 'date-fns';
+import {
+  tooltipStyle,
+  STANDARDS, TIER_LABELS, TIER_COLORS,
+  getTier, getTierProgress,
+} from './progressConstants';
+
+// ── StandardCard ─────────────────────────────────────────────────────────────
+const StandardCard = ({ standard, pr, bodyweight }) => {
+  const orm = pr ? parseFloat(pr.estimated_1rm) : null;
+  const tier = orm != null ? getTier(orm, bodyweight, standard.tiers) : -1;
+
+  const tierLabel = tier < 0 ? 'No data' : tier < TIER_LABELS.length ? TIER_LABELS[tier] : 'Elite';
+  const tierColor = tier < 0 ? '#4B5563' : TIER_COLORS[Math.min(tier, TIER_COLORS.length - 1)];
+  const progress = orm != null ? getTierProgress(orm, bodyweight, standard.tiers, tier) : 0;
+  const nextTierLbs = (tier < standard.tiers.length - 1 && bodyweight)
+    ? Math.ceil(standard.tiers[tier + 1] * bodyweight)
+    : null;
+
+  return (
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-4">
+      <div className="flex items-start justify-between mb-3">
+        <p className="text-[14px] font-semibold text-[#E5E7EB]">{standard.name}</p>
+        <span
+          className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+          style={{ background: `${tierColor}18`, color: tierColor }}
+        >
+          {tierLabel}
+        </span>
+      </div>
+
+      {orm != null ? (
+        <>
+          <p className="text-[28px] font-black text-white leading-none mb-1">
+            {Math.round(orm)}
+            <span className="text-[13px] font-medium ml-1 text-[#9CA3AF]">lbs</span>
+          </p>
+          <p className="text-[11px] mb-3 text-[#9CA3AF]">
+            {pr.weight_lbs} lbs x {pr.reps} reps
+          </p>
+          <div className="space-y-1.5">
+            <div className="h-1.5 rounded-full w-full overflow-hidden bg-white/6">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${progress}%`, background: tierColor }}
+              />
+            </div>
+            {nextTierLbs && tier < TIER_LABELS.length - 1 && (
+              <p className="text-[10px] text-[#9CA3AF]">
+                {nextTierLbs - Math.round(orm)} lbs to{' '}
+                <span style={{ color: TIER_COLORS[Math.min(tier + 1, TIER_COLORS.length - 1)] }}>
+                  {TIER_LABELS[tier + 1]}
+                </span>
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 mt-3">
+            {TIER_LABELS.map((t, i) => (
+              <div
+                key={t}
+                className="flex-1 h-1 rounded-full"
+                style={{ background: i <= tier ? TIER_COLORS[i] : 'rgba(255,255,255,0.08)' }}
+                title={t}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-[12px] mt-1 text-[#9CA3AF]">Log this lift to see your level</p>
+      )}
+    </div>
+  );
+};
+
+// ── PRRow ────────────────────────────────────────────────────────────────────
+const PRRow = ({ pr, history }) => {
+  const [open, setOpen] = useState(false);
+
+  const chartData = (history ?? []).map(h => ({
+    date: format(parseISO(h.achieved_at.slice(0, 10)), 'MMM d'),
+    orm: Math.round(parseFloat(h.estimated_1rm)),
+  }));
+
+  const yMin = chartData.length ? Math.floor(Math.min(...chartData.map(d => d.orm)) - 5) : undefined;
+  const yMax = chartData.length ? Math.ceil(Math.max(...chartData.map(d => d.orm)) + 5) : undefined;
+
+  return (
+    <div>
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+          style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }}
+        >
+          <Trophy size={15} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-semibold truncate text-[#E5E7EB]">
+            {pr.exercises?.name}
+          </p>
+          <p className="text-[11px] text-[#9CA3AF]">
+            {pr.weight_lbs} lbs x {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <p className="text-[17px] font-black text-[#D4AF37]">
+            {Math.round(parseFloat(pr.estimated_1rm))}
+            <span className="text-[11px] font-medium ml-0.5 text-[#9CA3AF]">lbs</span>
+          </p>
+          <ChevronDown
+            size={15}
+            className="text-[#9CA3AF]"
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+          />
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-white/4">
+          {chartData.length < 2 ? (
+            <p className="text-[12px] pt-3 text-[#9CA3AF]">
+              Hit this lift again to see your 1RM trend
+            </p>
+          ) : (
+            <div className="pt-3">
+              <p className="text-[12px] font-medium mb-2 text-[#9CA3AF]">Estimated 1RM over time</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={Math.max(0, Math.floor(chartData.length / 4) - 1)}
+                  />
+                  <YAxis
+                    domain={[yMin, yMax]}
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip {...tooltipStyle} formatter={(v) => [`${v} lbs`, 'Est. 1RM']} />
+                  <Line
+                    type="monotone"
+                    dataKey="orm"
+                    stroke="#D4AF37"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: '#D4AF37', strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: '#D4AF37' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── StrengthTab ──────────────────────────────────────────────────────────────
+export default function ProgressStrength() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [prs, setPrs] = useState([]);
+  const [prHistory, setPrHistory] = useState({});
+  const [bodyweight, setBodyweight] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showAllPrs, setShowAllPrs] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      const [{ data: prData }, { data: histData }, { data: bwData }] = await Promise.all([
+        supabase
+          .from('personal_records')
+          .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, muscle_group)')
+          .eq('profile_id', user.id)
+          .order('estimated_1rm', { ascending: false }),
+        supabase
+          .from('pr_history')
+          .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at')
+          .eq('profile_id', user.id)
+          .order('achieved_at', { ascending: true }),
+        supabase
+          .from('body_weight_logs')
+          .select('weight_lbs')
+          .eq('profile_id', user.id)
+          .order('logged_at', { ascending: false })
+          .limit(1)
+          .single(),
+      ]);
+
+      if (cancelled) return;
+
+      setPrs(prData ?? []);
+      setBodyweight(bwData?.weight_lbs ? parseFloat(bwData.weight_lbs) : null);
+
+      const grouped = {};
+      (histData ?? []).forEach(h => {
+        if (!grouped[h.exercise_id]) grouped[h.exercise_id] = [];
+        grouped[h.exercise_id].push(h);
+      });
+      setPrHistory(grouped);
+      setLoading(false);
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton variant="card" height="h-[80px]" />
+        <Skeleton variant="card" height="h-[120px]" count={3} />
+      </div>
+    );
+  }
+
+  const prByExercise = prs.reduce((acc, pr) => ({ ...acc, [pr.exercise_id]: pr }), {});
+  const standardExerciseIds = new Set(STANDARDS.map(s => s.exerciseId));
+  const otherPrs = prs.filter(pr => !standardExerciseIds.has(pr.exercise_id));
+
+  return (
+    <div>
+      {/* Strength standards */}
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <p className="text-[15px] font-bold text-[#E5E7EB]">Strength Standards</p>
+            <button
+              onClick={() => navigate('/personal-records')}
+              className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-xl transition-colors"
+              style={{ background: 'rgba(212,175,55,0.08)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+            >
+              <Trophy size={11} />
+              Personal Records
+            </button>
+          </div>
+          {!bodyweight && (
+            <button
+              onClick={() => navigate('/metrics')}
+              className="text-[11px] font-semibold px-3 py-1 rounded-xl"
+              style={{ background: 'rgba(212,175,55,0.08)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+            >
+              Log weight to unlock
+            </button>
+          )}
+        </div>
+        {bodyweight && (
+          <p className="text-[12px] mb-3 text-[#9CA3AF]">
+            Based on your bodyweight of <span className="text-[#E5E7EB]">{bodyweight} lbs</span>
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-7">
+        {STANDARDS.map(std => (
+          <StandardCard
+            key={std.exerciseId}
+            standard={std}
+            pr={prByExercise[std.exerciseId] ?? null}
+            bodyweight={bodyweight}
+          />
+        ))}
+      </div>
+
+      {/* All PRs */}
+      <p className="text-[15px] font-bold mb-3 text-[#E5E7EB]">
+        Top Exercises
+        {prs.length > 0 && (
+          <span
+            className="ml-2 text-[12px] font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }}
+          >
+            {prs.length}
+          </span>
+        )}
+      </p>
+
+      {prs.length === 0 ? (
+        <div className="bg-[#0F172A] rounded-[14px] border border-white/8 py-16 flex flex-col items-center gap-3">
+          <TrendingUp size={32} className="text-[#4B5563]" strokeWidth={1.5} />
+          <p className="text-[14px] text-[#9CA3AF]">No PRs yet</p>
+          <p className="text-[12px] text-[#6B7280]">Complete workouts to start tracking</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden divide-y divide-white/4">
+            {(showAllPrs ? prs : prs.slice(0, 5)).map(pr => (
+              <PRRow key={pr.exercise_id} pr={pr} history={prHistory[pr.exercise_id] ?? []} />
+            ))}
+          </div>
+          {prs.length > 5 && !showAllPrs && (
+            <button
+              onClick={() => setShowAllPrs(true)}
+              className="w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/15 transition-colors hover:bg-[#D4AF37]/12"
+            >
+              Show {prs.length - 5} more exercise{prs.length - 5 !== 1 ? 's' : ''}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

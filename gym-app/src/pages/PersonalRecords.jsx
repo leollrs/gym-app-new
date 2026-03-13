@@ -197,6 +197,7 @@ export default function PersonalRecords() {
           <input
             type="text"
             placeholder="Search exercises..."
+            aria-label="Search exercises"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-[#0F172A] border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"

@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Timer, CheckCircle, Trophy, Plus, Pause, Play, X, TrendingUp, MessageSquare, Activity } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import { addPoints, calculatePointsForAction } from '../lib/rewardsEngine';
-import BodyDiagram from '../components/BodyDiagram';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises } from '../data/exercises';
 import Confetti from '../components/Confetti';
+
+import SessionHeader from './active-session/SessionHeader';
+import ExerciseCard from './active-session/ExerciseCard';
+import RestTimer from './active-session/RestTimer';
+import SessionSummary from './active-session/SessionSummary';
 
 // ── PR Detection ──────────────────────────────────────────────────────────────
 const epley1RM = (weight, reps) => {
@@ -36,128 +40,6 @@ const PRBanner = ({ exercise, weight, reps, onDismiss }) => (
         <p className="text-[12px] text-white/90 mt-0.5">{exercise} — {weight} lbs × {reps}</p>
       </div>
       <button onClick={onDismiss} className="text-white/70 hover:text-white text-[20px] leading-none ml-1">×</button>
-    </div>
-  </div>
-);
-
-// ── Plate Calculator ─────────────────────────────────────────────────────────
-const PlateCalculator = ({ targetWeight }) => {
-  const barWeight = 45;
-  const availablePlates = [45, 35, 25, 10, 5, 2.5];
-
-  if (!targetWeight || targetWeight <= barWeight) {
-    return <p className="text-[11px] text-[#9CA3AF] mt-1">Empty bar (45 lbs)</p>;
-  }
-
-  let remaining = (targetWeight - barWeight) / 2;
-  const plates = [];
-  for (const plate of availablePlates) {
-    while (remaining >= plate) {
-      plates.push(plate);
-      remaining -= plate;
-    }
-  }
-
-  if (remaining > 0) {
-    // Not achievable exactly — find nearest
-    const achievable = barWeight + plates.reduce((a, b) => a + b, 0) * 2;
-    return (
-      <p className="text-[11px] text-[#9CA3AF] mt-1">
-        Nearest: {achievable} lbs — Each side: {plates.length > 0 ? plates.join(' + ') : 'none'}
-      </p>
-    );
-  }
-
-  return (
-    <p className="text-[11px] text-[#9CA3AF] mt-1">
-      Each side: {plates.join(' + ')}
-    </p>
-  );
-};
-
-// ── Finish Modal ──────────────────────────────────────────────────────────────
-const RATING_EMOJIS = [
-  { value: 1, emoji: '\u{1F62B}' },
-  { value: 2, emoji: '\u{1F615}' },
-  { value: 3, emoji: '\u{1F610}' },
-  { value: 4, emoji: '\u{1F4AA}' },
-  { value: 5, emoji: '\u{1F525}' },
-];
-
-const FinishModal = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, sessionRating, onRatingChange }) => (
-  <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm">
-    <div className="rounded-t-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in bg-[#0F172A] border-t border-white/10 shadow-[0_-8px_40px_rgba(0,0,0,0.6)]">
-      <div className="w-10 h-1 rounded-full mx-auto mb-6 bg-white/20" />
-      <h2 className="font-black text-[24px] mb-1 text-[#E5E7EB]">That's a wrap.</h2>
-      <p className="text-[14px] mb-6 text-[#6B7280]">{workout} · {duration}</p>
-
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { value: `${(totalVolume / 1000).toFixed(1)}k`, label: 'Volume lbs' },
-          { value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, label: 'Sets Done' },
-          { value: duration, label: 'Duration' },
-        ].map(({ value, label }) => (
-          <div key={label} className="rounded-2xl p-3 text-center bg-white/5 border border-white/8">
-            <p className="text-[24px] font-black text-[#E5E7EB]">{value}</p>
-            <p className="text-[10px] mt-0.5 uppercase font-semibold text-[#6B7280]">{label}</p>
-          </div>
-        ))}
-      </div>
-
-      {sessionPRs.length > 0 && (
-        <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-2xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <Trophy size={16} className="text-[#D4AF37]" />
-            <p className="text-[#D4AF37] font-bold text-[13px]">{sessionPRs.length} New PR{sessionPRs.length > 1 ? 's' : ''} 🔥</p>
-          </div>
-          {sessionPRs.map((pr, i) => (
-            <p key={i} className="text-[13px] text-[#E5E7EB] py-0.5">
-              {pr.exercise} — {pr.weight} lbs × {pr.reps}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {/* ── Session Rating ── */}
-      <div className="mb-6">
-        <p className="text-[13px] font-semibold text-[#9CA3AF] mb-2">How did this session feel?</p>
-        <div className="flex items-center justify-center gap-3">
-          {RATING_EMOJIS.map(({ value, emoji }) => (
-            <button
-              key={value}
-              onClick={() => onRatingChange(value)}
-              className={`w-11 h-11 rounded-xl text-[22px] flex items-center justify-center transition-all ${
-                sessionRating === value
-                  ? 'border-2 border-[#D4AF37] bg-[#D4AF37]/10 scale-110'
-                  : 'border border-white/8 bg-white/5'
-              }`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-red-900/30 border border-red-800 rounded-2xl p-3 mb-4 text-[13px] text-red-400">
-          {error}
-        </div>
-      )}
-
-      <button
-        onClick={onConfirm}
-        disabled={saving}
-        className="w-full disabled:opacity-50 font-black text-[17px] py-4 rounded-2xl transition-colors mb-3 bg-[#D4AF37] text-black"
-      >
-        {saving ? 'Saving…' : 'Save & finish'}
-      </button>
-      <button
-        onClick={onCancel}
-        disabled={saving}
-        className="w-full font-semibold text-[15px] py-2 transition-colors text-[#6B7280]"
-      >
-        Not done yet
-      </button>
     </div>
   </div>
 );
@@ -215,6 +97,8 @@ const ActiveSession = () => {
   const [sessionRating, setSessionRating] = useState(null);
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const restNotificationScheduled = useRef(false);
+
+  const touchStartXRef = useRef(0);
 
   // ── Notification permission ─────────────────────────────────────────────────
   useEffect(() => {
@@ -486,8 +370,6 @@ const ActiveSession = () => {
     const interval = setInterval(() => setRestTimer(prev => prev - 1), 1000);
     return () => clearInterval(interval);
   }, [isResting, restTimer, isPaused, exercises, currentExerciseIndex]);
-
-  const touchStartXRef = useRef(0);
 
   const formatTime = (s) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -875,8 +757,6 @@ const ActiveSession = () => {
   const currentExercise = exercises[currentExerciseIndex];
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
   const knownPR         = currentExercise ? livePRs.current[currentExercise.id] : null;
-  const currentExerciseLocal = currentExercise ? localExercises.find(e => e.id === currentExercise.id) : null;
-  const restCircum      = 2 * Math.PI * 100;
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -895,7 +775,7 @@ const ActiveSession = () => {
 
       {/* Finish Modal */}
       {showFinishModal && (
-        <FinishModal
+        <SessionSummary
           workout={routineName} sessionPRs={sessionPRs}
           totalVolume={totalVolume} duration={formatTime(elapsedTime)}
           completedSets={completedSets} totalSets={totalSets}
@@ -905,523 +785,69 @@ const ActiveSession = () => {
         />
       )}
 
-      {/* ── Pause Overlay ─────────────────────────────────────────────────── */}
-      {isPaused && (
-        <div className="fixed inset-0 z-[120] flex flex-col items-center justify-center backdrop-blur-2xl bg-[#F8FAFC]/97 dark:bg-[#0F172A]/97">
-          <p className="text-[11px] uppercase tracking-[0.22em] font-bold mb-5 text-[#64748B] dark:text-slate-400">
-            Workout Paused
-          </p>
-          <p className="font-bold tabular-nums leading-none mb-2 text-[#0F172A] dark:text-slate-100"
-            style={{ fontSize: 'clamp(60px,18vw,80px)' }}>
-            {formatTime(elapsedTime)}
-          </p>
-          <p className="text-[13px] mb-16 text-[#64748B] dark:text-slate-400">Timer stopped</p>
+      {/* Session Header (pause overlay, header bar, progress bar, resumed banner, exercise navigator) */}
+      <SessionHeader
+        routineName={routineName}
+        isPaused={isPaused}
+        elapsedTime={elapsedTime}
+        formatTime={formatTime}
+        completedSets={completedSets}
+        totalSets={totalSets}
+        exercises={exercises}
+        currentExerciseIndex={currentExerciseIndex}
+        showResumedBanner={showResumedBanner}
+        savedSession={savedSession}
+        sessionKey={sessionKey}
+        onNavigateBack={() => navigate(-1)}
+        onPause={() => setIsPaused(true)}
+        onResume={() => setIsPaused(false)}
+        onEndWorkout={() => { setIsPaused(false); setShowFinishModal(true); }}
+        onSetCurrentExerciseIndex={setCurrentExerciseIndex}
+        onDismissResumedBanner={() => setShowResumedBanner(false)}
+        onDiscardSession={() => { localStorage.removeItem(sessionKey); navigate('/workouts'); }}
+      />
 
-          <button
-            onClick={() => setIsPaused(false)}
-            className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform mb-10 bg-[#D4AF37] dark:bg-amber-500"
-          >
-            <Play size={34} fill="black" className="text-black ml-2" />
-          </button>
-
-          <button
-            onClick={() => { setIsPaused(false); setShowFinishModal(true); }}
-            className="font-semibold text-[15px] hover:opacity-80 transition-opacity text-red-500 dark:text-red-400"
-          >
-            End Workout
-          </button>
-        </div>
-      )}
-
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header
-        className="flex-shrink-0 px-4 pb-3 border-b border-white/10 bg-[#05070B]"
-        style={{
-          paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
-        }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-0.5 transition-opacity hover:opacity-70 -ml-1 p-1 text-[#9CA3AF]"
-          >
-            <ChevronLeft size={24} strokeWidth={2.5} />
-            <span className="text-[15px] font-semibold -ml-1">Back</span>
-          </button>
-          <button
-            onClick={() => setIsPaused(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-all shadow-sm bg-white/90 dark:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300"
-          >
-            <Pause size={16} />
-          </button>
-        </div>
-
-        <div className="text-center">
-          <h1 className="font-bold text-[17px] tracking-tight leading-none text-[#E5E7EB]">
-            {routineName}
-          </h1>
-        </div>
-      </header>
-
-      {/* Progress bar */}
-      <div className="flex-shrink-0 h-0.5 bg-slate-200 dark:bg-white/10">
-        <div
-          className="h-full transition-all duration-500 bg-amber-500 dark:bg-amber-400"
-          style={{ width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%' }}
-        />
-      </div>
-
-      {/* Resumed banner */}
-      {showResumedBanner && savedSession?.loggedSets && (
-        <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between gap-3 bg-blue-50 dark:bg-blue-900/30 border-b border-blue-200 dark:border-blue-800/60">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300">
-              <Timer size={14} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[13px] font-semibold text-blue-700 dark:text-blue-200">
-                Session resumed
-              </span>
-              <span className="text-[12px] text-blue-600/80 dark:text-blue-300/80">
-                Your progress from last time was restored.
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { localStorage.removeItem(sessionKey); navigate('/workouts'); }}
-              className="text-[11px] font-semibold px-3 py-1.5 rounded-xl border border-red-200 dark:border-red-700 text-red-600 dark:text-red-400 bg-red-50/70 dark:bg-red-900/30"
-            >
-              Discard
-            </button>
-            <button
-              onClick={() => setShowResumedBanner(false)}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-blue-500 hover:bg-blue-100/80 dark:text-blue-300 dark:hover:bg-blue-800/60"
-              aria-label="Dismiss resumed session message"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Exercise Navigator ───────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10">
-        <button
-          onClick={() => setCurrentExerciseIndex(i => Math.max(0, i - 1))}
-          disabled={currentExerciseIndex === 0}
-          className="w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-25 active:scale-90 transition-all bg-black/5 dark:bg-white/10 text-slate-600 dark:text-slate-400"
-        >
-          <ChevronLeft size={22} />
-        </button>
-
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            {exercises.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentExerciseIndex(i)}
-                className={`rounded-full transition-all duration-300 h-2 ${
-                  i === currentExerciseIndex ? 'w-5 bg-amber-500 dark:bg-amber-400' : 'w-2 bg-black/12 dark:bg-white/20'
-                }`}
-              />
-            ))}
-          </div>
-          <p className="text-[11px] font-semibold tabular-nums text-[#64748B] dark:text-slate-400">
-            {currentExerciseIndex + 1} / {exercises.length}
-          </p>
-        </div>
-
-        <button
-          onClick={() => setCurrentExerciseIndex(i => Math.min(exercises.length - 1, i + 1))}
-          disabled={currentExerciseIndex === exercises.length - 1}
-          className="w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-25 active:scale-90 transition-all bg-black/5 dark:bg-white/10 text-slate-600 dark:text-slate-400"
-        >
-          <ChevronRight size={22} />
-        </button>
-      </div>
-
-      {/* ── Rest Timer Overlay (full-screen) ─────────────────────────────── */}
+      {/* Rest Timer Overlay (full-screen) */}
       {isResting && !isPaused && (
-        <div className="fixed inset-0 z-[115] flex flex-col items-center justify-center backdrop-blur-2xl bg-[#F8FAFC]/96 dark:bg-[#0F172A]/96">
-          <p className="text-[11px] uppercase tracking-[0.22em] font-bold mb-4 text-amber-700 dark:text-amber-400">
-            Rest
-          </p>
-
-          {/* Circular countdown */}
-          <div className="relative w-40 h-40 mb-5">
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 120 120">
-              <circle
-                cx="60"
-                cy="60"
-                r="48"
-                fill="none"
-                className="stroke-slate-300 dark:stroke-white/20"
-                strokeWidth="6"
-              />
-              <circle
-                cx="60"
-                cy="60"
-                r="48"
-                fill="none"
-                className="stroke-amber-500 dark:stroke-amber-400 transition-all duration-1000"
-                strokeWidth="6"
-                strokeDasharray={2 * Math.PI * 48}
-                strokeDashoffset={2 * Math.PI * 48 * (1 - restTimer / currentRestDuration)}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <Timer size={18} className="text-amber-700 dark:text-amber-400" />
-              <p className="mt-1 font-bold tabular-nums leading-none text-[#0F172A] dark:text-slate-100" style={{ fontSize: 'clamp(32px,8vw,40px)' }}>
-                {formatTime(restTimer)}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-[13px] mb-6 text-[#64748B] dark:text-slate-400">
-            Next set when the timer hits zero.
-          </p>
-
-          <button
-            onClick={() => { setIsResting(false); cancelRestNotification(); restNotificationScheduled.current = false; }}
-            className="px-6 py-3 rounded-2xl font-semibold text-[14px] active:scale-95 transition-transform shadow-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 border border-amber-300 dark:border-amber-600"
-          >
-            Skip rest
-          </button>
-        </div>
+        <RestTimer
+          restTimer={restTimer}
+          currentRestDuration={currentRestDuration}
+          formatTime={formatTime}
+          onSkip={() => { setIsResting(false); cancelRestNotification(); restNotificationScheduled.current = false; }}
+        />
       )}
 
-      {/* ── Scrollable Exercise Area ─────────────────────────────────────── */}
+      {/* Scrollable Exercise Area */}
       <div className="flex-1 overflow-y-auto">
         {currentExercise && (
-          <div className="px-4 pt-5 pb-6">
-            <div className="rounded-2xl bg-white dark:bg-slate-800 border border-black/5 dark:border-white/10 shadow-sm px-4 py-4 md:px-5 md:py-5">
-
-              {/* Exercise header */}
-              <div className="mb-5">
-                <h2 className="font-bold tracking-tight leading-tight flex items-center gap-2.5 text-[#0F172A] dark:text-slate-100" style={{ fontSize: 'clamp(20px,5vw,26px)' }}>
-                  <button
-                    onClick={() => setShowProgressChart({ exerciseId: currentExercise.id, exerciseName: currentExercise.name })}
-                    className="text-left hover:opacity-80 active:opacity-60 transition-opacity"
-                  >
-                    {currentExercise.name}
-                  </button>
-                  <TrendingUp
-                    size={15}
-                    className="text-slate-300 dark:text-slate-600 flex-shrink-0 cursor-pointer hover:text-amber-500 dark:hover:text-amber-400 transition-colors"
-                    onClick={() => setShowProgressChart({ exerciseId: currentExercise.id, exerciseName: currentExercise.name })}
-                  />
-                  {currentSets.some(s => s.isPR) && (
-                    <Trophy size={18} className="text-amber-500 dark:text-amber-400 flex-shrink-0" />
-                  )}
-                </h2>
-                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                  <p className="text-[13px] text-[#64748B] dark:text-slate-400">
-                    Target: {currentExercise.targetSets} × {currentExercise.targetReps} reps
-                  </p>
-                  {knownPR && (
-                    <p className="text-[12px] flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                      <Trophy size={11} /> PR: {knownPR.weight} lbs × {knownPR.reps}
-                    </p>
-                  )}
-
-                </div>
-              </div>
-
-              {/* ── Overload suggestion chip ── */}
-              {currentExercise.suggestion && (() => {
-                const s = currentExercise.suggestion;
-                if (s.note === 'first_time') return (
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/50">
-                    <TrendingUp size={13} className="text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
-                    <p className="text-[12px] text-indigo-700 dark:text-indigo-300">
-                      First time here. Find your working weight — go light.
-                    </p>
-                  </div>
-                );
-                return (
-                  <div className="mb-4">
-                    <div
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 cursor-pointer"
-                      onClick={() => setShowPlateCalc(v => !v)}
-                    >
-                      <TrendingUp size={14} className="text-amber-700 dark:text-amber-400 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wider leading-none mb-0.5 text-amber-700 dark:text-amber-400">
-                          {s.note === 'increase_weight' ? 'Increase weight ↑' : 'Add reps →'}
-                        </p>
-                        <p className="text-[14px] font-bold leading-tight text-[#0F172A] dark:text-slate-100">
-                          {s.suggestedWeight} lbs × {s.suggestedReps} reps
-                        </p>
-                        <p className="text-[11px] mt-0.5 text-[#64748B] dark:text-slate-400">{s.label}</p>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleFillSuggestion(currentExercise.id, s); }}
-                        className="text-[12px] font-bold px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-all bg-amber-100 dark:bg-amber-800/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600"
-                      >
-                        Fill
-                      </button>
-                    </div>
-                    {showPlateCalc && <PlateCalculator targetWeight={s.suggestedWeight} />}
-                  </div>
-                );
-              })()}
-
-              {/* Muscles heatmap toggle + panel */}
-              {completedSets > 0 && (
-                <div className="mb-4">
-                  <button
-                    onClick={() => setShowHeatmap(v => !v)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all mb-2 ${
-                      showHeatmap
-                        ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-600/60'
-                        : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-transparent'
-                    }`}
-                  >
-                    <Activity size={11} />
-                    Muscles
-                  </button>
-                  {showHeatmap && (
-                    <BodyDiagram
-                      primaryRegions={workedRegions.primary}
-                      secondaryRegions={workedRegions.secondary}
-                      title="Muscles worked this session"
-                      compact
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Column headers */}
-              <div className="flex items-center gap-2 px-2 py-2 mb-2 text-[11px] font-semibold uppercase tracking-wider rounded-xl bg-slate-100 dark:bg-slate-700/80 text-[#64748B] dark:text-slate-400">
-                <div className="w-8 text-center">Set</div>
-                <div className="flex-1 min-w-[60px]">Previous</div>
-                <div className="w-20 sm:w-24 text-center">lbs</div>
-                <div className="w-16 sm:w-20 text-center">Reps</div>
-                <div className="w-10 flex justify-center">
-                  <CheckCircle size={13} strokeWidth={2.5} />
-                </div>
-              </div>
-
-              {/* Set rows */}
-              <div className="flex flex-col gap-2">
-                {currentSets.map((set, setIndex) => {
-                  const prev      = currentExercise.history[setIndex];
-                  const prPending = !set.completed && isPR(
-                    currentExercise.id, set.weight, set.reps, livePRs.current
-                  );
-                  const notesKey = `${currentExercise.id}-${setIndex}`;
-
-                  return (
-                    <div key={setIndex}>
-                      {/* Main set row */}
-                      <div
-                        className={`flex items-center gap-2 px-2 py-2.5 rounded-2xl transition-all duration-300 ${
-                          set.isPR
-                            ? 'bg-amber-100/80 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-600/60'
-                            : set.completed
-                            ? 'bg-emerald-100/80 dark:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-700/60'
-                            : 'bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-white/10'
-                        }`}
-                        onTouchStart={e => {
-                          if (e.touches?.[0]) touchStartXRef.current = e.touches[0].clientX;
-                        }}
-                        onTouchEnd={e => {
-                          const endX = e.changedTouches?.[0]?.clientX ?? 0;
-                          const deltaX = endX - touchStartXRef.current;
-                          if (Math.abs(deltaX) > 40) {
-                            handleToggleComplete(
-                              currentExercise.id,
-                              setIndex,
-                              currentExercise.name,
-                              currentExercise.restSeconds
-                            );
-                          }
-                        }}
-                      >
-                        <div className="w-8 flex flex-col items-center justify-center gap-0.5">
-                          <span className="font-bold text-[15px] text-[#64748B] dark:text-slate-400">
-                            {set.isPR
-                              ? <Trophy size={14} className="text-amber-500 mx-auto" />
-                              : setIndex + 1
-                            }
-                          </span>
-                          {!set.completed && currentSets.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSet(currentExercise.id, setIndex)}
-                              className="text-[9px] font-bold text-red-400/70 hover:text-red-400 transition-colors leading-none"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Previous — gold arrow, visually distinct */}
-                        <div className="flex-1 min-w-[60px] text-[12px] font-semibold truncate">
-                          {prev ? (
-                            <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
-                              ↑ {prev.weight}
-                              <span className="opacity-50 text-[10px] mx-0.5">×</span>
-                              {prev.reps}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 dark:text-slate-500">—</span>
-                          )}
-                        </div>
-
-                        <div className="w-20 sm:w-24">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            value={set.weight}
-                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'weight', e.target.value)}
-                            placeholder="—"
-                            disabled={set.completed}
-                            className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
-                              set.isPR
-                                ? 'text-amber-700 dark:text-amber-400 bg-transparent'
-                                : set.completed
-                                ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
-                                : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
-                            }`}
-                          />
-                        </div>
-
-                        <div className="w-16 sm:w-20">
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min={0}
-                            value={set.reps}
-                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'reps', e.target.value)}
-                            placeholder="—"
-                            disabled={set.completed}
-                            className={`w-full text-center rounded-xl py-2 px-1 font-semibold text-[17px] focus:outline-none transition-colors ${
-                              set.isPR
-                                ? 'text-amber-700 dark:text-amber-400 bg-transparent'
-                                : set.completed
-                                ? 'text-emerald-700 dark:text-emerald-400 bg-transparent'
-                                : 'text-[#0F172A] dark:text-slate-100 bg-slate-50 dark:bg-slate-600/50'
-                            }`}
-                          />
-                        </div>
-
-                        <div className="w-10 flex flex-col items-center gap-0.5">
-                          <button
-                            onClick={() => handleToggleComplete(
-                              currentExercise.id, setIndex,
-                              currentExercise.name, currentExercise.restSeconds
-                            )}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-                              set.isPR
-                                ? 'bg-amber-500 dark:bg-amber-500 text-white scale-110 shadow-lg shadow-amber-500/40'
-                                : set.completed
-                                ? 'bg-emerald-500 dark:bg-emerald-500 text-white scale-[1.08] shadow-lg shadow-emerald-500/40'
-                                : prPending
-                                ? 'bg-amber-100 dark:bg-amber-900/50 border-2 border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-400'
-                                : 'bg-slate-50 dark:bg-slate-600/50 border border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400'
-                            }`}
-                          >
-                            {set.completed
-                              ? <CheckCircle size={18} strokeWidth={3} />
-                              : <div className="w-3.5 h-3.5 rounded-sm border-2 border-slate-400 dark:border-slate-500 opacity-50" />
-                            }
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDuplicateLastSet(
-                                currentExercise.id,
-                                setIndex,
-                                currentExercise.history
-                              )
-                            }
-                            className="mt-0.5 text-[9px] font-semibold text-indigo-600 dark:text-indigo-300 disabled:opacity-40"
-                            disabled={set.completed}
-                          >
-                            Use last
-                          </button>
-                          {prPending && (
-                            <span className="text-[9px] font-bold uppercase tracking-wide leading-none text-amber-600 dark:text-amber-400">
-                              PR!
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* RPE + Notes sub-row — appears after completing a set */}
-                      {set.completed && (
-                        <div className="flex items-center gap-2 px-2 pt-1 pb-0.5">
-                          {/* RPE picker */}
-                          <div className="flex items-center gap-1 flex-1">
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider w-7 shrink-0">RPE</span>
-                            <div className="flex gap-0.5">
-                              {[6, 7, 8, 9, 10].map(v => (
-                                <button
-                                  key={v}
-                                  type="button"
-                                  onClick={() => handleUpdateSet(currentExercise.id, setIndex, 'rpe', set.rpe === v ? null : v)}
-                                  className={`w-7 h-7 rounded-full text-[11px] font-bold transition-all active:scale-90 ${
-                                    set.rpe === v
-                                      ? 'bg-emerald-500 text-white shadow-sm'
-                                      : 'bg-slate-100 dark:bg-slate-700/80 text-slate-500 dark:text-slate-300'
-                                  }`}
-                                >
-                                  {v}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Notes toggle */}
-                          <button
-                            type="button"
-                            onClick={() => setExpandedNotesSet(expandedNotesSet === notesKey ? null : notesKey)}
-                            className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg transition-all ${
-                              set.notes
-                                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'
-                                : 'text-slate-400 dark:text-slate-500'
-                            }`}
-                          >
-                            <MessageSquare size={10} />
-                            {set.notes ? 'Note' : '+ Note'}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Notes input — expands inline */}
-                      {expandedNotesSet === notesKey && (
-                        <div className="px-2 pb-1.5">
-                          <input
-                            type="text"
-                            value={set.notes || ''}
-                            onChange={e => handleUpdateSet(currentExercise.id, setIndex, 'notes', e.target.value)}
-                            placeholder="Add a note for this set..."
-                            autoFocus
-                            className="w-full text-[13px] bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none border border-slate-200 dark:border-white/10"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Add Set */}
-              <button
-                onClick={() => handleAddSet(currentExercise.id)}
-                className="mt-3 w-full py-3 text-[13px] font-semibold rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300"
-              >
-                <Plus size={14} /> Add Set
-              </button>
-            </div>
-          </div>
+          <ExerciseCard
+            exercise={currentExercise}
+            currentSets={currentSets}
+            knownPR={knownPR}
+            showPlateCalc={showPlateCalc}
+            onTogglePlateCalc={() => setShowPlateCalc(v => !v)}
+            showHeatmap={showHeatmap}
+            onToggleHeatmap={() => setShowHeatmap(v => !v)}
+            workedRegions={workedRegions}
+            completedSetsCount={completedSets}
+            expandedNotesSet={expandedNotesSet}
+            onSetExpandedNotesSet={setExpandedNotesSet}
+            showProgressChart={showProgressChart}
+            onShowProgressChart={setShowProgressChart}
+            onUpdateSet={handleUpdateSet}
+            onToggleComplete={handleToggleComplete}
+            onAddSet={handleAddSet}
+            onRemoveSet={handleRemoveSet}
+            onDuplicateLastSet={handleDuplicateLastSet}
+            onFillSuggestion={handleFillSuggestion}
+            isPRCheck={isPR}
+            livePRs={livePRs.current}
+            touchStartXRef={touchStartXRef}
+          />
         )}
       </div>
 
-      {/* ── Sticky Bottom — Finish Workout ───────────────────────────────── */}
+      {/* Sticky Bottom — Finish Workout */}
       <div className="flex-shrink-0 px-4 py-4 border-t border-slate-200 dark:border-white/10 bg-[#F8FAFC] dark:bg-[#0F172A]">
         <div className="flex items-center justify-between gap-3 mb-2">
           <div className="flex flex-col gap-1">

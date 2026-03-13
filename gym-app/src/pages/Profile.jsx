@@ -10,7 +10,8 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData } from '../lib/achievements';
+import { useToast } from '../contexts/ToastContext';
+import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, computeStreakFromSessions } from '../lib/achievements';
 
 // ── Setup option data ─────────────────────────────────────────────────────────
 const FITNESS_LEVELS = [
@@ -52,18 +53,6 @@ const INJURY_OPTIONS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const computeStreak = (sessions) => {
-  const dates = new Set(sessions.map(s => new Date(s.completed_at).toDateString()));
-  let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    if (dates.has(d.toDateString())) streak++;
-    else if (i > 0) break;
-  }
-  return streak;
-};
 
 const buildWeeklyChart = (sessions) => {
   const now = new Date();
@@ -108,6 +97,7 @@ const HeroStat = ({ label, value, sub }) => (
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { user, profile, signOut } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('achievements');
 
@@ -220,7 +210,7 @@ const Profile = () => {
   }, [user, profile]);
 
   // ── Derived values ──────────────────────────────────────────────────────────
-  const streak      = computeStreak(sessions);
+  const streak      = computeStreakFromSessions(sessions);
   const totalVolume = sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
   const volumeStr   = totalVolume >= 1_000_000
     ? `${(totalVolume / 1_000_000).toFixed(2)}M`
@@ -253,10 +243,11 @@ const Profile = () => {
         .upsert({ profile_id: user.id, gym_id: profile.gym_id, ...dbFields, injuries_notes });
       if (error) {
         console.error('saveGoals error:', error);
-        alert('Failed to save: ' + error.message);
+        showToast('Failed to save: ' + error.message, 'error');
       } else {
         setOnboarding({ ...dbFields, injuries_notes });
         setEditingGoals(false);
+        showToast('Goals updated', 'success');
       }
     } finally {
       setSavingGoals(false);

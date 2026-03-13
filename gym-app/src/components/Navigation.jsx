@@ -35,7 +35,7 @@ const Navigation = () => {
   return (
   <>
     {/* ── Desktop Top Navigation ──────────────────────────────────── */}
-    <nav className="hidden md:block sticky top-0 z-50 border-b border-white/6 bg-[#03050A]/90 backdrop-blur-2xl">
+    <nav aria-label="Main navigation" className="hidden md:block sticky top-0 z-50 border-b border-white/6 bg-[#03050A]/90 backdrop-blur-2xl">
       <div className="container flex justify-between items-center py-3.5">
 
         {/* Brand */}
@@ -189,6 +189,7 @@ const Navigation = () => {
 
     {/* ── Mobile Bottom Navigation (Strava-style 5 tabs with center Record) ─── */}
     <nav
+      aria-label="Mobile navigation"
       className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-[#05070B]/95 backdrop-blur-2xl border-t border-black/8 dark:border-white/6 flex items-end justify-around px-2"
       style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))', paddingTop: '0.5rem' }}
     >

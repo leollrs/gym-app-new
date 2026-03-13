@@ -29,14 +29,41 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
     }
   }, [activeIndex, normalized.length]);
 
+  const handleKeyDown = (e, i) => {
+    let newIndex = i;
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      newIndex = (i + 1) % normalized.length;
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      newIndex = (i - 1 + normalized.length) % normalized.length;
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      newIndex = 0;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      newIndex = normalized.length - 1;
+    } else {
+      return;
+    }
+    onChange(newIndex);
+    tabRefs.current[newIndex]?.focus();
+  };
+
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex">
+      <div className="flex" role="tablist">
         {normalized.map((tab, i) => (
           <button
             key={tab.key}
             ref={el => tabRefs.current[i] = el}
+            role="tab"
+            aria-selected={i === activeIndex}
+            aria-controls={`tabpanel-${tab.key}`}
+            id={`tab-${tab.key}`}
+            tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onChange(i)}
+            onKeyDown={(e) => handleKeyDown(e, i)}
             className={`flex-1 py-2.5 text-[13px] font-semibold text-center transition-colors relative ${
               i === activeIndex
                 ? 'text-[#E5E7EB]'

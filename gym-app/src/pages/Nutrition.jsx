@@ -268,12 +268,15 @@ export default function Nutrition() {
           {editing && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" onClick={() => setEditing(false)}>
               <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="nutrition-targets-title"
                 className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden shadow-xl"
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-                  <p className="text-[16px] font-bold text-[#E5E7EB]">Nutrition Targets</p>
-                  <button onClick={() => setEditing(false)}><X size={20} className="text-[#6B7280]" /></button>
+                  <p id="nutrition-targets-title" className="text-[16px] font-bold text-[#E5E7EB]">Nutrition Targets</p>
+                  <button onClick={() => setEditing(false)} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
                 </div>
                 <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
                   {bodyweight && (

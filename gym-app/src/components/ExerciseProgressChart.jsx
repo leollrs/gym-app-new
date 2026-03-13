@@ -125,7 +125,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
       className="fixed inset-0 z-[160] flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg rounded-t-3xl bg-white dark:bg-slate-900 px-5 pt-4 pb-10 shadow-2xl animate-fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="exercise-progress-title" className="w-full max-w-lg rounded-t-3xl bg-white dark:bg-slate-900 px-5 pt-4 pb-10 shadow-2xl animate-fade-in">
         {/* Drag handle */}
         <div className="w-10 h-1 rounded-full mx-auto mb-4 bg-black/10 dark:bg-white/20" />
 
@@ -135,7 +135,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
             <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">
               Estimated 1RM Progress
             </p>
-            <h3 className="font-bold text-[18px] leading-tight text-slate-900 dark:text-slate-100">
+            <h3 id="exercise-progress-title" className="font-bold text-[18px] leading-tight text-slate-900 dark:text-slate-100">
               {exerciseName}
             </h3>
           </div>

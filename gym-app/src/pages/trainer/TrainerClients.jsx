@@ -59,7 +59,7 @@ const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="client-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -69,7 +69,7 @@ const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
               <span className="text-[15px] font-bold text-[#D4AF37]">{client.full_name[0]}</span>
             </div>
             <div>
-              <p className="text-[15px] font-bold text-[#E5E7EB]">{client.full_name}</p>
+              <p id="client-detail-title" className="text-[15px] font-bold text-[#E5E7EB]">{client.full_name}</p>
               <p className="text-[11px] text-[#6B7280]">
                 @{client.username}
                 {daysInactive !== null
@@ -349,6 +349,7 @@ export default function TrainerClients() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search clients…"
+              aria-label="Search clients"
               className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
             />
           </div>

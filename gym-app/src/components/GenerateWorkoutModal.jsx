@@ -3,6 +3,7 @@ import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check } from 'lucid
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { generateProgram, estimateDuration } from '../lib/workoutGenerator';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 const GENDER_OPTIONS = [
   { value: 'male',   label: 'Male'   },
@@ -245,6 +246,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [result, setResult] = useState(null);
+  const focusTrapRef = useFocusTrap(true, onClose);
 
   const [form, setForm] = useState({
     height_cm:       onboarding?.height_cm  || '',
@@ -377,6 +379,10 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       onClick={onClose}
     >
       <div
+        ref={focusTrapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="generate-workout-title"
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
@@ -387,11 +393,11 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <Zap size={15} className="text-[#D4AF37]" />
             </div>
             <div>
-              <p className="text-[15px] font-bold text-[#E5E7EB]">Generate My Program</p>
+              <p id="generate-workout-title" className="text-[15px] font-bold text-[#E5E7EB]">Generate My Program</p>
               <p className="text-[11px] text-[#6B7280]">Step {step + 1} of 2</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1">
+          <button onClick={onClose} aria-label="Close dialog" className="p-1">
             <X size={18} className="text-[#6B7280]" />
           </button>
         </div>

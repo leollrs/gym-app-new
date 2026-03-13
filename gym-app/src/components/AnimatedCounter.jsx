@@ -78,7 +78,7 @@ export default function AnimatedCounter({
   }
 
   return (
-    <span ref={ref} className={className}>
+    <span ref={ref} className={className} aria-live="polite" aria-atomic="true">
       {display !== null ? `${prefix}${display}${suffix}` : `${prefix}0${suffix}`}
     </span>
   );

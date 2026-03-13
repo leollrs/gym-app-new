@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Save, Clock, Upload, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { applyBranding } from '../../lib/branding';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -70,6 +71,7 @@ async function getSignedLogoUrl(path) {
 
 export default function AdminSettings() {
   const { profile, refreshProfile } = useAuth();
+  const { showToast } = useToast();
   const [gym, setGym]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -128,6 +130,7 @@ export default function AdminSettings() {
     const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
     if (!ALLOWED_TYPES.includes(file.type)) {
       setError('Only PNG, JPEG, and WebP images are allowed');
+      showToast('Only PNG, JPEG, and WebP images are allowed', 'error');
       return;
     }
 
@@ -194,6 +197,7 @@ export default function AdminSettings() {
     if (gymErr || brandingErr) {
       const msg = gymErr?.message || brandingErr?.message;
       setError(msg);
+      showToast(msg, 'error');
       setSaving(false);
       return;
     }
@@ -201,6 +205,7 @@ export default function AdminSettings() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
     setSaving(false);
+    showToast('Settings saved', 'success');
   };
 
   if (loading) return (

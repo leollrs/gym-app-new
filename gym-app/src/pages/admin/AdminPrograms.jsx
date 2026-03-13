@@ -330,12 +330,15 @@ const TemplatesModal = ({ onClose, onSelect, onStartFromScratch }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-program-title"
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">New Program</p>
+          <p id="new-program-title" className="text-[16px] font-bold text-[#E5E7EB]">New Program</p>
           <div className="flex items-center gap-2">
             {onStartFromScratch && (
               <button
@@ -642,13 +645,16 @@ const ProgramModal = ({ program, initialData, onClose, onSaved, gymId, adminId }
       onClick={closeMenus}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-program-title"
         className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div>
-            <p className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Program' : 'New Program'}</p>
+            <p id="edit-program-title" className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Program' : 'New Program'}</p>
             {avgSessionSecs > 0 && (
               <p className="text-[11px] text-[#6B7280] mt-0.5 flex items-center gap-1">
                 <Clock size={10} /> avg {fmtTime(avgSessionSecs)} per session

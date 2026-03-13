@@ -99,6 +99,9 @@ const RedeemModal = ({ reward, points, onConfirm, onClose }) => {
         onClick={onClose}
       >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="redeem-reward-title"
           className="bg-[#0F172A] rounded-[18px] border border-white/10 p-6 max-w-sm w-full shadow-2xl"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -106,7 +109,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose }) => {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-[18px] font-bold text-[#E5E7EB]">Redeem Reward</h3>
+            <h3 id="redeem-reward-title" className="text-[18px] font-bold text-[#E5E7EB]">Redeem Reward</h3>
             <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
               <X size={20} />
             </button>

@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useReducer } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, Timer, Dumbbell, Check, ChevronDown, Trophy } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
 import GymPulse from '../components/GymPulse';
+import Skeleton from '../components/Skeleton';
 import { getLevel } from '../components/LevelBadge';
 import { getUserPoints } from '../lib/rewardsEngine';
 import { getRewardTier } from '../lib/rewardsEngine';
 import { getCached, setCache } from '../lib/queryCache';
+import { computeStreakFromSessions } from '../lib/achievements';
+import { formatTime } from '../lib/dateUtils';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
-const formatTime = (s) =>
-  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 // Scan localStorage for any in-progress session started within the last 24 hours
 const readActiveSession = () => {
@@ -29,25 +30,6 @@ const readActiveSession = () => {
   return null;
 };
 
-// Compute current consecutive-day streak
-const computeStreak = (sessions) => {
-  const dates = new Set(
-    sessions.map(s => new Date(s.completed_at).toDateString())
-  );
-  let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    if (dates.has(d.toDateString())) {
-      streak++;
-    } else if (i > 0) {
-      break;
-    }
-  }
-  return streak;
-};
-
 // Returns true if the user trained yesterday but NOT today yet
 const isStreakAtRisk = (sessions) => {
   const today    = new Date().toDateString();
@@ -56,23 +38,69 @@ const isStreakAtRisk = (sessions) => {
   return dates.has(yesterday) && !dates.has(today);
 };
 
+/* ── Reducer ───────────────────────────────────────────────────────────────── */
+const initialState = {
+  loading: true,
+  stats: { sessions: 0, streak: 0 },
+  streakAtRisk: false,
+  recentSessions: [],
+  memberDaysOld: 0,
+  userPoints: { total_points: 0, lifetime_points: 0 },
+  weekGoal: 4,
+  weekDaysTrained: [],
+  nextRoutine: null,
+  routineExercises: [],
+  lastSessionForRoutine: null,
+};
+
+function dashReducer(state, action) {
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload };
+    case 'SET_STATS':
+      return { ...state, stats: action.payload };
+    case 'SET_ACTIVITY':
+      return {
+        ...state,
+        streakAtRisk: action.payload.streakAtRisk,
+        recentSessions: action.payload.recentSessions,
+        memberDaysOld: action.payload.memberDaysOld,
+      };
+    case 'SET_NEXT_WORKOUT':
+      return {
+        ...state,
+        nextRoutine: action.payload.nextRoutine,
+        routineExercises: action.payload.routineExercises,
+        lastSessionForRoutine: action.payload.lastSessionForRoutine,
+      };
+    case 'SET_WEEK':
+      return {
+        ...state,
+        weekGoal: action.payload.weekGoal,
+        weekDaysTrained: action.payload.weekDaysTrained,
+      };
+    case 'SET_USER_POINTS':
+      return { ...state, userPoints: action.payload };
+    case 'HYDRATE':
+      return { ...state, ...action.payload, loading: false };
+    default:
+      return state;
+  }
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
 
-  const [stats, setStats]               = useState({ sessions: 0, streak: 0 });
-  const [nextRoutine, setNextRoutine]                     = useState(null);
-  const [routineExercises, setRoutineExercises]           = useState([]);
-  const [lastSessionForRoutine, setLastSessionForRoutine] = useState(null);
-  const [loading, setLoading]                             = useState(true);
-  const [recentSessions, setRecentSessions]               = useState([]);
-  const [streakAtRisk, setStreakAtRisk]     = useState(false);
-  const [memberDaysOld, setMemberDaysOld]   = useState(0);
-  const [userPoints, setUserPoints]         = useState({ total_points: 0, lifetime_points: 0 });
-  const [weekGoal, setWeekGoal]             = useState(4);
-  const [weekDaysTrained, setWeekDaysTrained] = useState([]);
-  const [showExercises, setShowExercises]   = useState(false);
+  const [state, dispatch] = useReducer(dashReducer, initialState);
+  const {
+    loading, stats, streakAtRisk, recentSessions, memberDaysOld,
+    userPoints, weekGoal, weekDaysTrained, nextRoutine,
+    routineExercises, lastSessionForRoutine,
+  } = state;
+
+  const [showExercises, setShowExercises] = useState(false);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -87,18 +115,7 @@ const Dashboard = () => {
   useEffect(() => {
     const cached = getCached(`dash:${user?.id}`);
     if (cached?.data) {
-      const c = cached.data;
-      setStats(c.stats);
-      setStreakAtRisk(c.streakAtRisk);
-      setRecentSessions(c.recentSessions);
-      setMemberDaysOld(c.memberDaysOld);
-      setNextRoutine(c.nextRoutine);
-      setRoutineExercises(c.routineExercises);
-      setLastSessionForRoutine(c.lastSessionForRoutine);
-      setWeekGoal(c.weekGoal);
-      setWeekDaysTrained(c.weekDaysTrained);
-      setUserPoints(c.userPoints);
-      setLoading(false);
+      dispatch({ type: 'HYDRATE', payload: cached.data });
     }
   }, [user?.id]);
 
@@ -108,7 +125,7 @@ const Dashboard = () => {
     const load = async () => {
       // Only show loading skeleton if no cached data
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
-      if (!hasCached) setLoading(true);
+      if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
       // Fire independent queries in parallel
       const [sessionsRes, routinesRes, pointsRes] = await Promise.all([
@@ -132,17 +149,23 @@ const Dashboard = () => {
       const routines = routinesRes.data || [];
 
       const totalSessions = allSessions.length;
-      const streak        = computeStreak(allSessions);
+      const streak        = computeStreakFromSessions(allSessions);
       const atRisk        = isStreakAtRisk(allSessions);
       const newStats      = { sessions: totalSessions, streak };
 
-      setStats(newStats);
-      setStreakAtRisk(atRisk);
-      setRecentSessions(allSessions.slice(0, 4));
+      dispatch({ type: 'SET_STATS', payload: newStats });
 
       const createdAt = profile?.created_at ? new Date(profile.created_at) : null;
       const daysOld   = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 999;
-      setMemberDaysOld(daysOld);
+
+      dispatch({
+        type: 'SET_ACTIVITY',
+        payload: {
+          streakAtRisk: atRisk,
+          recentSessions: allSessions.slice(0, 4),
+          memberDaysOld: daysOld,
+        },
+      });
 
       let newNextRoutine = null;
       let newRoutineExercises = [];
@@ -154,13 +177,17 @@ const Dashboard = () => {
           .sort((a, b) => (a.position || 0) - (b.position || 0));
         newLastSession = allSessions.find(s => s.routine_id === routines[0].id) ?? null;
       }
-      setNextRoutine(newNextRoutine);
-      setRoutineExercises(newRoutineExercises);
-      setLastSessionForRoutine(newLastSession);
+      dispatch({
+        type: 'SET_NEXT_WORKOUT',
+        payload: {
+          nextRoutine: newNextRoutine,
+          routineExercises: newRoutineExercises,
+          lastSessionForRoutine: newLastSession,
+        },
+      });
 
       // Weekly goal tracker
       const weekGoalValue = profile?.training_days_per_week || 4;
-      setWeekGoal(weekGoalValue);
 
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -178,10 +205,13 @@ const Dashboard = () => {
         }
       }
       const newWeekDays = [...trainedDays];
-      setWeekDaysTrained(newWeekDays);
+      dispatch({
+        type: 'SET_WEEK',
+        payload: { weekGoal: weekGoalValue, weekDaysTrained: newWeekDays },
+      });
 
-      setUserPoints(pointsRes);
-      setLoading(false);
+      dispatch({ type: 'SET_USER_POINTS', payload: pointsRes });
+      dispatch({ type: 'SET_LOADING', payload: false });
 
       // Persist to cache for instant next load
       setCache(`dash:${user.id}`, {
@@ -245,9 +275,9 @@ const Dashboard = () => {
     ? stats.streak >= 14 ? '#FF6B35'
     : stats.streak >= 7  ? '#D4AF37'
     : stats.streak >= 3  ? '#F59E0B'
-    : stats.streak >= 1  ? '#E5E7EB'
-    : '#4B5563'
-    : '#4B5563';
+    : stats.streak >= 1  ? 'var(--color-text-primary)'
+    : 'var(--color-text-faint)'
+    : 'var(--color-text-faint)';
 
   // Level/XP data
   const { level, xpIntoLevel, xpForNext, progress: xpProgress } = getLevel(userPoints.total_points);
@@ -262,7 +292,9 @@ const Dashboard = () => {
       <div className="mx-auto w-full max-w-[480px] px-5 pt-6 pb-28 md:pb-12 stagger-fade-in space-y-5">
 
         {/* ── 1. LEVEL / XP (top of page) ────────────────────────────────────── */}
-        {!loading && (
+        {loading ? (
+          <div className="rounded-[12px] bg-[#0F172A] border border-white/8 px-4 py-2.5 h-[40px] animate-pulse relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.8s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/[0.04] before:to-transparent" />
+        ) : (
           <Link
             to="/rewards"
             className="block rounded-[12px] bg-[#0F172A] border border-white/8 px-4 py-2.5 active:scale-[0.99] transition-transform"
@@ -337,7 +369,15 @@ const Dashboard = () => {
         {/* ── 3. TODAY'S WORKOUT (highlighted hero card) ─────────────────────── */}
         <section>
           {loading ? (
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-48 animate-pulse" />
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 animate-pulse relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.8s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/[0.04] before:to-transparent">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-6 h-6 rounded-full bg-white/[0.06]" />
+                <div className="h-3 w-24 rounded-md bg-white/[0.06]" />
+              </div>
+              <div className="h-7 w-48 rounded-lg bg-white/[0.06] mb-2" />
+              <div className="h-3.5 w-36 rounded-md bg-white/[0.04] mb-5" />
+              <div className="w-full h-12 rounded-xl bg-white/[0.06]" />
+            </div>
           ) : activeSession ? (
             <div className="rounded-[14px] bg-gradient-to-b from-emerald-500/[0.08] to-[#0F172A] border border-emerald-500/25 overflow-hidden">
               <button
@@ -458,9 +498,9 @@ const Dashboard = () => {
               className="rounded-[14px] border overflow-hidden"
               style={{
                 background: goalHit
-                  ? 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(15,23,42,1) 100%)'
-                  : '#0F172A',
-                borderColor: goalHit ? 'rgba(212,175,55,0.25)' : 'rgba(255,255,255,0.08)',
+                  ? `linear-gradient(135deg, rgba(212,175,55,0.08) 0%, var(--color-bg-card) 100%)`
+                  : 'var(--color-bg-card)',
+                borderColor: goalHit ? 'rgba(212,175,55,0.25)' : 'var(--color-border-default)',
               }}
             >
               <div className="p-5">
@@ -480,7 +520,7 @@ const Dashboard = () => {
                   <div className="flex items-baseline gap-0.5">
                     <span
                       className="text-[20px] font-black"
-                      style={{ color: goalHit ? '#D4AF37' : '#E5E7EB' }}
+                      style={{ color: goalHit ? '#D4AF37' : 'var(--color-text-primary)' }}
                     >
                       {weekDaysTrained.length}
                     </span>
@@ -520,14 +560,14 @@ const Dashboard = () => {
                               ? 'linear-gradient(135deg, #D4AF37 0%, #B8941F 100%)'
                               : isToday
                               ? 'rgba(212,175,55,0.08)'
-                              : 'rgba(255,255,255,0.03)',
+                              : 'var(--color-bg-subtle)',
                             border: trained
                               ? 'none'
                               : isToday
                               ? '1.5px solid rgba(212,175,55,0.3)'
                               : isPast
-                              ? '1px solid rgba(255,255,255,0.06)'
-                              : '1px dashed rgba(255,255,255,0.08)',
+                              ? `1px solid var(--color-border-subtle)`
+                              : `1px dashed var(--color-border-default)`,
                           }}
                         >
                           {trained && <Check size={16} strokeWidth={3} className="text-black" />}

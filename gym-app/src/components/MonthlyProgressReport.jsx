@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { epley1RM } from '../lib/overloadEngine';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
+import { fmtDuration } from '../lib/dateUtils';
 import {
   format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameDay, subMonths, addMonths, isAfter, isBefore, differenceInDays,
@@ -38,13 +39,6 @@ const fmtNum = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return n.toLocaleString();
-};
-
-const fmtDuration = (seconds) => {
-  if (!seconds) return '0m';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
 const pctChange = (current, previous) => {

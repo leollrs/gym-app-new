@@ -3,6 +3,7 @@ import { Trash2, RotateCcw, MessageSquare, Activity, ShieldAlert } from 'lucide-
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
+import { sanitize } from '../../lib/sanitize';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -33,25 +34,25 @@ const dataPreview = (type, data) => {
   switch (type) {
     case 'workout_completed':
       return [
-        data.workout_name && `"${data.workout_name}"`,
+        data.workout_name && `"${sanitize(data.workout_name)}"`,
         data.duration_min != null && `${data.duration_min} min`,
         data.total_volume_lbs != null && `${Math.round(data.total_volume_lbs).toLocaleString()} lbs`,
       ].filter(Boolean).join(' · ') || null;
     case 'pr_hit':
       return [
-        data.exercise_name && data.exercise_name,
+        data.exercise_name && sanitize(data.exercise_name),
         data.weight_lbs != null && data.reps != null && `${data.weight_lbs} lbs × ${data.reps}`,
         data.estimated_1rm != null && `est. 1RM ${Math.round(data.estimated_1rm)} lbs`,
       ].filter(Boolean).join(' · ') || null;
     case 'challenge_joined':
     case 'challenge_won':
-      return data.challenge_name ? `"${data.challenge_name}"` : null;
+      return data.challenge_name ? `"${sanitize(data.challenge_name)}"` : null;
     case 'achievement_unlocked':
-      return data.achievement_name ? `"${data.achievement_name}"` : null;
+      return data.achievement_name ? `"${sanitize(data.achievement_name)}"` : null;
     case 'check_in':
-      return data.method ? `Via ${data.method}` : null;
+      return data.method ? `Via ${sanitize(data.method)}` : null;
     case 'program_started':
-      return data.program_name ? `"${data.program_name}"` : null;
+      return data.program_name ? `"${sanitize(data.program_name)}"` : null;
     default:
       return null;
   }
@@ -394,7 +395,7 @@ const CommentsTab = ({ gymId }) => {
                     </div>
 
                     <p className="text-[13px] text-[#E5E7EB] leading-relaxed mb-1.5 break-words">
-                      {comment.content}
+                      {sanitize(comment.content)}
                     </p>
 
                     <div className="flex items-center gap-2 flex-wrap">
