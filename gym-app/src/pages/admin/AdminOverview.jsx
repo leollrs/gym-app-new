@@ -98,8 +98,9 @@ export default function AdminOverview() {
   // Greeting hour (pre-computed for React Compiler purity)
   const [greetingHour, setGreetingHour] = useState(12);
 
-  // Follow-up section collapsible
+  // Collapsible sections
   const [showFollowUp, setShowFollowUp] = useState(false);
+  const [showRecentWorkouts, setShowRecentWorkouts] = useState(false);
 
   // Follow-up settings
   const [fupSettings, setFupSettings]   = useState(DEFAULT_SETTINGS);
@@ -369,7 +370,12 @@ export default function AdminOverview() {
         if (d in dayMap) dayMap[d]++;
       });
       setChartData(Object.entries(dayMap).map(([date, count]) => ({ date, count })));
-      setRecentActivity(sessions.slice(0, 8));
+      // Enrich recent sessions with member name
+      setRecentActivity(sessions.slice(0, 8).map(s => ({
+        ...s,
+        memberName: memberMap[s.profile_id]?.full_name || 'Unknown',
+        memberInitial: memberMap[s.profile_id]?.full_name?.[0]?.toUpperCase() || '?',
+      })));
 
       // ── Top exercises (last 30d) ────────────────────────────
       const { data: sessionRows } = await supabase
@@ -467,12 +473,11 @@ export default function AdminOverview() {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <StatCard label="Total Members"    value={stats.totalMembers}             sub="all time"                  borderColor="#6366F1" delay={100} />
         <StatCard label="Retention (30d)"  value={`${stats.retentionPct ?? 0}%`}  sub="still active vs 30d ago"   borderColor="#10B981" delay={150} />
-        <StatCard label="Engagement (30d)" value={`${stats.engagementPct ?? 0}%`} sub="logged ≥1 workout"         borderColor="#3B82F6" delay={200} />
-        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk"       borderColor="#EF4444" delay={250} />
-        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"         borderColor="#D4AF37" delay={300} />
+        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk"       borderColor="#EF4444" delay={200} />
+        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"         borderColor="#D4AF37" delay={250} />
       </div>
 
       {/* Chart + Churn Risk Summary */}
@@ -622,34 +627,56 @@ export default function AdminOverview() {
 
       </FadeIn>
 
-      {/* Recent workouts */}
+      {/* Recent workouts — collapsible */}
       <FadeIn delay={490}>
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 hover:border-white/10 transition-colors duration-300">
-        <p className="text-[13px] font-semibold text-[#E5E7EB] mb-2.5">Recent Workouts</p>
-        {recentActivity.length === 0 ? (
-          <p className="text-[12px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
-        ) : (
-          <div className="divide-y divide-white/4">
-            {recentActivity.map(s => (
-              <div key={s.started_at + s.profile_id} className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-[12px] text-[#E5E7EB]">Workout completed</p>
-                    <p className="text-[10px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
-                  </div>
-                </div>
-                {s.total_volume_lbs > 0 && (
-                  <span className="text-[11px] font-semibold text-[#9CA3AF]">
-                    {Math.round(s.total_volume_lbs).toLocaleString()} lbs
-                  </span>
-                )}
-              </div>
-            ))}
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl hover:border-white/10 transition-colors duration-300 mb-4">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">Recent Workouts</p>
+            {recentActivity.length > 0 && (
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#6B7280]">
+                {recentActivity.length}
+              </span>
+            )}
           </div>
-        )}
-      </div>
+          <button
+            onClick={() => setShowRecentWorkouts(v => !v)}
+            className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+          >
+            {showRecentWorkouts ? 'Hide' : 'Show'}
+            <ChevronDown size={13} className={`transition-transform ${showRecentWorkouts ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
 
+        <div className={`grid transition-all duration-300 ease-in-out ${showRecentWorkouts ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden">
+            <div className="px-4 pb-4 border-t border-white/6">
+              {recentActivity.length === 0 ? (
+                <p className="text-[12px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
+              ) : (
+                <div className="divide-y divide-white/4">
+                  {recentActivity.map(s => (
+                    <div key={s.started_at + s.profile_id} className="flex items-center gap-3 py-2.5">
+                      <div className="w-7 h-7 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] font-bold text-[#9CA3AF]">{s.memberInitial}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{s.memberName}</p>
+                        <p className="text-[10px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
+                      </div>
+                      {s.total_volume_lbs > 0 && (
+                        <span className="text-[11px] font-semibold text-[#9CA3AF] tabular-nums">
+                          {Math.round(s.total_volume_lbs).toLocaleString()} lbs
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
       </FadeIn>
 
       {/* ── Follow-Up Settings — collapsible ──────── */}
