@@ -6,6 +6,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ReactionPicker from '../components/ReactionPicker';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -623,6 +624,7 @@ const SocialFeed = ({ embedded = false }) => {
   const [showFriends, setShowFriends]   = useState(false);
   const [tab, setTab]                 = useState('friends');
   const [friendStreaks, setFriendStreaks] = useState([]);
+  const swipe = useSwipeTabs(['friends', 'mine'], tab, setTab);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {
@@ -925,6 +927,8 @@ const SocialFeed = ({ embedded = false }) => {
           ))}
         </div>
 
+        {/* Swipeable content area */}
+        <div {...swipe}>
         {/* Friends Streaks */}
         {friendStreaks.length > 0 && (
           <div className="mb-6">
@@ -1007,6 +1011,7 @@ const SocialFeed = ({ embedded = false }) => {
             <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

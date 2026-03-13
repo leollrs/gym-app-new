@@ -19,6 +19,7 @@ import { format, parseISO, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import MonthlyProgressReport from '../components/MonthlyProgressReport';
 
 // ── Constants ────────────────────────────────────────────────────────────────
+import useSwipeTabs from '../hooks/useSwipeTabs';
 const TABS = ['Overview', 'History', 'Strength', 'Body'];
 
 const tooltipStyle = {
@@ -1524,6 +1525,8 @@ export default function Progress() {
     });
   };
 
+  const swipe = useSwipeTabs(TABS, activeTab, handleTabChange);
+
   return (
     <div className="min-h-screen bg-[#05070B]">
       {/* Sticky header */}
@@ -1555,8 +1558,8 @@ export default function Progress() {
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
+      {/* Tab content (swipeable) */}
+      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12" {...swipe}>
         {activeTab === 'Overview' && loadedTabs.has('Overview') && <OverviewTab />}
         {activeTab === 'History' && loadedTabs.has('History') && <HistoryTab />}
         {activeTab === 'Strength' && loadedTabs.has('Strength') && <StrengthTab />}

@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 
 // ── Helpers ─────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -142,6 +143,7 @@ const Workouts = () => {
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
   const [activeTab, setActiveTab]             = useState('routines');
+  const swipe = useSwipeTabs(['routines', 'programs'], activeTab, setActiveTab);
 
   // Gym programs
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -372,6 +374,8 @@ const Workouts = () => {
         ))}
       </div>
 
+      {/* ── Tab content (swipeable) ─────────────────────────── */}
+      <div {...swipe}>
       {/* ── My Routines tab ────────────────────────────────── */}
       {activeTab === 'routines' && (
         <div className="animate-fade-in">
@@ -459,10 +463,15 @@ const Workouts = () => {
           {/* ── My Programs ──────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">My Programs</p>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-[#D4AF37]/15 flex items-center justify-center">
+                  <Zap size={13} className="text-[#D4AF37]" />
+                </div>
+                <p className="text-[14px] font-bold text-[#E5E7EB]">My Programs</p>
+              </div>
               <button
                 onClick={() => setShowGenerator(true)}
-                className="flex items-center gap-1 text-[12px] font-semibold text-[#D4AF37] hover:text-[#f2d36b] transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/25 transition-colors"
               >
                 <Plus size={13} />
                 New Program
@@ -542,7 +551,12 @@ const Workouts = () => {
 
           {/* ── Gym Programs ─────────────────────────────────── */}
           <div>
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Gym Programs</p>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-md bg-white/[0.06] flex items-center justify-center">
+                <BookOpen size={13} className="text-[#9CA3AF]" />
+              </div>
+              <p className="text-[14px] font-bold text-[#E5E7EB]">Gym Programs</p>
+            </div>
             {programsLoading ? (
               <div className="space-y-2">{[1, 2].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[80px] animate-pulse" />)}</div>
             ) : gymPrograms.length === 0 ? (
@@ -589,6 +603,7 @@ const Workouts = () => {
 
         </div>
       )}
+      </div>
 
     </div>
 

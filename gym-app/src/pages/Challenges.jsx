@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
 import { addPoints } from '../lib/rewardsEngine';
+import useSwipeTabs from '../hooks/useSwipeTabs';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -492,6 +493,7 @@ export default function Challenges({ embedded = false }) {
   const [participants, setParticipants]   = useState([]);
   const [loading, setLoading]             = useState(true);
   const [tab, setTab]                     = useState('live');
+  const swipe = useSwipeTabs(TABS, tab, setTab);
 
   useEffect(() => {
     if (!profile?.gym_id || !user?.id) return;
@@ -512,46 +514,11 @@ export default function Challenges({ embedded = false }) {
     const challenge = challenges.find(c => c.id === challengeId);
     if (!challenge) return;
 
-    let score = 0;
-    try {
-      const start = challenge.start_date;
-      const end   = challenge.end_date;
-
-      if (challenge.type === 'consistency') {
-        const { count } = await supabase
-          .from('workout_sessions')
-          .select('id', { count: 'exact', head: true })
-          .eq('profile_id', user.id)
-          .gte('completed_at', start)
-          .lte('completed_at', end);
-        score = count ?? 0;
-
-      } else if (challenge.type === 'volume') {
-        const { data: sets } = await supabase
-          .from('workout_sets')
-          .select('weight_kg, reps, workout_sessions!inner(profile_id, completed_at)')
-          .eq('workout_sessions.profile_id', user.id)
-          .gte('workout_sessions.completed_at', start)
-          .lte('workout_sessions.completed_at', end)
-          .eq('completed', true);
-        score = (sets || []).reduce((sum, s) => sum + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
-
-      } else if (challenge.type === 'pr_count') {
-        const { count } = await supabase
-          .from('personal_records')
-          .select('id', { count: 'exact', head: true })
-          .eq('profile_id', user.id)
-          .gte('achieved_at', start)
-          .lte('achieved_at', end);
-        score = count ?? 0;
-      }
-    } catch (_) {
-      // If backfill fails, join with 0
-    }
-
+    // Score starts at 0 — the DB trigger enforces this to prevent score injection.
+    // Scores are updated server-side as workouts/PRs are logged.
     const { data, error } = await supabase
       .from('challenge_participants')
-      .insert({ challenge_id: challengeId, profile_id: user.id, gym_id: profile.gym_id, score })
+      .insert({ challenge_id: challengeId, profile_id: user.id, gym_id: profile.gym_id, score: 0 })
       .select('challenge_id, profile_id, score')
       .single();
     if (!error && data) {
@@ -615,7 +582,7 @@ export default function Challenges({ embedded = false }) {
         </div>
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`} {...swipe}>
         {user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} />
         )}
