@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, AlertTriangle, Dumbbell, ChevronRight, Activity,
@@ -11,14 +11,52 @@ import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { getRiskTier } from '../../lib/churnScore';
 
-// ── Stat card ─────────────────────────────────────────────
-const StatCard = ({ label, value, sub, borderColor }) => (
-  <div className={`bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2`} style={{ borderLeftColor: borderColor }}>
-    <p className="text-[24px] font-bold text-[#E5E7EB] leading-none">{value}</p>
-    <p className="text-[12px] text-[#9CA3AF] mt-1">{label}</p>
-    {sub && <p className="text-[11px] text-[#4B5563] mt-0.5">{sub}</p>}
+// ── Animated number (count-up) ────────────────────────────
+const useCountUp = (end, duration = 800) => {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef(null);
+  useEffect(() => {
+    const target = typeof end === 'number' ? end : parseInt(end) || 0;
+    if (target === 0) { setValue(0); return; }
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setValue(Math.round(eased * target));
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [end, duration]);
+  return value;
+};
+
+// ── Fade-in-up wrapper ────────────────────────────────────
+const FadeIn = ({ delay = 0, children, className = '' }) => (
+  <div
+    className={`animate-fade-in-up ${className}`}
+    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
+  >
+    {children}
   </div>
 );
+
+// ── Stat card ─────────────────────────────────────────────
+const StatCard = ({ label, value, sub, borderColor, delay = 0 }) => {
+  const isPercent = typeof value === 'string' && value.endsWith('%');
+  const numericVal = isPercent ? parseInt(value) : (typeof value === 'number' ? value : parseInt(value) || 0);
+  const animated = useCountUp(numericVal, 900);
+  const displayVal = isPercent ? `${animated}%` : animated.toLocaleString();
+  return (
+    <FadeIn delay={delay}>
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 hover:border-white/10 hover:bg-[#111827] transition-all duration-300 group" style={{ borderLeftColor: borderColor }}>
+        <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums tracking-tight">{displayVal}</p>
+        <p className="text-[12px] text-[#9CA3AF] mt-1 group-hover:text-[#D1D5DB] transition-colors">{label}</p>
+        {sub && <p className="text-[11px] text-[#4B5563] mt-0.5">{sub}</p>}
+      </div>
+    </FadeIn>
+  );
+};
 
 // ── Risk tier mini-bar for the churn summary ────────────────
 const TierRow = ({ label, count, color, total }) => {
@@ -257,29 +295,25 @@ export default function AdminOverview() {
       const total = members.length;
       const atRiskCount = tiers.critical + tiers.high;
 
-      // Engagement proxy: % of members who logged ≥1 workout in last 14d
-      const fourteenDaysAgo = subDays(now, 14).toISOString();
-      const activeIds14d = new Set(
-        sessions.filter(s => s.started_at >= fourteenDaysAgo).map(s => s.profile_id)
-      );
-      const engagementPct = total > 0
-        ? Math.round((activeIds14d.size / total) * 100)
-        : 0;
-
-      // Retention = members NOT cancelled or banned / total
-      const retainedCount = members.filter(m =>
+      // Retention = of members who existed 30d ago, how many are still not cancelled/banned
+      const thirtyDaysAgoDate = subDays(now, 30).toISOString();
+      const membersAt30d = members.filter(m => m.created_at <= thirtyDaysAgoDate);
+      const retained30d = membersAt30d.filter(m =>
         m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
       ).length;
-      const retentionPct = total > 0 ? Math.round((retainedCount / total) * 100) : 0;
+      const retentionPct = membersAt30d.length > 0
+        ? Math.round((retained30d / membersAt30d.length) * 100)
+        : 0;
 
-      // Activity rate = members who logged ≥1 workout in 30d / total
-      const activityPct = total > 0 ? Math.round((activeIds.size / total) * 100) : 0;
+      // Engagement = members who logged ≥1 workout in 30d / total current members
+      const engagementPct = total > 0
+        ? Math.round((activeIds.size / total) * 100)
+        : 0;
 
       setStats({
         totalMembers:  total,
         activeMembers: activeIds.size,
         retentionPct,
-        activityPct,
         atRiskCount,
         workoutsMonth: sessions.length,
         engagementPct,
@@ -384,7 +418,10 @@ export default function AdminOverview() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+        <p className="text-[12px] text-[#4B5563] animate-pulse">Loading dashboard...</p>
+      </div>
     </div>
   );
 
@@ -401,45 +438,49 @@ export default function AdminOverview() {
   return (
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       {/* Page header — contextual greeting */}
-      <div className="flex items-baseline justify-between mb-4">
-        <h1 className="text-[20px] font-bold text-[#E5E7EB]">
-          Good {greetingLabel}{firstName ? `, ${firstName}` : ''}
-        </h1>
-        <span className="text-[12px] text-[#6B7280]">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
-      </div>
+      <FadeIn>
+        <div className="flex items-baseline justify-between mb-4">
+          <h1 className="text-[20px] font-bold text-[#E5E7EB]">
+            Good {greetingLabel}{firstName ? `, ${firstName}` : ''}
+          </h1>
+          <span className="text-[12px] text-[#6B7280]">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
+        </div>
+      </FadeIn>
 
       {/* Today's Priorities — only show if there are items */}
       {actionItems.length > 0 && (
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4">
-          <p className="text-[11px] uppercase tracking-wider font-semibold text-[#6B7280] mb-2">Action Required</p>
-          <div className="space-y-1">
-            {actionItems.map((item, i) => (
-              <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 bg-[#111827]/60 rounded-lg cursor-pointer hover:bg-[#111827] transition-colors"
-                onClick={() => navigate(item.link)}>
-                <item.icon size={13} className={item.iconColor} />
-                <p className="text-[12px] text-[#E5E7EB] flex-1">{item.text}</p>
-                <ChevronRight size={13} className="text-[#4B5563]" />
-              </div>
-            ))}
+        <FadeIn delay={60}>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4">
+            <p className="text-[11px] uppercase tracking-wider font-semibold text-[#6B7280] mb-2">Action Required</p>
+            <div className="space-y-1">
+              {actionItems.map((item, i) => (
+                <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 bg-[#111827]/60 rounded-lg cursor-pointer hover:bg-[#111827] hover:translate-x-0.5 transition-all duration-200"
+                  onClick={() => navigate(item.link)}>
+                  <item.icon size={13} className={item.iconColor} />
+                  <p className="text-[12px] text-[#E5E7EB] flex-1">{item.text}</p>
+                  <ChevronRight size={13} className="text-[#4B5563] group-hover:text-[#9CA3AF] transition-colors" />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </FadeIn>
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        <StatCard label="Total Members"    value={stats.totalMembers}             sub="all time"             borderColor="#6366F1" />
-        <StatCard label="Retention"        value={`${stats.retentionPct ?? 0}%`}  sub="not cancelled/banned" borderColor="#10B981" />
-        <StatCard label="Active Rate (30d)" value={`${stats.activityPct ?? 0}%`}  sub="logged ≥1 workout"    borderColor="#3B82F6" />
-        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk"  borderColor="#EF4444" />
-        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"    borderColor="#D4AF37" />
-        <StatCard label="Engagement (14d)" value={`${stats.engagementPct ?? 0}%`} sub="members active"        borderColor="#10B981" />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <StatCard label="Total Members"    value={stats.totalMembers}             sub="all time"                  borderColor="#6366F1" delay={100} />
+        <StatCard label="Retention (30d)"  value={`${stats.retentionPct ?? 0}%`}  sub="still active vs 30d ago"   borderColor="#10B981" delay={150} />
+        <StatCard label="Engagement (30d)" value={`${stats.engagementPct ?? 0}%`} sub="logged ≥1 workout"         borderColor="#3B82F6" delay={200} />
+        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk"       borderColor="#EF4444" delay={250} />
+        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"         borderColor="#D4AF37" delay={300} />
       </div>
 
       {/* Chart + Churn Risk Summary */}
+      <FadeIn delay={350}>
       <div className="grid md:grid-cols-[1fr_320px] gap-3 mb-4">
 
         {/* Activity chart */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">Workouts — Last 14 Days</p>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -456,13 +497,13 @@ export default function AdminOverview() {
                 labelStyle={{ color: '#9CA3AF' }}
                 itemStyle={{ color: '#D4AF37' }}
               />
-              <Area type="monotone" dataKey="count" stroke="#D4AF37" strokeWidth={2} fill="url(#goldGrad)" dot={false} />
+              <Area type="monotone" dataKey="count" stroke="#D4AF37" strokeWidth={2} fill="url(#goldGrad)" dot={false} animationDuration={1200} animationEasing="ease-out" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         {/* Churn Risk Summary */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[13px] font-semibold text-[#E5E7EB]">Churn Risk</p>
             <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
@@ -497,11 +538,14 @@ export default function AdminOverview() {
         </div>
       </div>
 
+      </FadeIn>
+
       {/* At-risk members + Top exercises */}
+      <FadeIn delay={420}>
       <div className="grid md:grid-cols-[1fr_300px] gap-3 mb-4">
 
         {/* At-risk members */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
           <div className="flex items-center justify-between mb-2.5">
             <p className="text-[13px] font-semibold text-[#E5E7EB]">At-Risk Members</p>
             <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
@@ -545,7 +589,7 @@ export default function AdminOverview() {
         </div>
 
         {/* Top exercises */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-2.5">Top Exercises (30d)</p>
           {topExercises.length === 0 ? (
             <p className="text-[12px] text-[#6B7280] text-center py-6">No data yet</p>
@@ -576,8 +620,11 @@ export default function AdminOverview() {
         </div>
       </div>
 
+      </FadeIn>
+
       {/* Recent workouts */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4">
+      <FadeIn delay={490}>
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 hover:border-white/10 transition-colors duration-300">
         <p className="text-[13px] font-semibold text-[#E5E7EB] mb-2.5">Recent Workouts</p>
         {recentActivity.length === 0 ? (
           <p className="text-[12px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
@@ -603,8 +650,11 @@ export default function AdminOverview() {
         )}
       </div>
 
+      </FadeIn>
+
       {/* ── Follow-Up Settings — collapsible ──────── */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl">
+      <FadeIn delay={560}>
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl hover:border-white/10 transition-colors duration-300">
         {/* Compact header bar */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -637,7 +687,8 @@ export default function AdminOverview() {
         </div>
 
         {/* Expandable settings panel */}
-        {showFollowUp && (
+        <div className={`grid transition-all duration-300 ease-in-out ${showFollowUp ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden">
           <div className="px-4 pb-4 pt-1 border-t border-white/6">
             <p className="text-[11px] text-[#6B7280] mb-3">
               Runs daily at 2 AM UTC — sends in-app notifications to at-risk members
@@ -785,8 +836,10 @@ export default function AdminOverview() {
               </p>
             </div>
           </div>
-        )}
+          </div>
+        </div>
       </div>
+      </FadeIn>
     </div>
   );
 }

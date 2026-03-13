@@ -16,9 +16,19 @@ const tooltipStyle = {
   itemStyle: { color: '#D4AF37' },
 };
 
+// ── Fade-in-up wrapper ────────────────────────────────────
+const FadeIn = ({ delay = 0, children, className = '' }) => (
+  <div
+    className={`animate-fade-in-up ${className}`}
+    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
+  >
+    {children}
+  </div>
+);
+
 // ── Skeleton block ─────────────────────────────────────────
 const Skeleton = ({ className }) => (
-  <div className={`animate-pulse bg-white/6 rounded-[10px] ${className}`} />
+  <div className={`bg-white/6 rounded-[10px] ${className}`} style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
 );
 
 const CardSkeleton = ({ h = 'h-[220px]' }) => (
@@ -91,7 +101,7 @@ export default function AdminAnalytics() {
     load();
   }, [profile?.gym_id]);
 
-  // ── 2a. Retention Rate (membership-status based, last 6 months) ──
+  // ── 2a. Retention Rate (survival: members from start of month who are still active) ──
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
@@ -110,26 +120,26 @@ export default function AdminAnalytics() {
 
       const months = [];
       for (let i = 5; i >= 0; i--) {
-        const monthEnd = endOfMonth(subMonths(now, i));
+        const monthStart = startOfMonth(subMonths(now, i));
+        const monthEnd   = endOfMonth(subMonths(now, i));
 
-        // Members who existed by end of that month
-        const existedByMonth = members.filter(m => new Date(m.created_at) <= monthEnd);
-        const total = existedByMonth.length;
+        // Starting cohort: members who existed at the start of this month
+        const startingMembers = members.filter(m => new Date(m.created_at) < monthStart);
+        const starting = startingMembers.length;
 
-        // Members NOT cancelled or banned = retained
-        // For historical months we can only use current status as a proxy
-        // (we don't have status change history per month yet)
-        const retained = existedByMonth.filter(m =>
+        // Of those starting members, how many are still not cancelled/banned
+        // (using current status as proxy — we don't have per-month status history)
+        const retained = startingMembers.filter(m =>
           m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
         ).length;
 
-        const pct = total > 0 ? Math.round((retained / total) * 100) : 0;
+        const pct = starting > 0 ? Math.round((retained / starting) * 100) : 0;
 
         months.push({
           month: format(subMonths(now, i), 'MMM yy'),
           retention: pct,
           retained,
-          total,
+          total: starting,
         });
       }
 
@@ -139,7 +149,7 @@ export default function AdminAnalytics() {
     load();
   }, [profile?.gym_id]);
 
-  // ── 2b. Activity Rate (workout-based, last 6 months) ──────────
+  // ── 2b. Engagement (workout-based, last 6 months) ──────────
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
@@ -161,7 +171,7 @@ export default function AdminAnalytics() {
         const monthStart = startOfMonth(subMonths(now, i));
         const monthEnd   = endOfMonth(subMonths(now, i));
 
-        // Members who existed by end of that month
+        // Total members who existed by end of that month
         const totalThatMonth = members.filter(m => new Date(m.created_at) <= monthEnd).length;
 
         const { data: sessions } = await supabase
@@ -177,7 +187,7 @@ export default function AdminAnalytics() {
 
         months.push({
           month: format(subMonths(now, i), 'MMM yy'),
-          activity: pct,
+          engagement: pct,
           active: uniqueActive,
           total: totalThatMonth,
         });
@@ -560,12 +570,12 @@ export default function AdminAnalytics() {
     });
   };
 
-  const handleExportActivity = () => {
+  const handleExportEngagement = () => {
     exportCSV({
-      filename: 'activity-rate',
+      filename: 'engagement',
       columns: [
         { key: 'month', label: 'Month' },
-        { key: 'activity', label: 'Activity %' },
+        { key: 'engagement', label: 'Engagement %' },
         { key: 'active', label: 'Active' },
         { key: 'total', label: 'Total Members' },
       ],
@@ -593,16 +603,19 @@ export default function AdminAnalytics() {
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
 
       {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB]">Analytics</h1>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">Retention, growth, and engagement metrics</p>
-      </div>
+      <FadeIn>
+        <div className="mb-6">
+          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Analytics</h1>
+          <p className="text-[13px] text-[#6B7280] mt-0.5">Retention, growth, and engagement metrics</p>
+        </div>
+      </FadeIn>
 
       {/* Member Lifecycle Funnel */}
       {loadingLifecycle ? (
         <CardSkeleton h="h-[140px]" />
       ) : lifecycleStages.length > 0 && (
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+        <FadeIn delay={60}>
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 hover:border-white/10 transition-colors duration-300">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Member Lifecycle</p>
           <p className="text-[11px] text-[#6B7280] mb-4">Where your members are right now</p>
 
@@ -628,16 +641,18 @@ export default function AdminAnalytics() {
             ))}
           </div>
         </div>
+        </FadeIn>
       )}
 
       {/* Row 1: Member Growth + Retention Rate */}
+      <FadeIn delay={120}>
       <div className="grid md:grid-cols-2 gap-4 mb-4">
 
         {/* 1. Member Growth */}
         {loadingGrowth ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[13px] font-semibold text-[#E5E7EB]">Member Growth</p>
               <button
@@ -683,6 +698,8 @@ export default function AdminAnalytics() {
                     strokeWidth={2}
                     fill="url(#growthGrad)"
                     dot={false}
+                    animationDuration={1200}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -695,7 +712,7 @@ export default function AdminAnalytics() {
         {loadingRetention ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[13px] font-semibold text-[#E5E7EB]">Retention Rate</p>
               <button
@@ -721,27 +738,30 @@ export default function AdminAnalytics() {
                     ]}
                   />
                   <ReferenceLine y={BENCHMARKS.retentionRate} stroke="#D4AF37" strokeDasharray="6 4" strokeOpacity={0.5} label={{ value: `Industry avg ${BENCHMARKS.retentionRate}%`, position: 'right', fill: '#D4AF37', fontSize: 10, opacity: 0.7 }} />
-                  <Bar dataKey="retention" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="retention" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
                 </BarChart>
               </ResponsiveContainer>
             )}
-            <p className="text-[10px] text-[#4B5563] mt-2">% of members not cancelled or banned</p>
+            <p className="text-[10px] text-[#4B5563] mt-2">Of members who existed at month start, % still active</p>
           </div>
         )}
       </div>
 
-      {/* Row 1b: Activity Rate */}
+      </FadeIn>
+
+      {/* Row 1b: Engagement */}
+      <FadeIn delay={180}>
       {loadingActivity ? (
         <CardSkeleton h="h-[260px]" />
       ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 hover:border-white/10 transition-colors duration-300">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-[13px] font-semibold text-[#E5E7EB]">Activity Rate</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">% of members who logged ≥1 workout that month</p>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">Engagement</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">% of signed members who logged ≥1 workout that month</p>
             </div>
             <button
-              onClick={handleExportActivity}
+              onClick={handleExportEngagement}
               className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
             >
               <Download size={13} />
@@ -759,21 +779,24 @@ export default function AdminAnalytics() {
                   {...tooltipStyle}
                   formatter={(value, _name, props) => [
                     `${value}% (${props.payload.active} / ${props.payload.total})`,
-                    'Active',
+                    'Engaged',
                   ]}
                 />
-                <Bar dataKey="activity" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="engagement" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
       )}
 
+      </FadeIn>
+
       {/* Row 2: Cohort Retention — full width */}
+      <FadeIn delay={240}>
       {loadingCohort ? (
         <CardSkeleton h="h-[260px]" />
       ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 overflow-x-auto">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 overflow-x-auto hover:border-white/10 transition-colors duration-300">
           <div className="flex items-center justify-between mb-4">
             <p className="text-[13px] font-semibold text-[#E5E7EB]">Cohort Retention</p>
             <button
@@ -835,14 +858,17 @@ export default function AdminAnalytics() {
         </div>
       )}
 
+      </FadeIn>
+
       {/* Row 3: Challenge Participation + Onboarding Completion */}
+      <FadeIn delay={300}>
       <div className="grid md:grid-cols-2 gap-4">
 
         {/* 4. Challenge Participation */}
         {loadingChallenges ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
             <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Challenge Participation</p>
             {challengeData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-center">
@@ -879,7 +905,7 @@ export default function AdminAnalytics() {
                         );
                       }}
                     />
-                    <Bar dataKey="pct" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    <Bar dataKey="pct" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
                   </BarChart>
                 </ResponsiveContainer>
                 <p className="text-[10px] text-[#4B5563] mt-2">% of total members who joined each challenge</p>
@@ -892,7 +918,7 @@ export default function AdminAnalytics() {
         {loadingOnboarding ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
             <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Onboarding Completion</p>
             <div className="flex items-center gap-6">
 
@@ -954,11 +980,14 @@ export default function AdminAnalytics() {
         )}
       </div>
 
+      </FadeIn>
+
       {/* Trainer Performance */}
+      <FadeIn delay={360}>
       {loadingTrainers ? (
         <CardSkeleton h="h-[200px]" />
       ) : trainers.length > 0 && (
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mt-4">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mt-4 hover:border-white/10 transition-colors duration-300">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Trainer Performance</p>
           <p className="text-[11px] text-[#6B7280] mb-4">Client retention and engagement by trainer</p>
 
@@ -987,6 +1016,7 @@ export default function AdminAnalytics() {
           </div>
         </div>
       )}
+      </FadeIn>
     </div>
   );
 }
