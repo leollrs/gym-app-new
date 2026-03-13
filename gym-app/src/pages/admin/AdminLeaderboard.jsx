@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Trophy, BarChart3, RefreshCw } from 'lucide-react';
+import { Trophy, BarChart3, RefreshCw, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { subDays } from 'date-fns';
+import { exportCSV } from '../../lib/csvExport';
 
 const METRICS = [
   { key: 'volume',    label: 'Total Volume',     desc: 'lbs lifted' },
@@ -85,6 +86,19 @@ export default function AdminLeaderboard() {
   }, [profile?.gym_id, metric, period]);
 
   const scoreLabel = metric === 'volume' ? 'lbs' : metric === 'workouts' ? 'sessions' : 'PRs';
+  const metricLabel = METRICS.find(m => m.key === metric)?.label ?? 'Score';
+
+  const handleExport = () => {
+    exportCSV({
+      filename: 'leaderboard',
+      columns: [
+        { key: 'rank', label: 'Rank' },
+        { key: 'name', label: 'Name' },
+        { key: 'score', label: metricLabel },
+      ],
+      data: entries.map((e, i) => ({ ...e, rank: i + 1 })),
+    });
+  };
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
@@ -93,9 +107,18 @@ export default function AdminLeaderboard() {
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Leaderboard</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">Live gym rankings</p>
         </div>
-        <button onClick={load} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
-          <RefreshCw size={15} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          >
+            <Download size={13} />
+            Export
+          </button>
+          <button onClick={load} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <RefreshCw size={15} />
+          </button>
+        </div>
       </div>
 
       {/* Controls */}

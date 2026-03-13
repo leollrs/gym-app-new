@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X, ChevronRight, Trophy, FileText, Save, Link, Mail, UserX, UserCheck, Ban, Send, Users } from 'lucide-react';
+import { Search, X, ChevronRight, Trophy, FileText, Save, Link, Mail, UserX, UserCheck, Ban, Send, Users, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createNotification } from '../../lib/notifications';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { getRiskTier } from '../../lib/churnScore';
+import { exportCSV } from '../../lib/csvExport';
 
 // ── Membership status helpers ───────────────────────────────
 const statusConfig = {
@@ -754,6 +755,22 @@ export default function AdminMembers() {
     setBulkConfirm(false);
   };
 
+  const handleExport = () => {
+    exportCSV({
+      filename: 'members',
+      columns: [
+        { key: 'full_name', label: 'Name' },
+        { key: 'membership_status', label: 'Status' },
+        { key: 'created_at', label: 'Joined' },
+        { key: 'last_active_at', label: 'Last Active' },
+        { key: 'score', label: 'Churn Score' },
+        { key: 'risk_tier', label: 'Risk Tier' },
+        { key: 'recentWorkouts', label: 'Workouts (14d)' },
+      ],
+      data: filtered,
+    });
+  };
+
   const filters = [
     { key: 'all',      label: `All (${members.length})` },
     { key: 'at-risk',  label: `At Risk (${atRiskCount})` },
@@ -822,6 +839,13 @@ export default function AdminMembers() {
             className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
           />
         </div>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+        >
+          <Download size={13} />
+          Export
+        </button>
         <div className="flex gap-1.5 flex-wrap">
           {filters.map(f => (
             <button

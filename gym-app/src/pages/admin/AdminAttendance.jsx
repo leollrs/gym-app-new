@@ -3,9 +3,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid,
 } from 'recharts';
+import { Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays, startOfDay, eachDayOfInterval } from 'date-fns';
+import { exportCSV } from '../../lib/csvExport';
 
 const DAYS  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 6am–9pm
@@ -71,6 +73,17 @@ export default function AdminAttendance() {
     return 'bg-[#D4AF37]/15';
   };
 
+  const handleExport = () => {
+    exportCSV({
+      filename: 'attendance',
+      columns: [
+        { key: 'date', label: 'Date' },
+        { key: 'count', label: 'Workouts' },
+      ],
+      data: dailyData,
+    });
+  };
+
   return (
     <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -78,7 +91,15 @@ export default function AdminAttendance() {
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Attendance</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">Workout activity trends</p>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          >
+            <Download size={13} />
+            Export
+          </button>
+          <div className="flex gap-1.5">
           {['14', '30', '90'].map(d => (
             <button key={d} onClick={() => setPeriod(d)}
               className={`px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors ${
@@ -87,6 +108,7 @@ export default function AdminAttendance() {
               {d}d
             </button>
           ))}
+          </div>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, AlertTriangle, Dumbbell, ChevronRight, Activity,
   Bell, ToggleLeft, ToggleRight, Save, CheckCircle, Clock,
+  Zap, UserPlus, Trophy, Plus, X,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
@@ -59,6 +60,7 @@ export default function AdminOverview() {
   const [chartData, setChartData]       = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [topExercises, setTopExercises] = useState([]);
+  const [actionItems, setActionItems]   = useState([]);
 
   // Follow-up settings
   const [fupSettings, setFupSettings]   = useState(DEFAULT_SETTINGS);
@@ -66,19 +68,57 @@ export default function AdminOverview() {
   const [savingFup, setSavingFup]       = useState(false);
   const [fupSaved, setFupSaved]         = useState(false);
 
-  // ── Save follow-up settings ──────────────────────────────
+  // Drip campaign steps
+  const [steps, setSteps] = useState([
+    { step_number: 1, delay_days: 0, message_template: "Hey! We noticed you haven't been in lately. We miss you — come back and crush your goals!" },
+  ]);
+
+  const addStep = () => {
+    setSteps(prev => [...prev, {
+      step_number: prev.length + 1,
+      delay_days: 3,
+      message_template: '',
+    }]);
+  };
+
+  const removeStep = (idx) => {
+    setSteps(prev => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, step_number: i + 1 })));
+  };
+
+  const updateStep = (idx, field, value) => {
+    setSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  };
+
+  // ── Save follow-up settings + drip steps ─────────────────
   const saveSettings = async () => {
     if (!profile?.gym_id) return;
     setSavingFup(true);
+    const gymId = profile.gym_id;
+
+    // Save follow-up settings (use first step message as the legacy template)
     const payload = {
-      gym_id:           profile.gym_id,
+      gym_id:           gymId,
       enabled:          fupDraft.enabled,
       threshold:        fupDraft.threshold,
       cooldown_days:    fupDraft.cooldown_days,
-      message_template: fupDraft.message_template,
+      message_template: steps[0]?.message_template || fupDraft.message_template,
       updated_at:       new Date().toISOString(),
     };
     await supabase.from('churn_followup_settings').upsert(payload, { onConflict: 'gym_id' });
+
+    // Save drip campaign steps — delete existing, then insert new
+    await supabase.from('drip_campaign_steps').delete().eq('gym_id', gymId);
+    if (steps.length > 0) {
+      await supabase.from('drip_campaign_steps').insert(
+        steps.map(s => ({
+          gym_id: gymId,
+          step_number: s.step_number,
+          delay_days: s.delay_days,
+          message_template: s.message_template,
+        }))
+      );
+    }
+
     setFupSettings(s => ({ ...s, ...fupDraft }));
     setSavingFup(false);
     setFupSaved(true);
@@ -96,11 +136,17 @@ export default function AdminOverview() {
       const twentyEightDaysAgo = subDays(now, 28).toISOString();
 
       // ── Parallel fetches ──────────────────────────────────
+      const fortyEightHoursAgo = subDays(now, 2).toISOString();
+      const threeDaysFromNow   = subDays(now, -3).toISOString();
+
       const [
         membersRes,
         sessionsRes,
         churnScoresRes,
         fupRes,
+        notOnboardedRes,
+        challengesEndingSoonRes,
+        dripStepsRes,
       ] = await Promise.all([
         // All members
         supabase
@@ -131,6 +177,31 @@ export default function AdminOverview() {
           .select('*')
           .eq('gym_id', gymId)
           .single(),
+
+        // New members not onboarded (created within 48h, not onboarded)
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('gym_id', gymId)
+          .eq('role', 'member')
+          .eq('is_onboarded', false)
+          .gte('created_at', fortyEightHoursAgo),
+
+        // Challenges ending within next 3 days
+        supabase
+          .from('challenges')
+          .select('id, title, end_date')
+          .eq('gym_id', gymId)
+          .eq('status', 'active')
+          .gte('end_date', now.toISOString())
+          .lte('end_date', threeDaysFromNow),
+
+        // Drip campaign steps
+        supabase
+          .from('drip_campaign_steps')
+          .select('*')
+          .eq('gym_id', gymId)
+          .order('step_number'),
       ]);
 
       const members  = membersRes.data || [];
@@ -183,13 +254,63 @@ export default function AdminOverview() {
       const activeIds = new Set(sessions.map(s => s.profile_id));
       const total = members.length;
       const atRiskCount = tiers.critical + tiers.high;
+
+      // Engagement proxy: % of members who logged ≥1 workout in last 14d
+      const fourteenDaysAgo = subDays(now, 14).toISOString();
+      const activeIds14d = new Set(
+        sessions.filter(s => s.started_at >= fourteenDaysAgo).map(s => s.profile_id)
+      );
+      const engagementPct = total > 0
+        ? Math.round((activeIds14d.size / total) * 100)
+        : 0;
+
       setStats({
         totalMembers:  total,
         activeMembers: activeIds.size,
         retentionPct:  total > 0 ? Math.round((activeIds.size / total) * 100) : 0,
         atRiskCount,
         workoutsMonth: sessions.length,
+        engagementPct,
       });
+
+      // ── Action items (Today's Priorities) ─────────────────
+      const items = [];
+
+      // New members not onboarded
+      const notOnboarded = notOnboardedRes.data || [];
+      if (notOnboarded.length > 0) {
+        items.push({
+          icon: UserPlus,
+          iconColor: 'text-[#D4AF37]',
+          text: `${notOnboarded.length} new member${notOnboarded.length !== 1 ? 's' : ''} haven't completed onboarding`,
+          link: '/admin/members',
+        });
+      }
+
+      // Critical churn members
+      const criticalCount = tiers.critical;
+      if (criticalCount > 0) {
+        items.push({
+          icon: AlertTriangle,
+          iconColor: 'text-[#DC2626]',
+          text: `${criticalCount} member${criticalCount !== 1 ? 's' : ''} at critical churn risk`,
+          link: '/admin/churn',
+        });
+      }
+
+      // Challenges ending soon
+      const endingSoon = challengesEndingSoonRes.data || [];
+      endingSoon.forEach(ch => {
+        const daysLeft = Math.max(0, Math.ceil((new Date(ch.end_date) - now) / 86400000));
+        items.push({
+          icon: Trophy,
+          iconColor: 'text-amber-400',
+          text: `"${ch.title}" ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`,
+          link: '/admin/challenges',
+        });
+      });
+
+      setActionItems(items);
 
       // ── Chart: workouts per day last 14 days ────────────────
       const dayMap = {};
@@ -238,6 +359,12 @@ export default function AdminOverview() {
         setFupDraft(activeSettings);
       }
 
+      // ── Drip campaign steps ───────────────────────────────
+      const dripSteps = dripStepsRes.data;
+      if (dripSteps?.length) {
+        setSteps(dripSteps);
+      }
+
       setLoading(false);
     };
     load();
@@ -263,12 +390,36 @@ export default function AdminOverview() {
         <p className="text-[13px] text-[#6B7280] mt-0.5">Your gym at a glance</p>
       </div>
 
+      {/* Today's Priorities — only show if there are items */}
+      {actionItems.length > 0 && (
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-6">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
+              <Zap size={15} className="text-[#D4AF37]" />
+            </div>
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">Today's Priorities</p>
+            <span className="text-[11px] font-medium text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full">{actionItems.length}</span>
+          </div>
+          <div className="space-y-2">
+            {actionItems.map((item, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5 bg-[#111827]/60 rounded-xl cursor-pointer hover:bg-[#111827] transition-colors"
+                onClick={() => navigate(item.link)}>
+                <item.icon size={14} className={item.iconColor} />
+                <p className="text-[13px] text-[#E5E7EB] flex-1">{item.text}</p>
+                <ChevronRight size={14} className="text-[#4B5563]" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <StatCard icon={Users}         label="Total Members"    value={stats.totalMembers}             sub="all time" />
         <StatCard icon={TrendingUp}    label="Retention (30d)"  value={`${stats.retentionPct ?? 0}%`}  sub="logged ≥1 workout" />
         <StatCard icon={AlertTriangle} label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk" accent="bg-red-500/15" />
         <StatCard icon={Dumbbell}      label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions" />
+        <StatCard icon={Activity}      label="Engagement (14d)" value={`${stats.engagementPct ?? 0}%`} sub="members active" accent="bg-emerald-500/15" />
       </div>
 
       {/* Chart + Churn Risk Summary */}
@@ -523,18 +674,69 @@ export default function AdminOverview() {
           </div>
         </div>
 
-        {/* Message template */}
+        {/* Drip Campaign Steps Timeline */}
         <div className="mb-4">
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Notification Message</label>
-          <textarea
-            rows={3}
-            value={fupDraft.message_template}
-            onChange={e => setFupDraft(d => ({ ...d, message_template: e.target.value }))}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
-          />
-          <p className="text-[11px] text-[#4B5563] mt-1">
-            Sent as an in-app notification · members see it in their notification bell
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2.5">Campaign Steps</label>
+          <p className="text-[11px] text-[#4B5563] mb-3">
+            Sent as in-app notifications · members see them in their notification bell
           </p>
+
+          <div className="space-y-0">
+            {steps.map((step, i) => (
+              <div key={i} className="flex gap-3">
+                {/* Timeline line + dot */}
+                <div className="flex flex-col items-center">
+                  <div className="w-7 h-7 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0 z-10">
+                    <span className="text-[11px] font-bold text-[#D4AF37]">{i + 1}</span>
+                  </div>
+                  {i < steps.length - 1 && <div className="w-px flex-1 bg-white/8 my-1" />}
+                </div>
+
+                {/* Step content */}
+                <div className="flex-1 pb-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[12px] font-medium text-[#E5E7EB]">
+                      {step.delay_days === 0 ? 'Immediately' : `After ${step.delay_days} day${step.delay_days !== 1 ? 's' : ''}`}
+                    </span>
+                    {i > 0 && (
+                      <select
+                        value={step.delay_days}
+                        onChange={e => updateStep(i, 'delay_days', Number(e.target.value))}
+                        className="bg-[#111827] border border-white/6 rounded-lg px-2 py-1 text-[11px] text-[#9CA3AF] outline-none"
+                      >
+                        {[1,2,3,5,7,10,14,21,30].map(d => (
+                          <option key={d} value={d}>{d}d</option>
+                        ))}
+                      </select>
+                    )}
+                    {steps.length > 1 && (
+                      <button onClick={() => removeStep(i)} className="ml-auto text-[#6B7280] hover:text-[#EF4444] transition-colors">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={step.message_template}
+                    onChange={e => updateStep(i, 'message_template', e.target.value)}
+                    className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
+                    placeholder="Message to send..."
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add Step */}
+          {steps.length < 5 && (
+            <button
+              onClick={addStep}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#D4AF37] hover:text-[#E6C766] transition-colors mt-2"
+            >
+              <Plus size={14} />
+              Add step
+            </button>
+          )}
         </div>
 
         {/* Save */}

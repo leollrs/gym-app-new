@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
+import { Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { exportCSV } from '../../lib/csvExport';
+import { BENCHMARKS } from '../../lib/benchmarks';
 
 const tooltipStyle = {
   contentStyle: { background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 },
@@ -41,12 +44,16 @@ export default function AdminAnalytics() {
   const [loadingCohort,      setLoadingCohort]       = useState(true);
   const [loadingChallenges,  setLoadingChallenges]  = useState(true);
   const [loadingOnboarding,  setLoadingOnboarding]  = useState(true);
+  const [loadingLifecycle,   setLoadingLifecycle]   = useState(true);
 
   const [growthData,      setGrowthData]      = useState([]);
   const [retentionData,   setRetentionData]   = useState([]);
   const [cohortData,      setCohortData]      = useState([]);   // [{ label, m0, m1, m2, m3 }]
   const [challengeData,   setChallengeData]   = useState([]);
   const [onboardingStats, setOnboardingStats] = useState({ total: 0, onboarded: 0, pct: 0 });
+  const [lifecycleStages, setLifecycleStages] = useState([]);
+  const [loadingTrainers,    setLoadingTrainers]    = useState(true);
+  const [trainers,           setTrainers]           = useState([]);
 
   // ── 1. Member Growth ───────────────────────────────────────
   useEffect(() => {
@@ -285,11 +292,235 @@ export default function AdminAnalytics() {
     load();
   }, [profile?.gym_id]);
 
+  // ── 6. Member Lifecycle Funnel ─────────────────────────────
+  useEffect(() => {
+    if (!profile?.gym_id) return;
+    const load = async () => {
+      setLoadingLifecycle(true);
+      const gymId = profile.gym_id;
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+      const [
+        { data: members },
+        { data: recentSessions },
+        { data: churnScores },
+        { data: winBacks },
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, created_at, is_onboarded, membership_status')
+          .eq('gym_id', gymId)
+          .eq('role', 'member'),
+        supabase
+          .from('workout_sessions')
+          .select('profile_id, started_at')
+          .eq('gym_id', gymId)
+          .eq('status', 'completed')
+          .gte('started_at', thirtyDaysAgo),
+        supabase
+          .from('churn_risk_scores')
+          .select('profile_id, risk_tier'),
+        supabase
+          .from('win_back_attempts')
+          .select('profile_id')
+          .eq('outcome', 'returned'),
+      ]);
+
+      // Build session count per member (last 30 days)
+      const sessionCountMap = {};
+      (recentSessions || []).forEach(s => {
+        sessionCountMap[s.profile_id] = (sessionCountMap[s.profile_id] || 0) + 1;
+      });
+
+      // Build latest churn score per member (take last entry per profile_id)
+      const churnMap = {};
+      (churnScores || []).forEach(s => {
+        churnMap[s.profile_id] = s.risk_tier;
+      });
+
+      // Build win-back set
+      const wonBackSet = new Set((winBacks || []).map(w => w.profile_id));
+
+      // Total session count per member (for onboarding check — use recent sessions as proxy for <3 total)
+      // We need all-time sessions for the "total < 3" check for Onboarding stage
+      const { data: allSessions } = await supabase
+        .from('workout_sessions')
+        .select('profile_id')
+        .eq('gym_id', gymId)
+        .eq('status', 'completed');
+
+      const totalSessionMap = {};
+      (allSessions || []).forEach(s => {
+        totalSessionMap[s.profile_id] = (totalSessionMap[s.profile_id] || 0) + 1;
+      });
+
+      const counts = { new: 0, onboarding: 0, active: 0, atRisk: 0, churned: 0, wonBack: 0 };
+
+      (members || []).forEach(m => {
+        const status = m.membership_status;
+        const recentCount = sessionCountMap[m.id] || 0;
+        const totalCount = totalSessionMap[m.id] || 0;
+        const riskTier = churnMap[m.id];
+        const joinedRecently = m.created_at >= fourteenDaysAgo;
+
+        // Priority order classification
+        if (status === 'cancelled' || status === 'frozen') {
+          counts.churned++;
+        } else if (wonBackSet.has(m.id)) {
+          counts.wonBack++;
+        } else if (riskTier && ['critical', 'high', 'medium'].includes(riskTier)) {
+          counts.atRisk++;
+        } else if (recentCount >= 3) {
+          counts.active++;
+        } else if (m.is_onboarded && totalCount < 3) {
+          counts.onboarding++;
+        } else if (!m.is_onboarded || (joinedRecently && totalCount === 0)) {
+          counts.new++;
+        } else {
+          // Fallback: members who are onboarded with 3+ total but <3 recent — treat as active (low activity)
+          counts.active++;
+        }
+      });
+
+      const total = (members || []).length;
+      const stagesDef = [
+        { key: 'new',        label: 'New',        color: '#60A5FA', count: counts.new },
+        { key: 'onboarding', label: 'Onboarding', color: '#818CF8', count: counts.onboarding },
+        { key: 'active',     label: 'Active',     color: '#10B981', count: counts.active },
+        { key: 'atRisk',     label: 'At Risk',    color: '#F59E0B', count: counts.atRisk },
+        { key: 'churned',    label: 'Churned',    color: '#EF4444', count: counts.churned },
+        { key: 'wonBack',    label: 'Won Back',   color: '#D4AF37', count: counts.wonBack },
+      ].map(s => ({
+        ...s,
+        pct: total > 0 ? Math.round((s.count / total) * 100) : 0,
+      }));
+
+      setLifecycleStages(stagesDef);
+      setLoadingLifecycle(false);
+    };
+    load();
+  }, [profile?.gym_id]);
+
+  // ── 7. Trainer Performance ─────────────────────────────────
+  useEffect(() => {
+    if (!profile?.gym_id) return;
+    const load = async () => {
+      setLoadingTrainers(true);
+      const gymId = profile.gym_id;
+      const now   = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Fetch trainers
+      const { data: trainerRows } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('gym_id', gymId)
+        .eq('role', 'trainer');
+
+      if (!trainerRows || trainerRows.length === 0) {
+        setTrainers([]);
+        setLoadingTrainers(false);
+        return;
+      }
+
+      // Fetch trainer-client relationships
+      const { data: tcRows } = await supabase
+        .from('trainer_clients')
+        .select('trainer_id, client_id, is_active')
+        .eq('gym_id', gymId);
+
+      // Fetch workout sessions in last 30 days
+      const { data: recentSessions } = await supabase
+        .from('workout_sessions')
+        .select('profile_id')
+        .eq('gym_id', gymId)
+        .eq('status', 'completed')
+        .gte('started_at', thirtyDaysAgo);
+
+      // Build set of members who logged at least 1 workout in last 30d
+      const activeMembers = new Set((recentSessions || []).map(s => s.profile_id));
+
+      // Count sessions per member in last 30d
+      const sessionCountMap = {};
+      (recentSessions || []).forEach(s => {
+        sessionCountMap[s.profile_id] = (sessionCountMap[s.profile_id] || 0) + 1;
+      });
+
+      // Compute per trainer
+      const trainerStats = trainerRows.map(t => {
+        const clients = (tcRows || []).filter(tc => tc.trainer_id === t.id);
+        const activeClients = clients.filter(tc => tc.is_active);
+        const clientCount = activeClients.length;
+
+        const clientsWithWorkout = activeClients.filter(tc => activeMembers.has(tc.client_id)).length;
+        const retention = clientCount > 0 ? Math.round((clientsWithWorkout / clientCount) * 100) : 0;
+
+        const totalClientSessions = activeClients.reduce((sum, tc) => sum + (sessionCountMap[tc.client_id] || 0), 0);
+        const avgWorkouts = clientCount > 0 ? (totalClientSessions / clientCount / 4.33).toFixed(1) : '0.0';
+
+        return {
+          id: t.id,
+          name: t.full_name || 'Unnamed',
+          clientCount,
+          retention,
+          avgWorkouts,
+        };
+      });
+
+      // Sort by client count descending
+      trainerStats.sort((a, b) => b.clientCount - a.clientCount);
+      setTrainers(trainerStats);
+      setLoadingTrainers(false);
+    };
+    load();
+  }, [profile?.gym_id]);
+
   // ── Donut chart data ───────────────────────────────────────
   const donutData = [
     { name: 'Onboarded',     value: onboardingStats.onboarded },
     { name: 'Not Onboarded', value: onboardingStats.total - onboardingStats.onboarded },
   ];
+
+  const handleExportGrowth = () => {
+    exportCSV({
+      filename: 'member-growth',
+      columns: [
+        { key: 'month', label: 'Month' },
+        { key: 'count', label: 'New Members' },
+      ],
+      data: growthData,
+    });
+  };
+
+  const handleExportRetention = () => {
+    exportCSV({
+      filename: 'retention',
+      columns: [
+        { key: 'month', label: 'Month' },
+        { key: 'retention', label: 'Retention %' },
+        { key: 'active', label: 'Active' },
+        { key: 'total', label: 'Total' },
+      ],
+      data: retentionData,
+    });
+  };
+
+  const handleExportCohort = () => {
+    exportCSV({
+      filename: 'cohort-retention',
+      columns: [
+        { key: 'label', label: 'Cohort' },
+        { key: 'cohortSize', label: 'Size' },
+        { key: 'm0', label: 'Month 0' },
+        { key: 'm1', label: 'Month 1' },
+        { key: 'm2', label: 'Month 2' },
+        { key: 'm3', label: 'Month 3' },
+      ],
+      data: cohortData,
+    });
+  };
 
   // ─────────────────────────────────────────────────────────
   return (
@@ -301,6 +532,38 @@ export default function AdminAnalytics() {
         <p className="text-[13px] text-[#6B7280] mt-0.5">Member retention, growth, and engagement insights</p>
       </div>
 
+      {/* Member Lifecycle Funnel */}
+      {loadingLifecycle ? (
+        <CardSkeleton h="h-[140px]" />
+      ) : lifecycleStages.length > 0 && (
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-6">
+          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Member Lifecycle</p>
+          <p className="text-[11px] text-[#6B7280] mb-4">Where your members are right now</p>
+
+          <div className="flex gap-1 h-10 rounded-xl overflow-hidden mb-4">
+            {lifecycleStages.map(s => (
+              <div key={s.key} className="relative group" style={{ flex: s.count, background: s.color, minWidth: s.count > 0 ? 2 : 0 }}>
+                <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-[#111827] border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white whitespace-nowrap z-10 pointer-events-none transition-opacity">
+                  {s.label}: {s.count} ({s.pct}%)
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+            {lifecycleStages.map(s => (
+              <div key={s.key} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
+                <span className="text-[12px] text-[#9CA3AF]">{s.label}</span>
+                <span className="text-[12px] font-semibold text-[#E5E7EB]">{s.count}</span>
+                <span className="text-[11px] text-[#6B7280]">({s.pct}%)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Row 1: Member Growth + Retention Rate */}
       <div className="grid md:grid-cols-2 gap-4 mb-4">
 
@@ -309,7 +572,16 @@ export default function AdminAnalytics() {
           <CardSkeleton />
         ) : (
           <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Member Growth</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[14px] font-semibold text-[#E5E7EB]">Member Growth</p>
+              <button
+                onClick={handleExportGrowth}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              >
+                <Download size={13} />
+                Export
+              </button>
+            </div>
             {growthData.length === 0 ? (
               <p className="text-[13px] text-[#6B7280] text-center py-10">No member data yet</p>
             ) : (
@@ -358,7 +630,16 @@ export default function AdminAnalytics() {
           <CardSkeleton />
         ) : (
           <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Monthly Retention Rate</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[14px] font-semibold text-[#E5E7EB]">Monthly Retention Rate</p>
+              <button
+                onClick={handleExportRetention}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              >
+                <Download size={13} />
+                Export
+              </button>
+            </div>
             {retentionData.length === 0 ? (
               <p className="text-[13px] text-[#6B7280] text-center py-10">No session data yet</p>
             ) : (
@@ -384,6 +665,7 @@ export default function AdminAnalytics() {
                       'Retention',
                     ]}
                   />
+                  <ReferenceLine y={BENCHMARKS.retentionRate} stroke="#D4AF37" strokeDasharray="6 4" strokeOpacity={0.5} label={{ value: `Industry avg ${BENCHMARKS.retentionRate}%`, position: 'right', fill: '#D4AF37', fontSize: 10, opacity: 0.7 }} />
                   <Bar dataKey="retention" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ResponsiveContainer>
@@ -398,7 +680,16 @@ export default function AdminAnalytics() {
         <CardSkeleton h="h-[260px]" />
       ) : (
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-4 overflow-x-auto">
-          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Cohort Retention</p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">Cohort Retention</p>
+            <button
+              onClick={handleExportCohort}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+            >
+              <Download size={13} />
+              Export
+            </button>
+          </div>
           {cohortData.length === 0 ? (
             <p className="text-[13px] text-[#6B7280] text-center py-10">No cohort data yet</p>
           ) : (
@@ -562,9 +853,46 @@ export default function AdminAnalytics() {
                 </div>
               </div>
             </div>
+            <p className="text-[11px] text-[#6B7280] mt-2 text-center">
+              Industry avg: <span className="text-[#D4AF37]">{BENCHMARKS.onboardingCompletion}%</span> onboarding completion
+            </p>
           </div>
         )}
       </div>
+
+      {/* Trainer Performance */}
+      {loadingTrainers ? (
+        <CardSkeleton h="h-[200px]" />
+      ) : trainers.length > 0 && (
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mt-4">
+          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Trainer Performance</p>
+          <p className="text-[11px] text-[#6B7280] mb-4">Client retention and engagement by trainer</p>
+
+          <div className="divide-y divide-white/4">
+            {trainers.map(t => (
+              <div key={t.id} className="flex items-center gap-4 py-3">
+                <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[12px] font-bold text-[#D4AF37]">{t.name[0]}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{t.name}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t.clientCount} active client{t.clientCount !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="flex gap-4 text-right">
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.retention}%</p>
+                    <p className="text-[10px] text-[#6B7280]">retention</p>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.avgWorkouts}</p>
+                    <p className="text-[10px] text-[#6B7280]">wk/client</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

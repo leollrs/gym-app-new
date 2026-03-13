@@ -907,6 +907,7 @@ export default function AdminPrograms() {
   const [enrollmentCounts, setEnrollmentCounts] = useState({});
   const [enrolledMembers, setEnrolledMembers] = useState({}); // programId → [{name}]
   const [expandedEnroll, setExpandedEnroll] = useState(null);
+  const [programStats, setProgramStats] = useState({ totalPrograms: 0, activeEnrollments: 0, completionRate: 0, topProgram: '—' });
 
   const load = async () => {
     if (!profile?.gym_id) return;
@@ -921,11 +922,29 @@ export default function AdminPrograms() {
     // Load enrollment counts
     const { data: enrolls } = await supabase
       .from('gym_program_enrollments')
-      .select('program_id')
+      .select('program_id, completed_at')
       .eq('gym_id', profile.gym_id);
     const counts = {};
     (enrolls || []).forEach(r => { counts[r.program_id] = (counts[r.program_id] || 0) + 1; });
     setEnrollmentCounts(counts);
+
+    // Compute program analytics
+    const allPrograms = data || [];
+    const allEnrolls = enrolls || [];
+    const publishedCount = allPrograms.filter(p => p.is_published).length;
+    const activeCount = allEnrolls.filter(e => !e.completed_at).length;
+    const completedCount = allEnrolls.filter(e => e.completed_at).length;
+    const compRate = allEnrolls.length > 0 ? Math.round((completedCount / allEnrolls.length) * 100) : 0;
+
+    // Most popular program
+    let topName = '—';
+    if (Object.keys(counts).length > 0) {
+      const topId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      const topProg = allPrograms.find(p => p.id === topId);
+      topName = topProg?.name || '—';
+    }
+
+    setProgramStats({ totalPrograms: publishedCount, activeEnrollments: activeCount, completionRate: compRate, topProgram: topName });
   };
 
   const loadEnrolledMembers = async (programId) => {
@@ -979,6 +998,28 @@ export default function AdminPrograms() {
           <Plus size={15} /> New Program
         </button>
       </div>
+
+      {/* Program Analytics Summary */}
+      {!loading && programs.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+            <p className="text-[22px] font-bold text-[#E5E7EB]">{programStats.totalPrograms}</p>
+            <p className="text-[12px] text-[#9CA3AF]">Published Programs</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+            <p className="text-[22px] font-bold text-[#E5E7EB]">{programStats.activeEnrollments}</p>
+            <p className="text-[12px] text-[#9CA3AF]">Active Enrollments</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+            <p className="text-[22px] font-bold text-[#E5E7EB]">{programStats.completionRate}%</p>
+            <p className="text-[12px] text-[#9CA3AF]">Completion Rate</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+            <p className="text-[22px] font-bold text-[#E5E7EB] truncate text-[16px]">{programStats.topProgram}</p>
+            <p className="text-[12px] text-[#9CA3AF]">Most Popular</p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-24">

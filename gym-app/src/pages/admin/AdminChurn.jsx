@@ -2,12 +2,13 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, Search, X, Send, Trophy, Phone, Filter,
-  Users, Clock, RotateCcw, CheckCircle, MessageSquare, ChevronRight,
+  Users, Clock, RotateCcw, CheckCircle, MessageSquare, ChevronRight, Download,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchMembersWithChurnScores, getRiskTier } from '../../lib/churnScore';
+import { exportCSV } from '../../lib/csvExport';
 
 // ── Skeleton loader ────────────────────────────────────────
 const SkeletonRow = () => (
@@ -426,6 +427,22 @@ export default function AdminChurn() {
     }
   };
 
+  const handleExport = () => {
+    const visibleData = tab === 'at-risk' ? atRiskMembers : tab === 'churned' ? churnedMembers : winBackAttempts;
+    exportCSV({
+      filename: `churn-${tab}`,
+      columns: [
+        { key: 'full_name', label: 'Name' },
+        { key: 'churnScore', label: 'Score' },
+        { key: 'risk_tier', label: 'Risk Tier' },
+        { key: 'keySignals', label: 'Key Signals' },
+        { key: 'daysSinceLastCheckIn', label: 'Days Inactive' },
+        { key: 'velocityLabel', label: 'Velocity' },
+      ],
+      data: visibleData,
+    });
+  };
+
   // ── Tab content ───────────────────────────────────────────
 
   const TABS = [
@@ -445,11 +462,20 @@ export default function AdminChurn() {
     <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
       {/* ── Page header ──────────────────────────────────────── */}
       <div className="mb-6">
-        <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-8 h-8 rounded-xl bg-[#EF4444]/12 flex items-center justify-center">
-            <AlertTriangle size={16} className="text-[#EF4444]" />
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#EF4444]/12 flex items-center justify-center">
+              <AlertTriangle size={16} className="text-[#EF4444]" />
+            </div>
+            <h1 className="text-[22px] font-bold text-[#E5E7EB]">Churn Intelligence</h1>
           </div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Churn Intelligence</h1>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          >
+            <Download size={13} />
+            Export
+          </button>
         </div>
         <p className="text-[13px] text-[#6B7280] pl-1">
           {loading
