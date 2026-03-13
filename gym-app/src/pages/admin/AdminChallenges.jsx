@@ -378,7 +378,7 @@ export default function AdminChallenges() {
           <p className="text-[12px] text-[#4B5563] mt-1">Create your first challenge to get members competing</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-3">
           {challenges.map(c => {
             const badge = statusBadge(c);
             const isOpen = expanded === c.id;
