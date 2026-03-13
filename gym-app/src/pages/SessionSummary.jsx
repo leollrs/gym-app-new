@@ -204,7 +204,7 @@ const SessionSummary = () => {
         <p className="text-[13px] text-[#6B7280] mb-10">{dateStr}</p>
 
         {/* ── Stats grid ─────────────────────────────────────────── */}
-        <div className="w-full max-w-sm grid grid-cols-2 gap-3 mb-6 stagger-fade-in">
+        <div className="w-full max-w-sm md:max-w-lg grid grid-cols-2 gap-3 mb-6 stagger-fade-in">
           <StatCard icon={Clock}    label="Duration"   value={formatTime(elapsedTime)}   accent="#60A5FA" />
           <StatCard icon={BarChart2} label="Volume"    value={`${formatVolume(totalVolume)} lbs`} accent="#D4AF37" />
           <StatCard icon={Zap}      label="Sets Done"  value={totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets} accent="#34D399" />
@@ -214,7 +214,7 @@ const SessionSummary = () => {
         {/* ── PRs ────────────────────────────────────────────────── */}
         {sessionPRs.length > 0 && (
           <div
-            className="w-full max-w-sm rounded-2xl p-5 mb-6"
+            className="w-full max-w-sm md:max-w-lg rounded-2xl p-5 mb-6"
             style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
           >
             <div className="flex items-center gap-2 mb-3">
@@ -241,7 +241,7 @@ const SessionSummary = () => {
         {/* ── XP Earned ─────────────────────────────────────────── */}
         {xpEarned > 0 && (
           <div
-            className="w-full max-w-sm rounded-2xl px-5 py-4 mb-6 flex items-center gap-3"
+            className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 flex items-center gap-3"
             style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)' }}
           >
             <div
@@ -260,7 +260,7 @@ const SessionSummary = () => {
         {/* ── No PRs encouragement ───────────────────────────────── */}
         {sessionPRs.length === 0 && completedSets > 0 && (
           <div
-            className="w-full max-w-sm rounded-2xl px-5 py-4 mb-6 text-center"
+            className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 text-center"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
           >
             <p className="text-[13px] text-[#9CA3AF]">
@@ -270,7 +270,7 @@ const SessionSummary = () => {
         )}
 
         {/* ── Actions ────────────────────────────────────────────── */}
-        <div className="w-full max-w-sm flex flex-col gap-3 mt-auto pt-4">
+        <div className="w-full max-w-sm md:max-w-lg flex flex-col gap-3 mt-auto pt-4">
           <p className="text-center text-[13px] text-[#4B5563] mb-1">
             {sessionPRs.length > 0 ? 'Rest up. Come back stronger.' : 'See you next session.'}
           </p>

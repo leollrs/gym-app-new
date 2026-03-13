@@ -749,7 +749,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
 
   // ─────────────────────────────────────────────────────────
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
 
       {/* Page header */}
       <FadeIn>
@@ -824,7 +824,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             {[
               { icon: Dumbbell, label: 'Workouts', value: summary.totalWorkouts.toLocaleString(), sub: `${summary.avgWorkoutsPerActive}/active member`, color: '#D4AF37' },
               { icon: Users, label: 'Active Members', value: summary.uniqueActive, sub: `${summary.activeRate}% of ${summary.totalMembers}`, color: '#10B981' },
@@ -1230,7 +1230,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
         const fmtTime = s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)} hours` : `${s.totalDuration} min`;
         return (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
-          <div className="w-full max-w-2xl my-4 md:my-10" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-2xl md:max-w-3xl my-4 md:my-10" onClick={e => e.stopPropagation()}>
 
             {/* ─ Report document (white paper style) ─ */}
             <div className="bg-[#fafbfc] rounded-xl overflow-hidden shadow-2xl">

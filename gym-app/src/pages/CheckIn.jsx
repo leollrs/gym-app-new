@@ -84,7 +84,7 @@ export default function CheckIn() {
   }, {});
 
   return (
-    <div className="mx-auto w-full max-w-[600px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[600px] md:max-w-3xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -177,7 +177,7 @@ export default function CheckIn() {
                   {label}
                 </p>
                 {items.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/[0.03] transition-all">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: `${METHOD_COLORS[c.method] ?? '#9CA3AF'}18` }}

@@ -215,7 +215,7 @@ export default function AdminSettings() {
   );
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Settings</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">Gym branding and configuration</p>
@@ -223,8 +223,11 @@ export default function AdminSettings() {
 
       <div className="space-y-4">
 
+        {/* Branding + Gym Hours side by side on desktop */}
+        <div className="grid md:grid-cols-2 gap-4">
+
         {/* Branding */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 hover:border-white/10 transition-colors duration-300">
           <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Branding</p>
           <div className="space-y-4">
             <div>
@@ -289,7 +292,7 @@ export default function AdminSettings() {
         </div>
 
         {/* Gym hours */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 hover:border-white/10 transition-colors duration-300">
           <div className="flex items-center gap-2 mb-4">
             <Clock size={15} className="text-[#9CA3AF]" />
             <p className="text-[14px] font-semibold text-[#E5E7EB]">Gym Hours</p>
@@ -309,7 +312,7 @@ export default function AdminSettings() {
           </div>
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">Open Days</label>
-            <div className="flex gap-1.5 flex-wrap">
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-1.5">
               {DAYS.map((day, idx) => (
                 <button key={day} onClick={() => toggleDay(idx)}
                   className={`px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors ${
@@ -323,6 +326,8 @@ export default function AdminSettings() {
             </div>
           </div>
         </div>
+
+        </div>{/* end grid */}
 
         {/* Gym info */}
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">

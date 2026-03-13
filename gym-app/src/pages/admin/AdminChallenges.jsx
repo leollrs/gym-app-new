@@ -112,7 +112,7 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="new-challenge-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="new-challenge-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg md:max-w-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
           <p id="new-challenge-title" className="text-[16px] font-bold text-[#E5E7EB]">New Challenge</p>
@@ -355,7 +355,7 @@ export default function AdminChallenges() {
   useEffect(() => { load(); }, [profile?.gym_id]);
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Challenges</h1>
@@ -378,12 +378,12 @@ export default function AdminChallenges() {
           <p className="text-[12px] text-[#4B5563] mt-1">Create your first challenge to get members competing</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {challenges.map(c => {
             const badge = statusBadge(c);
             const isOpen = expanded === c.id;
             return (
-              <div key={c.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+              <div key={c.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
                 <button className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors"
                   onClick={() => setExpanded(isOpen ? null : c.id)}>
                   <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">

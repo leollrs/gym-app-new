@@ -486,7 +486,7 @@ export default function AdminOverview() {
   const firstName = profile?.full_name?.split(' ')[0] || '';
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
       {/* Page header — contextual greeting */}
       <FadeIn>
         <div className="flex items-baseline justify-between mb-4">

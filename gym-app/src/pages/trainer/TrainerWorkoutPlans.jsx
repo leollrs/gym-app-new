@@ -197,7 +197,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={closeMenus}>
-      <div role="dialog" aria-modal="true" aria-labelledby="workout-plan-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="workout-plan-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-xl md:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -520,7 +520,7 @@ export default function TrainerWorkoutPlans() {
 
   if (loading) {
     return (
-      <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+      <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
         <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Workout Plans</h1>
         <div className="flex justify-center py-20">
           <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
@@ -530,7 +530,7 @@ export default function TrainerWorkoutPlans() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -577,7 +577,7 @@ export default function TrainerWorkoutPlans() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filtered.map(plan => {
             const isExpanded = expandedPlan === plan.id;
             const totalEx = countExercises(plan);
@@ -585,7 +585,7 @@ export default function TrainerWorkoutPlans() {
             const totalDays = allDays.length;
 
             return (
-              <div key={plan.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+              <div key={plan.id} className="bg-[#0F172A] border border-white/[0.06] rounded-[14px] overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
                 {/* Plan header */}
                 <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
                   className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors">

@@ -42,7 +42,7 @@ const ScoreBar = ({ score }) => {
   const display = score % 1 === 0 ? score : score.toFixed(1);
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
+      <div className="flex-1 md:min-w-[120px] h-1.5 bg-white/6 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(100, score)}%`, background: tier.color }}
@@ -106,7 +106,7 @@ const SendMessageModal = ({ member, gymId, adminId, onClose, onSent }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="send-message-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="send-message-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md md:max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/12 flex items-center justify-center">
@@ -215,7 +215,7 @@ const WinBackModal = ({ member, gymId, adminId, onClose, onSent }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="winback-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="winback-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md md:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#EF4444]/12 flex items-center justify-center">
@@ -459,7 +459,7 @@ export default function AdminChurn() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       {/* ── Page header ──────────────────────────────────────── */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-1">
@@ -616,7 +616,7 @@ export default function AdminChurn() {
                 {atRiskMembers.map(m => {
                   const isContacted = contactedIds.has(m.id);
                   return (
-                    <div key={m.id} className="px-4 py-4 hover:bg-white/2 transition-colors">
+                    <div key={m.id} className="px-4 py-4 hover:bg-white/[0.03] transition-all">
                       {/* Row top: avatar + name + badge + score bar */}
                       <div className="flex items-start gap-3">
                         <Avatar name={m.full_name} />

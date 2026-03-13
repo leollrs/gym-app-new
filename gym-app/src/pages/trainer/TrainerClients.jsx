@@ -59,7 +59,7 @@ const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="client-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="client-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -333,7 +333,7 @@ export default function TrainerClients() {
   }, [clients, search, filter, sortBy]);
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">My Clients</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">{clients.length} assigned client{clients.length !== 1 ? 's' : ''}</p>
@@ -341,7 +341,7 @@ export default function TrainerClients() {
 
       {/* Search + Filter bar */}
       {!loading && clients.length > 0 && (
-        <div className="mb-4 space-y-3">
+        <div className="mb-4 space-y-3 md:sticky md:top-0 md:z-10 md:bg-[#05070B] md:pb-2 md:-mx-8 md:px-8">
           {/* Search */}
           <div className="relative">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
@@ -420,8 +420,8 @@ export default function TrainerClients() {
           </button>
         </div>
       ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-          <div className="divide-y divide-white/4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
             {filtered.map(c => {
               const daysInactive = c.last_active_at
                 ? Math.floor((Date.now() - new Date(c.last_active_at)) / 86400000)
@@ -432,7 +432,7 @@ export default function TrainerClients() {
                 <button
                   key={c.id}
                   onClick={() => setSelected(c)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/2 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#0F172A] border border-white/[0.06] rounded-[14px] hover:border-white/20 hover:bg-white/[0.03] transition-all text-left"
                 >
                   <div className="w-9 h-9 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0 relative">
                     <span className="text-[13px] font-bold text-[#9CA3AF]">{c.full_name[0]}</span>
@@ -460,7 +460,7 @@ export default function TrainerClients() {
                 </button>
               );
             })}
-          </div>
+
         </div>
       )}
 

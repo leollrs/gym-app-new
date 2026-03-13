@@ -225,7 +225,7 @@ export default function AdminTrainers() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Trainers</h1>
@@ -284,12 +284,12 @@ export default function AdminTrainers() {
           </div>
 
           {/* Trainer cards */}
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {trainers.map(t => {
               const isExpanded = expanded === t.id;
               const clients = clientMap[t.id] || [];
               return (
-                <div key={t.id} className="bg-[#0F172A] border border-white/6 rounded-xl hover:border-white/10 transition-colors duration-300">
+                <div key={t.id} className="bg-[#0F172A] border border-white/6 rounded-xl hover:border-white/20 hover:bg-white/[0.03] transition-all duration-300">
                   {/* Trainer header */}
                   <div
                     className="flex items-center gap-3 px-4 py-3.5 cursor-pointer"
@@ -407,6 +407,9 @@ export default function AdminTrainers() {
                                     <p className="text-[10px] text-[#6B7280] truncate">{c.email}</p>
                                   </div>
                                   <div className="flex items-center gap-3">
+                                    <div className="text-right hidden md:block">
+                                      <p className="text-[11px] text-[#6B7280]">{c.assignedAt ? format(new Date(c.assignedAt), 'MMM d, yyyy') : '—'}</p>
+                                    </div>
                                     <div className="text-right">
                                       <p className="text-[12px] font-semibold text-[#E5E7EB] tabular-nums">{c.sessions30d}</p>
                                       <p className="text-[9px] text-[#6B7280]">sessions</p>
@@ -447,7 +450,7 @@ export default function AdminTrainers() {
       {/* ── Add Trainer Modal ───────────────────────────────── */}
       {showAddTrainer && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowAddTrainer(false)}>
-          <div className="w-full max-w-md my-8 md:my-16" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-md md:max-w-2xl my-8 md:my-16" onClick={e => e.stopPropagation()}>
             <div role="dialog" aria-modal="true" aria-labelledby="add-trainer-title" className="bg-[#0F172A] border border-white/8 rounded-xl overflow-hidden">
               {/* Header */}
               <div className="px-5 py-4 border-b border-white/6 flex items-center justify-between">

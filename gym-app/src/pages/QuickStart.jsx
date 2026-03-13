@@ -100,7 +100,7 @@ const QuickStart = () => {
 
   return (
     <div className="min-h-screen bg-[#05070B] px-4 pt-4 pb-28 md:pb-12">
-      <div className="max-w-lg mx-auto space-y-5 stagger-fade-in">
+      <div className="max-w-lg md:max-w-3xl mx-auto space-y-5 stagger-fade-in">
 
         {/* Header */}
         <div>
@@ -142,7 +142,7 @@ const QuickStart = () => {
         {lastSession && lastSession.routineId !== suggested?.id && (
           <button
             onClick={() => navigate(`/session/${lastSession.routineId}`)}
-            className="w-full text-left bg-[#0F172A] border border-white/8 rounded-[14px] p-4 flex items-center gap-4 transition-transform active:scale-[0.98]"
+            className="w-full text-left bg-[#0F172A] border border-white/8 rounded-[14px] p-4 flex items-center gap-4 transition-all active:scale-[0.98] hover:border-white/20 hover:bg-white/[0.03]"
           >
             <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
               <RotateCcw size={18} className="text-[#9CA3AF]" />
@@ -164,12 +164,12 @@ const QuickStart = () => {
             <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">
               Other Routines
             </p>
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {otherRoutines.map(r => (
                 <button
                   key={r.id}
                   onClick={() => navigate(`/session/${r.id}`)}
-                  className="w-full text-left bg-[#0F172A] border border-white/8 rounded-[14px] p-4 flex items-center gap-4 transition-transform active:scale-[0.98]"
+                  className="w-full text-left bg-[#0F172A] border border-white/8 rounded-[14px] p-4 flex items-center gap-4 transition-all active:scale-[0.98] hover:border-white/20 hover:bg-white/[0.03]"
                 >
                   <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
                     <Dumbbell size={16} className="text-[#9CA3AF]" />
@@ -191,7 +191,7 @@ const QuickStart = () => {
         {/* ── Empty Session ──────────────────────────────────────── */}
         <button
           onClick={() => navigate('/workouts')}
-          className="w-full text-left bg-[#111827] border border-white/6 rounded-[14px] p-4 flex items-center gap-4 transition-transform active:scale-[0.98]"
+          className="w-full text-left bg-[#111827] border border-white/6 rounded-[14px] p-4 flex items-center gap-4 transition-all active:scale-[0.98] hover:border-white/20 hover:bg-white/[0.03]"
         >
           <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
             <Dumbbell size={16} className="text-[#6B7280]" />

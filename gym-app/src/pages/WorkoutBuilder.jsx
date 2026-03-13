@@ -16,7 +16,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
   if (!exercise) return null;
 
   return (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/6 overflow-hidden">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/6 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
       {/* Top: name + reorder + delete — all 44px touch targets */}
       <div className="flex items-center gap-2 px-4 py-2.5">
         <div className="flex-1 min-w-0">
@@ -409,7 +409,7 @@ const WorkoutBuilder = () => {
       <div className="flex-1 overflow-y-auto">
 
       {error && (
-        <div className="mx-auto max-w-2xl px-4 mt-4">
+        <div className="mx-auto max-w-2xl md:max-w-4xl px-4 mt-4">
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-[13px] text-red-400">
             {error}
           </div>
@@ -484,7 +484,7 @@ const WorkoutBuilder = () => {
       )}
 
       {/* Builder Content */}
-      <div className="container max-w-2xl mx-auto px-4 pt-6 pb-6 md:pb-10">
+      <div className="container max-w-2xl md:max-w-4xl mx-auto px-4 pt-6 pb-6 md:pb-10">
 
         {/* Summary bar */}
         <div className="flex items-center gap-3 mb-8 text-[13px] text-[#6B7280]">

@@ -101,7 +101,7 @@ export default function AdminLeaderboard() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Leaderboard</h1>
@@ -159,7 +159,7 @@ export default function AdminLeaderboard() {
         ) : (
           <div className="divide-y divide-white/4">
             {entries.map((e, i) => (
-              <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
+              <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
                 <div className="w-8 text-center">
                   {i < 3 ? (
                     <span className="text-[18px]">{MEDAL[i]}</span>
@@ -171,6 +171,11 @@ export default function AdminLeaderboard() {
                   <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                     {e.name}
                   </p>
+                </div>
+                <div className="hidden md:block w-24 flex-shrink-0">
+                  <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? '#D4AF37' : 'rgba(212,175,55,0.4)' }} />
+                  </div>
                 </div>
                 <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
                   {e.score.toLocaleString()}

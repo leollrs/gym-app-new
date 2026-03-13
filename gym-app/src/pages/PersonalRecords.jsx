@@ -32,7 +32,7 @@ const PRRow = ({ pr, history }) => {
   }));
 
   return (
-    <div className="overflow-hidden">
+    <div className="overflow-hidden hover:bg-white/[0.03] transition-all">
       <button
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
         onClick={() => setExpanded(e => !e)}
@@ -169,7 +169,7 @@ export default function PersonalRecords() {
     <div className="min-h-screen bg-[#05070B]">
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[#05070B]/95 border-b border-white/6">
-        <div className="max-w-[720px] mx-auto px-4 md:px-6 py-3">
+        <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(-1)}
@@ -190,7 +190,7 @@ export default function PersonalRecords() {
         </div>
       </div>
 
-      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-4 pb-28 md:pb-12">
+      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-4 pb-28 md:pb-12">
         {/* Search */}
         <div className="relative mb-3">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
@@ -239,9 +239,11 @@ export default function PersonalRecords() {
             </p>
           </div>
         ) : (
-          <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden divide-y divide-white/4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.map(pr => (
-              <PRRow key={pr.exercise_id} pr={pr} history={prHistory[pr.exercise_id] ?? []} />
+              <div key={pr.exercise_id} className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/20 transition-all">
+                <PRRow pr={pr} history={prHistory[pr.exercise_id] ?? []} />
+              </div>
             ))}
           </div>
         )}

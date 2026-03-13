@@ -37,7 +37,7 @@ const SessionCard = ({ session }) => {
     : `${Math.round(volumeK)} lbs`;
 
   return (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden transition-all">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
 
       {/* Main row */}
       <button
@@ -179,7 +179,7 @@ const WorkoutLog = () => {
   const months = Object.keys(grouped);
 
   return (
-    <div className="mx-auto w-full max-w-[680px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
@@ -223,7 +223,7 @@ const WorkoutLog = () => {
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-3 text-[#9CA3AF]">
             {month}
           </p>
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {grouped[month].map(session => (
               <SessionCard key={session.id} session={session} />
             ))}

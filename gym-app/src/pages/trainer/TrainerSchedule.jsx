@@ -73,7 +73,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md md:max-w-xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
@@ -319,7 +319,7 @@ export default function TrainerSchedule() {
           <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-7 gap-2">
           {days.map(day => {
             const key = format(day, 'yyyy-MM-dd');
             const daySessions = sessionsByDay[key] || [];
@@ -327,7 +327,7 @@ export default function TrainerSchedule() {
             const past = isBefore(day, new Date()) && !today;
 
             return (
-              <div key={key} className={`bg-[#0F172A] border rounded-xl overflow-hidden min-h-[140px] ${
+              <div key={key} className={`bg-[#0F172A] border rounded-xl overflow-hidden min-h-[140px] hover:border-white/20 hover:bg-white/[0.03] transition-all ${
                 today ? 'border-[#D4AF37]/30' : 'border-white/6'
               }`}>
                 {/* Day header */}

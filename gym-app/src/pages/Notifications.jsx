@@ -102,7 +102,7 @@ export default function Notifications() {
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-2xl md:max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -136,7 +136,7 @@ export default function Notifications() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-4">
+      <div className="max-w-2xl md:max-w-3xl mx-auto px-4 py-4">
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">
@@ -181,7 +181,7 @@ export default function Notifications() {
                   className={`w-full text-left flex items-start gap-3 p-4 rounded-[14px] border transition-all ${
                     n.read_at
                       ? 'bg-[#0F172A] border-white/4 opacity-60'
-                      : 'bg-[#0F172A] border-white/8 hover:border-white/14'
+                      : 'bg-[#0F172A] border-white/8 hover:border-white/20 hover:bg-white/[0.03]'
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>

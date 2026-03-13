@@ -257,7 +257,7 @@ const Profile = () => {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
-      <div className="max-w-[680px] mx-auto px-4 pt-6 pb-8">
+      <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8">
 
       {/* ── Profile header card ──────────────────────────────────────────── */}
       <div className="rounded-[14px] bg-[#0F172A] border border-white/8 mb-6 overflow-hidden">
@@ -333,7 +333,7 @@ const Profile = () => {
             key={item.to}
             type="button"
             onClick={() => navigate(item.to)}
-            className="flex flex-col items-center gap-2 py-4 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/12 transition-all active:scale-95"
+            className="flex flex-col items-center gap-2 py-4 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all active:scale-95"
           >
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -681,9 +681,9 @@ const Profile = () => {
             </div>
           ) : (
             /* ── VIEW MODE ─────────────────────────────────────────────── */
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
               {loading ? (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
                   {[1, 2, 3, 4].map(i => (
                     <div key={i} className="h-20 rounded-[14px] bg-[#0F172A] border border-white/8 animate-pulse" />
                   ))}
@@ -823,7 +823,7 @@ const Profile = () => {
               key={item.to}
               type="button"
               onClick={() => navigate(item.to)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/4 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] hover:border-white/20 transition-all"
             >
               <div className="flex items-center gap-3">
                 <Settings size={16} className="text-[#6B7280]" />

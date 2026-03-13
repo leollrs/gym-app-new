@@ -208,7 +208,7 @@ export default function Nutrition() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[720px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">

@@ -206,7 +206,7 @@ const HistoryTab = ({ history, loading }) => {
         return (
           <div
             key={entry.id}
-            className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8"
+            className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all"
           >
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -234,13 +234,13 @@ const HistoryTab = ({ history, loading }) => {
 
 // ── Rewards Catalog Tab ──────────────────────────────────────────────────────
 const RewardsTab = ({ points, onRedeem }) => (
-  <div className="grid grid-cols-2 gap-3">
+  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
     {REWARDS_CATALOG.map((reward) => {
       const canAfford = points >= reward.cost;
       return (
         <div
           key={reward.id}
-          className="bg-[#0F172A] rounded-[14px] border border-white/8 p-4 flex flex-col items-center text-center"
+          className="bg-[#0F172A] rounded-[14px] border border-white/8 p-4 flex flex-col items-center text-center hover:border-white/20 hover:bg-white/[0.03] transition-all"
         >
           <span className="text-3xl mb-2">{reward.icon}</span>
           <p className="text-[13px] font-semibold text-[#E5E7EB] leading-tight">{reward.name}</p>
@@ -489,7 +489,7 @@ export default function Rewards() {
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
-        <div className="max-w-2xl mx-auto px-4 pt-6 pb-5">
+        <div className="max-w-2xl md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           {/* Title row */}
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center">
@@ -562,7 +562,7 @@ export default function Rewards() {
       </div>
 
       {/* ── Tab Content ─────────────────────────────────────────── */}
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl md:max-w-4xl mx-auto px-4 py-6">
         {tab === 'History' && (
           <HistoryTab history={history} loading={loading} />
         )}

@@ -74,7 +74,7 @@ const InviteModal = ({ gymId, onClose }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="invite-member-title"
-        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden"
+        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-md md:max-w-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -310,7 +310,7 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -782,7 +782,7 @@ export default function AdminMembers() {
   ];
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
@@ -831,7 +831,7 @@ export default function AdminMembers() {
       </div>
 
       {/* Search + filter */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="md:sticky md:top-0 md:z-20 md:bg-[#05070B]/95 md:backdrop-blur-xl md:-mx-8 md:px-8 md:py-3 flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
           <input
@@ -885,7 +885,7 @@ export default function AdminMembers() {
                 <button
                   key={m.id}
                   onClick={() => setSelected(m)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/2 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] hover:border-white/20 transition-all text-left group"
                 >
                   <div className="w-9 h-9 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0">
                     <span className="text-[13px] font-bold text-[#9CA3AF]">{m.full_name[0]}</span>
@@ -906,6 +906,14 @@ export default function AdminMembers() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <div className="text-right hidden md:block">
+                      <p className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</p>
+                      <p className="text-[10px] text-[#4B5563]">joined</p>
+                    </div>
+                    <div className="text-right hidden lg:block">
+                      <p className="text-[12px] text-[#9CA3AF]">{m.last_active_at ? formatDistanceToNow(new Date(m.last_active_at), { addSuffix: true }) : 'Never'}</p>
+                      <p className="text-[10px] text-[#4B5563]">last active</p>
+                    </div>
                     <div className="text-right hidden sm:block">
                       <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
                     </div>

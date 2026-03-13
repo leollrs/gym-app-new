@@ -120,7 +120,7 @@ export default function AdminAttendance() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Attendance</h1>
@@ -172,7 +172,7 @@ export default function AdminAttendance() {
           </div>
 
           {/* Daily line chart — check-ins + workouts */}
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-4 hover:border-white/10 transition-colors duration-300">
             <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Daily Activity</p>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -196,10 +196,10 @@ export default function AdminAttendance() {
           </div>
 
           {/* Peak hours heatmap */}
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 overflow-x-auto">
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 overflow-x-auto hover:border-white/10 transition-colors duration-300">
             <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Peak Hours</p>
             <p className="text-[11px] text-[#6B7280] mb-4">Based on gym check-ins</p>
-            <div className="min-w-[520px]">
+            <div className="min-w-[520px] md:min-w-0">
               {/* Hour labels */}
               <div className="flex mb-1.5 ml-10">
                 {HOURS.map(h => (

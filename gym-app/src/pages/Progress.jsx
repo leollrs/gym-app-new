@@ -29,7 +29,7 @@ export default function Progress() {
     <div className="min-h-screen bg-[#05070B]">
       {/* Sticky header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[#05070B]/95 border-b border-white/6">
-        <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-3 pb-3">
+        <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-3 pb-3">
           <h1
             className="text-[22px] font-black text-[#E5E7EB] mb-3"
             style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
@@ -47,7 +47,7 @@ export default function Progress() {
       </div>
 
       {/* Tab content (swipeable) */}
-      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
+      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
         <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleSwipe} tabKeys={TABS}>
           <div>{loadedTabs.has('Overview') && <ProgressOverview />}</div>
           <div>{loadedTabs.has('History') && <ProgressHistory />}</div>

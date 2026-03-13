@@ -52,7 +52,7 @@ export default function TrainerPrograms() {
   const exName = (id) => exercises[id] ?? id;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Programs</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">Published gym programs you can assign to clients</p>
@@ -69,7 +69,7 @@ export default function TrainerPrograms() {
           <p className="text-[12px] text-[#4B5563] mt-1">Ask your admin to create programs in the Admin dashboard</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {programs.map(p => {
             const weeks = p.weeks ?? {};
             const allDays  = Object.values(weeks).flat();
@@ -80,7 +80,7 @@ export default function TrainerPrograms() {
             const isOpen = expanded === p.id;
 
             return (
-              <div key={p.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+              <div key={p.id} className="bg-[#0F172A] border border-white/[0.06] rounded-[14px] overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
                 <button
                   className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors"
                   onClick={() => setExpanded(isOpen ? null : p.id)}

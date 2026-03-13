@@ -289,7 +289,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="mx-auto w-full max-w-[480px] px-5 pt-6 pb-28 md:pb-12 stagger-fade-in space-y-5">
+      <div className="mx-auto w-full max-w-[480px] md:max-w-3xl px-5 pt-6 pb-28 md:pb-12 stagger-fade-in space-y-5">
 
         {/* ── 1. LEVEL / XP (top of page) ────────────────────────────────────── */}
         {loading ? (
@@ -297,7 +297,7 @@ const Dashboard = () => {
         ) : (
           <Link
             to="/rewards"
-            className="block rounded-[12px] bg-[#0F172A] border border-white/8 px-4 py-2.5 active:scale-[0.99] transition-transform"
+            className="block rounded-[12px] bg-[#0F172A] border border-white/8 px-4 py-2.5 active:scale-[0.99] transition-all hover:border-white/20 hover:bg-white/[0.03]"
           >
             <div className="flex items-center gap-2.5 h-[20px]">
               <span className="text-[12px] font-bold text-[#E5E7EB] whitespace-nowrap shrink-0">
@@ -365,6 +365,9 @@ const Dashboard = () => {
             )}
           </div>
         </section>
+
+        {/* ── Desktop 2-col grid for workout + weekly goal ────────────────── */}
+        <div className="md:grid md:grid-cols-2 md:gap-6">
 
         {/* ── 3. TODAY'S WORKOUT (highlighted hero card) ─────────────────────── */}
         <section>
@@ -601,6 +604,8 @@ const Dashboard = () => {
             </div>
           </section>
         )}
+
+        </div>{/* end desktop 2-col grid */}
 
         {/* ── 5. GYM PULSE ───────────────────────────────────────────────────── */}
         <section>

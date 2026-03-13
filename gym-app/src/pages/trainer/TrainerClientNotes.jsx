@@ -131,7 +131,7 @@ export default function TrainerClientNotes() {
 
   if (!client) {
     return (
-      <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-3xl mx-auto">
+      <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
         <button
           onClick={() => navigate('/trainer/clients')}
           className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6"
@@ -145,7 +145,7 @@ export default function TrainerClientNotes() {
   }
 
   return (
-    <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
       {/* Back button */}
       <button
         onClick={() => navigate('/trainer/clients')}
@@ -200,7 +200,7 @@ export default function TrainerClientNotes() {
           </div>
 
           {/* Quick stats */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 text-[#D4AF37]" />
@@ -310,7 +310,7 @@ export default function TrainerClientNotes() {
       )}
 
       {activeTab === 'Body Metrics' && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Weight logs */}
           <div className="bg-[#0F172A] rounded-[14px] border border-white/6 p-5">
             <div className="flex items-center gap-2 mb-4">

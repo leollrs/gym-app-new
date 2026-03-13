@@ -216,7 +216,7 @@ const FeedCard = ({ item, currentUserId, onToggleLike, onReact }) => {
   };
 
   return (
-    <div className="rounded-[14px] overflow-hidden bg-[#0F172A] border border-white/8 transition-colors">
+    <div className="rounded-[14px] overflow-hidden bg-[#0F172A] border border-white/8 transition-all hover:border-white/20 hover:bg-white/[0.03]">
 
       {/* Header */}
       <div className="flex items-center gap-4 p-5 pb-4">
@@ -852,7 +852,7 @@ const SocialFeed = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
-      <div className={`${embedded ? '' : 'max-w-[680px] mx-auto px-4 pt-6 pb-8'}`}>
+      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-3xl mx-auto px-4 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (

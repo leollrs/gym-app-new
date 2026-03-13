@@ -323,7 +323,7 @@ export default function BodyMetrics() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[720px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -564,7 +564,7 @@ export default function BodyMetrics() {
                   const prev = weightLogs[i + 1];
                   const diff = prev ? parseFloat(log.weight_lbs) - parseFloat(prev.weight_lbs) : null;
                   return (
-                    <div key={log.id} className="flex items-center justify-between px-5 py-3">
+                    <div key={log.id} className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.03] transition-all">
                       <div>
                         <p className="text-[13px] font-semibold text-[#E5E7EB]">
                           {format(parseISO(log.logged_at), 'EEE, MMM d')}

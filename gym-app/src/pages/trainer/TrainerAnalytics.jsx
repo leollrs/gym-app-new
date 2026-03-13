@@ -152,7 +152,7 @@ export default function TrainerAnalytics() {
 
   if (loading) {
     return (
-      <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+      <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
         <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Analytics</h1>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[1,2,3,4].map(i => <Skeleton key={i} className="h-[100px]" />)}
@@ -166,7 +166,7 @@ export default function TrainerAnalytics() {
 
   if (clients.length === 0) {
     return (
-      <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+      <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
         <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Analytics</h1>
         <div className="text-center py-20">
           <TrendingUp size={32} className="text-[#4B5563] mx-auto mb-3" />
@@ -178,7 +178,7 @@ export default function TrainerAnalytics() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Analytics</h1>
 
       {/* Stat Cards */}
@@ -206,7 +206,7 @@ export default function TrainerAnalytics() {
         {/* Workout Frequency Chart */}
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Workout Frequency</p>
-          <div className="h-[200px]">
+          <div className="h-[200px] md:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={weeklyData}>
                 <defs>
@@ -227,7 +227,7 @@ export default function TrainerAnalytics() {
         {/* Volume Trend Chart */}
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Total Volume (lbs)</p>
-          <div className="h-[200px]">
+          <div className="h-[200px] md:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={weeklyData}>
                 <defs>
@@ -249,7 +249,7 @@ export default function TrainerAnalytics() {
         {/* Per-Client Comparison */}
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Client Workouts (12 weeks)</p>
-          <div className="h-[200px]">
+          <div className="h-[200px] md:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={clientComparison} layout="vertical">
                 <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -264,7 +264,7 @@ export default function TrainerAnalytics() {
         {/* Active Clients per Week */}
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
           <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Active Clients per Week</p>
-          <div className="h-[200px]">
+          <div className="h-[200px] md:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyData}>
                 <XAxis dataKey="label" tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -294,7 +294,7 @@ export default function TrainerAnalytics() {
               <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
             </div>
           </div>
-          <div className="h-[200px]">
+          <div className="h-[200px] md:h-[300px]">
             {selectedClient === 'all' || weightChartData.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[12px] text-[#4B5563]">
@@ -328,7 +328,7 @@ export default function TrainerAnalytics() {
               <p className="text-[12px] text-[#4B5563]">No PRs in the last 12 weeks</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            <div className="space-y-2 max-h-[200px] md:max-h-[300px] overflow-y-auto">
               {prs.map(pr => {
                 const clientName = clients.find(c => c.id === pr.profile_id)?.full_name?.split(' ')[0] || 'Client';
                 const improvement = pr.old_1rm > 0 ? Math.round(pr.new_1rm - pr.old_1rm) : null;

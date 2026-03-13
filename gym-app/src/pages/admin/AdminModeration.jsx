@@ -207,8 +207,8 @@ const PostsTab = ({ gymId }) => {
             return (
               <div
                 key={post.id}
-                className={`bg-[#0F172A] border rounded-[14px] p-4 transition-opacity ${
-                  post.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6'
+                className={`bg-[#0F172A] border rounded-[14px] p-4 transition-all group ${
+                  post.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6 hover:border-white/20 hover:bg-white/[0.03]'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -240,9 +240,14 @@ const PostsTab = ({ gymId }) => {
                       </p>
                     )}
 
-                    <p className="text-[11px] text-[#4B5563]">
-                      {relativeTime(post.created_at)}
-                    </p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <p className="text-[11px] text-[#4B5563]">
+                        {relativeTime(post.created_at)}
+                      </p>
+                      <span className="hidden md:inline text-[11px] text-[#4B5563]">
+                        {post.is_public ? 'Public' : 'Private'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Action */}
@@ -250,9 +255,9 @@ const PostsTab = ({ gymId }) => {
                     onClick={() => handleToggleDelete(post)}
                     disabled={busy}
                     title={post.is_deleted ? 'Restore post' : 'Delete post'}
-                    className={`flex-shrink-0 p-2 rounded-lg transition-colors disabled:opacity-40 ${
+                    className={`flex-shrink-0 p-2 rounded-lg transition-all disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100 ${
                       post.is_deleted
-                        ? 'text-emerald-500 hover:bg-emerald-500/10'
+                        ? 'text-emerald-500 hover:bg-emerald-500/10 md:opacity-100'
                         : 'text-[#4B5563] hover:text-red-400 hover:bg-red-500/10'
                     }`}
                   >
@@ -370,8 +375,8 @@ const CommentsTab = ({ gymId }) => {
             return (
               <div
                 key={comment.id}
-                className={`bg-[#0F172A] border rounded-[14px] p-4 transition-opacity ${
-                  comment.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6'
+                className={`bg-[#0F172A] border rounded-[14px] p-4 transition-all group ${
+                  comment.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6 hover:border-white/20 hover:bg-white/[0.03]'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -424,9 +429,9 @@ const CommentsTab = ({ gymId }) => {
                     onClick={() => handleToggleDelete(comment)}
                     disabled={busy}
                     title={comment.is_deleted ? 'Restore comment' : 'Delete comment'}
-                    className={`flex-shrink-0 p-2 rounded-lg transition-colors disabled:opacity-40 ${
+                    className={`flex-shrink-0 p-2 rounded-lg transition-all disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100 ${
                       comment.is_deleted
-                        ? 'text-emerald-500 hover:bg-emerald-500/10'
+                        ? 'text-emerald-500 hover:bg-emerald-500/10 md:opacity-100'
                         : 'text-[#4B5563] hover:text-red-400 hover:bg-red-500/10'
                     }`}
                   >
@@ -459,7 +464,7 @@ export default function AdminModeration() {
   ];
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Content Moderation</h1>

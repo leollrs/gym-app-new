@@ -50,7 +50,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
   // ── SELECTABLE MODE: tap card to expand, tap + to add ───────────────────
   if (selectable) {
     return (
-      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
+      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
         <div
           className="flex items-center gap-4 px-4 py-4 cursor-pointer"
           onClick={() => setExpanded(e => !e)}
@@ -258,7 +258,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                 {muscle}
               </h3>
             )}
-            <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {exs.map(ex => (
                 <ExerciseCard
                   key={ex.id}
@@ -290,7 +290,7 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
   const colors = MUSCLE_COLORS[exercise.muscle] || { bg: 'rgba(212,175,55,0.15)', text: '#D4AF37' };
 
   return (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
       <div className="flex items-center gap-4 px-4 py-4 cursor-pointer"
         onClick={() => setExpanded(e => !e)}>
         <div
@@ -724,7 +724,7 @@ export const ExerciseLibraryPage = () => {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {mineExercises.map(ex => (
               <CustomExerciseCard key={ex.id} exercise={ex} isMine={ex.createdBy === user?.id} isSaved />
             ))}
@@ -743,7 +743,7 @@ export const ExerciseLibraryPage = () => {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {friendExercises.map(ex => (
               <CustomExerciseCard key={ex.id} exercise={ex} isMine={false} isSaved={savedIds.has(ex.id)}
                 onSave={() => handleSave(ex.id)} />

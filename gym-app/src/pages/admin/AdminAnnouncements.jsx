@@ -51,7 +51,7 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="new-announcement-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="new-announcement-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg md:max-w-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-white/6">
           <p id="new-announcement-title" className="text-[16px] font-bold text-[#E5E7EB]">New Announcement</p>
@@ -130,7 +130,7 @@ export default function AdminAnnouncements() {
     TYPE_OPTS.find(t => t.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Announcements</h1>
@@ -156,7 +156,7 @@ export default function AdminAnnouncements() {
           {announcements.map(a => {
             const isScheduled = a.published_at && isFuture(new Date(a.published_at));
             return (
-              <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+              <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 hover:border-white/20 hover:bg-white/[0.03] transition-all">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">

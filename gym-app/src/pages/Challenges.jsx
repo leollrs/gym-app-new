@@ -428,7 +428,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   };
 
   return (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden">
+    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
       <div
         role="button"
         tabIndex={0}
@@ -596,7 +596,7 @@ export default function Challenges({ embedded = false }) {
       {/* Header */}
       {!embedded && (
       <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
-        <div className="max-w-2xl mx-auto px-4 pt-6 pb-5">
+        <div className="max-w-2xl md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center">
               <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
@@ -611,7 +611,7 @@ export default function Challenges({ embedded = false }) {
       )}
 
       {/* Tab bar — always visible */}
-      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-2xl mx-auto px-4'}`}>
+      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-2xl md:max-w-4xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
         <UnderlineTabs
           tabs={TABS.map(t => ({
@@ -624,7 +624,7 @@ export default function Challenges({ embedded = false }) {
         />
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-2xl md:max-w-4xl mx-auto px-4 py-6'}`}>
         {user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} />
         )}
@@ -647,7 +647,7 @@ export default function Challenges({ embedded = false }) {
                       description={tabKey === 'live' ? 'Your gym admin will post challenges here' : undefined}
                     />
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                       {items.map(c => (
                         <ChallengeCard
                           key={c.id}

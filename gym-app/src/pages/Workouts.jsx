@@ -53,7 +53,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="program-modal-title" className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="program-modal-title" className="bg-[#0F172A] border border-white/8 rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div className="flex-1 min-w-0 pr-4">
             <p id="program-modal-title" className="text-[17px] font-bold text-[#E5E7EB]">{program.name}</p>
@@ -248,7 +248,7 @@ const Workouts = () => {
 
   return (
     <>
-    <div className="mx-auto w-full max-w-[600px] px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
+    <div className="mx-auto w-full max-w-[600px] md:max-w-4xl px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-5">
@@ -380,7 +380,7 @@ const Workouts = () => {
               {routines.map(routine => (
                 <div
                   key={routine.id}
-                  className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5"
+                  className="rounded-[14px] border border-white/8 bg-[#0F172A] flex items-center gap-3 px-4 py-3.5 hover:border-white/20 hover:bg-white/[0.03] transition-all"
                 >
                   <div className="w-10 h-10 rounded-xl bg-[#111827] flex items-center justify-center flex-shrink-0">
                     <Dumbbell size={16} className="text-[#D4AF37]" />

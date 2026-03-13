@@ -164,7 +164,7 @@ export default function TrainerDashboard() {
 
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="max-w-3xl mx-auto px-4 md:px-8 py-6">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
         {/* Header */}
         <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Dashboard</h1>
 
@@ -189,9 +189,12 @@ export default function TrainerDashboard() {
           })}
         </div>
 
+        {/* Upcoming Sessions + At-Risk Clients — side by side on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
         {/* Upcoming Sessions */}
         {upcomingSessions.length > 0 && (
-          <div className="mb-8">
+          <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
                 <CalendarDays size={16} className="text-[#3B82F6]" />
@@ -206,7 +209,7 @@ export default function TrainerDashboard() {
             </div>
             <div className="bg-[#0F172A] rounded-[14px] border border-white/[0.06] divide-y divide-white/[0.06]">
               {upcomingSessions.map((session) => (
-                <div key={session.id} className="flex items-center gap-3 p-4">
+                <div key={session.id} className="flex items-center gap-3 p-4 hover:border-white/20 hover:bg-white/[0.03] transition-all">
                   <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
                     <CalendarDays size={16} className="text-[#3B82F6]" />
                   </div>
@@ -231,7 +234,7 @@ export default function TrainerDashboard() {
         )}
 
         {/* At-Risk Clients */}
-        <div className="mb-8">
+        <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
               <AlertTriangle size={16} className="text-amber-500" />
@@ -260,7 +263,7 @@ export default function TrainerDashboard() {
                 const name = member.full_name || member.username || 'Unknown';
                 const daysInactive = getDaysInactive(member.last_active_at);
                 return (
-                  <div key={member.id} className="flex items-center gap-3 p-4">
+                  <div key={member.id} className="flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-all">
                     <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
                       <span className="text-[13px] font-semibold text-amber-500">
                         {getInitial(name)}
@@ -286,6 +289,8 @@ export default function TrainerDashboard() {
           )}
         </div>
 
+        </div>
+
         {/* Recent Activity */}
         <div>
           <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
@@ -302,7 +307,7 @@ export default function TrainerDashboard() {
               {recentSessions.map((session) => {
                 const memberName = clientMap[session.profile_id] || 'Client';
                 return (
-                  <div key={session.id} className="flex items-center gap-3 p-4">
+                  <div key={session.id} className="flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-all">
                     <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
                       <Dumbbell size={16} className="text-[#D4AF37]" />
                     </div>

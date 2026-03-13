@@ -333,7 +333,7 @@ const TemplatesModal = ({ onClose, onSelect, onStartFromScratch }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-program-title"
-        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-2xl md:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -819,8 +819,8 @@ const ProgramModal = ({ program, initialData, onClose, onSaved, gymId, adminId }
                                   <p className="text-[11px] text-[#4B5563] py-1">No exercises yet</p>
                                 )}
                                 {day.exercises.map((ex, ei) => (
-                                  <div key={ei} className="flex items-center gap-2 py-1.5 border-b border-white/4 last:border-0">
-                                    <span className="text-[12px] text-[#9CA3AF] flex-1 min-w-0 truncate">{exName(ex.id)}</span>
+                                  <div key={ei} className="flex items-center gap-2 md:gap-3 py-1.5 border-b border-white/4 last:border-0">
+                                    <span className="text-[12px] text-[#9CA3AF] flex-1 min-w-0 truncate md:min-w-[200px]">{exName(ex.id)}</span>
                                     {/* Sets */}
                                     <div className="flex items-center gap-1 flex-shrink-0">
                                       <button
@@ -993,7 +993,7 @@ export default function AdminPrograms() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-3xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-[#E5E7EB]">Programs</h1>
@@ -1048,7 +1048,7 @@ export default function AdminPrograms() {
               ? Math.round(allDays.reduce((s, d) => s + calcDaySeconds(d), 0) / totalDays)
               : 0;
             return (
-              <div key={p.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+              <div key={p.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
