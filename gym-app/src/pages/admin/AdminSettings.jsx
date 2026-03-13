@@ -215,16 +215,13 @@ export default function AdminSettings() {
   );
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto">
+    <div className="px-4 md:px-8 py-6 max-w-2xl md:max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Settings</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">Gym branding and configuration</p>
       </div>
 
       <div className="space-y-4">
-
-        {/* Branding + Gym Hours side by side on desktop */}
-        <div className="grid md:grid-cols-2 gap-4">
 
         {/* Branding */}
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 hover:border-white/10 transition-colors duration-300">
@@ -326,8 +323,6 @@ export default function AdminSettings() {
             </div>
           </div>
         </div>
-
-        </div>{/* end grid */}
 
         {/* Gym info */}
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
