@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
 import { addPoints } from '../lib/rewardsEngine';
 import SwipeableTabView from '../components/SwipeableTabView';
+import UnderlineTabs from '../components/UnderlineTabs';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -558,28 +559,15 @@ export default function Challenges({ embedded = false }) {
       {/* Tab bar — always visible */}
       <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-2xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
-        <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
-          {TABS.map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold capitalize transition-all ${
-                tab === t
-                  ? 'bg-[#D4AF37] text-black font-semibold'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              {t}
-              {t === 'live' && liveCount > 0 && (
-                <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold ${
-                  tab === t ? 'bg-black/20 text-black' : 'bg-white/10 text-[#9CA3AF]'
-                }`}>
-                  {liveCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <UnderlineTabs
+          tabs={TABS.map(t => ({
+            key: t,
+            label: t.charAt(0).toUpperCase() + t.slice(1),
+            count: t === 'live' ? liveCount : null,
+          }))}
+          activeIndex={chalTabIndex}
+          onChange={handleChalSwipe}
+        />
       </div>
 
       <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`}>

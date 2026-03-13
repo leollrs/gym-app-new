@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ReactionPicker from '../components/ReactionPicker';
 import SwipeableTabView from '../components/SwipeableTabView';
+import UnderlineTabs from '../components/UnderlineTabs';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -908,25 +909,16 @@ const SocialFeed = ({ embedded = false }) => {
           />
         )}
 
-        {/* Pill tabs */}
-        <div className="flex gap-1 mb-6 bg-[#111827] p-1 rounded-xl">
-          {[
-            { key: 'friends', label: 'Friends' },
-            { key: 'mine', label: 'My Posts' },
-          ].map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-all ${
-                tab === t.key
-                  ? 'bg-[#D4AF37] text-black font-semibold'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Tab bar */}
+        <div className="mb-6">
+          <UnderlineTabs
+            tabs={[
+              { key: 'friends', label: 'Friends' },
+              { key: 'mine', label: 'My Posts' },
+            ]}
+            activeIndex={feedTabIndex}
+            onChange={handleFeedSwipe}
+          />
         </div>
 
         {/* Friends Streaks (shared, above swipeable area) */}

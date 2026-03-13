@@ -20,6 +20,7 @@ import MonthlyProgressReport from '../components/MonthlyProgressReport';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 import SwipeableTabView from '../components/SwipeableTabView';
+import UnderlineTabs from '../components/UnderlineTabs';
 const TABS = ['Overview', 'History', 'Strength', 'Body'];
 
 const tooltipStyle = {
@@ -1540,22 +1541,12 @@ export default function Progress() {
             Progress
           </h1>
 
-          {/* Tab pills */}
-          <div className="flex bg-[#111827] p-1 rounded-xl overflow-x-auto no-scrollbar">
-            {TABS.map(tab => (
-              <button
-                key={tab}
-                onClick={() => handleTabChange(tab)}
-                className={`flex-1 min-w-0 py-2 px-3 rounded-xl text-[13px] font-semibold transition-all whitespace-nowrap ${
-                  activeTab === tab
-                    ? 'bg-[#D4AF37] text-black'
-                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          {/* Tab bar */}
+          <UnderlineTabs
+            tabs={TABS.map(t => ({ key: t, label: t }))}
+            activeIndex={tabIndex}
+            onChange={handleSwipe}
+          />
         </div>
       </div>
 

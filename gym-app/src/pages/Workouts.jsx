@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 import SwipeableTabView from '../components/SwipeableTabView';
+import UnderlineTabs from '../components/UnderlineTabs';
 
 // ── Helpers ─────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -357,23 +358,15 @@ const Workouts = () => {
       )}
 
       {/* ── Tab bar: My Routines / Programs ────────────────── */}
-      <div className="flex gap-1 bg-[#111827] p-1 rounded-xl mb-4">
-        {[
-          { key: 'routines', label: 'My Routines' },
-          { key: 'programs', label: `Programs${enrolledIds.size ? ` (${enrolledIds.size})` : ''}` },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${
-              activeTab === t.key
-                ? 'bg-[#D4AF37] text-black'
-                : 'text-[#6B7280] hover:text-[#9CA3AF]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-4">
+        <UnderlineTabs
+          tabs={[
+            { key: 'routines', label: 'My Routines' },
+            { key: 'programs', label: 'Programs', count: enrolledIds.size || null },
+          ]}
+          activeIndex={tabIndex}
+          onChange={handleTabSwipe}
+        />
       </div>
 
       {/* ── Tab content (swipeable) ─────────────────────────── */}
