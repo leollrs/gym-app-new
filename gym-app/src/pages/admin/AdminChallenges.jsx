@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trophy, X, ChevronDown, Users, Clock } from 'lucide-react';
+import { Plus, Trophy, X, ChevronDown, Users, Clock, Gift } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, isPast, isFuture } from 'date-fns';
@@ -67,6 +67,12 @@ const statusBadge = (c) => {
 const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
   const [form, setForm] = useState({
     name: '', type: 'consistency', starts_at: '', ends_at: '', description: '',
+    enableRewards: false,
+    rewards: [
+      { place: '1st', points: 500, prize: '' },
+      { place: '2nd', points: 300, prize: '' },
+      { place: '3rd', points: 150, prize: '' },
+    ],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -80,12 +86,17 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
     }
     setSaving(true);
     setError('');
+    const rewardData = form.enableRewards
+      ? JSON.stringify(form.rewards.map(r => ({ place: r.place, points: r.points, prize: r.prize || null })))
+      : null;
+
     const { error: err } = await supabase.from('challenges').insert({
       gym_id:     gymId,
       created_by: adminId,
       name:       form.name,
       type:       form.type,
       description: form.description,
+      reward_description: rewardData,
       start_date: new Date(form.starts_at).toISOString(),
       end_date:   new Date(form.ends_at).toISOString(),
       status:     'active',
@@ -148,6 +159,62 @@ const CreateModal = ({ onClose, onCreated, gymId, adminId }) => {
               rows={2} placeholder="Tell members what this challenge is about…"
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
+
+          {/* ── Rewards toggle ── */}
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <div className={`relative w-10 h-[22px] rounded-full transition-colors ${form.enableRewards ? 'bg-[#D4AF37]' : 'bg-[#1E293B]'}`}
+                onClick={() => set('enableRewards', !form.enableRewards)}>
+                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white transition-all ${form.enableRewards ? 'left-[22px]' : 'left-[3px]'}`} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Gift size={15} className={form.enableRewards ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                <span className="text-[13px] font-medium text-[#E5E7EB]">Add Rewards</span>
+              </div>
+            </label>
+            <p className="text-[11px] text-[#6B7280] mt-1 ml-[52px]">Incentivize participation with points and prizes</p>
+          </div>
+
+          {form.enableRewards && (
+            <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6">
+              <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide">Reward per placement</p>
+              {form.rewards.map((r, i) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                return (
+                  <div key={r.place} className="flex items-center gap-3">
+                    <span className="text-[16px] w-6 text-center">{medals[i]}</span>
+                    <div className="flex-1 flex gap-2">
+                      <div className="w-24">
+                        <input
+                          type="number" min={0} value={r.points}
+                          onChange={e => {
+                            const updated = [...form.rewards];
+                            updated[i] = { ...r, points: parseInt(e.target.value) || 0 };
+                            set('rewards', updated);
+                          }}
+                          className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"
+                        />
+                        <p className="text-[10px] text-[#4B5563] text-center mt-0.5">points</p>
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          value={r.prize}
+                          onChange={e => {
+                            const updated = [...form.rewards];
+                            updated[i] = { ...r, prize: e.target.value };
+                            set('rewards', updated);
+                          }}
+                          placeholder="e.g. Free smoothie, 1 PT session…"
+                          className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                        />
+                        <p className="text-[10px] text-[#4B5563] mt-0.5">prize (optional)</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {error && <p className="text-[12px] text-red-400">{error}</p>}
 
@@ -347,6 +414,31 @@ export default function AdminChallenges() {
                         </span>
                       )}
                     </div>
+
+                    {/* Rewards display */}
+                    {(() => {
+                      let rewards = null;
+                      try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
+                      if (!rewards || !Array.isArray(rewards)) return null;
+                      const medals = ['🥇', '🥈', '🥉'];
+                      return (
+                        <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Gift size={12} className="text-[#D4AF37]" />
+                            <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">Rewards</p>
+                          </div>
+                          <div className="space-y-1.5">
+                            {rewards.map((r, i) => (
+                              <div key={i} className="flex items-center gap-2 text-[12px]">
+                                <span>{medals[i]}</span>
+                                <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
+                                {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Enrolled members */}
                     <div className="mb-4">

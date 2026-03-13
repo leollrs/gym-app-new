@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
@@ -79,14 +79,25 @@ const ParticipantList = ({ challengeId }) => {
   );
 };
 
-// ── Leaderboard ────────────────────────────────────────────
-const REWARD_BADGES = [
-  { label: '🏆 500 pts', points: 500 },
-  { label: '🥈 300 pts', points: 300 },
-  { label: '🥉 150 pts', points: 150 },
+// ── Helpers for reward parsing ──────────────────────────────
+const DEFAULT_REWARDS = [
+  { place: '1st', points: 500, prize: null },
+  { place: '2nd', points: 300, prize: null },
+  { place: '3rd', points: 150, prize: null },
 ];
 
+function parseRewards(challenge) {
+  try {
+    const parsed = challenge.reward_description ? JSON.parse(challenge.reward_description) : null;
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch {}
+  return DEFAULT_REWARDS;
+}
+
+// ── Leaderboard ────────────────────────────────────────────
 const Leaderboard = ({ challenge, gymId, myId }) => {
+  const rewards = parseRewards(challenge);
+  const hasCustomRewards = challenge.reward_description != null;
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const status = statusOf(challenge);
@@ -137,10 +148,15 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
             <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
               {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[#9CA3AF]">{unit}</span>
             </p>
-            {status === 'ended' && myRank < 3 && (
-              <p className="text-[12px] font-semibold text-[#D4AF37] mt-1">
-                You earned {REWARD_BADGES[myRank].points} points!
-              </p>
+            {status === 'ended' && myRank < 3 && rewards[myRank] && (
+              <div className="mt-1">
+                <p className="text-[12px] font-semibold text-[#D4AF37]">
+                  You earned {rewards[myRank].points} pts!
+                </p>
+                {rewards[myRank].prize && (
+                  <p className="text-[11px] text-[#D4AF37]/80">+ {rewards[myRank].prize}</p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -182,9 +198,9 @@ const Leaderboard = ({ challenge, gymId, myId }) => {
                 <p className={`text-[13px] font-bold relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[#9CA3AF]'}`}>
                   {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[#6B7280]">{unit}</span>
                 </p>
-                {status === 'ended' && i < 3 && (
+                {status === 'ended' && i < 3 && rewards[i] && (
                   <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
-                    {REWARD_BADGES[i].label}
+                    {rewards[i].prize ? `${rewards[i].points} pts + ${rewards[i].prize}` : `${MEDAL[i]} ${rewards[i].points} pts`}
                   </span>
                 )}
               </div>
@@ -390,6 +406,8 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const status = statusOf(challenge);
   const meta = TYPE_META[challenge.type] ?? {};
   const Icon = meta.icon ?? Trophy;
+  const cardRewards = parseRewards(challenge);
+  const hasRewards = challenge.reward_description != null;
 
   const statusStyle = {
     live:     'text-emerald-400 bg-emerald-500/10',
@@ -435,6 +453,14 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
                 </span>
               </>
             )}
+            {hasRewards && (
+              <>
+                <span className="text-[#6B7280]">·</span>
+                <span className="flex items-center gap-1 text-[11px] text-[#D4AF37] font-medium">
+                  <Gift size={11} /> Rewards
+                </span>
+              </>
+            )}
             <span className="text-[#6B7280]">·</span>
             {status === 'live' && <Countdown date={challenge.end_date} prefix="Ends in" />}
             {status === 'upcoming' && <Countdown date={challenge.start_date} prefix="Starts in" />}
@@ -475,6 +501,31 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           <div className="mt-3 text-[12px] text-[#6B7280] font-medium">
             {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
           </div>
+
+          {/* Rewards section */}
+          {hasRewards && (
+            <div className="mt-4 rounded-[14px] bg-gradient-to-r from-[#D4AF37]/5 to-[#D4AF37]/10 border border-[#D4AF37]/20 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Gift size={14} className="text-[#D4AF37]" />
+                <p className="text-[12px] font-bold text-[#D4AF37] uppercase tracking-widest">Rewards</p>
+              </div>
+              <div className="space-y-2">
+                {cardRewards.map((r, i) => {
+                  const medals = ['🥇', '🥈', '🥉'];
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-[18px]">{medals[i]}</span>
+                      <div className="flex-1">
+                        <span className="text-[13px] font-semibold text-[#E5E7EB]">{r.points} pts</span>
+                        {r.prize && <span className="text-[13px] text-[#D4AF37] ml-2">+ {r.prize}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} />
             : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} />
