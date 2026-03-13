@@ -5,7 +5,7 @@ import {
   Bell, ToggleLeft, ToggleRight, Save, CheckCircle, Clock,
   Zap, UserPlus, Trophy, Plus, X, ChevronDown, CalendarCheck,
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
@@ -245,12 +245,13 @@ export default function AdminOverview() {
           .eq('gym_id', gymId)
           .order('step_number'),
 
-        // Check-ins (last 30 days) — for Active rate
+        // Check-ins (last 30 days) — for Active rate + chart
         supabase
           .from('check_ins')
-          .select('profile_id')
+          .select('profile_id, checked_in_at')
           .eq('gym_id', gymId)
-          .gte('checked_in_at', subDays(now, 30).toISOString()),
+          .gte('checked_in_at', subDays(now, 30).toISOString())
+          .order('checked_in_at', { ascending: false }),
       ]);
 
       // Today's check-ins (separate query — lightweight)
@@ -384,23 +385,41 @@ export default function AdminOverview() {
 
       setActionItems(items);
 
-      // ── Chart: workouts per day last 14 days ────────────────
+      // ── Chart: workouts + check-ins per day last 14 days ────
       const dayMap = {};
       for (let i = 13; i >= 0; i--) {
         const d = format(subDays(now, i), 'MMM d');
-        dayMap[d] = 0;
+        dayMap[d] = { workouts: 0, checkins: 0 };
       }
       sessions.forEach(s => {
         const d = format(new Date(s.started_at), 'MMM d');
-        if (d in dayMap) dayMap[d]++;
+        if (d in dayMap) dayMap[d].workouts++;
       });
-      setChartData(Object.entries(dayMap).map(([date, count]) => ({ date, count })));
-      // Enrich recent sessions with member name
-      setRecentActivity(sessions.slice(0, 8).map(s => ({
-        ...s,
+      checkIns.forEach(c => {
+        const d = format(new Date(c.checked_in_at), 'MMM d');
+        if (d in dayMap) dayMap[d].checkins++;
+      });
+      setChartData(Object.entries(dayMap).map(([date, vals]) => ({ date, ...vals })));
+      // Enrich recent sessions + check-ins with member name, merge by time
+      const recentWorkouts = sessions.slice(0, 10).map(s => ({
+        type: 'workout',
+        profile_id: s.profile_id,
+        timestamp: s.started_at,
         memberName: memberMap[s.profile_id]?.full_name || 'Unknown',
         memberInitial: memberMap[s.profile_id]?.full_name?.[0]?.toUpperCase() || '?',
-      })));
+        total_volume_lbs: s.total_volume_lbs,
+      }));
+      const recentCheckins = checkIns.slice(0, 10).map(c => ({
+        type: 'checkin',
+        profile_id: c.profile_id,
+        timestamp: c.checked_in_at,
+        memberName: memberMap[c.profile_id]?.full_name || 'Unknown',
+        memberInitial: memberMap[c.profile_id]?.full_name?.[0]?.toUpperCase() || '?',
+      }));
+      const merged = [...recentWorkouts, ...recentCheckins]
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, 10);
+      setRecentActivity(merged);
 
       // ── Top exercises (last 30d) ────────────────────────────
       const { data: sessionRows } = await supabase
@@ -513,7 +532,7 @@ export default function AdminOverview() {
 
         {/* Activity chart */}
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 hover:border-white/10 transition-colors duration-300">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">Workouts — Last 14 Days</p>
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">Activity — Last 14 Days</p>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
@@ -521,15 +540,20 @@ export default function AdminOverview() {
                   <stop offset="5%"  stopColor="#D4AF37" stopOpacity={0.25} />
                   <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
                 </linearGradient>
+                <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#8B5CF6" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} interval={2} />
               <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
               <Tooltip
                 contentStyle={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12 }}
                 labelStyle={{ color: '#9CA3AF' }}
-                itemStyle={{ color: '#D4AF37' }}
               />
-              <Area type="monotone" dataKey="count" stroke="#D4AF37" strokeWidth={2} fill="url(#goldGrad)" dot={false} animationDuration={1200} animationEasing="ease-out" />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#9CA3AF', paddingTop: 4 }} />
+              <Area type="monotone" dataKey="checkins" name="Check-ins" stroke="#8B5CF6" strokeWidth={2} fill="url(#purpleGrad)" dot={false} animationDuration={1200} animationEasing="ease-out" />
+              <Area type="monotone" dataKey="workouts" name="Workouts" stroke="#D4AF37" strokeWidth={2} fill="url(#goldGrad)" dot={false} animationDuration={1200} animationEasing="ease-out" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -659,7 +683,7 @@ export default function AdminOverview() {
       <div className="bg-[#0F172A] border border-white/6 rounded-xl hover:border-white/10 transition-colors duration-300 mb-4">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">Recent Workouts</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">Recent Activity</p>
             {recentActivity.length > 0 && (
               <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#6B7280]">
                 {recentActivity.length}
@@ -679,19 +703,25 @@ export default function AdminOverview() {
           <div className="overflow-hidden">
             <div className="px-4 pb-4 border-t border-white/6">
               {recentActivity.length === 0 ? (
-                <p className="text-[12px] text-[#6B7280] text-center py-6">No workouts logged yet</p>
+                <p className="text-[12px] text-[#6B7280] text-center py-6">No activity yet</p>
               ) : (
                 <div className="divide-y divide-white/4">
-                  {recentActivity.map(s => (
-                    <div key={s.started_at + s.profile_id} className="flex items-center gap-3 py-2.5">
-                      <div className="w-7 h-7 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] font-bold text-[#9CA3AF]">{s.memberInitial}</span>
+                  {recentActivity.map((s, i) => (
+                    <div key={s.timestamp + s.profile_id + i} className="flex items-center gap-3 py-2.5">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${s.type === 'checkin' ? 'bg-[#8B5CF6]/15' : 'bg-[#1E293B]'}`}>
+                        {s.type === 'checkin'
+                          ? <CalendarCheck size={12} className="text-[#8B5CF6]" />
+                          : <span className="text-[10px] font-bold text-[#9CA3AF]">{s.memberInitial}</span>
+                        }
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{s.memberName}</p>
-                        <p className="text-[10px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, h:mm a')}</p>
+                        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
+                          {s.memberName}
+                          <span className="text-[10px] text-[#6B7280] ml-1.5">{s.type === 'checkin' ? 'checked in' : 'logged a workout'}</span>
+                        </p>
+                        <p className="text-[10px] text-[#6B7280]">{format(new Date(s.timestamp), 'MMM d, h:mm a')}</p>
                       </div>
-                      {s.total_volume_lbs > 0 && (
+                      {s.type === 'workout' && s.total_volume_lbs > 0 && (
                         <span className="text-[11px] font-semibold text-[#9CA3AF] tabular-nums">
                           {Math.round(s.total_volume_lbs).toLocaleString()} lbs
                         </span>
