@@ -188,6 +188,7 @@ export default function AdminOverview() {
         notOnboardedRes,
         challengesEndingSoonRes,
         dripStepsRes,
+        checkInsRes,
       ] = await Promise.all([
         // All members
         supabase
@@ -243,6 +244,13 @@ export default function AdminOverview() {
           .select('*')
           .eq('gym_id', gymId)
           .order('step_number'),
+
+        // Check-ins (last 30 days) — for Active rate
+        supabase
+          .from('check_ins')
+          .select('profile_id')
+          .eq('gym_id', gymId)
+          .gte('created_at', subDays(now, 30).toISOString()),
       ]);
 
       const members  = membersRes.data || [];
@@ -292,32 +300,40 @@ export default function AdminOverview() {
       setAtRisk(atRiskMembers);
 
       // ── Stats ──────────────────────────────────────────────
-      const activeIds = new Set(sessions.map(s => s.profile_id));
       const total = members.length;
       const atRiskCount = tiers.critical + tiers.high;
 
-      // Retention = of members who existed 30d ago, how many are still not cancelled/banned
-      const thirtyDaysAgoDate = subDays(now, 30).toISOString();
-      const membersAt30d = members.filter(m => m.created_at <= thirtyDaysAgoDate);
-      const retained30d = membersAt30d.filter(m =>
-        m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
-      ).length;
-      const retentionPct = membersAt30d.length > 0
-        ? Math.round((retained30d / membersAt30d.length) * 100)
-        : 0;
+      // Retention = best of 30/60/90 day windows
+      // (members who existed at start of period and are still not cancelled/banned)
+      const retentionCalc = (days) => {
+        const cutoff = subDays(now, days).toISOString();
+        const starting = members.filter(m => m.created_at <= cutoff);
+        if (starting.length === 0) return { pct: 0, days, starting: 0, retained: 0 };
+        const retained = starting.filter(m =>
+          m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
+        ).length;
+        return { pct: Math.round((retained / starting.length) * 100), days, starting: starting.length, retained };
+      };
+      const ret30 = retentionCalc(30);
+      const ret60 = retentionCalc(60);
+      const ret90 = retentionCalc(90);
+      // Pick the period with enough data (>=3 starting members), prefer shorter window
+      const retentionBest = [ret30, ret60, ret90].find(r => r.starting >= 3) || ret30;
 
-      // Engagement = members who logged ≥1 workout in 30d / total current members
-      const engagementPct = total > 0
-        ? Math.round((activeIds.size / total) * 100)
-        : 0;
+      // Active = unique members who checked in at the gym in last 30 days / total registered
+      const checkIns = checkInsRes.data || [];
+      const checkedInIds = new Set(checkIns.map(c => c.profile_id));
+      const activePct = total > 0 ? Math.round((checkedInIds.size / total) * 100) : 0;
 
       setStats({
         totalMembers:  total,
-        activeMembers: activeIds.size,
-        retentionPct,
+        activeMembers: checkedInIds.size,
+        activePct,
+        retentionPct: retentionBest.pct,
+        retentionDays: retentionBest.days,
+        retentionDetail: `${retentionBest.retained}/${retentionBest.starting}`,
         atRiskCount,
         workoutsMonth: sessions.length,
-        engagementPct,
       });
 
       // ── Action items (Today's Priorities) ─────────────────
@@ -473,11 +489,12 @@ export default function AdminOverview() {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <StatCard label="Total Members"    value={stats.totalMembers}             sub="all time"                  borderColor="#6366F1" delay={100} />
-        <StatCard label="Retention (30d)"  value={`${stats.retentionPct ?? 0}%`}  sub="still active vs 30d ago"   borderColor="#10B981" delay={150} />
-        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high risk"       borderColor="#EF4444" delay={200} />
-        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"         borderColor="#D4AF37" delay={250} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <StatCard label="Total Members"    value={stats.totalMembers}             sub="registered"                                              borderColor="#6366F1" delay={100} />
+        <StatCard label="Active (30d)"     value={`${stats.activePct ?? 0}%`}     sub={`${stats.activeMembers ?? 0} checked in`}                borderColor="#3B82F6" delay={130} />
+        <StatCard label={`Retention (${stats.retentionDays ?? 30}d)`} value={`${stats.retentionPct ?? 0}%`} sub={stats.retentionDetail ?? ''}  borderColor="#10B981" delay={160} />
+        <StatCard label="At Risk"          value={stats.atRiskCount}              sub="critical + high"                                         borderColor="#EF4444" delay={190} />
+        <StatCard label="Workouts (30d)"   value={stats.workoutsMonth}            sub="completed sessions"                                      borderColor="#D4AF37" delay={220} />
       </div>
 
       {/* Chart + Churn Risk Summary */}

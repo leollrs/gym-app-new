@@ -3,7 +3,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { Download, ChevronLeft, ChevronRight, Dumbbell, Users, TrendingUp, Zap, CalendarCheck, Trophy as TrophyIcon } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Dumbbell, Users, TrendingUp, Zap, CalendarCheck, Trophy as TrophyIcon, X, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -71,6 +71,7 @@ export default function AdminAnalytics() {
   const [summaryMonth, setSummaryMonth]       = useState(0); // 0 = current month, 1 = last month, etc.
   const [loadingSummary, setLoadingSummary]    = useState(true);
   const [summary, setSummary]                 = useState(null);
+  const [showReport, setShowReport]            = useState(false);
 
   // ── 1. Member Growth ───────────────────────────────────────
   useEffect(() => {
@@ -658,6 +659,32 @@ export default function AdminAnalytics() {
     });
   };
 
+  // ── Download monthly report as CSV ─────────────────────
+  const handleDownloadReport = () => {
+    if (!summary) return;
+    exportCSV({
+      filename: `monthly-report-${summary.label.replace(/\s+/g, '-').toLowerCase()}`,
+      columns: [
+        { key: 'metric', label: 'Metric' },
+        { key: 'value', label: 'Value' },
+      ],
+      data: [
+        { metric: 'Month', value: summary.label },
+        { metric: 'Total Members', value: summary.totalMembers },
+        { metric: 'Active Members', value: summary.uniqueActive },
+        { metric: 'Active Rate', value: `${summary.activeRate}%` },
+        { metric: 'New Members', value: summary.newMembers },
+        { metric: 'Total Workouts', value: summary.totalWorkouts },
+        { metric: 'Avg Workouts / Active Member', value: summary.avgWorkoutsPerActive },
+        { metric: 'Total Volume (lbs)', value: Math.round(summary.totalVolume) },
+        { metric: 'Check-ins', value: summary.checkIns },
+        { metric: 'PRs Hit', value: summary.prs },
+        { metric: 'Challenge Joins', value: summary.challengeJoins },
+        { metric: 'Total Training Time (min)', value: summary.totalDuration },
+      ],
+    });
+  };
+
   // ─────────────────────────────────────────────────────────
   return (
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
@@ -724,6 +751,13 @@ export default function AdminAnalytics() {
               <button onClick={() => setSummaryMonth(m => Math.max(0, m - 1))} disabled={summaryMonth === 0}
                 className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-30">
                 <ChevronRight size={14} className="text-[#9CA3AF]" />
+              </button>
+              <button
+                onClick={() => setShowReport(true)}
+                className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 transition-colors"
+              >
+                <FileText size={13} />
+                Generate Report
               </button>
             </div>
           </div>
@@ -1126,6 +1160,93 @@ export default function AdminAnalytics() {
         </div>
       )}
       </FadeIn>
+
+      {/* ── Monthly Report Modal ─────────────────────────────── */}
+      {showReport && summary && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
+          <div className="w-full max-w-lg my-4 md:my-12" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#0F172A] border border-white/8 rounded-t-xl p-4 flex items-center justify-between sticky top-0 z-10 backdrop-blur-2xl bg-[#0F172A]/95">
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-[#D4AF37]" />
+                <h2 className="text-[16px] font-bold text-[#E5E7EB]">Monthly Report — {summary.label}</h2>
+              </div>
+              <button onClick={() => setShowReport(false)} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                <X size={16} className="text-[#9CA3AF]" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="bg-[#0F172A] border-x border-white/8 p-5 space-y-5">
+              {/* Overview stats */}
+              <div>
+                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Overview</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Total Members', value: summary.totalMembers },
+                    { label: 'Active Members', value: summary.uniqueActive, sub: `${summary.activeRate}% active rate` },
+                    { label: 'New Members', value: summary.newMembers },
+                    { label: 'Check-ins', value: summary.checkIns.toLocaleString() },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-[#111827] rounded-xl p-3">
+                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
+                      <p className="text-[22px] font-bold text-[#E5E7EB] leading-none">{s.value}</p>
+                      {s.sub && <p className="text-[10px] text-[#4B5563] mt-1">{s.sub}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Training stats */}
+              <div>
+                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Training</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Workouts Completed', value: summary.totalWorkouts.toLocaleString() },
+                    { label: 'Avg / Active Member', value: summary.avgWorkoutsPerActive },
+                    { label: 'Total Volume', value: summary.totalVolume >= 1000000 ? `${(summary.totalVolume / 1000000).toFixed(1)}M lbs` : summary.totalVolume >= 1000 ? `${(summary.totalVolume / 1000).toFixed(1)}K lbs` : `${summary.totalVolume.toLocaleString()} lbs` },
+                    { label: 'Training Time', value: summary.totalDuration >= 60 ? `${(summary.totalDuration / 60).toFixed(0)} hours` : `${summary.totalDuration} min` },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-[#111827] rounded-xl p-3">
+                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
+                      <p className="text-[18px] font-bold text-[#E5E7EB] leading-none">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Engagement stats */}
+              <div>
+                <p className="text-[12px] text-[#6B7280] uppercase tracking-wider font-medium mb-3">Engagement</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'PRs Hit', value: summary.prs, color: '#EF4444' },
+                    { label: 'Challenge Joins', value: summary.challengeJoins, color: '#D4AF37' },
+                    { label: 'Check-ins', value: summary.checkIns.toLocaleString(), color: '#8B5CF6' },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-[#111827] rounded-xl p-3 text-center">
+                      <p className="text-[11px] text-[#6B7280] mb-1">{s.label}</p>
+                      <p className="text-[20px] font-bold leading-none" style={{ color: s.color }}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-[#0F172A] border border-white/8 rounded-b-xl p-4 flex items-center justify-between">
+              <p className="text-[11px] text-[#4B5563]">Generated {format(new Date(), 'MMM d, yyyy')}</p>
+              <button
+                onClick={handleDownloadReport}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors"
+              >
+                <Download size={14} />
+                Download CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
