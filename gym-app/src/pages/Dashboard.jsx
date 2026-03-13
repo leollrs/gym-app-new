@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Timer, Dumbbell, Check } from 'lucide-react';
+import { ChevronRight, Timer, Dumbbell, Check, ChevronDown, Trophy } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
@@ -62,6 +62,7 @@ const Dashboard = () => {
 
   const [stats, setStats]               = useState({ sessions: 0, streak: 0 });
   const [nextRoutine, setNextRoutine]                     = useState(null);
+  const [routineExercises, setRoutineExercises]           = useState([]);
   const [lastSessionForRoutine, setLastSessionForRoutine] = useState(null);
   const [loading, setLoading]                             = useState(true);
   const [recentSessions, setRecentSessions]               = useState([]);
@@ -70,6 +71,7 @@ const Dashboard = () => {
   const [userPoints, setUserPoints]         = useState({ total_points: 0, lifetime_points: 0 });
   const [weekGoal, setWeekGoal]             = useState(4);
   const [weekDaysTrained, setWeekDaysTrained] = useState([]);
+  const [showExercises, setShowExercises]   = useState(false);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -111,10 +113,10 @@ const Dashboard = () => {
       const daysOld     = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 999;
       setMemberDaysOld(daysOld);
 
-      // 2. Most recent routine for the hero card
+      // 2. Most recent routine for the hero card (with exercise details)
       const { data: routines } = await supabase
         .from('routines')
-        .select('id, name, routine_exercises(id)')
+        .select('id, name, routine_exercises(id, target_sets, target_reps, position, exercises(name))')
         .eq('created_by', user.id)
         .eq('is_template', false)
         .order('created_at', { ascending: false })
@@ -122,6 +124,9 @@ const Dashboard = () => {
 
       if (routines?.length > 0) {
         setNextRoutine(routines[0]);
+        const exercises = (routines[0].routine_exercises || [])
+          .sort((a, b) => (a.position || 0) - (b.position || 0));
+        setRoutineExercises(exercises);
         setLastSessionForRoutine(allSessions.find(s => s.routine_id === routines[0].id) ?? null);
       }
 
@@ -162,7 +167,7 @@ const Dashboard = () => {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
 
-  const liftCount    = nextRoutine?.routine_exercises?.length ?? 0;
+  const liftCount    = routineExercises.length || nextRoutine?.routine_exercises?.length || 0;
   const lastVol      = lastSessionForRoutine ? Math.round(lastSessionForRoutine.total_volume_lbs || 0) : 0;
   const lastDur      = lastSessionForRoutine?.duration_seconds ? formatTime(lastSessionForRoutine.duration_seconds) : null;
   const lastSummary  = lastVol > 0 ? `Last: ${(lastVol / 1000).toFixed(1)}k lbs — beat it.` : lastDur ? `Last: ${lastDur} — top it.` : null;
@@ -209,15 +214,19 @@ const Dashboard = () => {
   const { level, xpIntoLevel, xpForNext, progress: xpProgress } = getLevel(userPoints.total_points);
   const tier = getRewardTier(userPoints.total_points);
 
+  // Weekly goal progress
+  const weekProgress = Math.min((weekDaysTrained.length / weekGoal) * 100, 100);
+  const goalHit = weekDaysTrained.length >= weekGoal;
+
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
+      <div className="mx-auto w-full max-w-[480px] px-5 pt-6 pb-28 md:pb-12 stagger-fade-in space-y-5">
 
         {/* ── 1. LEVEL / XP (top of page) ────────────────────────────────────── */}
         {!loading && (
           <Link
             to="/rewards"
-            className="block mb-3 mt-2 rounded-[10px] bg-[#0F172A] border border-white/8 px-3 py-2 active:scale-[0.99] transition-transform"
+            className="block rounded-[12px] bg-[#0F172A] border border-white/8 px-4 py-2.5 active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center gap-2.5 h-[20px]">
               <span className="text-[12px] font-bold text-[#E5E7EB] whitespace-nowrap shrink-0">
@@ -248,29 +257,29 @@ const Dashboard = () => {
         )}
 
         {/* ── 2. GREETING + STREAK ───────────────────────────────────────────── */}
-        <section className="mb-4">
-          <div className="flex items-start justify-between gap-3">
+        <section className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-[22px] font-black text-[#E5E7EB] tracking-tight leading-tight">
+              <h1 className="text-[24px] font-black text-[#E5E7EB] tracking-tight leading-tight">
                 {timeGreeting}, {firstName}.
               </h1>
-              <p className="text-[13px] text-[#9CA3AF] mt-1 leading-snug">
+              <p className="text-[13px] text-[#9CA3AF] mt-2 leading-relaxed">
                 {loading ? '…' : coachLine}
               </p>
               {!loading && smartMotivation && (
-                <p className="text-[12px] text-[#D4AF37] mt-1 font-medium leading-snug">
+                <p className="text-[12px] text-[#D4AF37] mt-1.5 font-medium leading-snug">
                   {smartMotivation}
                 </p>
               )}
               {!loading && streakAtRisk && (
-                <p className="text-[11px] font-bold text-amber-400 mt-1">
+                <p className="text-[11px] font-bold text-amber-400 mt-1.5">
                   Streak at risk — train today to keep it
                 </p>
               )}
             </div>
 
             {!loading && (
-              <div className="flex flex-col items-center shrink-0 pt-0.5">
+              <div className="flex flex-col items-center shrink-0 pt-1">
                 <span className="text-[28px] leading-none animate-flame inline-block" role="img" aria-label="streak">🔥</span>
                 <span
                   className="text-[32px] font-black leading-none -mt-0.5"
@@ -286,55 +295,111 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* ── 3. TODAY'S WORKOUT (hero card) ──────────────────────────────────── */}
-        <section className="mb-5">
+        {/* ── 3. TODAY'S WORKOUT (highlighted hero card) ─────────────────────── */}
+        <section>
           {loading ? (
             <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-48 animate-pulse" />
           ) : activeSession ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/session/${activeSession.routineId}`)}
-              className="w-full rounded-[14px] bg-[#0F172A] border border-emerald-500/30 overflow-hidden text-left active:scale-[0.99] transition-transform"
-            >
-              <div className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Timer size={13} className="text-emerald-400" />
-                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">In progress</span>
+            <div className="rounded-[14px] bg-gradient-to-b from-emerald-500/[0.08] to-[#0F172A] border border-emerald-500/25 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => navigate(`/session/${activeSession.routineId}`)}
+                className="w-full text-left active:scale-[0.99] transition-transform"
+              >
+                <div className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <Timer size={12} className="text-emerald-400" />
+                    </div>
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">In progress</span>
+                  </div>
+                  <h2 className="text-[24px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                    {activeSession.routineName ?? 'Workout'}
+                  </h2>
+                  <p className="text-sm text-[#9CA3AF] mb-5">
+                    {activeSetsCompleted} / {activeSetsTotal} sets · {formatTime(activeSession.elapsedTime ?? 0)}
+                  </p>
+                  <div className="w-full py-3.5 rounded-xl bg-emerald-500 text-black text-center font-bold text-[15px]">
+                    Resume workout
+                  </div>
                 </div>
-                <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight mb-1">
-                  {activeSession.routineName ?? 'Workout'}
-                </h2>
-                <p className="text-sm text-[#9CA3AF] mb-4">
-                  {activeSetsCompleted} / {activeSetsTotal} sets · {formatTime(activeSession.elapsedTime ?? 0)}
-                </p>
-                <div className="w-full py-3.5 rounded-xl bg-emerald-500 text-black text-center font-bold text-[15px]">
-                  Resume workout
-                </div>
-              </div>
-            </button>
+              </button>
+            </div>
           ) : nextRoutine ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/session/${nextRoutine.id}`)}
-              className="w-full rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden text-left active:scale-[0.99] transition-transform"
-            >
-              <div className="p-5">
-                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-2">
-                  {liftCount} exercises · ~{estimatedMin} min
-                </p>
-                <h2 className="text-[28px] font-black text-[#E5E7EB] tracking-tight mb-1">
-                  {nextRoutine.name}
-                </h2>
-                {lastSummary ? (
-                  <p className="text-[13px] text-[#D4AF37] font-semibold mb-5">{lastSummary}</p>
-                ) : (
-                  <p className="text-[13px] text-[#6B7280] mb-5">First time. Set your baseline.</p>
-                )}
-                <div className="w-full py-4 rounded-xl bg-[#D4AF37] text-black text-center font-black text-[16px] tracking-wide">
-                  Let's go
+            <div className="rounded-[14px] bg-gradient-to-b from-[#D4AF37]/[0.06] to-[#0F172A] border border-[#D4AF37]/20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => navigate(`/session/${nextRoutine.id}`)}
+                className="w-full text-left active:scale-[0.99] transition-transform"
+              >
+                <div className="p-5 pb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-full bg-[#D4AF37]/15 flex items-center justify-center">
+                      <Dumbbell size={12} className="text-[#D4AF37]" />
+                    </div>
+                    <span className="text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
+                      Today's workout
+                    </span>
+                  </div>
+                  <h2 className="text-[26px] font-black text-[#E5E7EB] tracking-tight mb-1">
+                    {nextRoutine.name}
+                  </h2>
+                  <p className="text-[12px] text-[#6B7280] mb-1">
+                    {liftCount} exercises · ~{estimatedMin} min
+                  </p>
+                  {lastSummary ? (
+                    <p className="text-[13px] text-[#D4AF37] font-semibold mb-5">{lastSummary}</p>
+                  ) : (
+                    <p className="text-[13px] text-[#6B7280] mb-5">First time. Set your baseline.</p>
+                  )}
+                  <div className="w-full py-4 rounded-xl bg-[#D4AF37] text-black text-center font-black text-[16px] tracking-wide">
+                    Let's go
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+
+              {/* Expandable exercise list */}
+              {routineExercises.length > 0 && (
+                <div className="border-t border-white/[0.06]">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowExercises(!showExercises); }}
+                    className="w-full flex items-center justify-between px-5 py-3 text-left"
+                  >
+                    <span className="text-[12px] font-semibold text-[#9CA3AF]">
+                      {showExercises ? 'Hide' : 'View'} exercises ({routineExercises.length})
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className={`text-[#6B7280] transition-transform duration-200 ${showExercises ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {showExercises && (
+                    <div className="px-5 pb-4 space-y-2">
+                      {routineExercises.map((ex, i) => (
+                        <div
+                          key={ex.id}
+                          className="flex items-center gap-3 py-2 px-3 rounded-lg bg-white/[0.03]"
+                        >
+                          <span className="text-[11px] font-bold text-[#4B5563] w-5 text-center shrink-0">
+                            {i + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
+                              {ex.exercises?.name || 'Exercise'}
+                            </p>
+                          </div>
+                          <span className="text-[11px] text-[#6B7280] shrink-0">
+                            {ex.target_sets} x {ex.target_reps}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-6 text-center">
               <Dumbbell size={36} className="mx-auto mb-3 text-[#6B7280]" />
@@ -349,72 +414,117 @@ const Dashboard = () => {
 
         {/* ── 4. WEEKLY GOAL TRACKER ──────────────────────────────────────── */}
         {!loading && (
-          <section className="mb-5">
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[13px] font-bold text-[#E5E7EB]">
-                  Weekly goal
-                </span>
-                <span className="text-[12px] font-semibold text-[#9CA3AF]">
-                  {weekDaysTrained.length} / {weekGoal} days
-                </span>
-              </div>
-
-              {/* Day boxes: Mon–Sun */}
-              <div className="flex gap-1.5">
-                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => {
-                  const today = new Date();
-                  const todayIdx = today.getDay() === 0 ? 6 : today.getDay() - 1;
-                  const trained = weekDaysTrained.includes(i);
-                  const isToday = i === todayIdx;
-                  const isPast = i < todayIdx;
-
-                  return (
+          <section>
+            <div
+              className="rounded-[14px] border overflow-hidden"
+              style={{
+                background: goalHit
+                  ? 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(15,23,42,1) 100%)'
+                  : '#0F172A',
+                borderColor: goalHit ? 'rgba(212,175,55,0.25)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <div className="p-5">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
                     <div
-                      key={i}
-                      className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg transition-colors ${
-                        isToday ? 'bg-white/[0.06]' : ''
-                      }`}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center"
+                      style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #B8941F 100%)' }}
                     >
-                      <span className={`text-[10px] font-semibold ${
-                        isToday ? 'text-[#D4AF37]' : 'text-[#6B7280]'
-                      }`}>
-                        {label}
-                      </span>
-                      <div
-                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                          trained
-                            ? 'bg-[#D4AF37] text-black'
-                            : isPast
-                            ? 'bg-white/[0.04] border border-white/[0.06]'
-                            : 'bg-white/[0.04] border border-dashed border-white/[0.08]'
-                        }`}
-                      >
-                        {trained && <Check size={14} strokeWidth={3} />}
-                      </div>
+                      <Trophy size={14} className="text-black" />
                     </div>
-                  );
-                })}
-              </div>
+                    <span className="text-[14px] font-bold text-[#E5E7EB]">
+                      Weekly Goal
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-0.5">
+                    <span
+                      className="text-[20px] font-black"
+                      style={{ color: goalHit ? '#D4AF37' : '#E5E7EB' }}
+                    >
+                      {weekDaysTrained.length}
+                    </span>
+                    <span className="text-[13px] text-[#6B7280] font-semibold">
+                      / {weekGoal}
+                    </span>
+                  </div>
+                </div>
 
-              {/* Progress bar */}
-              <div className="mt-3 h-[4px] rounded-full bg-white/5 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-[#D4AF37] transition-all duration-500"
-                  style={{ width: `${Math.min((weekDaysTrained.length / weekGoal) * 100, 100)}%` }}
-                />
+                {/* Day boxes: Mon–Sun */}
+                <div className="flex gap-2">
+                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => {
+                    const today = new Date();
+                    const todayIdx = today.getDay() === 0 ? 6 : today.getDay() - 1;
+                    const trained = weekDaysTrained.includes(i);
+                    const isToday = i === todayIdx;
+                    const isPast = i < todayIdx;
+
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 flex flex-col items-center gap-1.5"
+                      >
+                        <span className={`text-[10px] font-bold tracking-wide ${
+                          isToday ? 'text-[#D4AF37]' : 'text-[#4B5563]'
+                        }`}>
+                          {label}
+                        </span>
+                        <div
+                          className={`w-full aspect-square rounded-[10px] flex items-center justify-center transition-all duration-300 ${
+                            trained
+                              ? 'shadow-[0_0_12px_rgba(212,175,55,0.25)]'
+                              : ''
+                          }`}
+                          style={{
+                            background: trained
+                              ? 'linear-gradient(135deg, #D4AF37 0%, #B8941F 100%)'
+                              : isToday
+                              ? 'rgba(212,175,55,0.08)'
+                              : 'rgba(255,255,255,0.03)',
+                            border: trained
+                              ? 'none'
+                              : isToday
+                              ? '1.5px solid rgba(212,175,55,0.3)'
+                              : isPast
+                              ? '1px solid rgba(255,255,255,0.06)'
+                              : '1px dashed rgba(255,255,255,0.08)',
+                          }}
+                        >
+                          {trained && <Check size={16} strokeWidth={3} className="text-black" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Progress bar */}
+                <div className="mt-4 h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700 ease-out"
+                    style={{
+                      width: `${weekProgress}%`,
+                      background: goalHit
+                        ? 'linear-gradient(90deg, #D4AF37, #F5D060)'
+                        : 'linear-gradient(90deg, #D4AF37, #B8941F)',
+                    }}
+                  />
+                </div>
+
+                {goalHit && (
+                  <p className="text-[12px] font-bold mt-3 text-center"
+                    style={{ color: '#D4AF37' }}
+                  >
+                    Goal hit! Keep the momentum going.
+                  </p>
+                )}
               </div>
-              {weekDaysTrained.length >= weekGoal && (
-                <p className="text-[11px] text-[#D4AF37] font-semibold mt-2 text-center">
-                  Goal hit! Keep the momentum going.
-                </p>
-              )}
             </div>
           </section>
         )}
 
         {/* ── 5. GYM PULSE ───────────────────────────────────────────────────── */}
-        <section className="mb-5">
+        <section>
           <GymPulse />
         </section>
 
