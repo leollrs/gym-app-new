@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Timer, Dumbbell, Users } from 'lucide-react';
+import { ChevronRight, Timer, Dumbbell, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
-import WorkoutOfTheDay from '../components/WorkoutOfTheDay';
 import GymPulse from '../components/GymPulse';
 import { getLevel } from '../components/LevelBadge';
 import { getUserPoints } from '../lib/rewardsEngine';
@@ -56,14 +55,6 @@ const isStreakAtRisk = (sessions) => {
   return dates.has(yesterday) && !dates.has(today);
 };
 
-// Time-ago helper
-const timeAgo = (iso) => {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diff < 60) return `${diff}m ago`;
-  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
-  return `${Math.floor(diff / 1440)}d ago`;
-};
-
 /* ── Main ───────────────────────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile } = useAuth();
@@ -76,8 +67,9 @@ const Dashboard = () => {
   const [recentSessions, setRecentSessions]               = useState([]);
   const [streakAtRisk, setStreakAtRisk]     = useState(false);
   const [memberDaysOld, setMemberDaysOld]   = useState(0);
-  const [friendActivity, setFriendActivity] = useState([]);
   const [userPoints, setUserPoints]         = useState({ total_points: 0, lifetime_points: 0 });
+  const [weekGoal, setWeekGoal]             = useState(4);
+  const [weekDaysTrained, setWeekDaysTrained] = useState([]);
 
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
@@ -133,57 +125,28 @@ const Dashboard = () => {
         setLastSessionForRoutine(allSessions.find(s => s.routine_id === routines[0].id) ?? null);
       }
 
-      // 3. Friend activity (recent, not just this week)
-      try {
-        const { data: friendships } = await supabase
-          .from('friendships')
-          .select('friend_id, user_id')
-          .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
-          .eq('status', 'accepted');
+      // 3. Weekly goal tracker — which days this week did the user train?
+      const weekGoalValue = profile?.training_days_per_week || 4;
+      setWeekGoal(weekGoalValue);
 
-        if (friendships?.length > 0) {
-          const friendIds = friendships.map(f =>
-            f.user_id === user.id ? f.friend_id : f.user_id
-          );
+      // Get start of current week (Monday)
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun
+      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - mondayOffset);
+      monday.setHours(0, 0, 0, 0);
 
-          const { data: friendSessions } = await supabase
-            .from('workout_sessions')
-            .select('profile_id, name, completed_at')
-            .in('profile_id', friendIds)
-            .eq('status', 'completed')
-            .order('completed_at', { ascending: false })
-            .limit(10);
-
-          if (friendSessions?.length > 0) {
-            // Fetch friend profiles for names + avatars
-            const { data: friendProfiles } = await supabase
-              .from('profiles')
-              .select('id, full_name, avatar_url')
-              .in('id', friendIds);
-
-            const profileMap = {};
-            (friendProfiles || []).forEach(p => { profileMap[p.id] = p; });
-
-            // De-dupe: one entry per friend (their most recent session)
-            const seen = new Set();
-            const activity = [];
-            for (const s of friendSessions) {
-              if (seen.has(s.profile_id)) continue;
-              seen.add(s.profile_id);
-              const fp = profileMap[s.profile_id];
-              activity.push({
-                profileId: s.profile_id,
-                name: fp?.full_name ?? 'Friend',
-                avatarUrl: fp?.avatar_url ?? null,
-                workout: s.name || 'Workout',
-                completedAt: s.completed_at,
-              });
-              if (activity.length >= 3) break;
-            }
-            setFriendActivity(activity);
-          }
+      // Check which day indices (0=Mon..6=Sun) had a completed session
+      const trainedDays = new Set();
+      for (const s of allSessions) {
+        const d = new Date(s.completed_at);
+        if (d >= monday) {
+          const idx = d.getDay() === 0 ? 6 : d.getDay() - 1; // Mon=0..Sun=6
+          trainedDays.add(idx);
         }
-      } catch { /* friendships table may not exist yet — fail silently */ }
+      }
+      setWeekDaysTrained([...trainedDays]);
 
       // Fetch XP/level data
       getUserPoints(user.id).then(pts => setUserPoints(pts)).catch(() => {});
@@ -250,10 +213,43 @@ const Dashboard = () => {
     <div className="min-h-screen bg-[#05070B]">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-4 pb-28 md:pb-12 stagger-fade-in">
 
-        {/* ── 1. GREETING + STREAK (merged compact row) ──────────────────────── */}
-        <section className="mb-4 mt-2">
+        {/* ── 1. LEVEL / XP (top of page) ────────────────────────────────────── */}
+        {!loading && (
+          <Link
+            to="/rewards"
+            className="block mb-3 mt-2 rounded-[10px] bg-[#0F172A] border border-white/8 px-3 py-2 active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-center gap-2.5 h-[20px]">
+              <span className="text-[12px] font-bold text-[#E5E7EB] whitespace-nowrap shrink-0">
+                Lvl {level}
+              </span>
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{
+                  backgroundColor: `${tier.color}15`,
+                  color: tier.color,
+                  border: `1px solid ${tier.color}30`,
+                }}
+              >
+                {tier.name}
+              </span>
+              <div className="flex-1 h-[6px] rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${xpProgress}%`, backgroundColor: tier.color }}
+                />
+              </div>
+              <span className="text-[10px] text-[#6B7280] whitespace-nowrap shrink-0">
+                {xpIntoLevel}/{xpForNext} XP
+              </span>
+              <ChevronRight size={12} className="text-[#4B5563] shrink-0" />
+            </div>
+          </Link>
+        )}
+
+        {/* ── 2. GREETING + STREAK ───────────────────────────────────────────── */}
+        <section className="mb-4">
           <div className="flex items-start justify-between gap-3">
-            {/* Left: greeting + coach line */}
             <div className="flex-1 min-w-0">
               <h1 className="text-[22px] font-black text-[#E5E7EB] tracking-tight leading-tight">
                 {timeGreeting}, {firstName}.
@@ -273,7 +269,6 @@ const Dashboard = () => {
               )}
             </div>
 
-            {/* Right: streak counter */}
             {!loading && (
               <div className="flex flex-col items-center shrink-0 pt-0.5">
                 <span className="text-[28px] leading-none animate-flame inline-block" role="img" aria-label="streak">🔥</span>
@@ -290,45 +285,6 @@ const Dashboard = () => {
             )}
           </div>
         </section>
-
-        {/* ── 2. LEVEL / XP (compact inline bar) ─────────────────────────────── */}
-        {!loading && (
-          <Link
-            to="/rewards"
-            className="block mb-4 rounded-[10px] bg-[#0F172A] border border-white/8 px-3 py-2 active:scale-[0.99] transition-transform"
-          >
-            <div className="flex items-center gap-2.5 h-[20px]">
-              {/* Left label */}
-              <span className="text-[12px] font-bold text-[#E5E7EB] whitespace-nowrap shrink-0">
-                Lvl {level}
-              </span>
-              <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-                style={{
-                  backgroundColor: `${tier.color}15`,
-                  color: tier.color,
-                  border: `1px solid ${tier.color}30`,
-                }}
-              >
-                {tier.name}
-              </span>
-
-              {/* Progress bar */}
-              <div className="flex-1 h-[6px] rounded-full bg-white/5 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${xpProgress}%`, backgroundColor: tier.color }}
-                />
-              </div>
-
-              {/* Right label */}
-              <span className="text-[10px] text-[#6B7280] whitespace-nowrap shrink-0">
-                {xpIntoLevel}/{xpForNext} XP
-              </span>
-              <ChevronRight size={12} className="text-[#4B5563] shrink-0" />
-            </div>
-          </Link>
-        )}
 
         {/* ── 3. TODAY'S WORKOUT (hero card) ──────────────────────────────────── */}
         <section className="mb-5">
@@ -391,75 +347,71 @@ const Dashboard = () => {
           )}
         </section>
 
-        {/* AI Workout of the Day */}
-        {!loading && !activeSession && (
+        {/* ── 4. WEEKLY GOAL TRACKER ──────────────────────────────────────── */}
+        {!loading && (
           <section className="mb-5">
-            <WorkoutOfTheDay />
+            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[13px] font-bold text-[#E5E7EB]">
+                  Weekly goal
+                </span>
+                <span className="text-[12px] font-semibold text-[#9CA3AF]">
+                  {weekDaysTrained.length} / {weekGoal} days
+                </span>
+              </div>
+
+              {/* Day boxes: Mon–Sun */}
+              <div className="flex gap-1.5">
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => {
+                  const today = new Date();
+                  const todayIdx = today.getDay() === 0 ? 6 : today.getDay() - 1;
+                  const trained = weekDaysTrained.includes(i);
+                  const isToday = i === todayIdx;
+                  const isPast = i < todayIdx;
+
+                  return (
+                    <div
+                      key={i}
+                      className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg transition-colors ${
+                        isToday ? 'bg-white/[0.06]' : ''
+                      }`}
+                    >
+                      <span className={`text-[10px] font-semibold ${
+                        isToday ? 'text-[#D4AF37]' : 'text-[#6B7280]'
+                      }`}>
+                        {label}
+                      </span>
+                      <div
+                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                          trained
+                            ? 'bg-[#D4AF37] text-black'
+                            : isPast
+                            ? 'bg-white/[0.04] border border-white/[0.06]'
+                            : 'bg-white/[0.04] border border-dashed border-white/[0.08]'
+                        }`}
+                      >
+                        {trained && <Check size={14} strokeWidth={3} />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress bar */}
+              <div className="mt-3 h-[4px] rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#D4AF37] transition-all duration-500"
+                  style={{ width: `${Math.min((weekDaysTrained.length / weekGoal) * 100, 100)}%` }}
+                />
+              </div>
+              {weekDaysTrained.length >= weekGoal && (
+                <p className="text-[11px] text-[#D4AF37] font-semibold mt-2 text-center">
+                  Goal hit! Keep the momentum going.
+                </p>
+              )}
+            </div>
           </section>
         )}
-
-        {/* ── 4. COMMUNITY HIGHLIGHTS (compact) ──────────────────────────────── */}
-        <section className="mb-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.18em]">
-              Community
-            </span>
-            <Link to="/community" className="text-xs font-semibold text-[#D4AF37] flex items-center gap-0.5">
-              See all <ChevronRight size={12} />
-            </Link>
-          </div>
-
-          {loading ? (
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 h-20 animate-pulse" />
-          ) : friendActivity.length === 0 ? (
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#1E293B] flex items-center justify-center shrink-0">
-                <Users size={18} className="text-[#4B5563]" />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-[#9CA3AF]">No friend activity yet</p>
-                <Link to="/community" className="text-[12px] text-[#D4AF37] font-medium">
-                  Add friends to see their activity →
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-[14px] bg-[#0F172A] border border-white/8 divide-y divide-white/[0.05] overflow-hidden">
-              {friendActivity.map((f) => {
-                const initials = f.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                const firstName = f.name.split(' ')[0];
-                return (
-                  <div key={f.profileId} className="px-3 py-2.5 flex items-center gap-3">
-                    {/* Avatar */}
-                    {f.avatarUrl ? (
-                      <img
-                        src={f.avatarUrl}
-                        alt={f.name}
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-[#1E293B] flex items-center justify-center shrink-0 text-[11px] font-bold text-[#D4AF37]">
-                        {initials}
-                      </div>
-                    )}
-                    {/* Activity description */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] truncate">
-                        <span className="font-semibold">{firstName}</span>
-                        <span className="text-[#9CA3AF]"> completed </span>
-                        <span className="font-medium">{f.workout}</span>
-                      </p>
-                    </div>
-                    {/* Time ago */}
-                    <span className="text-[10px] text-[#6B7280] shrink-0 whitespace-nowrap">
-                      {timeAgo(f.completedAt)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
         {/* ── 5. GYM PULSE ───────────────────────────────────────────────────── */}
         <section className="mb-5">
