@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { Users, Trophy } from 'lucide-react';
 import SocialFeed from './SocialFeed';
 import Challenges from './Challenges';
-import useSwipeTabs from '../hooks/useSwipeTabs';
-
-const TAB_KEYS = ['feed', 'challenges'];
 const TABS = [
   { key: 'feed', label: 'Feed', icon: Users },
   { key: 'challenges', label: 'Challenges', icon: Trophy },
@@ -12,8 +9,6 @@ const TABS = [
 
 export default function Community({ defaultTab = 'feed' }) {
   const [tab, setTab] = useState(defaultTab);
-  const swipe = useSwipeTabs(TAB_KEYS, tab, setTab);
-
   return (
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
       {/* Sticky header */}
@@ -45,8 +40,8 @@ export default function Community({ defaultTab = 'feed' }) {
         </div>
       </div>
 
-      {/* Tab content (swipeable) */}
-      <div className="max-w-2xl mx-auto px-4 py-6" {...swipe}>
+      {/* Tab content */}
+      <div className="max-w-2xl mx-auto px-4 py-6">
         {tab === 'feed' && <SocialFeed embedded />}
         {tab === 'challenges' && <Challenges embedded />}
       </div>
