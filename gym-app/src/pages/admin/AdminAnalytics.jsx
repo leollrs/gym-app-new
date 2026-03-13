@@ -3,7 +3,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { Download } from 'lucide-react';
+import { Download, ChevronLeft, ChevronRight, Dumbbell, Users, TrendingUp, Zap, CalendarCheck, Trophy as TrophyIcon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -66,6 +66,11 @@ export default function AdminAnalytics() {
   const [lifecycleStages, setLifecycleStages] = useState([]);
   const [loadingTrainers,    setLoadingTrainers]    = useState(true);
   const [trainers,           setTrainers]           = useState([]);
+
+  // Monthly Summary
+  const [summaryMonth, setSummaryMonth]       = useState(0); // 0 = current month, 1 = last month, etc.
+  const [loadingSummary, setLoadingSummary]    = useState(true);
+  const [summary, setSummary]                 = useState(null);
 
   // ── 1. Member Growth ───────────────────────────────────────
   useEffect(() => {
@@ -466,6 +471,61 @@ export default function AdminAnalytics() {
     load();
   }, [profile?.gym_id]);
 
+  // ── Monthly Summary ───────────────────────────────────────
+  useEffect(() => {
+    if (!profile?.gym_id) return;
+    const load = async () => {
+      setLoadingSummary(true);
+      const gymId = profile.gym_id;
+      const now = new Date();
+      const target = subMonths(now, summaryMonth);
+      const mStart = startOfMonth(target).toISOString();
+      const mEnd   = endOfMonth(target).toISOString();
+
+      const [
+        { data: newMembers },
+        { data: sessions },
+        { data: checkIns },
+        { data: prs },
+        { data: challengeParts },
+        { data: allMembers },
+      ] = await Promise.all([
+        supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').gte('created_at', mStart).lte('created_at', mEnd),
+        supabase.from('workout_sessions').select('profile_id, total_volume_lbs, duration_minutes').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', mStart).lte('started_at', mEnd),
+        supabase.from('check_ins').select('id').eq('gym_id', gymId).gte('created_at', mStart).lte('created_at', mEnd),
+        supabase.from('personal_records').select('id').eq('gym_id', gymId).gte('achieved_at', mStart).lte('achieved_at', mEnd),
+        supabase.from('challenge_participants').select('id').eq('gym_id', gymId).gte('joined_at', mStart).lte('joined_at', mEnd),
+        supabase.from('profiles').select('id, created_at').eq('gym_id', gymId).eq('role', 'member'),
+      ]);
+
+      const sessionList = sessions || [];
+      const totalWorkouts = sessionList.length;
+      const uniqueActive = new Set(sessionList.map(s => s.profile_id)).size;
+      const totalVolume = sessionList.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
+      const totalDuration = sessionList.reduce((sum, s) => sum + (parseFloat(s.duration_minutes) || 0), 0);
+      const avgWorkoutsPerActive = uniqueActive > 0 ? (totalWorkouts / uniqueActive).toFixed(1) : '0';
+      const totalMembersAtEnd = (allMembers || []).filter(m => new Date(m.created_at) <= new Date(mEnd)).length;
+      const activeRate = totalMembersAtEnd > 0 ? Math.round((uniqueActive / totalMembersAtEnd) * 100) : 0;
+
+      setSummary({
+        label: format(target, 'MMMM yyyy'),
+        newMembers: (newMembers || []).length,
+        totalWorkouts,
+        uniqueActive,
+        totalVolume: Math.round(totalVolume),
+        totalDuration: Math.round(totalDuration),
+        avgWorkoutsPerActive,
+        checkIns: (checkIns || []).length,
+        prs: (prs || []).length,
+        challengeJoins: (challengeParts || []).length,
+        totalMembers: totalMembersAtEnd,
+        activeRate,
+      });
+      setLoadingSummary(false);
+    };
+    load();
+  }, [profile?.gym_id, summaryMonth]);
+
   // ── 7. Trainer Performance ─────────────────────────────────
   useEffect(() => {
     if (!profile?.gym_id) return;
@@ -643,6 +703,55 @@ export default function AdminAnalytics() {
         </div>
         </FadeIn>
       )}
+
+      {/* Monthly Summary */}
+      <FadeIn delay={90}>
+      {loadingSummary ? (
+        <CardSkeleton h="h-[200px]" />
+      ) : summary && (
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 hover:border-white/10 transition-colors duration-300">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">Monthly Summary</p>
+              <p className="text-[11px] text-[#6B7280]">Key metrics at a glance</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSummaryMonth(m => m + 1)}
+                className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
+                <ChevronLeft size={14} className="text-[#9CA3AF]" />
+              </button>
+              <span className="text-[13px] font-medium text-[#E5E7EB] min-w-[120px] text-center">{summary.label}</span>
+              <button onClick={() => setSummaryMonth(m => Math.max(0, m - 1))} disabled={summaryMonth === 0}
+                className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-30">
+                <ChevronRight size={14} className="text-[#9CA3AF]" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { icon: Dumbbell, label: 'Workouts', value: summary.totalWorkouts.toLocaleString(), sub: `${summary.avgWorkoutsPerActive}/active member`, color: '#D4AF37' },
+              { icon: Users, label: 'Active Members', value: summary.uniqueActive, sub: `${summary.activeRate}% of ${summary.totalMembers}`, color: '#10B981' },
+              { icon: TrendingUp, label: 'New Members', value: summary.newMembers, sub: 'joined this month', color: '#60A5FA' },
+              { icon: Zap, label: 'Total Volume', value: summary.totalVolume >= 1000000 ? `${(summary.totalVolume / 1000000).toFixed(1)}M` : summary.totalVolume >= 1000 ? `${(summary.totalVolume / 1000).toFixed(1)}K` : summary.totalVolume.toLocaleString(), sub: 'lbs lifted', color: '#F59E0B' },
+              { icon: CalendarCheck, label: 'Check-ins', value: summary.checkIns.toLocaleString(), sub: 'gym visits', color: '#8B5CF6' },
+              { icon: TrophyIcon, label: 'PRs Hit', value: summary.prs, sub: 'personal records', color: '#EF4444' },
+              { icon: TrophyIcon, label: 'Challenge Joins', value: summary.challengeJoins, sub: 'new participants', color: '#D4AF37' },
+              { icon: Dumbbell, label: 'Total Time', value: summary.totalDuration >= 60 ? `${(summary.totalDuration / 60).toFixed(0)}h` : `${summary.totalDuration}m`, sub: 'training time', color: '#14B8A6' },
+            ].map((stat, i) => (
+              <div key={i} className="bg-[#111827] rounded-xl p-3 border border-white/4">
+                <div className="flex items-center gap-2 mb-2">
+                  <stat.icon size={13} style={{ color: stat.color }} />
+                  <span className="text-[11px] text-[#6B7280] font-medium">{stat.label}</span>
+                </div>
+                <p className="text-[20px] font-bold text-[#E5E7EB] leading-none tabular-nums">{stat.value}</p>
+                <p className="text-[10px] text-[#4B5563] mt-1">{stat.sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </FadeIn>
 
       {/* Row 1: Member Growth + Retention Rate */}
       <FadeIn delay={120}>
