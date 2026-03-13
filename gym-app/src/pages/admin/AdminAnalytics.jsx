@@ -22,7 +22,7 @@ const Skeleton = ({ className }) => (
 );
 
 const CardSkeleton = ({ h = 'h-[220px]' }) => (
-  <div className={`bg-[#0F172A] border border-white/6 rounded-[14px] p-5 ${h}`}>
+  <div className={`bg-[#0F172A] border border-white/6 rounded-xl p-4 ${h}`}>
     <Skeleton className="h-4 w-36 mb-5" />
     <Skeleton className="h-full w-full" />
   </div>
@@ -41,6 +41,7 @@ export default function AdminAnalytics() {
 
   const [loadingGrowth,      setLoadingGrowth]      = useState(true);
   const [loadingRetention,   setLoadingRetention]   = useState(true);
+  const [loadingActivity,    setLoadingActivity]    = useState(true);
   const [loadingCohort,      setLoadingCohort]       = useState(true);
   const [loadingChallenges,  setLoadingChallenges]  = useState(true);
   const [loadingOnboarding,  setLoadingOnboarding]  = useState(true);
@@ -48,6 +49,7 @@ export default function AdminAnalytics() {
 
   const [growthData,      setGrowthData]      = useState([]);
   const [retentionData,   setRetentionData]   = useState([]);
+  const [activityData,    setActivityData]    = useState([]);
   const [cohortData,      setCohortData]      = useState([]);   // [{ label, m0, m1, m2, m3 }]
   const [challengeData,   setChallengeData]   = useState([]);
   const [onboardingStats, setOnboardingStats] = useState({ total: 0, onboarded: 0, pct: 0 });
@@ -89,7 +91,7 @@ export default function AdminAnalytics() {
     load();
   }, [profile?.gym_id]);
 
-  // ── 2. Retention Rate (last 6 months) ─────────────────────
+  // ── 2a. Retention Rate (membership-status based, last 6 months) ──
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
@@ -97,41 +99,92 @@ export default function AdminAnalytics() {
       const gymId = profile.gym_id;
       const now   = new Date();
 
-      // Total active members
+      // Fetch all members with their status and join date
       const { data: allMembers } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, created_at, membership_status')
         .eq('gym_id', gymId)
         .eq('role', 'member');
 
-      const totalMembers = (allMembers || []).length;
+      const members = allMembers || [];
 
       const months = [];
       for (let i = 5; i >= 0; i--) {
-        const monthStart = startOfMonth(subMonths(now, i)).toISOString();
-        const monthEnd   = endOfMonth(subMonths(now, i)).toISOString();
+        const monthEnd = endOfMonth(subMonths(now, i));
+
+        // Members who existed by end of that month
+        const existedByMonth = members.filter(m => new Date(m.created_at) <= monthEnd);
+        const total = existedByMonth.length;
+
+        // Members NOT cancelled or banned = retained
+        // For historical months we can only use current status as a proxy
+        // (we don't have status change history per month yet)
+        const retained = existedByMonth.filter(m =>
+          m.membership_status !== 'cancelled' && m.membership_status !== 'banned'
+        ).length;
+
+        const pct = total > 0 ? Math.round((retained / total) * 100) : 0;
+
+        months.push({
+          month: format(subMonths(now, i), 'MMM yy'),
+          retention: pct,
+          retained,
+          total,
+        });
+      }
+
+      setRetentionData(months);
+      setLoadingRetention(false);
+    };
+    load();
+  }, [profile?.gym_id]);
+
+  // ── 2b. Activity Rate (workout-based, last 6 months) ──────────
+  useEffect(() => {
+    if (!profile?.gym_id) return;
+    const load = async () => {
+      setLoadingActivity(true);
+      const gymId = profile.gym_id;
+      const now   = new Date();
+
+      // Fetch all members with join date for correct per-month denominator
+      const { data: allMembers } = await supabase
+        .from('profiles')
+        .select('id, created_at')
+        .eq('gym_id', gymId)
+        .eq('role', 'member');
+
+      const members = allMembers || [];
+
+      const months = [];
+      for (let i = 5; i >= 0; i--) {
+        const monthStart = startOfMonth(subMonths(now, i));
+        const monthEnd   = endOfMonth(subMonths(now, i));
+
+        // Members who existed by end of that month
+        const totalThatMonth = members.filter(m => new Date(m.created_at) <= monthEnd).length;
 
         const { data: sessions } = await supabase
           .from('workout_sessions')
           .select('profile_id')
           .eq('gym_id', gymId)
           .eq('status', 'completed')
-          .gte('started_at', monthStart)
-          .lte('started_at', monthEnd);
+          .gte('started_at', monthStart.toISOString())
+          .lte('started_at', monthEnd.toISOString());
 
         const uniqueActive = new Set((sessions || []).map(s => s.profile_id)).size;
-        const pct = totalMembers > 0 ? Math.round((uniqueActive / totalMembers) * 100) : 0;
+        const pct = totalThatMonth > 0 ? Math.round((uniqueActive / totalThatMonth) * 100) : 0;
 
         months.push({
           month: format(subMonths(now, i), 'MMM yy'),
-          retention: pct,
+          activity: pct,
           active: uniqueActive,
-          total: totalMembers,
+          total: totalThatMonth,
         });
       }
 
-      setRetentionData(months);
-      setLoadingRetention(false);
+      setActivityData(months);
+      setLoadingActivity(false);
     };
     load();
   }, [profile?.gym_id]);
@@ -500,10 +553,23 @@ export default function AdminAnalytics() {
       columns: [
         { key: 'month', label: 'Month' },
         { key: 'retention', label: 'Retention %' },
-        { key: 'active', label: 'Active' },
+        { key: 'retained', label: 'Retained' },
         { key: 'total', label: 'Total' },
       ],
       data: retentionData,
+    });
+  };
+
+  const handleExportActivity = () => {
+    exportCSV({
+      filename: 'activity-rate',
+      columns: [
+        { key: 'month', label: 'Month' },
+        { key: 'activity', label: 'Activity %' },
+        { key: 'active', label: 'Active' },
+        { key: 'total', label: 'Total Members' },
+      ],
+      data: activityData,
     });
   };
 
@@ -529,15 +595,15 @@ export default function AdminAnalytics() {
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Analytics</h1>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">Member retention, growth, and engagement insights</p>
+        <p className="text-[13px] text-[#6B7280] mt-0.5">Retention, growth, and engagement metrics</p>
       </div>
 
       {/* Member Lifecycle Funnel */}
       {loadingLifecycle ? (
         <CardSkeleton h="h-[140px]" />
       ) : lifecycleStages.length > 0 && (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-6">
-          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Member Lifecycle</p>
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Member Lifecycle</p>
           <p className="text-[11px] text-[#6B7280] mb-4">Where your members are right now</p>
 
           <div className="flex gap-1 h-10 rounded-xl overflow-hidden mb-4">
@@ -571,12 +637,12 @@ export default function AdminAnalytics() {
         {loadingGrowth ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[14px] font-semibold text-[#E5E7EB]">Member Growth</p>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">Member Growth</p>
               <button
                 onClick={handleExportGrowth}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
               >
                 <Download size={13} />
                 Export
@@ -621,70 +687,98 @@ export default function AdminAnalytics() {
                 </AreaChart>
               </ResponsiveContainer>
             )}
-            <p className="text-[11px] text-[#4B5563] mt-2">New signups per month — last 12 months</p>
+            <p className="text-[10px] text-[#4B5563] mt-2">New signups per month — last 12 months</p>
           </div>
         )}
 
-        {/* 2. Monthly Retention Rate */}
+        {/* 2. Monthly Retention Rate (membership-status based) */}
         {loadingRetention ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[14px] font-semibold text-[#E5E7EB]">Monthly Retention Rate</p>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">Retention Rate</p>
               <button
                 onClick={handleExportRetention}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
               >
                 <Download size={13} />
                 Export
               </button>
             </div>
             {retentionData.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-10">No session data yet</p>
+              <p className="text-[13px] text-[#6B7280] text-center py-10">No member data yet</p>
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={retentionData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, 100]}
-                    tickFormatter={v => `${v}%`}
-                  />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}%`} />
                   <Tooltip
                     {...tooltipStyle}
                     formatter={(value, _name, props) => [
-                      `${value}% (${props.payload.active} / ${props.payload.total})`,
-                      'Retention',
+                      `${value}% (${props.payload.retained} / ${props.payload.total})`,
+                      'Retained',
                     ]}
                   />
                   <ReferenceLine y={BENCHMARKS.retentionRate} stroke="#D4AF37" strokeDasharray="6 4" strokeOpacity={0.5} label={{ value: `Industry avg ${BENCHMARKS.retentionRate}%`, position: 'right', fill: '#D4AF37', fontSize: 10, opacity: 0.7 }} />
-                  <Bar dataKey="retention" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="retention" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ResponsiveContainer>
             )}
-            <p className="text-[11px] text-[#4B5563] mt-2">% of members with ≥1 workout logged that month</p>
+            <p className="text-[10px] text-[#4B5563] mt-2">% of members not cancelled or banned</p>
           </div>
         )}
       </div>
+
+      {/* Row 1b: Activity Rate */}
+      {loadingActivity ? (
+        <CardSkeleton h="h-[260px]" />
+      ) : (
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">Activity Rate</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">% of members who logged ≥1 workout that month</p>
+            </div>
+            <button
+              onClick={handleExportActivity}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+            >
+              <Download size={13} />
+              Export
+            </button>
+          </div>
+          {activityData.length === 0 ? (
+            <p className="text-[13px] text-[#6B7280] text-center py-10">No session data yet</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={activityData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}%`} />
+                <Tooltip
+                  {...tooltipStyle}
+                  formatter={(value, _name, props) => [
+                    `${value}% (${props.payload.active} / ${props.payload.total})`,
+                    'Active',
+                  ]}
+                />
+                <Bar dataKey="activity" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       {/* Row 2: Cohort Retention — full width */}
       {loadingCohort ? (
         <CardSkeleton h="h-[260px]" />
       ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mb-4 overflow-x-auto">
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-4 overflow-x-auto">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[14px] font-semibold text-[#E5E7EB]">Cohort Retention</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">Cohort Retention</p>
             <button
               onClick={handleExportCohort}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
             >
               <Download size={13} />
               Export
@@ -748,12 +842,12 @@ export default function AdminAnalytics() {
         {loadingChallenges ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Challenge Participation</p>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Challenge Participation</p>
             {challengeData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-center">
                 <p className="text-[13px] text-[#6B7280]">No challenges in the last 6 months</p>
-                <p className="text-[11px] text-[#4B5563] mt-1">Create a challenge to see data here</p>
+                <p className="text-[10px] text-[#4B5563] mt-1">Create a challenge to see data here</p>
               </div>
             ) : (
               <>
@@ -788,7 +882,7 @@ export default function AdminAnalytics() {
                     <Bar dataKey="pct" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
-                <p className="text-[11px] text-[#4B5563] mt-2">% of total members who joined each challenge</p>
+                <p className="text-[10px] text-[#4B5563] mt-2">% of total members who joined each challenge</p>
               </>
             )}
           </div>
@@ -798,8 +892,8 @@ export default function AdminAnalytics() {
         {loadingOnboarding ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5">
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Onboarding Completion</p>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Onboarding Completion</p>
             <div className="flex items-center gap-6">
 
               {/* Donut chart */}
@@ -864,8 +958,8 @@ export default function AdminAnalytics() {
       {loadingTrainers ? (
         <CardSkeleton h="h-[200px]" />
       ) : trainers.length > 0 && (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-5 mt-4">
-          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Trainer Performance</p>
+        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mt-4">
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Trainer Performance</p>
           <p className="text-[11px] text-[#6B7280] mb-4">Client retention and engagement by trainer</p>
 
           <div className="divide-y divide-white/4">
