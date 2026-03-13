@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
 import { addPoints } from '../lib/rewardsEngine';
-import useSwipeTabs from '../hooks/useSwipeTabs';
+import SwipeableTabView from '../components/SwipeableTabView';
 
 // ── Helpers ────────────────────────────────────────────────
 const statusOf = (c) => {
@@ -493,7 +493,8 @@ export default function Challenges({ embedded = false }) {
   const [participants, setParticipants]   = useState([]);
   const [loading, setLoading]             = useState(true);
   const [tab, setTab]                     = useState('live');
-  const swipe = useSwipeTabs(TABS, tab, setTab);
+  const chalTabIndex = TABS.indexOf(tab);
+  const handleChalSwipe = (i) => setTab(TABS[i]);
 
   useEffect(() => {
     if (!profile?.gym_id || !user?.id) return;
@@ -533,7 +534,6 @@ export default function Challenges({ embedded = false }) {
     return acc;
   }, {});
 
-  const filtered = challenges.filter(c => statusOf(c) === tab);
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
   return (
@@ -582,7 +582,7 @@ export default function Challenges({ embedded = false }) {
         </div>
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`} {...swipe}>
+      <div className={`${embedded ? '' : 'max-w-2xl mx-auto px-4 py-6'}`}>
         {user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} />
         )}
@@ -590,34 +590,45 @@ export default function Challenges({ embedded = false }) {
           <div className="flex justify-center py-28">
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-24 px-6">
-            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-              <Trophy size={32} className="text-[#6B7280]" />
-            </div>
-            <p className="text-[16px] font-semibold text-[#E5E7EB]">
-              {tab === 'live'     && 'No active challenges right now'}
-              {tab === 'upcoming' && 'No upcoming challenges'}
-              {tab === 'ended'    && 'No past challenges'}
-            </p>
-            {tab === 'live' && (
-              <p className="text-[14px] text-[#9CA3AF] mt-2">Your gym admin will post challenges here</p>
-            )}
-          </div>
         ) : (
-          <div className="space-y-4">
-            {filtered.map(c => (
-              <ChallengeCard
-                key={c.id}
-                challenge={c}
-                gymId={profile.gym_id}
-                myId={user.id}
-                joined={myJoinedIds.has(c.id)}
-                participantCount={countMap[c.id] ?? 0}
-                onJoin={handleJoin}
-              />
-            ))}
-          </div>
+          <SwipeableTabView activeIndex={chalTabIndex} onChangeIndex={handleChalSwipe}>
+            {TABS.map(tabKey => {
+              const items = challenges.filter(c => statusOf(c) === tabKey);
+              return (
+                <div key={tabKey}>
+                  {items.length === 0 ? (
+                    <div className="text-center py-24 px-6">
+                      <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+                        <Trophy size={32} className="text-[#6B7280]" />
+                      </div>
+                      <p className="text-[16px] font-semibold text-[#E5E7EB]">
+                        {tabKey === 'live'     && 'No active challenges right now'}
+                        {tabKey === 'upcoming' && 'No upcoming challenges'}
+                        {tabKey === 'ended'    && 'No past challenges'}
+                      </p>
+                      {tabKey === 'live' && (
+                        <p className="text-[14px] text-[#9CA3AF] mt-2">Your gym admin will post challenges here</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {items.map(c => (
+                        <ChallengeCard
+                          key={c.id}
+                          challenge={c}
+                          gymId={profile.gym_id}
+                          myId={user.id}
+                          joined={myJoinedIds.has(c.id)}
+                          participantCount={countMap[c.id] ?? 0}
+                          onJoin={handleJoin}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </SwipeableTabView>
         )}
       </div>
     </div>

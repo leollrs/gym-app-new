@@ -6,7 +6,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ReactionPicker from '../components/ReactionPicker';
-import useSwipeTabs from '../hooks/useSwipeTabs';
+import SwipeableTabView from '../components/SwipeableTabView';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -622,9 +622,11 @@ const SocialFeed = ({ embedded = false }) => {
   const [loading, setLoading]         = useState(true);
   const [friendships, setFriendships] = useState([]);
   const [showFriends, setShowFriends]   = useState(false);
+  const FEED_TABS = ['friends', 'mine'];
   const [tab, setTab]                 = useState('friends');
   const [friendStreaks, setFriendStreaks] = useState([]);
-  const swipe = useSwipeTabs(['friends', 'mine'], tab, setTab);
+  const feedTabIndex = FEED_TABS.indexOf(tab);
+  const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {
@@ -927,9 +929,7 @@ const SocialFeed = ({ embedded = false }) => {
           ))}
         </div>
 
-        {/* Swipeable content area */}
-        <div {...swipe}>
-        {/* Friends Streaks */}
+        {/* Friends Streaks (shared, above swipeable area) */}
         {friendStreaks.length > 0 && (
           <div className="mb-6">
             <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Friends Streaks</p>
@@ -968,50 +968,69 @@ const SocialFeed = ({ embedded = false }) => {
           </div>
         )}
 
-        {/* Empty states */}
-        {!loading && activeFeed.length === 0 && tab === 'friends' && (
-          <div className="text-center py-20 px-4">
-            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-              <Users size={32} className="text-[#6B7280]" />
+        {/* Swipeable feed panels */}
+        {!loading && (
+          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe}>
+            {/* Friends tab */}
+            <div>
+              {friendsFeed.length === 0 ? (
+                <div className="text-center py-20 px-4">
+                  <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+                    <Users size={32} className="text-[#6B7280]" />
+                  </div>
+                  <p className="text-[16px] font-semibold text-[#E5E7EB]">No friend activity yet</p>
+                  <p className="text-[14px] text-[#9CA3AF] mt-2">Add friends to see their workouts and PRs here.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowFriends(true)}
+                    className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black"
+                  >
+                    <UserPlus size={16} /> Find Friends
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {friendsFeed.map((item) => (
+                    <FeedCard
+                      key={item.id}
+                      item={item}
+                      currentUserId={user.id}
+                      onToggleLike={handleReact}
+                      onReact={handleReact}
+                    />
+                  ))}
+                  <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
+                </div>
+              )}
             </div>
-            <p className="text-[16px] font-semibold text-[#E5E7EB]">No friend activity yet</p>
-            <p className="text-[14px] text-[#9CA3AF] mt-2">Add friends to see their workouts and PRs here.</p>
-            <button
-              type="button"
-              onClick={() => setShowFriends(true)}
-              className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-black"
-            >
-              <UserPlus size={16} /> Find Friends
-            </button>
-          </div>
-        )}
 
-        {!loading && activeFeed.length === 0 && tab === 'mine' && (
-          <div className="text-center py-20 px-4">
-            <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
-              <Dumbbell size={32} className="text-[#6B7280]" />
+            {/* My Posts tab */}
+            <div>
+              {myFeed.length === 0 ? (
+                <div className="text-center py-20 px-4">
+                  <div className="w-16 h-16 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-4">
+                    <Dumbbell size={32} className="text-[#6B7280]" />
+                  </div>
+                  <p className="text-[16px] font-semibold text-[#E5E7EB]">No posts yet</p>
+                  <p className="text-[14px] text-[#9CA3AF] mt-2">Finish a workout to post your first activity.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {myFeed.map((item) => (
+                    <FeedCard
+                      key={item.id}
+                      item={item}
+                      currentUserId={user.id}
+                      onToggleLike={handleReact}
+                      onReact={handleReact}
+                    />
+                  ))}
+                  <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
+                </div>
+              )}
             </div>
-            <p className="text-[16px] font-semibold text-[#E5E7EB]">No posts yet</p>
-            <p className="text-[14px] text-[#9CA3AF] mt-2">Finish a workout to post your first activity.</p>
-          </div>
+          </SwipeableTabView>
         )}
-
-        {/* Feed items */}
-        {!loading && activeFeed.length > 0 && (
-          <div className="flex flex-col gap-5">
-            {activeFeed.map((item) => (
-              <FeedCard
-                key={item.id}
-                item={item}
-                currentUserId={user.id}
-                onToggleLike={handleReact}
-                onReact={handleReact}
-              />
-            ))}
-            <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
-          </div>
-        )}
-        </div>
       </div>
     </div>
   );

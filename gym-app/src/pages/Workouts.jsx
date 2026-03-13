@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
-import useSwipeTabs from '../hooks/useSwipeTabs';
+import SwipeableTabView from '../components/SwipeableTabView';
 
 // ── Helpers ─────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -142,8 +142,10 @@ const Workouts = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
+  const WORK_TABS = ['routines', 'programs'];
   const [activeTab, setActiveTab]             = useState('routines');
-  const swipe = useSwipeTabs(['routines', 'programs'], activeTab, setActiveTab);
+  const tabIndex = WORK_TABS.indexOf(activeTab);
+  const handleTabSwipe = (i) => setActiveTab(WORK_TABS[i]);
 
   // Gym programs
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -375,10 +377,9 @@ const Workouts = () => {
       </div>
 
       {/* ── Tab content (swipeable) ─────────────────────────── */}
-      <div {...swipe}>
-      {/* ── My Routines tab ────────────────────────────────── */}
-      {activeTab === 'routines' && (
-        <div className="animate-fade-in">
+      <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleTabSwipe}>
+        {/* ── My Routines tab ────────────────────────────────── */}
+        <div>
           {loading ? (
             <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="bg-[#111827] rounded-[14px] border border-white/8 h-[68px] animate-pulse" />)}</div>
           ) : routines.length === 0 ? (
@@ -425,11 +426,9 @@ const Workouts = () => {
             </div>
           )}
         </div>
-      )}
 
-      {/* ── Programs tab ───────────────────────────────────── */}
-      {activeTab === 'programs' && (
-        <div className="animate-fade-in space-y-6">
+        {/* ── Programs tab ───────────────────────────────────── */}
+        <div className="space-y-6">
 
           {/* Goals mismatch alert */}
           {goalsMismatch && programActive && (
@@ -602,8 +601,7 @@ const Workouts = () => {
           </div>
 
         </div>
-      )}
-      </div>
+      </SwipeableTabView>
 
     </div>
 

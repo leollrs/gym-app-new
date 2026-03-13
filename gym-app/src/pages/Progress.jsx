@@ -19,7 +19,7 @@ import { format, parseISO, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import MonthlyProgressReport from '../components/MonthlyProgressReport';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-import useSwipeTabs from '../hooks/useSwipeTabs';
+import SwipeableTabView from '../components/SwipeableTabView';
 const TABS = ['Overview', 'History', 'Strength', 'Body'];
 
 const tooltipStyle = {
@@ -1525,7 +1525,8 @@ export default function Progress() {
     });
   };
 
-  const swipe = useSwipeTabs(TABS, activeTab, handleTabChange);
+  const tabIndex = TABS.indexOf(activeTab);
+  const handleSwipe = (i) => handleTabChange(TABS[i]);
 
   return (
     <div className="min-h-screen bg-[#05070B]">
@@ -1559,11 +1560,13 @@ export default function Progress() {
       </div>
 
       {/* Tab content (swipeable) */}
-      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12" {...swipe}>
-        {activeTab === 'Overview' && loadedTabs.has('Overview') && <OverviewTab />}
-        {activeTab === 'History' && loadedTabs.has('History') && <HistoryTab />}
-        {activeTab === 'Strength' && loadedTabs.has('Strength') && <StrengthTab />}
-        {activeTab === 'Body' && loadedTabs.has('Body') && <BodyTab />}
+      <div className="max-w-[720px] mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
+        <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleSwipe}>
+          <div>{loadedTabs.has('Overview') && <OverviewTab />}</div>
+          <div>{loadedTabs.has('History') && <HistoryTab />}</div>
+          <div>{loadedTabs.has('Strength') && <StrengthTab />}</div>
+          <div>{loadedTabs.has('Body') && <BodyTab />}</div>
+        </SwipeableTabView>
       </div>
     </div>
   );
