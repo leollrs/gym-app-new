@@ -647,7 +647,7 @@ export default function Challenges({ embedded = false }) {
                       description={tabKey === 'live' ? 'Your gym admin will post challenges here' : undefined}
                     />
                   ) : (
-                    <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+                    <div className="space-y-3">
                       {items.map(c => (
                         <ChallengeCard
                           key={c.id}
