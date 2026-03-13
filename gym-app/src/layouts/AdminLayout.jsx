@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/admin/attendance',   label: 'Attendance',    icon: CalendarCheck },
       { to: '/admin/challenges',   label: 'Challenges',    icon: Trophy },
+      { to: '/admin/trainers',     label: 'Trainers',      icon: UserCheck },
       { to: '/admin/programs',     label: 'Programs',      icon: Dumbbell },
       { to: '/admin/leaderboard',  label: 'Leaderboard',   icon: BarChart3 },
       { to: '/admin/announcements',label: 'Announcements', icon: Megaphone },

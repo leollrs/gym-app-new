@@ -51,6 +51,7 @@ import AdminSettings from './pages/admin/AdminSettings';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminModeration from './pages/admin/AdminModeration';
 import AdminChurn from './pages/admin/AdminChurn';
+import AdminTrainers from './pages/admin/AdminTrainers';
 
 // ── LOADING SCREEN ─────────────────────────────────────────
 const LoadingScreen = () => (
@@ -139,6 +140,7 @@ function App() {
                 <Route path="/churn"        element={<AdminChurn />} />
                 <Route path="/attendance"   element={<AdminAttendance />} />
                 <Route path="/challenges"   element={<AdminChallenges />} />
+                <Route path="/trainers"     element={<AdminTrainers />} />
                 <Route path="/programs"     element={<AdminPrograms />} />
                 <Route path="/leaderboard"  element={<AdminLeaderboard />} />
                 <Route path="/announcements" element={<AdminAnnouncements />} />
