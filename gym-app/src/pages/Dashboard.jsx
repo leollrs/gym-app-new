@@ -8,6 +8,7 @@ import GymPulse from '../components/GymPulse';
 import { getLevel } from '../components/LevelBadge';
 import { getUserPoints } from '../lib/rewardsEngine';
 import { getRewardTier } from '../lib/rewardsEngine';
+import { getCached, setCache } from '../lib/queryCache';
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const formatTime = (s) =>
@@ -82,81 +83,119 @@ const Dashboard = () => {
     ? Object.values(activeSession.loggedSets).flat().length
     : 0;
 
+  // Hydrate from cache instantly on first render
+  useEffect(() => {
+    const cached = getCached(`dash:${user?.id}`);
+    if (cached?.data) {
+      const c = cached.data;
+      setStats(c.stats);
+      setStreakAtRisk(c.streakAtRisk);
+      setRecentSessions(c.recentSessions);
+      setMemberDaysOld(c.memberDaysOld);
+      setNextRoutine(c.nextRoutine);
+      setRoutineExercises(c.routineExercises);
+      setLastSessionForRoutine(c.lastSessionForRoutine);
+      setWeekGoal(c.weekGoal);
+      setWeekDaysTrained(c.weekDaysTrained);
+      setUserPoints(c.userPoints);
+      setLoading(false);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user || !profile) return;
 
     const load = async () => {
-      setLoading(true);
+      // Only show loading skeleton if no cached data
+      const hasCached = !!getCached(`dash:${user.id}`)?.data;
+      if (!hasCached) setLoading(true);
 
-      // 1. Load all completed sessions
-      const { data: sessions } = await supabase
-        .from('workout_sessions')
-        .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
-        .eq('profile_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+      // Fire independent queries in parallel
+      const [sessionsRes, routinesRes, pointsRes] = await Promise.all([
+        supabase
+          .from('workout_sessions')
+          .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
+          .eq('profile_id', user.id)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false }),
+        supabase
+          .from('routines')
+          .select('id, name, routine_exercises(id, target_sets, target_reps, position, exercises(name))')
+          .eq('created_by', user.id)
+          .eq('is_template', false)
+          .order('created_at', { ascending: false })
+          .limit(1),
+        getUserPoints(user.id).catch(() => ({ total_points: 0, lifetime_points: 0 })),
+      ]);
 
-      const allSessions = sessions || [];
+      const allSessions = sessionsRes.data || [];
+      const routines = routinesRes.data || [];
 
       const totalSessions = allSessions.length;
       const streak        = computeStreak(allSessions);
       const atRisk        = isStreakAtRisk(allSessions);
+      const newStats      = { sessions: totalSessions, streak };
 
-      setStats({ sessions: totalSessions, streak });
+      setStats(newStats);
       setStreakAtRisk(atRisk);
-
-      // Recent sessions (for coach line calculation)
       setRecentSessions(allSessions.slice(0, 4));
 
-      // Member age
-      const createdAt   = profile?.created_at ? new Date(profile.created_at) : null;
-      const daysOld     = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 999;
+      const createdAt = profile?.created_at ? new Date(profile.created_at) : null;
+      const daysOld   = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 999;
       setMemberDaysOld(daysOld);
 
-      // 2. Most recent routine for the hero card (with exercise details)
-      const { data: routines } = await supabase
-        .from('routines')
-        .select('id, name, routine_exercises(id, target_sets, target_reps, position, exercises(name))')
-        .eq('created_by', user.id)
-        .eq('is_template', false)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      let newNextRoutine = null;
+      let newRoutineExercises = [];
+      let newLastSession = null;
 
-      if (routines?.length > 0) {
-        setNextRoutine(routines[0]);
-        const exercises = (routines[0].routine_exercises || [])
+      if (routines.length > 0) {
+        newNextRoutine = routines[0];
+        newRoutineExercises = (routines[0].routine_exercises || [])
           .sort((a, b) => (a.position || 0) - (b.position || 0));
-        setRoutineExercises(exercises);
-        setLastSessionForRoutine(allSessions.find(s => s.routine_id === routines[0].id) ?? null);
+        newLastSession = allSessions.find(s => s.routine_id === routines[0].id) ?? null;
       }
+      setNextRoutine(newNextRoutine);
+      setRoutineExercises(newRoutineExercises);
+      setLastSessionForRoutine(newLastSession);
 
-      // 3. Weekly goal tracker — which days this week did the user train?
+      // Weekly goal tracker
       const weekGoalValue = profile?.training_days_per_week || 4;
       setWeekGoal(weekGoalValue);
 
-      // Get start of current week (Monday)
       const now = new Date();
-      const dayOfWeek = now.getDay(); // 0=Sun
+      const dayOfWeek = now.getDay();
       const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       const monday = new Date(now);
       monday.setDate(now.getDate() - mondayOffset);
       monday.setHours(0, 0, 0, 0);
 
-      // Check which day indices (0=Mon..6=Sun) had a completed session
       const trainedDays = new Set();
       for (const s of allSessions) {
         const d = new Date(s.completed_at);
         if (d >= monday) {
-          const idx = d.getDay() === 0 ? 6 : d.getDay() - 1; // Mon=0..Sun=6
+          const idx = d.getDay() === 0 ? 6 : d.getDay() - 1;
           trainedDays.add(idx);
         }
       }
-      setWeekDaysTrained([...trainedDays]);
+      const newWeekDays = [...trainedDays];
+      setWeekDaysTrained(newWeekDays);
 
-      // Fetch XP/level data
-      getUserPoints(user.id).then(pts => setUserPoints(pts)).catch(() => {});
-
+      setUserPoints(pointsRes);
       setLoading(false);
+
+      // Persist to cache for instant next load
+      setCache(`dash:${user.id}`, {
+        stats: newStats,
+        streakAtRisk: atRisk,
+        recentSessions: allSessions.slice(0, 4),
+        memberDaysOld: daysOld,
+        nextRoutine: newNextRoutine,
+        routineExercises: newRoutineExercises,
+        lastSessionForRoutine: newLastSession,
+        weekGoal: weekGoalValue,
+        weekDaysTrained: newWeekDays,
+        userPoints: pointsRes,
+      });
 
       // Run smart notification scheduler (fire-and-forget)
       runNotificationScheduler(user.id, profile.gym_id).catch(() => {});

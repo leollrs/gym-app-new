@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { getCached, setCache } from '../lib/queryCache';
 
 export const useRoutines = () => {
   const { user, profile } = useAuth();
@@ -8,43 +9,57 @@ export const useRoutines = () => {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
 
+  // Hydrate from cache instantly
+  useEffect(() => {
+    if (!user?.id) return;
+    const cached = getCached(`routines:${user.id}`);
+    if (cached?.data) {
+      setRoutines(cached.data);
+      setLoading(false);
+    }
+  }, [user?.id]);
+
   const fetchRoutines = useCallback(async () => {
     if (!user || !profile) return;
-    setLoading(true);
+
+    const hasCached = !!getCached(`routines:${user.id}`)?.data;
+    if (!hasCached) setLoading(true);
     setError(null);
 
-    const { data, error: err } = await supabase
-      .from('routines')
-      .select('id, name, created_at, updated_at, routine_exercises(id)')
-      .eq('created_by', user.id)
-      .eq('is_template', false)
-      .order('created_at', { ascending: false });
-
-    if (err) {
-      setError(err.message);
-    } else {
-      // Also fetch last performed date per routine
-      const { data: sessions } = await supabase
+    // Parallel fetch: routines + sessions
+    const [routinesRes, sessionsRes] = await Promise.all([
+      supabase
+        .from('routines')
+        .select('id, name, created_at, updated_at, routine_exercises(id)')
+        .eq('created_by', user.id)
+        .eq('is_template', false)
+        .order('created_at', { ascending: false }),
+      supabase
         .from('workout_sessions')
         .select('routine_id, completed_at')
         .eq('profile_id', user.id)
         .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+        .order('completed_at', { ascending: false }),
+    ]);
 
+    if (routinesRes.error) {
+      setError(routinesRes.error.message);
+    } else {
       const lastPerformedMap = {};
-      sessions?.forEach(s => {
+      sessionsRes.data?.forEach(s => {
         if (s.routine_id && !lastPerformedMap[s.routine_id]) {
           lastPerformedMap[s.routine_id] = s.completed_at;
         }
       });
 
-      const enriched = (data || []).map(r => ({
+      const enriched = (routinesRes.data || []).map(r => ({
         ...r,
         exerciseCount: r.routine_exercises?.length ?? 0,
         lastPerformedAt: lastPerformedMap[r.id] || null,
       }));
 
       setRoutines(enriched);
+      setCache(`routines:${user.id}`, enriched);
     }
 
     setLoading(false);
