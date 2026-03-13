@@ -258,7 +258,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                 {muscle}
               </h3>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div className="space-y-2">
               {exs.map(ex => (
                 <ExerciseCard
                   key={ex.id}
@@ -724,7 +724,7 @@ export const ExerciseLibraryPage = () => {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-3">
             {mineExercises.map(ex => (
               <CustomExerciseCard key={ex.id} exercise={ex} isMine={ex.createdBy === user?.id} isSaved />
             ))}
@@ -743,7 +743,7 @@ export const ExerciseLibraryPage = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-3">
             {friendExercises.map(ex => (
               <CustomExerciseCard key={ex.id} exercise={ex} isMine={false} isSaved={savedIds.has(ex.id)}
                 onSave={() => handleSave(ex.id)} />
