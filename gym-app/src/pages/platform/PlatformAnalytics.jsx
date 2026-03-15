@@ -12,6 +12,7 @@ import {
 import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getMonthlyPrice, getPricingLabel, getMemberBracketLabel } from '../../lib/pricing';
 
 // ── Tooltip style ────────────────────────────────────────────
 const tooltipStyle = {
@@ -98,7 +99,7 @@ export default function PlatformAnalytics() {
       const ninetyDaysAgo = subDays(now, 90).toISOString();
 
       const [gymRes, profileRes, sessionRes, checkInRes, churnRes, recentProfileRes] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price'),
+        supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding'),
         supabase.from('profiles').select('id, gym_id, role, created_at, last_active_at, membership_status'),
         supabase.from('workout_sessions').select('id, gym_id, profile_id, status, started_at').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
         supabase.from('check_ins').select('id, gym_id, profile_id, checked_in_at').gte('checked_in_at', thirtyDaysAgo),
@@ -159,44 +160,64 @@ export default function PlatformAnalytics() {
     return ((activeMembers / totalMembers) * 100).toFixed(1);
   }, [activeMembers, totalMembers]);
 
-  // ── Revenue metrics ──────────────────────────────────────────
-  const TIER_DEFAULTS = { free: 0, starter: 49, pro: 99, enterprise: 199 };
+  // ── Revenue metrics (dynamic pricing based on tier + member count) ──
+  const gymMemberCounts = useMemo(() => {
+    const counts = {};
+    profiles.forEach(p => {
+      counts[p.gym_id] = (counts[p.gym_id] || 0) + 1;
+    });
+    return counts;
+  }, [profiles]);
+
+  const getGymPrice = (g) => {
+    const memberCount = gymMemberCounts[g.id] || 0;
+    return getMonthlyPrice({
+      planType: g.plan_type || g.subscription_tier || 'starter',
+      memberCount,
+      isFounding: g.is_founding ?? false,
+      monthlyPriceOverride: parseFloat(g.monthly_price) || 0,
+    });
+  };
 
   const mrr = useMemo(() => {
-    return gyms
-      .filter(g => g.is_active)
-      .reduce((sum, g) => sum + (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0), 0);
-  }, [gyms]);
+    return gyms.filter(g => g.is_active).reduce((sum, g) => sum + getGymPrice(g), 0);
+  }, [gyms, gymMemberCounts]);
 
   const revenueByGym = useMemo(() => {
     return gyms
-      .map(g => ({
-        id: g.id,
-        name: g.name,
-        tier: g.subscription_tier || 'free',
-        price: parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0,
-        isActive: g.is_active,
-        created_at: g.created_at,
-      }))
+      .map(g => {
+        const memberCount = gymMemberCounts[g.id] || 0;
+        const price = getGymPrice(g);
+        return {
+          id: g.id,
+          name: g.name,
+          planType: g.plan_type || g.subscription_tier || 'starter',
+          isFounding: g.is_founding ?? false,
+          pricingLabel: getPricingLabel({ planType: g.plan_type || g.subscription_tier, isFounding: g.is_founding }),
+          bracketLabel: getMemberBracketLabel(memberCount),
+          memberCount,
+          price,
+          isActive: g.is_active,
+        };
+      })
       .sort((a, b) => b.price - a.price);
-  }, [gyms]);
+  }, [gyms, gymMemberCounts]);
 
   const monthlyIncomeChart = useMemo(() => {
     const now = new Date();
     const months = [];
     for (let i = 11; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
-      const monthLabel = format(monthStart, 'MMM yyyy');
       const income = gyms
         .filter(g => new Date(g.created_at) <= monthStart && g.is_active)
-        .reduce((sum, g) => sum + (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0), 0);
+        .reduce((sum, g) => sum + getGymPrice(g), 0);
       months.push({ month: format(monthStart, 'MMM'), income });
     }
     return months;
-  }, [gyms]);
+  }, [gyms, gymMemberCounts]);
 
   const arr = mrr * 12;
-  const payingGyms = gyms.filter(g => g.is_active && (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0) > 0).length;
+  const payingGyms = gyms.filter(g => g.is_active && getGymPrice(g) > 0).length;
   const avgRevenuePerGym = payingGyms > 0 ? (mrr / payingGyms) : 0;
 
   // ── Per-gym breakdown ──────────────────────────────────────
@@ -392,13 +413,16 @@ export default function PlatformAnalytics() {
                     <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{gym.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                        gym.tier === 'enterprise' ? 'bg-[#D4AF37]/15 text-[#D4AF37]' :
-                        gym.tier === 'pro' ? 'bg-indigo-500/15 text-indigo-400' :
-                        gym.tier === 'starter' ? 'bg-blue-500/15 text-blue-400' :
-                        'bg-white/5 text-[#6B7280]'
+                        gym.planType === 'lifetime' ? 'bg-[#D4AF37]/15 text-[#D4AF37]' :
+                        gym.planType === 'pro' ? 'bg-indigo-500/15 text-indigo-400' :
+                        'bg-blue-500/15 text-blue-400'
                       }`}>
-                        {gym.tier}
+                        {gym.pricingLabel}
                       </span>
+                      <span className="text-[10px] text-[#4B5563]">{gym.bracketLabel} members</span>
+                      {gym.isFounding && (
+                        <span className="text-[10px] text-[#D4AF37]">★</span>
+                      )}
                       {!gym.isActive && (
                         <span className="text-[10px] text-red-400">inactive</span>
                       )}

@@ -56,18 +56,23 @@ const StatCard = ({ label, value, icon: Icon, borderColor, delay = 0 }) => {
   );
 };
 
-const TIER_COLORS = {
-  free: { bg: 'bg-[#6B7280]/15', text: 'text-[#9CA3AF]', label: 'Free' },
-  starter: { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', label: 'Starter' },
-  pro: { bg: 'bg-[#D4AF37]/15', text: 'text-[#D4AF37]', label: 'Pro' },
-  enterprise: { bg: 'bg-[#A855F7]/15', text: 'text-[#C084FC]', label: 'Enterprise' },
+const PLAN_COLORS = {
+  starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', label: 'Starter' },
+  pro:        { bg: 'bg-[#D4AF37]/15', text: 'text-[#D4AF37]', label: 'Pro' },
+  lifetime:   { bg: 'bg-[#A855F7]/15', text: 'text-[#C084FC]', label: 'Lifetime' },
+  free:       { bg: 'bg-[#6B7280]/15', text: 'text-[#9CA3AF]', label: 'Free' },
 };
 
-const TierBadge = ({ tier }) => {
-  const t = TIER_COLORS[tier] || TIER_COLORS.free;
+const TierBadge = ({ tier, isFounding }) => {
+  const t = PLAN_COLORS[tier] || PLAN_COLORS.starter;
   return (
-    <span className={`${t.bg} ${t.text} text-[11px] font-semibold px-2 py-0.5 rounded-full`}>
-      {t.label}
+    <span className="flex items-center gap-1">
+      <span className={`${t.bg} ${t.text} text-[11px] font-semibold px-2 py-0.5 rounded-full`}>
+        {t.label}
+      </span>
+      {isFounding && (
+        <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full font-medium">★ Founding</span>
+      )}
     </span>
   );
 };
@@ -245,7 +250,7 @@ export default function GymsOverview() {
                 </div>
 
                 <div className="flex items-center md:hidden gap-2 flex-wrap">
-                  <TierBadge tier={gym.subscription_tier} />
+                  <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} />
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
                     gym.is_active ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
                   }`}>
@@ -257,7 +262,7 @@ export default function GymsOverview() {
                 </div>
 
                 <div className="hidden md:flex items-center">
-                  <TierBadge tier={gym.subscription_tier} />
+                  <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} />
                 </div>
 
                 <p className="hidden md:flex items-center justify-end text-[13px] text-[#9CA3AF] tabular-nums">
@@ -298,7 +303,8 @@ export default function GymsOverview() {
 function CreateGymModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
-  const [tier, setTier] = useState('free');
+  const [tier, setTier] = useState('starter');
+  const [isFounding, setIsFounding] = useState(false);
   const [ownerEmail, setOwnerEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -342,6 +348,8 @@ function CreateGymModal({ onClose, onCreated }) {
         name: name.trim(),
         slug: slug.trim(),
         subscription_tier: tier,
+        plan_type: tier,
+        is_founding: isFounding,
         owner_user_id: ownerUserId,
         is_active: true,
       });
@@ -392,9 +400,9 @@ function CreateGymModal({ onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Subscription Tier</label>
-            <div className="grid grid-cols-4 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
-              {['free', 'starter', 'pro', 'enterprise'].map((t) => (
+            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Plan Type</label>
+            <div className="grid grid-cols-3 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
+              {['starter', 'pro', 'lifetime'].map((t) => (
                 <button
                   key={t}
                   onClick={() => setTier(t)}
@@ -408,6 +416,18 @@ function CreateGymModal({ onClose, onCreated }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isFounding}
+                onChange={(e) => setIsFounding(e.target.checked)}
+                className="accent-[#D4AF37] w-4 h-4"
+              />
+              <span className="text-[12px] text-[#9CA3AF]">Founding gym (price locked for life)</span>
+            </label>
           </div>
 
           <div>

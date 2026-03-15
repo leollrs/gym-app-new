@@ -13,7 +13,6 @@ import {
   BookOpen,
   BarChart3,
   Pencil,
-  ExternalLink,
   Video,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -101,40 +100,31 @@ function Field({ label, children }) {
   );
 }
 
-/* ───────────────────────── Video URL helper ───────────────────────── */
+/* ───────────────────────── Video preview helper ───────────────────────── */
 
-function getYouTubeThumbnail(url) {
-  if (!url) return null;
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
-  return match ? `https://img.youtube.com/vi/${match[1]}/mqdefault.jpg` : null;
-}
+function VideoPreview({ videoUrl }) {
+  const [signedUrl, setSignedUrl] = useState(null);
 
-function VideoUrlDisplay({ url }) {
-  if (!url) return null;
-  const thumbnail = getYouTubeThumbnail(url);
+  useEffect(() => {
+    if (!videoUrl) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.storage
+        .from('exercise-videos')
+        .createSignedUrl(videoUrl, 3600);
+      if (!cancelled && data?.signedUrl) setSignedUrl(data.signedUrl);
+    })();
+    return () => { cancelled = true; };
+  }, [videoUrl]);
+
+  if (!videoUrl || !signedUrl) return null;
   return (
-    <div className="mt-1.5">
-      {thumbnail ? (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="block group">
-          <div className="relative w-32 h-20 rounded-md overflow-hidden border border-white/6">
-            <img src={thumbnail} alt="Video thumbnail" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Video className="w-5 h-5 text-white" />
-            </div>
-          </div>
-        </a>
-      ) : (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-[11px] text-[#D4AF37] hover:text-[#E6C766] transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" />
-          <span className="truncate max-w-[200px]">{url}</span>
-        </a>
-      )}
-    </div>
+    <video
+      src={signedUrl}
+      controls
+      className="w-full max-w-sm rounded-lg border border-white/6 mt-2"
+      style={{ maxHeight: '200px' }}
+    />
   );
 }
 
@@ -144,6 +134,8 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [newVideoFile, setNewVideoFile] = useState(null);
+  const [removeVideo, setRemoveVideo] = useState(false);
   const [form, setForm] = useState({
     name: ex.name || '',
     muscle_group: ex.muscle_group || '',
@@ -151,7 +143,6 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
     default_sets: ex.default_sets ?? 3,
     default_reps: ex.default_reps ?? 10,
     instructions: ex.instructions || '',
-    video_url: ex.video_url || '',
   });
 
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
@@ -159,6 +150,28 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
   const handleSave = async () => {
     if (!form.name.trim() || !form.muscle_group) return;
     setSaving(true);
+
+    let videoPath = ex.video_url || null;
+
+    // Upload new video if selected
+    if (newVideoFile) {
+      const ext = newVideoFile.name.split('.').pop();
+      const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('exercise-videos')
+        .upload(path, newVideoFile);
+      if (!uploadError) {
+        // Delete old video if replacing
+        if (ex.video_url) {
+          await supabase.storage.from('exercise-videos').remove([ex.video_url]);
+        }
+        videoPath = path;
+      }
+    } else if (removeVideo && ex.video_url) {
+      await supabase.storage.from('exercise-videos').remove([ex.video_url]);
+      videoPath = null;
+    }
+
     const updates = {
       name: form.name.trim(),
       muscle_group: form.muscle_group,
@@ -166,13 +179,15 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       default_sets: Number(form.default_sets) || 3,
       default_reps: Number(form.default_reps) || 10,
       instructions: form.instructions.trim() || null,
-      video_url: form.video_url.trim() || null,
+      video_url: videoPath,
     };
     const { error } = await supabase.from('exercises').update(updates).eq('id', ex.id);
     setSaving(false);
     if (!error) {
       onUpdate({ ...ex, ...updates });
       setEditing(false);
+      setNewVideoFile(null);
+      setRemoveVideo(false);
     }
   };
 
@@ -184,8 +199,9 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       default_sets: ex.default_sets ?? 3,
       default_reps: ex.default_reps ?? 10,
       instructions: ex.instructions || '',
-      video_url: ex.video_url || '',
     });
+    setNewVideoFile(null);
+    setRemoveVideo(false);
     setEditing(false);
   };
 
@@ -300,7 +316,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                   </div>
                 )}
 
-                <VideoUrlDisplay url={ex.video_url} />
+                <VideoPreview videoUrl={ex.video_url} />
               </div>
             ) : (
               /* ── Edit form ── */
@@ -332,8 +348,31 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                 <Field label="Instructions">
                   <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Coaching cues..." />
                 </Field>
-                <Field label="Video URL (optional)">
-                  <input className={inputCls} value={form.video_url} onChange={(e) => set('video_url', e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+                <Field label="Exercise Video (optional)">
+                  {ex.video_url && !removeVideo && !newVideoFile && (
+                    <div className="mb-2">
+                      <VideoPreview videoUrl={ex.video_url} />
+                      <button
+                        type="button"
+                        onClick={() => setRemoveVideo(true)}
+                        className="text-[11px] text-red-400 hover:text-red-300 mt-1"
+                      >
+                        Remove Video
+                      </button>
+                    </div>
+                  )}
+                  {removeVideo && !newVideoFile && (
+                    <p className="text-[11px] text-[#6B7280] mb-1">Video will be removed on save.{' '}
+                      <button type="button" onClick={() => setRemoveVideo(false)} className="text-[#D4AF37] hover:text-[#E6C766]">Undo</button>
+                    </p>
+                  )}
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => { setNewVideoFile(e.target.files[0] || null); setRemoveVideo(false); }}
+                    className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] file:mr-3 file:px-3 file:py-1 file:rounded-lg file:border-0 file:bg-[#D4AF37]/15 file:text-[#D4AF37] file:text-[12px] file:font-medium file:cursor-pointer outline-none"
+                  />
+                  {newVideoFile && <p className="text-[11px] text-[#6B7280] mt-1">{newVideoFile.name}</p>}
                 </Field>
                 <div className="flex justify-end gap-3 mt-2">
                   <button onClick={handleCancel} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">
@@ -344,7 +383,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                     disabled={saving || !form.name.trim() || !form.muscle_group}
                     className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
                   >
-                    {saving ? 'Saving...' : 'Save Changes'}
+                    {saving ? (newVideoFile ? 'Uploading...' : 'Saving...') : 'Save Changes'}
                   </button>
                 </div>
               </div>
@@ -751,6 +790,7 @@ function InfoCard({ label, value }) {
 
 function ExerciseModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
+  const [videoFile, setVideoFile] = useState(null);
   const [form, setForm] = useState({
     name: '',
     muscle_group: '',
@@ -758,7 +798,6 @@ function ExerciseModal({ onClose, onSaved }) {
     default_sets: 3,
     default_reps: 10,
     instructions: '',
-    video_url: '',
   });
 
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
@@ -766,6 +805,17 @@ function ExerciseModal({ onClose, onSaved }) {
   const handleSave = async () => {
     if (!form.name.trim() || !form.muscle_group) return;
     setSaving(true);
+
+    let videoPath = null;
+    if (videoFile) {
+      const ext = videoFile.name.split('.').pop();
+      const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('exercise-videos')
+        .upload(path, videoFile);
+      if (!uploadError) videoPath = path;
+    }
+
     await supabase.from('exercises').insert({
       gym_id: null,
       name: form.name.trim(),
@@ -774,7 +824,7 @@ function ExerciseModal({ onClose, onSaved }) {
       default_sets: Number(form.default_sets) || 3,
       default_reps: Number(form.default_reps) || 10,
       instructions: form.instructions.trim() || null,
-      video_url: form.video_url.trim() || null,
+      video_url: videoPath,
     });
     setSaving(false);
     onSaved();
@@ -808,8 +858,14 @@ function ExerciseModal({ onClose, onSaved }) {
       <Field label="Instructions">
         <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Optional coaching cues..." />
       </Field>
-      <Field label="Video URL (optional)">
-        <input className={inputCls} value={form.video_url} onChange={(e) => set('video_url', e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+      <Field label="Exercise Video (optional)">
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => setVideoFile(e.target.files[0] || null)}
+          className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] file:mr-3 file:px-3 file:py-1 file:rounded-lg file:border-0 file:bg-[#D4AF37]/15 file:text-[#D4AF37] file:text-[12px] file:font-medium file:cursor-pointer outline-none"
+        />
+        {videoFile && <p className="text-[11px] text-[#6B7280] mt-1">{videoFile.name}</p>}
       </Field>
       <div className="flex justify-end gap-3 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">Cancel</button>
@@ -818,7 +874,7 @@ function ExerciseModal({ onClose, onSaved }) {
           disabled={saving || !form.name.trim() || !form.muscle_group}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
-          {saving ? 'Saving...' : 'Save Exercise'}
+          {saving ? (videoFile ? 'Uploading...' : 'Saving...') : 'Save Exercise'}
         </button>
       </div>
     </Modal>
