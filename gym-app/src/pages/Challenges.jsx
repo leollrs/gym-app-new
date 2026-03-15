@@ -266,33 +266,33 @@ const DailyChallenge = ({ userId, gymId }) => {
 
         if (challenge.metric === 'volume') {
           const { data: sets } = await supabase
-            .from('workout_sets')
-            .select('weight_kg, reps, workout_sessions!inner(profile_id, completed_at, status)')
-            .eq('workout_sessions.profile_id', userId)
-            .eq('workout_sessions.status', 'completed')
-            .gte('workout_sessions.completed_at', todayStart)
-            .eq('completed', true);
-          value = (sets || []).reduce((sum, s) => sum + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
+            .from('session_sets')
+            .select('weight_lbs, reps, session_exercises!inner(exercise_id, workout_sessions!inner(profile_id, completed_at, status))')
+            .eq('session_exercises.workout_sessions.profile_id', userId)
+            .eq('session_exercises.workout_sessions.status', 'completed')
+            .gte('session_exercises.workout_sessions.completed_at', todayStart)
+            .eq('is_completed', true);
+          value = (sets || []).reduce((sum, s) => sum + (s.weight_lbs ?? 0) * (s.reps ?? 0), 0);
 
         } else if (challenge.metric === 'reps') {
           const { data: sets } = await supabase
-            .from('workout_sets')
-            .select('reps, workout_sessions!inner(profile_id, completed_at, status)')
-            .eq('workout_sessions.profile_id', userId)
-            .eq('workout_sessions.status', 'completed')
-            .gte('workout_sessions.completed_at', todayStart)
-            .eq('completed', true);
+            .from('session_sets')
+            .select('reps, session_exercises!inner(workout_sessions!inner(profile_id, completed_at, status))')
+            .eq('session_exercises.workout_sessions.profile_id', userId)
+            .eq('session_exercises.workout_sessions.status', 'completed')
+            .gte('session_exercises.workout_sessions.completed_at', todayStart)
+            .eq('is_completed', true);
           value = (sets || []).reduce((sum, s) => sum + (s.reps ?? 0), 0);
 
         } else if (challenge.metric === 'exercises') {
           const { data: sets } = await supabase
-            .from('workout_sets')
-            .select('exercise_id, workout_sessions!inner(profile_id, completed_at, status)')
-            .eq('workout_sessions.profile_id', userId)
-            .eq('workout_sessions.status', 'completed')
-            .gte('workout_sessions.completed_at', todayStart)
-            .eq('completed', true);
-          const unique = new Set((sets || []).map(s => s.exercise_id));
+            .from('session_sets')
+            .select('session_exercises!inner(exercise_id, workout_sessions!inner(profile_id, completed_at, status))')
+            .eq('session_exercises.workout_sessions.profile_id', userId)
+            .eq('session_exercises.workout_sessions.status', 'completed')
+            .gte('session_exercises.workout_sessions.completed_at', todayStart)
+            .eq('is_completed', true);
+          const unique = new Set((sets || []).map(s => s.session_exercises?.exercise_id));
           value = unique.size;
 
         } else if (challenge.metric === 'speed') {
@@ -550,6 +550,8 @@ export default function Challenges({ embedded = false }) {
   const [tab, setTab]                     = useState('live');
   const chalTabIndex = TABS.indexOf(tab);
   const handleChalSwipe = (i) => setTab(TABS[i]);
+
+  useEffect(() => { document.title = 'Challenges | IronForge'; }, []);
 
   useEffect(() => {
     if (!profile?.gym_id || !user?.id) return;

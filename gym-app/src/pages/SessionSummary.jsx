@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Trophy, Dumbbell, Clock, Zap, BarChart2, CheckCircle, Share2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { writeWorkout } from '../lib/healthSync';
 import { useAuth } from '../contexts/AuthContext';
 import { createNotification } from '../lib/notifications';
 import { awardAchievements } from '../lib/achievements';
@@ -49,6 +50,23 @@ const SessionSummary = () => {
     const t = setTimeout(() => setVisible(true), 60);
     return () => clearTimeout(t);
   }, []);
+
+  // Sync completed workout to Apple Health / Health Connect if enabled
+  useEffect(() => {
+    try {
+      const hs = JSON.parse(localStorage.getItem('ironforge_health_settings') || '{}');
+      if (hs.syncWorkouts) {
+        const end = completedAt ? new Date(completedAt) : new Date();
+        const start = new Date(end.getTime() - (elapsedTime || 0) * 1000);
+        writeWorkout({
+          name: routineName || 'Workout',
+          startDate: start,
+          endDate: end,
+          calories: undefined,
+        });
+      }
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Milestone + PR notifications
   useEffect(() => {

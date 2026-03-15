@@ -49,6 +49,8 @@ const cohortCellStyle = (pct) => {
 export default function AdminAnalytics() {
   const { profile } = useAuth();
 
+  useEffect(() => { document.title = 'Admin - Analytics | IronForge'; }, []);
+
   const [loadingGrowth,      setLoadingGrowth]      = useState(true);
   const [loadingRetention,   setLoadingRetention]   = useState(true);
   const [loadingActivity,    setLoadingActivity]    = useState(true);
@@ -83,12 +85,13 @@ export default function AdminAnalytics() {
 
       // Fetch all members created in last 12 months
       const from = subMonths(startOfMonth(now), 11).toISOString();
-      const { data: members } = await supabase
+      const { data: members, error: membersError } = await supabase
         .from('profiles')
         .select('created_at')
         .eq('gym_id', gymId)
         .eq('role', 'member')
         .gte('created_at', from);
+      if (membersError) console.error('AdminAnalytics: failed to load growth members:', membersError);
 
       // Bucket by month
       const monthMap = {};
@@ -116,11 +119,12 @@ export default function AdminAnalytics() {
       const now   = new Date();
 
       // Fetch all members with their status and join date
-      const { data: allMembers } = await supabase
+      const { data: allMembers, error: retError } = await supabase
         .from('profiles')
         .select('id, created_at, membership_status')
         .eq('gym_id', gymId)
         .eq('role', 'member');
+      if (retError) console.error('AdminAnalytics: failed to load retention members:', retError);
 
       const members = allMembers || [];
 
@@ -164,11 +168,12 @@ export default function AdminAnalytics() {
       const now   = new Date();
 
       // Fetch all members with join date for correct per-month denominator
-      const { data: allMembers } = await supabase
+      const { data: allMembers, error: actMemError } = await supabase
         .from('profiles')
         .select('id, created_at')
         .eq('gym_id', gymId)
         .eq('role', 'member');
+      if (actMemError) console.error('AdminAnalytics: failed to load activity members:', actMemError);
 
       const members = allMembers || [];
 
@@ -180,7 +185,7 @@ export default function AdminAnalytics() {
         // Total members who existed by end of that month
         const totalThatMonth = members.filter(m => new Date(m.created_at) <= monthEnd).length;
 
-        const { data: sessions } = await supabase
+        const { data: sessions, error: sessError } = await supabase
           .from('workout_sessions')
           .select('profile_id')
           .eq('gym_id', gymId)
@@ -188,6 +193,7 @@ export default function AdminAnalytics() {
           .gte('started_at', monthStart.toISOString())
           .lte('started_at', monthEnd.toISOString());
 
+        if (sessError) console.error('AdminAnalytics: failed to load monthly sessions:', sessError);
         const uniqueActive = new Set((sessions || []).map(s => s.profile_id)).size;
         const pct = totalThatMonth > 0 ? Math.round((uniqueActive / totalThatMonth) * 100) : 0;
 
@@ -215,20 +221,22 @@ export default function AdminAnalytics() {
 
       // Fetch all members with created_at in last 6 months
       const from = subMonths(startOfMonth(now), 5).toISOString();
-      const { data: members } = await supabase
+      const { data: members, error: cohMemError } = await supabase
         .from('profiles')
         .select('id, created_at')
         .eq('gym_id', gymId)
         .eq('role', 'member')
         .gte('created_at', from);
+      if (cohMemError) console.error('AdminAnalytics: failed to load cohort members:', cohMemError);
 
       // Fetch all workout sessions in the same window
-      const { data: sessions } = await supabase
+      const { data: sessions, error: cohSessError } = await supabase
         .from('workout_sessions')
         .select('profile_id, started_at')
         .eq('gym_id', gymId)
         .eq('status', 'completed')
         .gte('started_at', from);
+      if (cohSessError) console.error('AdminAnalytics: failed to load cohort sessions:', cohSessError);
 
       // Build a map: profileId → Set of "month offset" (0,1,2,3) they were active in
       // relative to their join month
@@ -292,21 +300,23 @@ export default function AdminAnalytics() {
       const from  = subMonths(now, 6).toISOString();
 
       // Total members
-      const { data: allMembers } = await supabase
+      const { data: allMembers, error: chalMemError } = await supabase
         .from('profiles')
         .select('id')
         .eq('gym_id', gymId)
         .eq('role', 'member');
+      if (chalMemError) console.error('AdminAnalytics: failed to load challenge members:', chalMemError);
       const totalMembers = (allMembers || []).length;
 
       // Challenges in last 6 months
-      const { data: challenges } = await supabase
+      const { data: challenges, error: chalError } = await supabase
         .from('challenges')
         .select('id, title, starts_at')
         .eq('gym_id', gymId)
         .gte('starts_at', from)
         .order('starts_at', { ascending: false })
         .limit(8);
+      if (chalError) console.error('AdminAnalytics: failed to load challenges:', chalError);
 
       if (!challenges || challenges.length === 0) {
         setChallengeData([]);
@@ -315,10 +325,11 @@ export default function AdminAnalytics() {
       }
 
       // Participants per challenge
-      const { data: participants } = await supabase
+      const { data: participants, error: partError } = await supabase
         .from('challenge_participants')
         .select('challenge_id, user_id')
         .in('challenge_id', challenges.map(c => c.id));
+      if (partError) console.error('AdminAnalytics: failed to load participants:', partError);
 
       const countMap = {};
       (participants || []).forEach(p => {
@@ -345,11 +356,12 @@ export default function AdminAnalytics() {
       setLoadingOnboarding(true);
       const gymId = profile.gym_id;
 
-      const { data: members } = await supabase
+      const { data: members, error: onbError } = await supabase
         .from('profiles')
         .select('id, is_onboarded')
         .eq('gym_id', gymId)
         .eq('role', 'member');
+      if (onbError) console.error('AdminAnalytics: failed to load onboarding data:', onbError);
 
       const total     = (members || []).length;
       const onboarded = (members || []).filter(m => m.is_onboarded).length;
@@ -371,12 +383,7 @@ export default function AdminAnalytics() {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-      const [
-        { data: members },
-        { data: recentSessions },
-        { data: churnScores },
-        { data: winBacks },
-      ] = await Promise.all([
+      const [membersRes, recentSessRes, churnScoresRes, winBacksRes] = await Promise.all([
         supabase
           .from('profiles')
           .select('id, created_at, is_onboarded, membership_status')
@@ -396,6 +403,14 @@ export default function AdminAnalytics() {
           .select('profile_id')
           .eq('outcome', 'returned'),
       ]);
+      if (membersRes.error) console.error('AdminAnalytics: failed to load lifecycle members:', membersRes.error);
+      if (recentSessRes.error) console.error('AdminAnalytics: failed to load lifecycle sessions:', recentSessRes.error);
+      if (churnScoresRes.error) console.error('AdminAnalytics: failed to load lifecycle churn scores:', churnScoresRes.error);
+      if (winBacksRes.error) console.error('AdminAnalytics: failed to load lifecycle win-backs:', winBacksRes.error);
+      const members = membersRes.data;
+      const recentSessions = recentSessRes.data;
+      const churnScores = churnScoresRes.data;
+      const winBacks = winBacksRes.data;
 
       // Build session count per member (last 30 days)
       const sessionCountMap = {};
@@ -414,11 +429,12 @@ export default function AdminAnalytics() {
 
       // Total session count per member (for onboarding check — use recent sessions as proxy for <3 total)
       // We need all-time sessions for the "total < 3" check for Onboarding stage
-      const { data: allSessions } = await supabase
+      const { data: allSessions, error: allSessError } = await supabase
         .from('workout_sessions')
         .select('profile_id')
         .eq('gym_id', gymId)
         .eq('status', 'completed');
+      if (allSessError) console.error('AdminAnalytics: failed to load all sessions:', allSessError);
 
       const totalSessionMap = {};
       (allSessions || []).forEach(s => {
@@ -483,14 +499,7 @@ export default function AdminAnalytics() {
       const mStart = startOfMonth(target).toISOString();
       const mEnd   = endOfMonth(target).toISOString();
 
-      const [
-        { data: newMembers },
-        { data: sessions },
-        { data: checkIns },
-        { data: prs },
-        { data: challengeParts },
-        { data: allMembers },
-      ] = await Promise.all([
+      const [newMembersRes, sessionsRes, checkInsRes, prsRes, challengePartsRes, allMembersRes] = await Promise.all([
         supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').gte('created_at', mStart).lte('created_at', mEnd),
         supabase.from('workout_sessions').select('profile_id, total_volume_lbs, duration_minutes').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', mStart).lte('started_at', mEnd),
         supabase.from('check_ins').select('id').eq('gym_id', gymId).gte('created_at', mStart).lte('created_at', mEnd),
@@ -498,6 +507,18 @@ export default function AdminAnalytics() {
         supabase.from('challenge_participants').select('id').eq('gym_id', gymId).gte('joined_at', mStart).lte('joined_at', mEnd),
         supabase.from('profiles').select('id, created_at').eq('gym_id', gymId).eq('role', 'member'),
       ]);
+      if (newMembersRes.error) console.error('AdminAnalytics: summary new members error:', newMembersRes.error);
+      if (sessionsRes.error) console.error('AdminAnalytics: summary sessions error:', sessionsRes.error);
+      if (checkInsRes.error) console.error('AdminAnalytics: summary check-ins error:', checkInsRes.error);
+      if (prsRes.error) console.error('AdminAnalytics: summary PRs error:', prsRes.error);
+      if (challengePartsRes.error) console.error('AdminAnalytics: summary challenge participants error:', challengePartsRes.error);
+      if (allMembersRes.error) console.error('AdminAnalytics: summary all members error:', allMembersRes.error);
+      const newMembers = newMembersRes.data;
+      const sessions = sessionsRes.data;
+      const checkIns = checkInsRes.data;
+      const prs = prsRes.data;
+      const challengeParts = challengePartsRes.data;
+      const allMembers = allMembersRes.data;
 
       const sessionList = sessions || [];
       const totalWorkouts = sessionList.length;
@@ -537,11 +558,12 @@ export default function AdminAnalytics() {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // Fetch trainers
-      const { data: trainerRows } = await supabase
+      const { data: trainerRows, error: trainerError } = await supabase
         .from('profiles')
         .select('id, full_name')
         .eq('gym_id', gymId)
         .eq('role', 'trainer');
+      if (trainerError) console.error('AdminAnalytics: failed to load trainers:', trainerError);
 
       if (!trainerRows || trainerRows.length === 0) {
         setTrainers([]);
@@ -550,18 +572,20 @@ export default function AdminAnalytics() {
       }
 
       // Fetch trainer-client relationships
-      const { data: tcRows } = await supabase
+      const { data: tcRows, error: tcError } = await supabase
         .from('trainer_clients')
         .select('trainer_id, client_id, is_active')
         .eq('gym_id', gymId);
+      if (tcError) console.error('AdminAnalytics: failed to load trainer-client rows:', tcError);
 
       // Fetch workout sessions in last 30 days
-      const { data: recentSessions } = await supabase
+      const { data: recentSessions, error: recSessError } = await supabase
         .from('workout_sessions')
         .select('profile_id')
         .eq('gym_id', gymId)
         .eq('status', 'completed')
         .gte('started_at', thirtyDaysAgo);
+      if (recSessError) console.error('AdminAnalytics: failed to load trainer recent sessions:', recSessError);
 
       // Build set of members who logged at least 1 workout in last 30d
       const activeMembers = new Set((recentSessions || []).map(s => s.profile_id));

@@ -35,6 +35,8 @@ export default function TrainerAnalytics() {
   const [weights, setWeights] = useState([]);
   const [selectedClient, setSelectedClient] = useState('all');
 
+  useEffect(() => { document.title = 'Trainer - Analytics | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.id) return;
     loadData();
@@ -44,11 +46,12 @@ export default function TrainerAnalytics() {
     setLoading(true);
 
     // Get assigned clients
-    const { data: tcRows } = await supabase
+    const { data: tcRows, error: tcError } = await supabase
       .from('trainer_clients')
       .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, username, last_active_at)')
       .eq('trainer_id', profile.id)
       .eq('is_active', true);
+    if (tcError) console.error('TrainerAnalytics: failed to load clients:', tcError);
 
     const assignedClients = (tcRows || []).map(tc => tc.profiles).filter(Boolean);
     setClients(assignedClients);
@@ -84,6 +87,9 @@ export default function TrainerAnalytics() {
         .order('logged_at', { ascending: true }),
     ]);
 
+    if (sessRes.error) console.error('TrainerAnalytics: failed to load sessions:', sessRes.error);
+    if (prRes.error) console.error('TrainerAnalytics: failed to load PRs:', prRes.error);
+    if (weightRes.error) console.error('TrainerAnalytics: failed to load weights:', weightRes.error);
     setSessions(sessRes.data || []);
     setPrs(prRes.data || []);
     setWeights(weightRes.data || []);

@@ -914,6 +914,9 @@ export default function AdminPrograms() {
   const [enrolledMembers, setEnrolledMembers] = useState({}); // programId → [{name}]
   const [expandedEnroll, setExpandedEnroll] = useState(null);
   const [programStats, setProgramStats] = useState({ totalPrograms: 0, activeEnrollments: 0, completionRate: 0, topProgram: '—' });
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  useEffect(() => { document.title = 'Admin - Programs | IronForge'; }, []);
 
   const load = async () => {
     if (!profile?.gym_id) return;
@@ -976,8 +979,8 @@ export default function AdminPrograms() {
   useEffect(() => { load(); }, [profile?.gym_id]);
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this program?')) return;
     await supabase.from('gym_programs').delete().eq('id', id);
+    setConfirmDeleteId(null);
     load();
   };
 
@@ -1070,9 +1073,23 @@ export default function AdminPrograms() {
                       <button onClick={() => setEditing(p)} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors p-1">
                         <ChevronRight size={16} />
                       </button>
-                      <button onClick={() => handleDelete(p.id)} className="text-[#6B7280] hover:text-red-400 transition-colors p-1">
-                        <Trash2 size={14} />
-                      </button>
+                      {confirmDeleteId === p.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-[#9CA3AF]">Delete?</span>
+                          <button onClick={() => handleDelete(p.id)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                            Confirm
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(null)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(p.id)} className="text-[#6B7280] hover:text-red-400 transition-colors p-1">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   {p.description && (

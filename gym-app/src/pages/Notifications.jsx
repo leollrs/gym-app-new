@@ -34,12 +34,13 @@ export default function Notifications() {
 
   const load = useCallback(async () => {
     if (!user?.id) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('notifications')
       .select('*')
       .eq('profile_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50);
+    if (error) { console.error('Notifications: failed to load:', error); }
     setItems(data || []);
     setLoading(false);
   }, [user?.id]);
@@ -48,13 +49,14 @@ export default function Notifications() {
   useEffect(() => {
     if (!profile?.gym_id) return;
     const loadAnnouncements = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('announcements')
         .select('id, title, message, type')
         .eq('gym_id', profile.gym_id)
         .lte('published_at', new Date().toISOString())
         .order('published_at', { ascending: false })
         .limit(10);
+      if (error) { console.error('Notifications: failed to load announcements:', error); }
       setAnnouncements(data || []);
     };
     loadAnnouncements();

@@ -35,6 +35,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [status, setStatus]     = useState(session?.status || 'scheduled');
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError]       = useState('');
 
   const handleSave = async () => {
@@ -65,7 +66,6 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   };
 
   const handleDelete = async () => {
-    if (!confirm('Delete this session?')) return;
     setDeleting(true);
     await supabase.from('trainer_sessions').delete().eq('id', session.id);
     onSaved();
@@ -157,10 +157,24 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
         <div className="flex items-center gap-3 p-5 border-t border-white/6 flex-shrink-0">
           {isEdit && (
-            <button onClick={handleDelete} disabled={deleting}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
-              <Trash2 size={14} /> Delete
-            </button>
+            confirmDelete ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[12px] text-[#9CA3AF]">Delete session?</span>
+                <button onClick={handleDelete} disabled={deleting}
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                  {deleting ? 'Deleting...' : 'Confirm'}
+                </button>
+                <button onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
+                <Trash2 size={14} /> Delete
+              </button>
+            )
           )}
           <div className="flex-1" />
           <button onClick={onClose}
@@ -189,6 +203,8 @@ export default function TrainerSchedule() {
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  useEffect(() => { document.title = 'Trainer - Schedule | IronForge'; }, []);
 
   useEffect(() => {
     if (!profile?.id) return;

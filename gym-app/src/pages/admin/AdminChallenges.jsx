@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trophy, X, ChevronDown, Users, Clock, Gift } from 'lucide-react';
+import { Plus, Trophy, X, ChevronDown, Users, Clock, Gift, Pencil, Trash2, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -326,11 +326,19 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
 // ── Main ──────────────────────────────────────────────────
 export default function AdminChallenges() {
   const { profile, user } = useAuth();
+  const { showToast } = useToast();
   const [challenges, setChallenges] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [expanded, setExpanded]     = useState(null);
   const [participantCounts, setParticipantCounts] = useState({});
+  const [editingId, setEditingId]   = useState(null);
+  const [editForm, setEditForm]     = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting]     = useState(false);
+
+  useEffect(() => { document.title = 'Admin - Challenges | IronForge'; }, []);
 
   const load = async () => {
     if (!profile?.gym_id) return;
@@ -351,6 +359,80 @@ export default function AdminChallenges() {
     (parts || []).forEach(r => { counts[r.challenge_id] = (counts[r.challenge_id] || 0) + 1; });
     setParticipantCounts(counts);
   };
+
+  const startEdit = (c) => {
+    let rewards = [
+      { place: '1st', points: 500, prize: '' },
+      { place: '2nd', points: 300, prize: '' },
+      { place: '3rd', points: 150, prize: '' },
+    ];
+    let enableRewards = false;
+    try {
+      const parsed = c.reward_description ? JSON.parse(c.reward_description) : null;
+      if (parsed && Array.isArray(parsed)) {
+        enableRewards = true;
+        rewards = parsed.map((r, i) => ({
+          place: r.place || ['1st', '2nd', '3rd'][i],
+          points: r.points || 0,
+          prize: r.prize || '',
+        }));
+      }
+    } catch {}
+    const toLocal = (iso) => {
+      const d = new Date(iso);
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+    setEditForm({
+      name: c.name,
+      type: c.type,
+      description: c.description || '',
+      starts_at: toLocal(c.start_date),
+      ends_at: toLocal(c.end_date),
+      enableRewards,
+      rewards,
+    });
+    setEditingId(c.id);
+    setExpanded(c.id);
+  };
+
+  const saveEdit = async (id) => {
+    if (!editForm.name || !editForm.starts_at || !editForm.ends_at) {
+      showToast('Name, start date, and end date are required', 'error');
+      return;
+    }
+    setEditSaving(true);
+    const rewardData = editForm.enableRewards
+      ? JSON.stringify(editForm.rewards.map(r => ({ place: r.place, points: r.points, prize: r.prize || null })))
+      : null;
+    const { error } = await supabase.from('challenges').update({
+      name: editForm.name,
+      type: editForm.type,
+      description: editForm.description,
+      reward_description: rewardData,
+      start_date: new Date(editForm.starts_at).toISOString(),
+      end_date: new Date(editForm.ends_at).toISOString(),
+    }).eq('id', id);
+    setEditSaving(false);
+    if (error) { showToast(error.message, 'error'); return; }
+    showToast('Challenge updated', 'success');
+    setEditingId(null);
+    load();
+  };
+
+  const handleDelete = async (id) => {
+    setDeleting(true);
+    // Delete participants first (FK), then the challenge
+    await supabase.from('challenge_participants').delete().eq('challenge_id', id);
+    const { error } = await supabase.from('challenges').delete().eq('id', id);
+    setDeleting(false);
+    setDeleteConfirm(null);
+    if (error) { showToast(error.message, 'error'); return; }
+    showToast('Challenge deleted', 'success');
+    if (expanded === id) setExpanded(null);
+    load();
+  };
+
+  const editSet = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => { load(); }, [profile?.gym_id]);
 
@@ -406,55 +488,196 @@ export default function AdminChallenges() {
                 </button>
                 {isOpen && (
                   <div className="px-4 pb-4 border-t border-white/4">
-                    {c.description && (
-                      <p className="text-[12px] text-[#9CA3AF] mt-3 mb-2">{c.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[11px] text-[#6B7280] bg-white/5 px-2 py-0.5 rounded-lg capitalize">{c.type.replace('_', ' ')}</span>
-                      {badge.label === 'Live' && (
-                        <span className="flex items-center gap-1 text-[11px] text-emerald-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Live scoring
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Rewards display */}
-                    {(() => {
-                      let rewards = null;
-                      try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
-                      if (!rewards || !Array.isArray(rewards)) return null;
-                      const medals = ['🥇', '🥈', '🥉'];
-                      return (
-                        <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <Gift size={12} className="text-[#D4AF37]" />
-                            <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">Rewards</p>
+                    {/* Edit / Delete buttons */}
+                    {editingId !== c.id && (
+                      <div className="flex items-center gap-2 mt-3 mb-3">
+                        <button onClick={(e) => { e.stopPropagation(); startEdit(c); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[#E5E7EB] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg transition-colors">
+                          <Pencil size={12} /> Edit
+                        </button>
+                        {deleteConfirm === c.id ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12px] text-red-400">Delete this challenge?</span>
+                            <button onClick={() => handleDelete(c.id)} disabled={deleting}
+                              className="px-3 py-1.5 text-[12px] font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                              {deleting ? 'Deleting...' : 'Confirm'}
+                            </button>
+                            <button onClick={() => setDeleteConfirm(null)}
+                              className="px-3 py-1.5 text-[12px] font-medium text-[#9CA3AF] bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
+                              Cancel
+                            </button>
                           </div>
-                          <div className="space-y-1.5">
-                            {rewards.map((r, i) => (
-                              <div key={i} className="flex items-center gap-2 text-[12px]">
-                                <span>{medals[i]}</span>
-                                <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
-                                {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
-                              </div>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-lg transition-colors">
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline edit form */}
+                    {editingId === c.id ? (
+                      <div className="mt-3 space-y-4">
+                        <div>
+                          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Challenge Name</label>
+                          <input value={editForm.name} onChange={e => editSet('name', e.target.value)}
+                            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+                        </div>
+
+                        <div>
+                          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
+                          <div className="space-y-2">
+                            {CHALLENGE_TYPES.map(t => (
+                              <label key={t.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                                editForm.type === t.value ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
+                              }`}>
+                                <input type="radio" name="edit-type" value={t.value} checked={editForm.type === t.value}
+                                  onChange={e => editSet('type', e.target.value)} className="mt-0.5 accent-[#D4AF37]" />
+                                <div>
+                                  <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.label}</p>
+                                  <p className="text-[11px] text-[#6B7280]">{t.desc}</p>
+                                </div>
+                              </label>
                             ))}
                           </div>
                         </div>
-                      );
-                    })()}
 
-                    {/* Enrolled members */}
-                    <div className="mb-4">
-                      <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide mb-2">
-                        Participants · {participantCounts[c.id] ?? 0}
-                      </p>
-                      <ParticipantList challengeId={c.id} gymId={profile.gym_id} />
-                    </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Start Date</label>
+                            <input type="datetime-local" value={editForm.starts_at} onChange={e => editSet('starts_at', e.target.value)}
+                              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">End Date</label>
+                            <input type="datetime-local" value={editForm.ends_at} onChange={e => editSet('ends_at', e.target.value)}
+                              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+                          </div>
+                        </div>
 
-                    {/* Leaderboard */}
-                    <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide mb-2">Leaderboard</p>
-                    <ChallengeLeaderboard challenge={c} gymId={profile.gym_id} />
+                        <div>
+                          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Description (optional)</label>
+                          <textarea value={editForm.description} onChange={e => editSet('description', e.target.value)}
+                            rows={2} placeholder="Tell members what this challenge is about..."
+                            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+                        </div>
+
+                        {/* Rewards toggle */}
+                        <div>
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className={`relative w-10 h-[22px] rounded-full transition-colors ${editForm.enableRewards ? 'bg-[#D4AF37]' : 'bg-[#1E293B]'}`}
+                              onClick={() => editSet('enableRewards', !editForm.enableRewards)}>
+                              <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white transition-all ${editForm.enableRewards ? 'left-[22px]' : 'left-[3px]'}`} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Gift size={15} className={editForm.enableRewards ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                              <span className="text-[13px] font-medium text-[#E5E7EB]">Add Rewards</span>
+                            </div>
+                          </label>
+                        </div>
+
+                        {editForm.enableRewards && (
+                          <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6">
+                            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide">Reward per placement</p>
+                            {editForm.rewards.map((r, i) => {
+                              const medals = ['🥇', '🥈', '🥉'];
+                              return (
+                                <div key={r.place} className="flex items-center gap-3">
+                                  <span className="text-[16px] w-6 text-center">{medals[i]}</span>
+                                  <div className="flex-1 flex gap-2">
+                                    <div className="w-24">
+                                      <input type="number" min={0} value={r.points}
+                                        onChange={e => {
+                                          const updated = [...editForm.rewards];
+                                          updated[i] = { ...r, points: parseInt(e.target.value) || 0 };
+                                          editSet('rewards', updated);
+                                        }}
+                                        className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center" />
+                                      <p className="text-[10px] text-[#4B5563] text-center mt-0.5">points</p>
+                                    </div>
+                                    <div className="flex-1">
+                                      <input value={r.prize}
+                                        onChange={e => {
+                                          const updated = [...editForm.rewards];
+                                          updated[i] = { ...r, prize: e.target.value };
+                                          editSet('rewards', updated);
+                                        }}
+                                        placeholder="e.g. Free smoothie, 1 PT session..."
+                                        className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+                                      <p className="text-[10px] text-[#4B5563] mt-0.5">prize (optional)</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => saveEdit(c.id)} disabled={editSaving}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors disabled:opacity-50">
+                            <Check size={14} /> {editSaving ? 'Saving...' : 'Save Changes'}
+                          </button>
+                          <button onClick={() => setEditingId(null)}
+                            className="px-5 py-2.5 text-[13px] font-medium text-[#9CA3AF] bg-white/5 hover:bg-white/10 rounded-xl transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {c.description && (
+                          <p className="text-[12px] text-[#9CA3AF] mt-3 mb-2">{c.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-[11px] text-[#6B7280] bg-white/5 px-2 py-0.5 rounded-lg capitalize">{c.type.replace('_', ' ')}</span>
+                          {badge.label === 'Live' && (
+                            <span className="flex items-center gap-1 text-[11px] text-emerald-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Live scoring
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Rewards display */}
+                        {(() => {
+                          let rewards = null;
+                          try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
+                          if (!rewards || !Array.isArray(rewards)) return null;
+                          const medals = ['🥇', '🥈', '🥉'];
+                          return (
+                            <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <Gift size={12} className="text-[#D4AF37]" />
+                                <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">Rewards</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                {rewards.map((r, i) => (
+                                  <div key={i} className="flex items-center gap-2 text-[12px]">
+                                    <span>{medals[i]}</span>
+                                    <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
+                                    {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Enrolled members */}
+                        <div className="mb-4">
+                          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide mb-2">
+                            Participants · {participantCounts[c.id] ?? 0}
+                          </p>
+                          <ParticipantList challengeId={c.id} gymId={profile.gym_id} />
+                        </div>
+
+                        {/* Leaderboard */}
+                        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide mb-2">Leaderboard</p>
+                        <ChallengeLeaderboard challenge={c} gymId={profile.gym_id} />
+                      </>
+                    )}
                   </div>
                 )}
               </div>

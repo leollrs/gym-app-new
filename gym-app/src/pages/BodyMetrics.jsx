@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { addPoints } from '../lib/rewardsEngine';
+import { writeWeight } from '../lib/healthSync';
 import { format, parseISO, subDays } from 'date-fns';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -228,6 +229,11 @@ export default function BodyMetrics() {
 
     if (error) { setWeightError(error.message); setLoggingWeight(false); return; }
     addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight').catch(() => {});
+    // Sync weight to Apple Health / Health Connect if enabled
+    try {
+      const hs = JSON.parse(localStorage.getItem('ironforge_health_settings') || '{}');
+      if (hs.syncWeight) writeWeight(w);
+    } catch {}
     setWeightInput('');
     loadData();
     setLoggingWeight(false);

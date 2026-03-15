@@ -78,6 +78,8 @@ export default function AdminSettings() {
   const [saved, setSaved]     = useState(false);
   const [error, setError]     = useState('');
 
+  useEffect(() => { document.title = 'Admin - Settings | IronForge'; }, []);
+
   // Editable fields
   const [name, setName]           = useState('');
   const [primaryColor, setPrimary]   = useState('#D4AF37');

@@ -142,13 +142,15 @@ const WorkoutLog = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading]   = useState(true);
 
+  useEffect(() => { document.title = 'Workout Log | IronForge'; }, []);
+
   useEffect(() => {
     if (!user) return;
 
     const load = async () => {
       setLoading(true);
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('workout_sessions')
         .select(`
           id, name, completed_at, duration_seconds, total_volume_lbs,
@@ -161,6 +163,7 @@ const WorkoutLog = () => {
         .eq('status', 'completed')
         .order('completed_at', { ascending: false });
 
+      if (error) { console.error('WorkoutLog: failed to load sessions:', error); }
       setSessions(data ?? []);
       setLoading(false);
     };

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Trophy, Dumbbell, Calendar,
   Lock, BarChart2, Star, LogOut, Edit2, Check, Scale, Flame,
-  UtensilsCrossed, QrCode, Gift, Settings, ChevronRight,
+  UtensilsCrossed, QrCode, Gift, Settings, ChevronRight, Trash2, AlertTriangle, Heart,
+  Camera, X, Loader2,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -96,10 +97,12 @@ const HeroStat = ({ label, value, sub }) => (
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('achievements');
+
+  useEffect(() => { document.title = 'Profile | IronForge'; }, []);
 
   // Data state
   const [gymName, setGymName]                         = useState('');
@@ -119,6 +122,18 @@ const Profile = () => {
   const [editingGoals, setEditingGoals] = useState(false);
   const [goalsDraft, setGoalsDraft]     = useState(null);
   const [savingGoals, setSavingGoals]   = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // Avatar upload state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = React.useRef(null);
+
+  // Name / username editing state
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [identityDraft, setIdentityDraft] = useState({ full_name: '', username: '' });
+  const [savingIdentity, setSavingIdentity] = useState(false);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -254,6 +269,102 @@ const Profile = () => {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (deleteInput !== 'DELETE') return;
+    setDeleting(true);
+    try {
+      await deleteAccount();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete account', 'error');
+      setDeleting(false);
+    }
+  };
+
+  // ── Avatar upload ──────────────────────────────────────────────────────────
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Basic validation
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image must be under 5 MB', 'error');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+
+      const { error: storageErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true });
+      if (storageErr) throw storageErr;
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(path);
+
+      const { error: updateErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', user.id);
+      if (updateErr) throw updateErr;
+
+      refreshProfile();
+      showToast('Avatar updated', 'success');
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      showToast('Failed to upload avatar: ' + (err.message ?? 'Unknown error'), 'error');
+    } finally {
+      setUploadingAvatar(false);
+      // Reset the input so re-selecting the same file still triggers onChange
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  // ── Save name / username ──────────────────────────────────────────────────
+  const saveIdentity = async () => {
+    const trimmedName = identityDraft.full_name.trim();
+    const trimmedUsername = identityDraft.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+    if (!trimmedName) {
+      showToast('Name cannot be empty', 'error');
+      return;
+    }
+    if (!trimmedUsername) {
+      showToast('Username cannot be empty', 'error');
+      return;
+    }
+
+    setSavingIdentity(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: trimmedName, username: trimmedUsername })
+        .eq('id', user.id);
+      if (error) {
+        if (error.message?.includes('unique') || error.code === '23505') {
+          showToast('That username is already taken', 'error');
+        } else {
+          showToast('Failed to save: ' + error.message, 'error');
+        }
+        return;
+      }
+      refreshProfile();
+      setEditingIdentity(false);
+      showToast('Profile updated', 'success');
+    } catch (err) {
+      showToast('Failed to save: ' + (err.message ?? 'Unknown error'), 'error');
+    } finally {
+      setSavingIdentity(false);
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
@@ -265,7 +376,14 @@ const Profile = () => {
         {/* Identity row */}
         <div className="flex items-start justify-between p-6 pb-4">
           <div className="flex items-center gap-4">
-            <div className="relative flex-shrink-0">
+            {/* Avatar with upload overlay */}
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="relative flex-shrink-0 group"
+              title="Change avatar"
+            >
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt={profile.full_name}
                   className="w-[72px] h-[72px] rounded-[14px] object-cover border-2 border-[#D4AF37]/40"
@@ -275,18 +393,91 @@ const Profile = () => {
                   {(profile?.full_name?.[0] ?? '?').toUpperCase()}
                 </div>
               )}
-            </div>
-            <div>
-              <h1 className="text-[22px] font-bold leading-tight text-[#E5E7EB]">
-                {loading ? '—' : profile?.full_name}
-              </h1>
-              <p className="text-[13px] mt-0.5 text-[#9CA3AF]">@{profile?.username}</p>
-              {gymName && (
-                <p className="text-[13px] mt-1.5 flex items-center gap-1.5 font-semibold text-[#D4AF37]">
-                  <Dumbbell size={14} /> {gymName}
-                </p>
-              )}
-            </div>
+              {/* Camera overlay */}
+              <div className="absolute inset-0 rounded-[14px] bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploadingAvatar ? (
+                  <Loader2 size={20} className="text-white animate-spin" />
+                ) : (
+                  <Camera size={20} className="text-white" />
+                )}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarUpload}
+              />
+            </button>
+
+            {/* Name / username — view or edit */}
+            {editingIdentity ? (
+              <div className="flex flex-col gap-1.5">
+                <input
+                  type="text"
+                  value={identityDraft.full_name}
+                  onChange={e => setIdentityDraft(d => ({ ...d, full_name: e.target.value }))}
+                  placeholder="Full name"
+                  className="bg-[#0B1220] border border-white/10 rounded-lg px-3 py-1.5 text-[16px] font-bold text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 w-full max-w-[200px]"
+                />
+                <div className="flex items-center gap-1">
+                  <span className="text-[13px] text-[#6B7280]">@</span>
+                  <input
+                    type="text"
+                    value={identityDraft.username}
+                    onChange={e => setIdentityDraft(d => ({ ...d, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') }))}
+                    placeholder="username"
+                    className="bg-[#0B1220] border border-white/10 rounded-lg px-2 py-1 text-[13px] text-[#9CA3AF] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 w-full max-w-[180px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={saveIdentity}
+                    disabled={savingIdentity}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold bg-[#D4AF37] text-black disabled:opacity-50 hover:bg-[#C5A030] transition-colors"
+                  >
+                    {savingIdentity ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingIdentity(false)}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold border border-white/10 text-[#9CA3AF] hover:bg-white/5 transition-colors"
+                  >
+                    <X size={12} /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-[22px] font-bold leading-tight text-[#E5E7EB]">
+                    {loading ? '—' : profile?.full_name}
+                  </h1>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIdentityDraft({
+                        full_name: profile?.full_name ?? '',
+                        username: profile?.username ?? '',
+                      });
+                      setEditingIdentity(true);
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-[#6B7280] hover:text-[#D4AF37]"
+                    title="Edit name & username"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                </div>
+                <p className="text-[13px] mt-0.5 text-[#9CA3AF]">@{profile?.username}</p>
+                {gymName && (
+                  <p className="text-[13px] mt-1.5 flex items-center gap-1.5 font-semibold text-[#D4AF37]">
+                    <Dumbbell size={14} /> {gymName}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -833,7 +1024,99 @@ const Profile = () => {
             </button>
           ))}
         </div>
+        <div className="mt-4 rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          <button
+            type="button"
+            onClick={() => navigate('/health-sync')}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] hover:border-white/20 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Heart size={16} className="text-[#D4AF37]" />
+              <span className="text-[14px] font-semibold text-[#E5E7EB]">Health Integration</span>
+            </div>
+            <ChevronRight size={16} className="text-[#6B7280]" />
+          </button>
+        </div>
+        <div className="mt-4 rounded-[14px] bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          <a
+            href="https://ironforge.app/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Settings size={16} className="text-[#6B7280]" />
+              <span className="text-[14px] font-semibold text-[#E5E7EB]">Privacy Policy</span>
+            </div>
+            <ChevronRight size={16} className="text-[#6B7280]" />
+          </a>
+          <a
+            href="https://ironforge.app/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <Settings size={16} className="text-[#6B7280]" />
+              <span className="text-[14px] font-semibold text-[#E5E7EB]">Terms of Service</span>
+            </div>
+            <ChevronRight size={16} className="text-[#6B7280]" />
+          </a>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowDeleteConfirm(true)}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-[14px] border border-red-500/20 text-red-400 text-[14px] font-semibold hover:bg-red-500/10 transition-colors"
+        >
+          <Trash2 size={15} /> Delete Account
+        </button>
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-[400px] rounded-2xl bg-[#0F172A] border border-white/10 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-[17px] font-bold text-[#E5E7EB]">Delete Account</h3>
+                <p className="text-[12px] text-[#9CA3AF]">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-[14px] text-[#9CA3AF] mb-4 leading-relaxed">
+              This will permanently delete your account and all associated data including workouts, personal records, body metrics, and social activity.
+            </p>
+            <p className="text-[13px] text-[#E5E7EB] mb-2 font-semibold">
+              Type <span className="text-red-400 font-mono">DELETE</span> to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteInput}
+              onChange={e => setDeleteInput(e.target.value)}
+              placeholder="DELETE"
+              className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-red-500/40 mb-4 font-mono"
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
+                className="flex-1 py-3 rounded-xl border border-white/10 text-[14px] font-semibold text-[#E5E7EB] hover:bg-white/5 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleteInput !== 'DELETE' || deleting}
+                className="flex-1 py-3 rounded-xl bg-red-500 text-white text-[14px] font-bold disabled:opacity-40 hover:bg-red-600 transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete Forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
     </div>

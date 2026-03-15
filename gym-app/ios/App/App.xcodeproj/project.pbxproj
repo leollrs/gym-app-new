@@ -3,22 +3,79 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 48;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07F23F309DC60AFCC1C336B1 /* HeartRateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7BB3EA583790A43A4B9A94 /* HeartRateZoneView.swift */; };
+		1E986C6ABBD9B1E528A059DD /* RestTimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0E8499DBF211F1636EBAC3 /* RestTimerView.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		441445F9E8CD2F3CDCE6CC23 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371B6B3F284B551A1CE290C5 /* DesignSystem.swift */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5B3E47BA9AF06D5608F67656 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6CEAD119C694EE92AC44CE /* ContentView.swift */; };
+		5DAF65B82243474388369D35 /* QuickStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C64A14053160B2AB331162 /* QuickStartView.swift */; };
+		6C9B6FC94E0CA7F03B53AC02 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 614C22B9E2588F9021178DA1 /* Assets.xcassets */; };
+		75CCD6A896818BA5ED56B636 /* WorkoutSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707C646E11AD348860539544 /* WorkoutSessionManager.swift */; };
+		7B4F14B0C6530C10A2AD4CCE /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7606038931E47E574246441E /* CoreMotion.framework */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		A2D216126D17754F8DD8D9D0 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E81F010895C2E9D45D078439 /* WatchConnectivity.framework */; };
+		A4A6053CBE0D4B41FB4C93F9 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CE438465031E496B9000107 /* HealthKit.framework */; };
+		B13EF2662F65D7AD00D79150 /* TuGymPR Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B13EF2462F65D7AA00D79150 /* TuGymPR Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BA9170BFFF9F1B3CA82D1840 /* WorkoutSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A434F2C1C19F03605D7A4A6 /* WorkoutSummaryView.swift */; };
+		BC09EC3355AAA66143F6286B /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3294E4E5654B9CF76BCF60B4 /* ActiveWorkoutView.swift */; };
+		BF5F63E0BAA9E50896377EFD /* WatchSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B0988A94CC5E9A5B4FE3F9 /* WatchSessionManager.swift */; };
+		FEB0DABAC5D8591DC8815D4F /* RepCountingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CFD1D8EB3C7AB78B37BB53 /* RepCountingManager.swift */; };
+		FF0AB5165FA433283A04AD40 /* TuGymPRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B13EF2532F65D7AD00D79150 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B13EF2452F65D7AA00D79150;
+			remoteInfo = "TuGymPR Watch App";
+		};
+		B13EF25D2F65D7AD00D79150 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B13EF2452F65D7AA00D79150;
+			remoteInfo = "TuGymPR Watch App";
+		};
+		B13EF2642F65D7AD00D79150 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B13EF2452F65D7AA00D79150;
+			remoteInfo = "TuGymPR Watch App";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B13EF2672F65D7AD00D79150 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				B13EF2662F65D7AD00D79150 /* TuGymPR Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		2F6CEAD119C694EE92AC44CE /* ContentView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		3294E4E5654B9CF76BCF60B4 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
+		371B6B3F284B551A1CE290C5 /* DesignSystem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -27,10 +84,51 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		5CE438465031E496B9000107 /* HealthKit.framework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		614C22B9E2588F9021178DA1 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		707C646E11AD348860539544 /* WorkoutSessionManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutSessionManager.swift; sourceTree = "<group>"; };
+		7606038931E47E574246441E /* CoreMotion.framework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+		7A434F2C1C19F03605D7A4A6 /* WorkoutSummaryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutSummaryView.swift; sourceTree = "<group>"; };
+		7E7BB3EA583790A43A4B9A94 /* HeartRateZoneView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HeartRateZoneView.swift; sourceTree = "<group>"; };
+		7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TuGymPRApp.swift; sourceTree = "<group>"; };
+		81B0988A94CC5E9A5B4FE3F9 /* WatchSessionManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchSessionManager.swift; sourceTree = "<group>"; };
+		A8C64A14053160B2AB331162 /* QuickStartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickStartView.swift; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		B13EF2462F65D7AA00D79150 /* TuGymPR Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TuGymPR Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B13EF2522F65D7AD00D79150 /* TuGymPR Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TuGymPR Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B13EF25C2F65D7AD00D79150 /* TuGymPR Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TuGymPR Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C077625A4BC216FDB749B8E4 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D7CFD1D8EB3C7AB78B37BB53 /* RepCountingManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RepCountingManager.swift; sourceTree = "<group>"; };
+		E81F010895C2E9D45D078439 /* WatchConnectivity.framework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
+		FA0E8499DBF211F1636EBAC3 /* RestTimerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RestTimerView.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B13EF2552F65D7AD00D79150 /* TuGymPR Watch AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = "TuGymPR Watch AppTests";
+			sourceTree = "<group>";
+		};
+		B13EF25F2F65D7AD00D79150 /* TuGymPR Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = "TuGymPR Watch AppUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -41,6 +139,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B13EF2432F65D7AA00D79150 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A2D216126D17754F8DD8D9D0 /* WatchConnectivity.framework in Frameworks */,
+				A4A6053CBE0D4B41FB4C93F9 /* HealthKit.framework in Frameworks */,
+				7B4F14B0C6530C10A2AD4CCE /* CoreMotion.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF24F2F65D7AD00D79150 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF2592F65D7AD00D79150 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -48,6 +170,9 @@
 			isa = PBXGroup;
 			children = (
 				AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */,
+				E81F010895C2E9D45D078439 /* WatchConnectivity.framework */,
+				5CE438465031E496B9000107 /* HealthKit.framework */,
+				7606038931E47E574246441E /* CoreMotion.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -56,9 +181,12 @@
 			isa = PBXGroup;
 			children = (
 				504EC3061FED79650016851F /* App */,
+				B13EF2552F65D7AD00D79150 /* TuGymPR Watch AppTests */,
+				B13EF25F2F65D7AD00D79150 /* TuGymPR Watch AppUITests */,
 				504EC3051FED79650016851F /* Products */,
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
+				A0A4969883F8FEED80E30129 /* TuGymPR Watch App */,
 			);
 			sourceTree = "<group>";
 		};
@@ -66,6 +194,9 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				B13EF2462F65D7AA00D79150 /* TuGymPR Watch App.app */,
+				B13EF2522F65D7AD00D79150 /* TuGymPR Watch AppTests.xctest */,
+				B13EF25C2F65D7AD00D79150 /* TuGymPR Watch AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -94,6 +225,27 @@
 			name = Pods;
 			sourceTree = "<group>";
 		};
+		A0A4969883F8FEED80E30129 /* TuGymPR Watch App */ = {
+			isa = PBXGroup;
+			children = (
+				7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */,
+				2F6CEAD119C694EE92AC44CE /* ContentView.swift */,
+				81B0988A94CC5E9A5B4FE3F9 /* WatchSessionManager.swift */,
+				614C22B9E2588F9021178DA1 /* Assets.xcassets */,
+				C077625A4BC216FDB749B8E4 /* Info.plist */,
+				371B6B3F284B551A1CE290C5 /* DesignSystem.swift */,
+				D7CFD1D8EB3C7AB78B37BB53 /* RepCountingManager.swift */,
+				707C646E11AD348860539544 /* WorkoutSessionManager.swift */,
+				A8C64A14053160B2AB331162 /* QuickStartView.swift */,
+				3294E4E5654B9CF76BCF60B4 /* ActiveWorkoutView.swift */,
+				FA0E8499DBF211F1636EBAC3 /* RestTimerView.swift */,
+				7E7BB3EA583790A43A4B9A94 /* HeartRateZoneView.swift */,
+				7A434F2C1C19F03605D7A4A6 /* WorkoutSummaryView.swift */,
+			);
+			name = "TuGymPR Watch App";
+			path = "TuGymPR Watch App";
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -106,15 +258,76 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */,
+				B13EF2672F65D7AD00D79150 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B13EF2652F65D7AD00D79150 /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B13EF2452F65D7AA00D79150 /* TuGymPR Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B13EF26E2F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch App" */;
+			buildPhases = (
+				B13EF2422F65D7AA00D79150 /* Sources */,
+				B13EF2432F65D7AA00D79150 /* Frameworks */,
+				B13EF2442F65D7AA00D79150 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "TuGymPR Watch App";
+			productName = "TuGymPR Watch App";
+			productReference = B13EF2462F65D7AA00D79150 /* TuGymPR Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B13EF2512F65D7AD00D79150 /* TuGymPR Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B13EF26F2F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch AppTests" */;
+			buildPhases = (
+				B13EF24E2F65D7AD00D79150 /* Sources */,
+				B13EF24F2F65D7AD00D79150 /* Frameworks */,
+				B13EF2502F65D7AD00D79150 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B13EF2542F65D7AD00D79150 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B13EF2552F65D7AD00D79150 /* TuGymPR Watch AppTests */,
+			);
+			name = "TuGymPR Watch AppTests";
+			productName = "TuGymPR Watch AppTests";
+			productReference = B13EF2522F65D7AD00D79150 /* TuGymPR Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B13EF25B2F65D7AD00D79150 /* TuGymPR Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B13EF2702F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch AppUITests" */;
+			buildPhases = (
+				B13EF2582F65D7AD00D79150 /* Sources */,
+				B13EF2592F65D7AD00D79150 /* Frameworks */,
+				B13EF25A2F65D7AD00D79150 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B13EF25E2F65D7AD00D79150 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B13EF25F2F65D7AD00D79150 /* TuGymPR Watch AppUITests */,
+			);
+			name = "TuGymPR Watch AppUITests";
+			productName = "TuGymPR Watch AppUITests";
+			productReference = B13EF25C2F65D7AD00D79150 /* TuGymPR Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -122,13 +335,24 @@
 		504EC2FC1FED79650016851F /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastSwiftUpdateCheck = 0920;
+				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 0920;
 				TargetAttributes = {
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
+					};
+					B13EF2452F65D7AA00D79150 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B13EF2512F65D7AD00D79150 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = B13EF2452F65D7AA00D79150;
+					};
+					B13EF25B2F65D7AD00D79150 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = B13EF2452F65D7AA00D79150;
 					};
 				};
 			};
@@ -141,13 +365,14 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
-			packageReferences = (
-			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				B13EF2452F65D7AA00D79150 /* TuGymPR Watch App */,
+				B13EF2512F65D7AD00D79150 /* TuGymPR Watch AppTests */,
+				B13EF25B2F65D7AD00D79150 /* TuGymPR Watch AppUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -163,6 +388,28 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF2442F65D7AA00D79150 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C9B6FC94E0CA7F03B53AC02 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF2502F65D7AD00D79150 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF25A2F65D7AD00D79150 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -213,7 +460,57 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B13EF2422F65D7AA00D79150 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF0AB5165FA433283A04AD40 /* TuGymPRApp.swift in Sources */,
+				5B3E47BA9AF06D5608F67656 /* ContentView.swift in Sources */,
+				BF5F63E0BAA9E50896377EFD /* WatchSessionManager.swift in Sources */,
+				441445F9E8CD2F3CDCE6CC23 /* DesignSystem.swift in Sources */,
+				FEB0DABAC5D8591DC8815D4F /* RepCountingManager.swift in Sources */,
+				75CCD6A896818BA5ED56B636 /* WorkoutSessionManager.swift in Sources */,
+				5DAF65B82243474388369D35 /* QuickStartView.swift in Sources */,
+				BC09EC3355AAA66143F6286B /* ActiveWorkoutView.swift in Sources */,
+				1E986C6ABBD9B1E528A059DD /* RestTimerView.swift in Sources */,
+				07F23F309DC60AFCC1C336B1 /* HeartRateZoneView.swift in Sources */,
+				BA9170BFFF9F1B3CA82D1840 /* WorkoutSummaryView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF24E2F65D7AD00D79150 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B13EF2582F65D7AD00D79150 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B13EF2542F65D7AD00D79150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B13EF2452F65D7AA00D79150 /* TuGymPR Watch App */;
+			targetProxy = B13EF2532F65D7AD00D79150 /* PBXContainerItemProxy */;
+		};
+		B13EF25E2F65D7AD00D79150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B13EF2452F65D7AA00D79150 /* TuGymPR Watch App */;
+			targetProxy = B13EF25D2F65D7AD00D79150 /* PBXContainerItemProxy */;
+		};
+		B13EF2652F65D7AD00D79150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B13EF2452F65D7AA00D79150 /* TuGymPR Watch App */;
+			targetProxy = B13EF2642F65D7AD00D79150 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -337,7 +634,8 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
-				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -353,7 +651,10 @@
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tugympr.app;
@@ -379,7 +680,10 @@
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tugympr.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -390,6 +694,230 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B13EF2682F65D7AD00D79150 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "TuGymPR Watch App/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = TuGymPR;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.tugympr.app;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tugympr.app.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		B13EF2692F65D7AD00D79150 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "TuGymPR Watch App/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = TuGymPR;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.tugympr.app;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tugympr.app.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		B13EF26A2F65D7AD00D79150 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "Grantlinker.TuGymPR-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TuGymPR Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TuGymPR Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		B13EF26B2F65D7AD00D79150 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "Grantlinker.TuGymPR-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TuGymPR Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TuGymPR Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		B13EF26C2F65D7AD00D79150 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "Grantlinker.TuGymPR-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "TuGymPR Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		B13EF26D2F65D7AD00D79150 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J3L5DWU6FT;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "Grantlinker.TuGymPR-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "TuGymPR Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
 		};
@@ -410,6 +938,33 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B13EF26E2F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B13EF2682F65D7AD00D79150 /* Debug */,
+				B13EF2692F65D7AD00D79150 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B13EF26F2F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B13EF26A2F65D7AD00D79150 /* Debug */,
+				B13EF26B2F65D7AD00D79150 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B13EF2702F65D7AD00D79150 /* Build configuration list for PBXNativeTarget "TuGymPR Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B13EF26C2F65D7AD00D79150 /* Debug */,
+				B13EF26D2F65D7AD00D79150 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

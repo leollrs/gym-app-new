@@ -102,6 +102,8 @@ const Dashboard = () => {
 
   const [showExercises, setShowExercises] = useState(false);
 
+  useEffect(() => { document.title = 'Dashboard | IronForge'; }, []);
+
   // Detect in-progress session from localStorage (checked fresh on every mount)
   const [activeSession] = useState(() => readActiveSession());
   const activeSetsCompleted = activeSession
@@ -144,6 +146,9 @@ const Dashboard = () => {
           .limit(1),
         getUserPoints(user.id).catch(() => ({ total_points: 0, lifetime_points: 0 })),
       ]);
+
+      if (sessionsRes.error) { console.error('Dashboard: failed to load sessions:', sessionsRes.error); }
+      if (routinesRes.error) { console.error('Dashboard: failed to load routines:', routinesRes.error); }
 
       const allSessions = sessionsRes.data || [];
       const routines = routinesRes.data || [];

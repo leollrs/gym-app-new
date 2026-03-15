@@ -199,6 +199,9 @@ const MemberModal = ({ member, gymId, onClose, onNoteSaved, onStatusChanged }) =
           .select('id', { count: 'exact', head: true })
           .eq('profile_id', member.id),
       ]);
+      if (sessRes.error) console.error('MemberModal: failed to load sessions:', sessRes.error);
+      if (prRes.error) console.error('MemberModal: failed to load PRs:', prRes.error);
+      if (chalRes.error) console.error('MemberModal: failed to load challenges:', chalRes.error);
       setSessions(sessRes.data || []);
       setPrs(prRes.data || []);
       setChallenges(chalRes.count ?? 0);
@@ -628,6 +631,8 @@ export default function AdminMembers() {
   const [bulkConfirm,  setBulkConfirm]  = useState(false);
   const [bulkSending,  setBulkSending]  = useState(false);
 
+  useEffect(() => { document.title = 'Admin - Members | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
@@ -656,6 +661,10 @@ export default function AdminMembers() {
           .eq('status', 'completed')
           .gte('started_at', subDays(new Date(), 14).toISOString()),
       ]);
+
+      if (membersRes.error) console.error('AdminMembers: failed to load members:', membersRes.error);
+      if (churnRes.error) console.error('AdminMembers: failed to load churn scores:', churnRes.error);
+      if (sessionsRes.error) console.error('AdminMembers: failed to load sessions:', sessionsRes.error);
 
       const memberRows = membersRes.data || [];
       const churnRows = churnRes.data || [];

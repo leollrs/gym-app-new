@@ -26,6 +26,8 @@ export default function TrainerPrograms() {
   const [loading,   setLoading]   = useState(true);
   const [expanded,  setExpanded]  = useState(null);
 
+  useEffect(() => { document.title = 'Trainer - Programs | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {
@@ -126,7 +128,7 @@ export default function TrainerPrograms() {
                                       <div key={ei} className="flex items-center justify-between text-[12px]">
                                         <span className="text-[#9CA3AF] truncate flex-1 mr-2">{exName(ex.id)}</span>
                                         <span className="text-[#6B7280] flex-shrink-0 font-mono text-[11px]">
-                                          {ex.sets ?? DEFAULT_SETS} × {ex.rest_seconds ?? DEFAULT_REST}s
+                                          {ex.sets ?? DEFAULT_SETS} × {ex.min_reps && ex.max_reps && ex.min_reps !== ex.max_reps ? `${ex.min_reps}-${ex.max_reps}` : (ex.reps ?? ex.min_reps ?? '?')}
                                         </span>
                                       </div>
                                     ))}

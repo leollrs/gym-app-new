@@ -14,6 +14,8 @@ export default function TrainerDashboard() {
   const [recentSessions, setRecentSessions] = useState([]);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
 
+  useEffect(() => { document.title = 'Trainer - Dashboard | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
     fetchDashboardData();
@@ -26,11 +28,12 @@ export default function TrainerDashboard() {
       const now = new Date().toISOString();
 
       // 1. Get assigned client IDs
-      const { data: tcRows } = await supabase
+      const { data: tcRows, error: tcError } = await supabase
         .from('trainer_clients')
         .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, username, last_active_at, created_at)')
         .eq('trainer_id', profile.id)
         .eq('is_active', true);
+      if (tcError) console.error('TrainerDashboard: failed to load clients:', tcError);
 
       const assignedClients = (tcRows || []).map(tc => tc.profiles).filter(Boolean);
       const clientIds = assignedClients.map(c => c.id);
@@ -71,6 +74,9 @@ export default function TrainerDashboard() {
           .limit(5),
       ]);
 
+      if (weekRes.error) console.error('TrainerDashboard: failed to load week sessions:', weekRes.error);
+      if (recentRes.error) console.error('TrainerDashboard: failed to load recent sessions:', recentRes.error);
+      if (upcomingRes.error) console.error('TrainerDashboard: failed to load upcoming sessions:', upcomingRes.error);
       setWeekSessions(weekRes.data || []);
       setRecentSessions(recentRes.data || []);
       setUpcomingSessions(upcomingRes.data || []);

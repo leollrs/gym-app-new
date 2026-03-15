@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Trash2, RotateCcw, MessageSquare, Activity, ShieldAlert } from 'lucide-react';
+import { Trash2, RotateCcw, MessageSquare, Activity, ShieldAlert, Flag, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
@@ -72,11 +72,12 @@ const InitialAvatar = ({ name, size = 9 }) => (
 
 // ── FILTER BAR ─────────────────────────────────────────────────────────────
 
-const FilterBar = ({ active, onChange, counts }) => {
+const FilterBar = ({ active, onChange, counts, labels }) => {
+  const l = labels || { all: 'All', active: 'Active', deleted: 'Deleted' };
   const opts = [
-    { key: 'all',     label: `All (${counts.all})` },
-    { key: 'active',  label: `Active (${counts.active})` },
-    { key: 'deleted', label: `Deleted (${counts.deleted})` },
+    { key: 'all',     label: `${l.all} (${counts.all})` },
+    { key: 'active',  label: `${l.active} (${counts.active})` },
+    { key: 'deleted', label: `${l.deleted} (${counts.deleted})` },
   ];
   return (
     <div className="flex gap-1.5 flex-wrap">
@@ -450,17 +451,238 @@ const CommentsTab = ({ gymId }) => {
   );
 };
 
+// ── REPORTS TAB ─────────────────────────────────────────────────────────────
+
+const REPORT_STATUS_STYLES = {
+  pending:   { label: 'Pending',   color: 'text-amber-400 bg-amber-500/10' },
+  reviewed:  { label: 'Reviewed',  color: 'text-blue-400 bg-blue-500/10' },
+  dismissed: { label: 'Dismissed', color: 'text-[#9CA3AF] bg-white/6' },
+  actioned:  { label: 'Actioned',  color: 'text-emerald-400 bg-emerald-500/10' },
+};
+
+const ReportsTab = ({ gymId }) => {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter,  setFilter]  = useState('all');
+  const [acting,  setActing]  = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('content_reports')
+      .select(`
+        id,
+        reason,
+        status,
+        created_at,
+        reviewed_at,
+        reporter_id,
+        feed_item_id,
+        profiles!content_reports_reporter_id_fkey (
+          full_name,
+          username
+        ),
+        activity_feed_items!content_reports_feed_item_id_fkey (
+          id,
+          type,
+          data,
+          is_deleted,
+          created_at,
+          actor_id,
+          profiles:profiles!activity_feed_items_actor_id_fkey (
+            full_name,
+            username
+          )
+        )
+      `)
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    setReports(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { if (gymId) load(); }, [gymId]);
+
+  const handleUpdateStatus = async (report, newStatus) => {
+    setActing(report.id);
+    await supabase
+      .from('content_reports')
+      .update({ status: newStatus, reviewed_at: new Date().toISOString() })
+      .eq('id', report.id);
+
+    // If actioned, also soft-delete the reported feed item
+    if (newStatus === 'actioned' && report.feed_item_id) {
+      await supabase
+        .from('activity_feed_items')
+        .update({ is_deleted: true })
+        .eq('id', report.feed_item_id);
+    }
+
+    setReports(prev =>
+      prev.map(r => r.id === report.id ? { ...r, status: newStatus, reviewed_at: new Date().toISOString() } : r)
+    );
+    setActing(null);
+  };
+
+  const total    = reports.length;
+  const pending  = reports.filter(r => r.status === 'pending').length;
+  const resolved = reports.filter(r => r.status !== 'pending').length;
+
+  const filtered = useMemo(() => {
+    if (filter === 'active')  return reports.filter(r => r.status === 'pending');
+    if (filter === 'deleted') return reports.filter(r => r.status !== 'pending');
+    return reports;
+  }, [reports, filter]);
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-3">
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 gap-3 mb-1">
+        {[
+          { label: 'Total Reports',    value: total,    color: 'text-[#E5E7EB]' },
+          { label: 'Pending Review',   value: pending,  color: 'text-amber-400' },
+          { label: 'Resolved',         value: resolved, color: 'text-emerald-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 text-center">
+            <p className={`text-[22px] font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <FilterBar
+        active={filter}
+        onChange={setFilter}
+        counts={{ all: total, active: pending, deleted: resolved }}
+        labels={{ all: 'All', active: 'Pending', deleted: 'Resolved' }}
+      />
+
+      {filtered.length === 0 ? (
+        <Empty label="No reports match this filter" />
+      ) : (
+        <div className="space-y-2.5">
+          {filtered.map(report => {
+            const reporter = report.profiles;
+            const feedItem = report.activity_feed_items;
+            const author   = feedItem?.profiles;
+            const badge    = postTypeBadge(feedItem?.type);
+            const status   = REPORT_STATUS_STYLES[report.status] || REPORT_STATUS_STYLES.pending;
+            const busy     = acting === report.id;
+            const isPending = report.status === 'pending';
+            return (
+              <div
+                key={report.id}
+                className={`bg-[#0F172A] border rounded-[14px] p-4 transition-all group ${
+                  isPending ? 'border-amber-500/20 hover:border-amber-500/40' : 'border-white/6 opacity-70'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {/* Avatar */}
+                  <InitialAvatar name={reporter?.full_name} size={9} />
+
+                  {/* Body */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
+                        {reporter?.full_name ?? 'Unknown'}
+                      </p>
+                      <p className="text-[12px] text-[#6B7280]">
+                        @{reporter?.username ?? '—'}
+                      </p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
+                        {status.label}
+                      </span>
+                    </div>
+
+                    {/* Reason */}
+                    <p className="text-[13px] text-[#E5E7EB] leading-relaxed mb-1.5">
+                      <span className="text-[#6B7280]">Reason:</span>{' '}
+                      {sanitize(report.reason)}
+                    </p>
+
+                    {/* Reported content info */}
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-[11px] text-[#6B7280]">Reported post:</span>
+                      {feedItem && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
+                          {badge.label}
+                        </span>
+                      )}
+                      {author && (
+                        <span className="text-[11px] text-[#9CA3AF]">
+                          by {author.full_name ?? author.username ?? 'Unknown'}
+                        </span>
+                      )}
+                      {feedItem?.is_deleted && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
+                          Deleted
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <p className="text-[11px] text-[#4B5563]">
+                        Reported {relativeTime(report.created_at)}
+                      </p>
+                      {report.reviewed_at && (
+                        <>
+                          <span className="text-[#4B5563]">·</span>
+                          <p className="text-[11px] text-[#4B5563]">
+                            Reviewed {relativeTime(report.reviewed_at)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  {isPending && (
+                    <div className="flex flex-col gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleUpdateStatus(report, 'actioned')}
+                        disabled={busy}
+                        title="Take action (removes reported post)"
+                        className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
+                      >
+                        <XCircle size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleUpdateStatus(report, 'dismissed')}
+                        disabled={busy}
+                        title="Dismiss report"
+                        className="p-2 rounded-lg text-[#4B5563] hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-40"
+                      >
+                        <CheckCircle size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── MAIN ───────────────────────────────────────────────────────────────────
 
 export default function AdminModeration() {
   const { profile } = useAuth();
   const [tab, setTab] = useState('posts');
 
+  useEffect(() => { document.title = 'Admin - Moderation | IronForge'; }, []);
+
   const gymId = profile?.gym_id;
 
   const tabs = [
     { key: 'posts',    label: 'Feed Posts',  icon: Activity },
     { key: 'comments', label: 'Comments',    icon: MessageSquare },
+    { key: 'reports',  label: 'Reports',     icon: Flag },
   ];
 
   return (
@@ -469,7 +691,7 @@ export default function AdminModeration() {
       <div className="mb-6">
         <h1 className="text-[22px] font-bold text-[#E5E7EB]">Content Moderation</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">
-          Review and moderate feed posts and comments across your gym
+          Review and moderate feed posts, comments, and member reports across your gym
         </p>
       </div>
 
@@ -501,8 +723,10 @@ export default function AdminModeration() {
         </div>
       ) : tab === 'posts' ? (
         <PostsTab gymId={gymId} />
-      ) : (
+      ) : tab === 'comments' ? (
         <CommentsTab gymId={gymId} />
+      ) : (
+        <ReportsTab gymId={gymId} />
       )}
     </div>
   );

@@ -310,13 +310,21 @@ export default function AdminChurn() {
   const [loading, setLoading] = useState(true);
   const [challenges, setChallenges] = useState([]);
 
+  useEffect(() => { document.title = 'Admin - Churn | IronForge'; }, []);
+
   // Tab
   const [tab, setTab] = useState('at-risk'); // 'at-risk' | 'churned' | 'win-back'
 
   // At Risk tab filters
   const [search, setSearch] = useState('');
   const [riskFilter, setRiskFilter] = useState('all'); // 'all' | 'high' | 'medium'
-  const [contactedIds, setContactedIds] = useState(new Set());
+  const [contactedMap, setContactedMap] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`churn_contacted_${profile?.gym_id}`);
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
+  const contactedIds = useMemo(() => new Set(Object.keys(contactedMap)), [contactedMap]);
 
   // Modals
   const [msgModal, setMsgModal] = useState(null);    // member object
@@ -401,14 +409,18 @@ export default function AdminChurn() {
   // ── Actions ──────────────────────────────────────────────
 
   const handleMarkContacted = (memberId) => {
-    setContactedIds(prev => new Set([...prev, memberId]));
+    setContactedMap(prev => {
+      const next = { ...prev, [memberId]: new Date().toISOString() };
+      try { localStorage.setItem(`churn_contacted_${gymId}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   const handleAddToChallenge = async (member, challengeId) => {
     if (!challengeId) return;
     await supabase.from('challenge_participants').upsert(
-      { user_id: member.id, challenge_id: challengeId },
-      { onConflict: 'user_id,challenge_id', ignoreDuplicates: true }
+      { profile_id: member.id, challenge_id: challengeId, gym_id: gymId, score: 0 },
+      { onConflict: 'profile_id,challenge_id', ignoreDuplicates: true }
     );
   };
 

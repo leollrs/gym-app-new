@@ -685,6 +685,13 @@ const Onboarding = () => {
           </div>
         )}
 
+        {/* ── Health disclaimer ── */}
+        {step === TOTAL_STEPS - 1 && (
+          <p className="text-[11px] text-[#6B7280] text-center leading-relaxed mt-4">
+            This app provides fitness tracking tools only and does not constitute medical advice. Consult a healthcare professional before beginning any exercise program.
+          </p>
+        )}
+
         {/* ── NAV BUTTONS ── */}
         <div className="flex gap-3 mt-8">
           {step > 0 && (

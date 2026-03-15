@@ -10,6 +10,21 @@ export const AuthProvider = ({ children }) => {
   const [gymName, setGymName] = useState('');
   const [gymLogoUrl, setGymLogoUrl] = useState('');
   const [loading, setLoading] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  // Fetch unread notification count for the current profile
+  const fetchUnreadNotifications = async (profileId) => {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .eq('read', false);
+    if (!error) setUnreadNotifications(count || 0);
+  };
+
+  const refreshNotifications = () => {
+    if (profile?.id) fetchUnreadNotifications(profile.id);
+  };
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
@@ -80,6 +95,15 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Fetch unread notification count whenever the profile is loaded/changed
+  useEffect(() => {
+    if (profile?.id) {
+      fetchUnreadNotifications(profile.id);
+    } else {
+      setUnreadNotifications(0);
+    }
+  }, [profile?.id]);
+
   // ── SIGN UP ────────────────────────────────────────────────
   // Creates the Supabase auth user then immediately inserts
   // a profiles row. Email confirmation must be DISABLED in
@@ -97,21 +121,40 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Gym code not found. Ask your gym for the correct code.');
     }
 
-    // 2. Create the auth user
+    // 2. Check if username is already taken
+    const { count, error: usernameError } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('username', username.toLowerCase().trim());
+
+    if (usernameError) {
+      throw new Error('Unable to verify username. Please try again.');
+    }
+    if (count > 0) {
+      throw new Error('Username already taken. Please choose a different one.');
+    }
+
+    // 3. Create the auth user
     const { data, error: authError } = await supabase.auth.signUp({ email, password });
     if (authError) throw authError;
 
-    // 3. Insert the profile row (user is now authenticated)
+    // 4. Insert the profile row (user is now authenticated)
+    //    If this fails, sign out to avoid an orphaned auth user with no profile.
     if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id:           data.user.id,
-        gym_id:       gym.id,
-        full_name:    fullName,
-        username:     username.toLowerCase().trim(),
-        role:         'member',
-        is_onboarded: false,
-      });
-      if (profileError) throw profileError;
+      try {
+        const { error: profileError } = await supabase.from('profiles').insert({
+          id:           data.user.id,
+          gym_id:       gym.id,
+          full_name:    fullName,
+          username:     username.toLowerCase().trim(),
+          role:         'member',
+          is_onboarded: false,
+        });
+        if (profileError) throw profileError;
+      } catch (err) {
+        await supabase.auth.signOut();
+        throw new Error('Account created but profile setup failed. Please try signing up again.');
+      }
     }
 
     return data;
@@ -126,6 +169,27 @@ export const AuthProvider = ({ children }) => {
   // ── SIGN OUT ───────────────────────────────────────────────
   const signOut = async () => {
     // Clear session drafts and preferences from localStorage to prevent data leakage
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('gym_session_') || key.startsWith('notification_prefs_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch { /* localStorage may be unavailable */ }
+
+    await supabase.auth.signOut();
+  };
+
+  // ── DELETE ACCOUNT ───────────────────────────────────────────
+  const deleteAccount = async () => {
+    // Server-side cascade delete via RPC
+    const { error } = await supabase.rpc('delete_user_account');
+    if (error) throw new Error(error.message || 'Failed to delete account. Please try again.');
+
+    // Clear local data
     try {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -156,7 +220,10 @@ export const AuthProvider = ({ children }) => {
       signUp,
       signIn,
       signOut,
+      deleteAccount,
       refreshProfile,
+      unreadNotifications,
+      refreshNotifications,
     }}>
       {children}
     </AuthContext.Provider>

@@ -20,6 +20,8 @@ export default function AdminTrainers() {
   const [search, setSearch]         = useState('');
   const [assigning, setAssigning]   = useState(false);
 
+  useEffect(() => { document.title = 'Admin - Trainers | IronForge'; }, []);
+
   // Add trainer modal state
   const [showAddTrainer, setShowAddTrainer] = useState(false);
   const [addSearch, setAddSearch]   = useState('');

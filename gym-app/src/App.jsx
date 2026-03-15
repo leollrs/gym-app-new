@@ -31,6 +31,7 @@ import Onboarding from './pages/Onboarding';
 import FirstWorkoutWelcome from './components/FirstWorkoutWelcome';
 import TVDisplay from './pages/TVDisplay';
 import QuickStart from './pages/QuickStart';
+import HealthSync from './pages/HealthSync';
 
 // Trainer pages
 import TrainerLayout from './layouts/TrainerLayout';
@@ -57,6 +58,15 @@ import AdminModeration from './pages/admin/AdminModeration';
 import AdminChurn from './pages/admin/AdminChurn';
 import AdminTrainers from './pages/admin/AdminTrainers';
 
+// Platform super-admin pages
+import PlatformLayout from './layouts/PlatformLayout';
+import GymsOverview from './pages/platform/GymsOverview';
+import GymDetail from './pages/platform/GymDetail';
+import PlatformAnalytics from './pages/platform/PlatformAnalytics';
+import MemberLookup from './pages/platform/MemberLookup';
+import PlatformSettings from './pages/platform/PlatformSettings';
+import AuditLog from './pages/platform/AuditLog';
+
 // ── LOADING SCREEN ─────────────────────────────────────────
 const LoadingScreen = () => (
   <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
@@ -67,6 +77,7 @@ const LoadingScreen = () => (
   </div>
 );
 
+const isSuperAdmin = (profile) => profile?.role === 'super_admin';
 const isAdmin = (profile) => profile?.role === 'admin' || profile?.role === 'super_admin';
 const isTrainer = (profile) => profile?.role === 'trainer';
 
@@ -75,6 +86,7 @@ const ProtectedRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
+  if (isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
   if (profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (isAdmin(profile))   return <Navigate to="/admin" replace />;
   if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
@@ -86,7 +98,17 @@ const AdminRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user)            return <Navigate to="/login" replace />;
+  if (isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
   if (!isAdmin(profile)) return <Navigate to="/" replace />;
+  return children;
+};
+
+// ── PLATFORM ROUTE (super_admin only) ─────────────────────
+const PlatformRoute = ({ children }) => {
+  const { user, profile, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user)                  return <Navigate to="/login" replace />;
+  if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -103,6 +125,7 @@ const TrainerRoute = ({ children }) => {
 const PublicRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
+  if (user && profile && isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
   if (user && profile?.is_onboarded) {
     if (isAdmin(profile))   return <Navigate to="/admin" replace />;
     if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
@@ -120,17 +143,39 @@ function App() {
     <Routes>
 
       {/* Public — unauthenticated only */}
-      <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+      <Route path="/login"  element={<PublicRoute><ErrorBoundary><Login /></ErrorBoundary></PublicRoute>} />
+      <Route path="/signup" element={<PublicRoute><ErrorBoundary><Signup /></ErrorBoundary></PublicRoute>} />
 
       {/* Onboarding */}
-      <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/onboarding" element={<ProtectedRoute><ErrorBoundary><Onboarding /></ErrorBoundary></ProtectedRoute>} />
 
       {/* First-win welcome screen (post-onboarding, pre-dashboard) */}
       <Route path="/welcome" element={<ProtectedRoute><FirstWorkoutWelcome /></ProtectedRoute>} />
 
       {/* TV display — no auth required, no nav */}
-      <Route path="/tv-display" element={<TVDisplay />} />
+      <Route path="/tv-display" element={<ErrorBoundary><TVDisplay /></ErrorBoundary>} />
+
+      {/* Platform super-admin dashboard */}
+      <Route
+        path="/platform/*"
+        element={
+          <PlatformRoute>
+            <PlatformLayout>
+              <ErrorBoundary>
+              <Routes>
+                <Route path="/"             element={<GymsOverview />} />
+                <Route path="/gym/:gymId"   element={<GymDetail />} />
+                <Route path="/analytics"    element={<PlatformAnalytics />} />
+                <Route path="/members"      element={<MemberLookup />} />
+                <Route path="/settings"     element={<PlatformSettings />} />
+                <Route path="/audit-log"    element={<AuditLog />} />
+                <Route path="*"            element={<Navigate to="/platform" replace />} />
+              </Routes>
+              </ErrorBoundary>
+            </PlatformLayout>
+          </PlatformRoute>
+        }
+      />
 
       {/* Admin dashboard */}
       <Route
@@ -152,6 +197,7 @@ function App() {
                 <Route path="/analytics"    element={<AdminAnalytics />} />
                 <Route path="/moderation"   element={<AdminModeration />} />
                 <Route path="/settings"     element={<AdminSettings />} />
+                <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>
               </ErrorBoundary>
             </AdminLayout>
@@ -174,6 +220,7 @@ function App() {
                 <Route path="/plans"           element={<TrainerWorkoutPlans />} />
                 <Route path="/analytics"       element={<TrainerAnalytics />} />
                 <Route path="/programs"        element={<TrainerPrograms />} />
+                <Route path="*"              element={<Navigate to="/trainer" replace />} />
               </Routes>
               </ErrorBoundary>
             </TrainerLayout>
@@ -228,6 +275,7 @@ function App() {
                 {/* Utility */}
                 <Route path="/checkin"           element={<CheckIn />} />
                 <Route path="/rewards"           element={<Rewards />} />
+                <Route path="/health-sync"       element={<HealthSync />} />
 
                 <Route path="*"                  element={<Navigate to="/" replace />} />
               </Routes>

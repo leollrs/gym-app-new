@@ -566,24 +566,27 @@ export const ExerciseLibraryPage = () => {
     setLoading(true);
 
     // Custom exercises for this gym (with creator profile)
-    const { data: customs } = await supabase
+    const { data: customs, error: customsError } = await supabase
       .from('exercises')
       .select('*, profiles!created_by(full_name, username)')
       .eq('gym_id', profile.gym_id)
       .eq('is_active', true);
+    if (customsError) console.error('ExerciseLibrary: failed to load custom exercises:', customsError);
 
     // My saved exercises
-    const { data: saved } = await supabase
+    const { data: saved, error: savedError } = await supabase
       .from('user_saved_exercises')
       .select('exercise_id')
       .eq('user_id', user.id);
+    if (savedError) console.error('ExerciseLibrary: failed to load saved exercises:', savedError);
 
     // Accepted friend IDs
-    const { data: fships } = await supabase
+    const { data: fships, error: fshipsError } = await supabase
       .from('friendships')
       .select('requester_id, addressee_id')
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
       .eq('status', 'accepted');
+    if (fshipsError) console.error('ExerciseLibrary: failed to load friendships:', fshipsError);
 
     const fIds = new Set((fships ?? []).map(f =>
       f.requester_id === user.id ? f.addressee_id : f.requester_id

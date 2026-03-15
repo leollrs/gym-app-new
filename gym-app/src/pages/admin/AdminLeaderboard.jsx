@@ -26,6 +26,8 @@ export default function AdminLeaderboard() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => { document.title = 'Admin - Leaderboard | IronForge'; }, []);
+
   const load = async () => {
     if (!profile?.gym_id) return;
     setLoading(true);

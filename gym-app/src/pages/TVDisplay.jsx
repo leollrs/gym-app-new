@@ -22,6 +22,7 @@ export default function TVDisplay() {
   const [gymId,      setGymId]      = useState(null);
   const [metricIdx,  setMetricIdx]  = useState(0);
   const [loading,    setLoading]    = useState(true);
+  const [noSlug,     setNoSlug]     = useState(false);
   const [clock,      setClock]      = useState(new Date());
   const channelRef = useRef(null);
 
@@ -42,18 +43,22 @@ export default function TVDisplay() {
   // Resolve gym from slug
   useEffect(() => {
     const slug = getGymSlug();
+    if (!slug) {
+      setNoSlug(true);
+      setLoading(false);
+      return;
+    }
     const resolve = async () => {
-      if (slug) {
-        const { data: gym } = await supabase
-          .from('gyms')
-          .select('id, name')
-          .eq('slug', slug)
-          .single();
-        if (gym) setGymId(gym.id);
+      const { data: gym } = await supabase
+        .from('gyms')
+        .select('id, name')
+        .eq('slug', slug)
+        .single();
+      if (gym) {
+        setGymId(gym.id);
       } else {
-        // Fallback: any gym (demo)
-        const { data: gyms } = await supabase.from('gyms').select('id, name').limit(1);
-        if (gyms?.[0]) setGymId(gyms[0].id);
+        setNoSlug(true);
+        setLoading(false);
       }
     };
     resolve();
@@ -134,6 +139,22 @@ export default function TVDisplay() {
       .subscribe();
     return () => { if (channelRef.current) supabase.removeChannel(channelRef.current); };
   }, [gymId, metricIdx]);
+
+  if (noSlug) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: '#05070B', fontFamily: 'Barlow, sans-serif' }}
+      >
+        <div className="text-center space-y-4">
+          <p className="text-[28px] font-bold text-white/30">No gym specified</p>
+          <p className="text-[16px] text-white/20">
+            Add a <code className="text-white/40">?gym=your-slug</code> parameter to the URL.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const accent = accentColor;
   const maxScore = entries[0]?.score || 1;

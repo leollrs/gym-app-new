@@ -15,6 +15,7 @@ export default function TrainerClientNotes() {
 
   const [activeTab, setActiveTab] = useState('Overview');
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [client, setClient] = useState(null);
   const [stats, setStats] = useState({ count: 0, volume: 0 });
   const [programName, setProgramName] = useState(null);
@@ -25,6 +26,8 @@ export default function TrainerClientNotes() {
   const [measurements, setMeasurements] = useState(null);
   const [showReport, setShowReport] = useState(false);
 
+  useEffect(() => { document.title = 'Trainer - Client Notes | IronForge'; }, []);
+
   useEffect(() => {
     if (clientId && profile?.id) {
       loadClientData();
@@ -33,8 +36,24 @@ export default function TrainerClientNotes() {
 
   async function loadClientData() {
     setLoading(true);
+    setAccessDenied(false);
     try {
-      const [clientRes, statsRes, tcRes, weightsRes, measRes] = await Promise.all([
+      // Verify this client is assigned to the current trainer
+      const { data: assignment } = await supabase
+        .from('trainer_clients')
+        .select('id, notes')
+        .eq('trainer_id', profile.id)
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!assignment) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
+
+      const [clientRes, statsRes, weightsRes, measRes] = await Promise.all([
         supabase
           .from('profiles')
           .select('id, full_name, username, last_active_at, created_at, assigned_program_id')
@@ -45,12 +64,6 @@ export default function TrainerClientNotes() {
           .select('id, total_volume_lbs')
           .eq('profile_id', clientId)
           .eq('status', 'completed'),
-        supabase
-          .from('trainer_clients')
-          .select('id, notes')
-          .eq('trainer_id', profile.id)
-          .eq('client_id', clientId)
-          .maybeSingle(),
         supabase
           .from('body_weight_logs')
           .select('weight_lbs, logged_at')
@@ -82,9 +95,7 @@ export default function TrainerClientNotes() {
         setStats({ count: statsRes.data.length, volume: totalVolume });
       }
 
-      if (tcRes.data) {
-        setNotesText(tcRes.data.notes || '');
-      }
+      setNotesText(assignment.notes || '');
 
       setWeights(weightsRes.data || []);
       setMeasurements(measRes.data?.[0] || null);
@@ -125,6 +136,24 @@ export default function TrainerClientNotes() {
     return (
       <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate('/trainer/clients')}
+          className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 hover:text-[#E5E7EB] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Clients
+        </button>
+        <div className="text-center py-20">
+          <p className="text-[16px] font-semibold text-[#E5E7EB] mb-2">Access Denied</p>
+          <p className="text-[14px] text-[#6B7280]">This client is not assigned to you.</p>
+        </div>
       </div>
     );
   }

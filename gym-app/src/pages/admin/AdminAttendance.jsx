@@ -26,6 +26,8 @@ export default function AdminAttendance() {
   const [period, setPeriod]     = useState('30');  // days
   const [summaryStats, setSummaryStats] = useState({ totalCheckins: 0, totalWorkouts: 0, uniqueVisitors: 0, avgPerDay: 0 });
 
+  useEffect(() => { document.title = 'Admin - Attendance | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.gym_id) return;
     const load = async () => {

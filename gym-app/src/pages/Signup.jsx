@@ -200,6 +200,13 @@ const Signup = () => {
             >
               {loading ? 'Creating account…' : 'Create Account'}
             </button>
+            {/* TODO: Replace # with real terms and privacy policy URLs */}
+            <p className="text-[11px] text-[#6B7280] text-center leading-relaxed">
+              By creating an account, you agree to our{' '}
+              <a href="#" className="text-[#D4AF37] hover:underline">Terms of Service</a>
+              {' '}and{' '}
+              <a href="#" className="text-[#D4AF37] hover:underline">Privacy Policy</a>.
+            </p>
           </form>
         </div>
 

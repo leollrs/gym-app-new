@@ -95,6 +95,8 @@ export default function AdminOverview() {
   const [topExercises, setTopExercises] = useState([]);
   const [actionItems, setActionItems]   = useState([]);
 
+  useEffect(() => { document.title = 'Admin - Overview | IronForge'; }, []);
+
   // Greeting hour (pre-computed for React Compiler purity)
   const [greetingHour, setGreetingHour] = useState(12);
 
@@ -256,11 +258,20 @@ export default function AdminOverview() {
 
       // Today's check-ins (separate query — lightweight)
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const { data: todayCheckins } = await supabase
+      const { data: todayCheckins, error: todayCheckinsError } = await supabase
         .from('check_ins')
         .select('id')
         .eq('gym_id', gymId)
         .gte('checked_in_at', todayStart);
+      if (todayCheckinsError) console.error('AdminOverview: failed to load today check-ins:', todayCheckinsError);
+
+      if (membersRes.error) console.error('AdminOverview: failed to load members:', membersRes.error);
+      if (sessionsRes.error) console.error('AdminOverview: failed to load sessions:', sessionsRes.error);
+      if (churnScoresRes.error) console.error('AdminOverview: failed to load churn scores:', churnScoresRes.error);
+      if (notOnboardedRes.error) console.error('AdminOverview: failed to load onboarding data:', notOnboardedRes.error);
+      if (challengesEndingSoonRes.error) console.error('AdminOverview: failed to load challenges:', challengesEndingSoonRes.error);
+      if (dripStepsRes.error) console.error('AdminOverview: failed to load drip steps:', dripStepsRes.error);
+      if (checkInsRes.error) console.error('AdminOverview: failed to load check-ins:', checkInsRes.error);
 
       const members  = membersRes.data || [];
       const sessions = sessionsRes.data || [];
@@ -422,18 +433,20 @@ export default function AdminOverview() {
       setRecentActivity(merged);
 
       // ── Top exercises (last 30d) ────────────────────────────
-      const { data: sessionRows } = await supabase
+      const { data: sessionRows, error: sessionRowsError } = await supabase
         .from('workout_sessions')
         .select('id')
         .eq('gym_id', gymId)
         .eq('status', 'completed')
         .gte('started_at', thirtyDaysAgo);
+      if (sessionRowsError) console.error('AdminOverview: failed to load session rows:', sessionRowsError);
       const ids = (sessionRows || []).map(r => r.id);
       if (ids.length > 0) {
-        const { data: exRows } = await supabase
+        const { data: exRows, error: exRowsError } = await supabase
           .from('session_exercises')
           .select('exercise_id, exercises(name)')
           .in('session_id', ids);
+        if (exRowsError) console.error('AdminOverview: failed to load exercise rows:', exRowsError);
         const exCount = {};
         const exName  = {};
         (exRows || []).forEach(r => {

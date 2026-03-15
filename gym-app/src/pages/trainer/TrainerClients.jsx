@@ -38,6 +38,9 @@ const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
           .eq('is_published', true)
           .order('name'),
       ]);
+      if (sessRes.error) console.error('ClientModal: failed to load sessions:', sessRes.error);
+      if (prRes.error) console.error('ClientModal: failed to load PRs:', prRes.error);
+      if (progRes.error) console.error('ClientModal: failed to load programs:', progRes.error);
       setSessions(sessRes.data || []);
       setPrs(prRes.data || []);
       setPrograms(progRes.data || []);
@@ -242,6 +245,8 @@ export default function TrainerClients() {
   const [sortBy,   setSortBy]   = useState('last_active');
   const [showFilters, setShowFilters] = useState(false);
 
+  useEffect(() => { document.title = 'Trainer - Clients | IronForge'; }, []);
+
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
     const load = async () => {
@@ -249,7 +254,7 @@ export default function TrainerClients() {
       const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
 
       // Fetch only assigned clients via trainer_clients join
-      const { data: tcRows } = await supabase
+      const { data: tcRows, error: tcError } = await supabase
         .from('trainer_clients')
         .select(`
           client_id,
@@ -260,6 +265,7 @@ export default function TrainerClients() {
         `)
         .eq('trainer_id', profile.id)
         .eq('is_active', true);
+      if (tcError) console.error('TrainerClients: failed to load clients:', tcError);
 
       const assignedClients = (tcRows || [])
         .map(tc => tc.profiles)
@@ -273,12 +279,13 @@ export default function TrainerClients() {
 
       const clientIds = assignedClients.map(c => c.id);
 
-      const { data: recentSessions } = await supabase
+      const { data: recentSessions, error: recSessError } = await supabase
         .from('workout_sessions')
         .select('profile_id')
         .in('profile_id', clientIds)
         .eq('status', 'completed')
         .gte('started_at', fourteenDaysAgo);
+      if (recSessError) console.error('TrainerClients: failed to load recent sessions:', recSessError);
 
       const recentCounts = {};
       (recentSessions || []).forEach(s => {

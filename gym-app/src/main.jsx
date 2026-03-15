@@ -1,12 +1,23 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import Toast from './components/Toast.jsx';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { initWatchListeners } from './lib/watchBridge';
 import './index.css';
+
+const Router = Capacitor.isNativePlatform() ? MemoryRouter : BrowserRouter;
+
+// Tell Capgo the app loaded successfully (enables OTA live updates)
+CapacitorUpdater.notifyAppReady();
+
+// Initialize Apple Watch communication bridge
+initWatchListeners();
 
 // iOS: reset viewport zoom after leaving an input field
 // iOS zooms in when focusing inputs (accessibility), but never zooms back out.
@@ -27,7 +38,7 @@ if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <Router>
       <ThemeProvider>
         <ToastProvider>
           <AuthProvider>
@@ -36,6 +47,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Toast />
         </ToastProvider>
       </ThemeProvider>
-    </BrowserRouter>
+    </Router>
   </React.StrictMode>
 );

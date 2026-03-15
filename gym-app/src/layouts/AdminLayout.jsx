@@ -1,9 +1,9 @@
-import { NavLink, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -46,10 +46,10 @@ const NAV_SECTIONS = [
 // Flat list for mobile nav filtering
 const ALL_NAV = NAV_SECTIONS.flatMap(s => s.items);
 
-// Bottom nav shows top 5 most-used on mobile
-const MOBILE_NAV = ALL_NAV.filter(n =>
-  ['/admin', '/admin/members', '/admin/challenges', '/admin/programs', '/admin/settings'].includes(n.to)
-);
+// Bottom nav shows 4 most-used items + a "More" button
+const MOBILE_PRIMARY_PATHS = ['/admin', '/admin/members', '/admin/challenges', '/admin/settings'];
+const MOBILE_NAV = ALL_NAV.filter(n => MOBILE_PRIMARY_PATHS.includes(n.to));
+const MOBILE_MORE_NAV = ALL_NAV.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to));
 
 const linkClass = (active) =>
   `flex items-center gap-2.5 pl-3 pr-3 py-2 rounded-lg text-[13px] font-medium transition-all relative ${
@@ -61,7 +61,36 @@ const linkClass = (active) =>
 export default function AdminLayout({ children }) {
   const { profile, gymName, gymLogoUrl, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [highRiskCount, setHighRiskCount] = useState(0);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef(null);
+
+  // Close "More" menu on route change
+  useEffect(() => {
+    setMoreMenuOpen(false);
+  }, [location.pathname]);
+
+  // Close "More" menu on outside tap
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handleClick = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [moreMenuOpen]);
+
+  // Check if any "More" item is the active route
+  const moreIsActive = MOBILE_MORE_NAV.some(
+    n => n.exact ? location.pathname === n.to : location.pathname.startsWith(n.to)
+  );
 
   // Fetch critical + high risk count from pre-computed churn scores
   useEffect(() => {
@@ -186,6 +215,55 @@ export default function AdminLayout({ children }) {
         </div>
       </main>
 
+      {/* ── Mobile "More" menu overlay ──────────────────────── */}
+      {moreMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" />
+      )}
+
+      {/* ── Mobile "More" slide-up panel ────────────────────── */}
+      <div
+        ref={moreMenuRef}
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-[70] transition-transform duration-300 ease-out ${
+          moreMenuOpen ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="bg-[#0F172A] border-t border-white/8 rounded-t-2xl px-4 pt-3 pb-4">
+          {/* Panel header */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[13px] font-semibold text-[#9CA3AF]">More Pages</p>
+            <button
+              onClick={() => setMoreMenuOpen(false)}
+              className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors"
+              aria-label="Close menu"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          {/* Nav grid */}
+          <div className="grid grid-cols-4 gap-2">
+            {MOBILE_MORE_NAV.map(({ to, label, icon: Icon, exact }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={exact}
+                onClick={() => setMoreMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors ${
+                    isActive
+                      ? 'text-[#D4AF37] bg-[#D4AF37]/10'
+                      : 'text-[#9CA3AF] hover:bg-white/[0.04]'
+                  }`
+                }
+              >
+                <Icon size={22} strokeWidth={1.75} />
+                <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── Mobile bottom nav ─────────────────────────────────── */}
       <nav aria-label="Admin mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -204,6 +282,18 @@ export default function AdminLayout({ children }) {
             <span className="text-[10px] font-medium">{label}</span>
           </NavLink>
         ))}
+        {/* More button */}
+        <button
+          onClick={() => setMoreMenuOpen(prev => !prev)}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors ${
+            moreMenuOpen || moreIsActive ? 'text-[#D4AF37]' : 'text-[#6B7280]'
+          }`}
+          aria-label="More admin pages"
+          aria-expanded={moreMenuOpen}
+        >
+          <MoreHorizontal size={20} />
+          <span className="text-[10px] font-medium">More</span>
+        </button>
       </nav>
 
     </div>

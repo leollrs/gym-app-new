@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
-  Search, UserPlus, Check, X, Users, Share2,
+  Search, UserPlus, Check, X, Users, Share2, Flag,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -177,7 +177,7 @@ const CommentRow = ({ comment }) => (
 );
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
-const FeedCard = ({ item, currentUserId, onToggleLike, onReact }) => {
+const FeedCard = ({ item, currentUserId, onToggleLike, onReact, onReport }) => {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
@@ -271,6 +271,15 @@ const FeedCard = ({ item, currentUserId, onToggleLike, onReact }) => {
           <Share2 size={16} />
           Share
         </button>
+        {item.actor_id !== currentUserId && (
+          <button
+            type="button"
+            onClick={() => onReport(item.id)}
+            className="flex items-center gap-2 text-[13px] font-semibold text-[#6B7280] hover:text-red-400 transition-colors ml-auto"
+          >
+            <Flag size={14} />
+          </button>
+        )}
       </div>
 
       {/* Comments section */}
@@ -614,8 +623,11 @@ const SocialFeed = ({ embedded = false }) => {
   const FEED_TABS = ['friends', 'mine'];
   const [tab, setTab]                 = useState('friends');
   const [friendStreaks, setFriendStreaks] = useState([]);
+  const [reportedIds, setReportedIds] = useState(new Set());
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
+
+  useEffect(() => { document.title = 'Social Feed | IronForge'; }, []);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {
@@ -637,9 +649,10 @@ const SocialFeed = ({ embedded = false }) => {
 
     const actorIds = [user.id, ...acceptedIds];
 
-    // Only fetch today's posts to reduce DB load
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // Fetch posts from the last 7 days so the feed has enough content
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
 
     // Fetch feed items and friend streaks in parallel
     const [{ data: items }, streakData] = await Promise.all([
@@ -647,15 +660,15 @@ const SocialFeed = ({ embedded = false }) => {
         .from('activity_feed_items')
         .select('*, profiles!actor_id(full_name, username, avatar_url)')
         .in('actor_id', actorIds)
-        .gte('created_at', todayStart.toISOString())
+        .gte('created_at', weekAgo.toISOString())
         .order('created_at', { ascending: false })
         .limit(50),
       // Fetch recent sessions for friends to compute streaks
       acceptedIds.length > 0
         ? supabase
             .from('workout_sessions')
-            .select('user_id, completed_at')
-            .in('user_id', acceptedIds)
+            .select('profile_id, completed_at')
+            .in('profile_id', acceptedIds)
             .not('completed_at', 'is', null)
             .order('completed_at', { ascending: false })
             .limit(500)
@@ -667,8 +680,8 @@ const SocialFeed = ({ embedded = false }) => {
       // Group sessions by user
       const sessionsByUser = {};
       streakData.data.forEach(s => {
-        if (!sessionsByUser[s.user_id]) sessionsByUser[s.user_id] = [];
-        sessionsByUser[s.user_id].push(s.completed_at);
+        if (!sessionsByUser[s.profile_id]) sessionsByUser[s.profile_id] = [];
+        sessionsByUser[s.profile_id].push(s.completed_at);
       });
 
       // Fetch friend profiles
@@ -842,6 +855,19 @@ const SocialFeed = ({ embedded = false }) => {
     }
   };
 
+  const handleReport = async (feedItemId) => {
+    if (reportedIds.has(feedItemId)) return;
+    const { error } = await supabase.from('content_reports').insert({
+      reporter_id: user.id,
+      feed_item_id: feedItemId,
+      gym_id: profile.gym_id,
+      reason: 'inappropriate',
+    });
+    if (!error) {
+      setReportedIds(prev => new Set([...prev, feedItemId]));
+    }
+  };
+
   const pendingIncoming = friendships.filter(
     f => f.addressee_id === user?.id && f.status === 'pending'
   ).length;
@@ -966,6 +992,7 @@ const SocialFeed = ({ embedded = false }) => {
                       currentUserId={user.id}
                       onToggleLike={handleReact}
                       onReact={handleReact}
+                      onReport={handleReport}
                     />
                   ))}
                   <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>
@@ -990,6 +1017,7 @@ const SocialFeed = ({ embedded = false }) => {
                       currentUserId={user.id}
                       onToggleLike={handleReact}
                       onReact={handleReact}
+                      onReport={handleReport}
                     />
                   ))}
                   <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">— You're all caught up —</p>

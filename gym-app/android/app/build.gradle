@@ -16,10 +16,26 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // Configure these in ~/.gradle/gradle.properties or CI environment:
+            // IRONFORGE_RELEASE_STORE_FILE, IRONFORGE_RELEASE_STORE_PASSWORD,
+            // IRONFORGE_RELEASE_KEY_ALIAS, IRONFORGE_RELEASE_KEY_PASSWORD
+            if (project.hasProperty('IRONFORGE_RELEASE_STORE_FILE')) {
+                storeFile file(IRONFORGE_RELEASE_STORE_FILE)
+                storePassword IRONFORGE_RELEASE_STORE_PASSWORD
+                keyAlias IRONFORGE_RELEASE_KEY_ALIAS
+                keyPassword IRONFORGE_RELEASE_KEY_PASSWORD
+            }
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (project.hasProperty('IRONFORGE_RELEASE_STORE_FILE')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

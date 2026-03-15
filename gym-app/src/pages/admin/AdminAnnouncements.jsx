@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Megaphone, X, Trash2, Calendar } from 'lucide-react';
+import { Plus, Megaphone, X, Trash2, Calendar, Pencil } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -106,6 +106,10 @@ export default function AdminAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm]   = useState({ title: '', message: '', type: 'news' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const load = async () => {
     if (!profile?.gym_id) return;
@@ -118,11 +122,35 @@ export default function AdminAnnouncements() {
     setLoading(false);
   };
 
+  useEffect(() => { document.title = 'Admin - Announcements | IronForge'; }, []);
   useEffect(() => { load(); }, [profile?.gym_id]);
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this announcement?')) return;
     await supabase.from('announcements').delete().eq('id', id);
+    setConfirmDeleteId(null);
+    load();
+  };
+
+  const startEditing = (a) => {
+    setEditingId(a.id);
+    setEditForm({ title: a.title, message: a.message, type: a.type });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditForm({ title: '', message: '', type: 'news' });
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm.title || !editForm.message) return;
+    setEditSaving(true);
+    const { error: err } = await supabase
+      .from('announcements')
+      .update({ title: editForm.title, message: editForm.message, type: editForm.type })
+      .eq('id', editingId);
+    setEditSaving(false);
+    if (err) return;
+    cancelEditing();
     load();
   };
 
@@ -155,36 +183,96 @@ export default function AdminAnnouncements() {
         <div className="space-y-3">
           {announcements.map(a => {
             const isScheduled = a.published_at && isFuture(new Date(a.published_at));
+            const isEditing = editingId === a.id;
             return (
               <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 hover:border-white/20 hover:bg-white/[0.03] transition-all">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB]">{sanitize(a.title)}</p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
-                        {a.type}
-                      </span>
-                      {isScheduled && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
-                          Scheduled
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Title</label>
+                      <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Message</label>
+                      <textarea value={editForm.message} onChange={e => setEditForm(p => ({ ...p, message: e.target.value }))} rows={3}
+                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {TYPE_OPTS.map(t => (
+                          <button key={t.value} onClick={() => setEditForm(p => ({ ...p, type: t.value }))}
+                            className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
+                              editForm.type === t.value ? t.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                            }`}>
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={cancelEditing}
+                        className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
+                        Cancel
+                      </button>
+                      <button onClick={handleEditSave} disabled={editSaving || !editForm.title || !editForm.message}
+                        className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-black bg-[#D4AF37] disabled:opacity-50">
+                        {editSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <p className="text-[14px] font-semibold text-[#E5E7EB]">{sanitize(a.title)}</p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
+                          {a.type}
                         </span>
+                        {isScheduled && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
+                            Scheduled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{sanitize(a.message)}</p>
+                      {a.published_at && (
+                        <div className="flex items-center gap-1 mt-2">
+                          <Calendar size={11} className="text-[#4B5563]" />
+                          <p className="text-[11px] text-[#6B7280]">
+                            {isScheduled ? 'Scheduled for' : 'Published'}{' '}
+                            {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a')}
+                          </p>
+                        </div>
                       )}
                     </div>
-                    <p className="text-[13px] text-[#9CA3AF] leading-relaxed">{sanitize(a.message)}</p>
-                    {a.published_at && (
-                      <div className="flex items-center gap-1 mt-2">
-                        <Calendar size={11} className="text-[#4B5563]" />
-                        <p className="text-[11px] text-[#6B7280]">
-                          {isScheduled ? 'Scheduled for' : 'Published'}{' '}
-                          {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a')}
-                        </p>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {confirmDeleteId === a.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-[#9CA3AF]">Delete?</span>
+                          <button onClick={() => handleDelete(a.id)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                            Confirm
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(null)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button onClick={() => startEditing(a)} className="text-[#4B5563] hover:text-[#D4AF37] transition-colors p-1">
+                            <Pencil size={15} />
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(a.id)} className="text-[#4B5563] hover:text-red-400 transition-colors p-1">
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => handleDelete(a.id)} className="text-[#4B5563] hover:text-red-400 transition-colors p-1 flex-shrink-0">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+                )}
               </div>
             );
           })}
