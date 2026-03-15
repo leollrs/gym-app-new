@@ -1,5 +1,28 @@
 -- ============================================================
--- 0040 — Audit Log for Platform Super Admin
+-- 0040 — Audit Log + Super-Admin RLS
+-- ============================================================
+
+-- ============================================================
+-- Super-admin helper (SECURITY DEFINER avoids RLS recursion
+-- when policies on `profiles` need to check the caller's role)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+      AND role = 'super_admin'
+  );
+$$;
+
+-- ============================================================
+-- Audit log table
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -20,18 +43,10 @@ CREATE INDEX idx_audit_log_created  ON audit_log (created_at DESC);
 
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
--- Only super_admin can read the full audit log
 CREATE POLICY "super_admin can read all audit_log"
   ON audit_log FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Gym admins can read audit entries scoped to their gym
 CREATE POLICY "gym admin can read own gym audit_log"
   ON audit_log FOR SELECT
   USING (
@@ -44,7 +59,6 @@ CREATE POLICY "gym admin can read own gym audit_log"
     )
   );
 
--- Insert allowed for authenticated users (typically via application code)
 CREATE POLICY "authenticated can insert audit_log"
   ON audit_log FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
@@ -53,137 +67,54 @@ CREATE POLICY "authenticated can insert audit_log"
 -- Super-admin RLS policies for cross-gym access
 -- ============================================================
 
--- Allow super_admin to read ALL gyms (including inactive)
 DROP POLICY IF EXISTS "anyone can read active gyms" ON gyms;
 CREATE POLICY "anyone can read active gyms"
   ON gyms FOR SELECT
   USING (
     is_active = true
-    OR EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
+    OR public.is_super_admin()
   );
 
--- Allow super_admin to update any gym
 CREATE POLICY "super_admin can update any gym"
   ON gyms FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to insert gyms
 CREATE POLICY "super_admin can insert gyms"
   ON gyms FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  WITH CHECK (public.is_super_admin());
 
--- Allow super_admin to read ALL profiles across gyms
 CREATE POLICY "super_admin can read all profiles"
   ON profiles FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles AS p
-      WHERE p.id = auth.uid()
-        AND p.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to update any profile (role changes, status changes)
 CREATE POLICY "super_admin can update any profile"
   ON profiles FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles AS p
-      WHERE p.id = auth.uid()
-        AND p.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to read all workout_sessions
 CREATE POLICY "super_admin can read all sessions"
   ON workout_sessions FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to read all check_ins
 CREATE POLICY "super_admin can read all check_ins"
   ON check_ins FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to read all churn_risk_scores
 CREATE POLICY "super_admin can read all churn_scores"
   ON churn_risk_scores FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to manage global exercises (gym_id IS NULL)
 CREATE POLICY "super_admin can insert global exercises"
   ON exercises FOR INSERT
-  WITH CHECK (
-    gym_id IS NULL
-    AND EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  WITH CHECK (gym_id IS NULL AND public.is_super_admin());
 
 CREATE POLICY "super_admin can delete global exercises"
   ON exercises FOR DELETE
-  USING (
-    gym_id IS NULL
-    AND EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (gym_id IS NULL AND public.is_super_admin());
 
--- Allow super_admin to read all gym_branding
 CREATE POLICY "super_admin can read all gym_branding"
   ON gym_branding FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
 
--- Allow super_admin to read all gym_invites
 CREATE POLICY "super_admin can read all gym_invites"
   ON gym_invites FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role = 'super_admin'
-    )
-  );
+  USING (public.is_super_admin());
