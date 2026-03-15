@@ -17,6 +17,13 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { exercises as localExercises } from '../../data/exercises';
+
+// Build a lookup of local hardcoded videos by exercise name
+const LOCAL_VIDEO_MAP = {};
+localExercises.forEach(ex => {
+  if (ex.videoUrl) LOCAL_VIDEO_MAP[ex.name.toLowerCase()] = ex.videoUrl;
+});
 
 const MUSCLE_GROUPS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
@@ -102,26 +109,37 @@ function Field({ label, children }) {
 
 /* ───────────────────────── Video preview helper ───────────────────────── */
 
-function VideoPreview({ videoUrl }) {
-  const [signedUrl, setSignedUrl] = useState(null);
+function VideoPreview({ videoUrl, exerciseName }) {
+  const [resolvedUrl, setResolvedUrl] = useState(null);
+
+  // Check for local hardcoded video as fallback
+  const localVideo = exerciseName ? LOCAL_VIDEO_MAP[exerciseName.toLowerCase()] : null;
+  const effectiveUrl = videoUrl || localVideo;
 
   useEffect(() => {
-    if (!videoUrl) return;
+    if (!effectiveUrl) { setResolvedUrl(null); return; }
+    // Local public path (starts with /) — use directly
+    if (effectiveUrl.startsWith('/')) {
+      setResolvedUrl(effectiveUrl);
+      return;
+    }
+    // Storage path — get signed URL
     let cancelled = false;
     (async () => {
       const { data } = await supabase.storage
         .from('exercise-videos')
-        .createSignedUrl(videoUrl, 3600);
-      if (!cancelled && data?.signedUrl) setSignedUrl(data.signedUrl);
+        .createSignedUrl(effectiveUrl, 3600);
+      if (!cancelled && data?.signedUrl) setResolvedUrl(data.signedUrl);
     })();
     return () => { cancelled = true; };
-  }, [videoUrl]);
+  }, [effectiveUrl]);
 
-  if (!videoUrl || !signedUrl) return null;
+  if (!effectiveUrl || !resolvedUrl) return null;
   return (
     <video
-      src={signedUrl}
+      src={resolvedUrl}
       controls
+      playsInline
       className="w-full max-w-sm rounded-lg border border-white/6 mt-2"
       style={{ maxHeight: '200px' }}
     />
@@ -240,7 +258,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                 — {ex.instructions}
               </span>
             )}
-            {ex.video_url && (
+            {(ex.video_url || LOCAL_VIDEO_MAP[ex.name?.toLowerCase()]) && (
               <span className="text-[10px] text-[#D4AF37] flex items-center gap-0.5">
                 <Video className="w-3 h-3" /> Video
               </span>
@@ -316,7 +334,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                   </div>
                 )}
 
-                <VideoPreview videoUrl={ex.video_url} />
+                <VideoPreview videoUrl={ex.video_url} exerciseName={ex.name} />
               </div>
             ) : (
               /* ── Edit form ── */
@@ -351,7 +369,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                 <Field label="Exercise Video (optional)">
                   {ex.video_url && !removeVideo && !newVideoFile && (
                     <div className="mb-2">
-                      <VideoPreview videoUrl={ex.video_url} />
+                      <VideoPreview videoUrl={ex.video_url} exerciseName={ex.name} />
                       <button
                         type="button"
                         onClick={() => setRemoveVideo(true)}
