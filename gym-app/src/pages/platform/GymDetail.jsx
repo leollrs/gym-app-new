@@ -4,6 +4,7 @@ import {
   ArrowLeft, Users, Activity, Settings, Search, Shield, Crown,
   UserCog, ChevronDown, ToggleLeft, ToggleRight, Copy, ExternalLink,
   Dumbbell, MapPin, Clock, Globe, Palette, Link2, RefreshCw,
+  Trophy, BookOpen, Award, Gift, Plus, X, Trash2, Edit3, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -46,9 +47,18 @@ const TIER_OPTIONS = ['free', 'starter', 'pro', 'enterprise'];
 const ROLE_OPTIONS = ['member', 'trainer', 'admin'];
 const STATUS_ACTIONS = ['active', 'frozen', 'banned'];
 
+const CHALLENGE_TYPES = ['consistency', 'volume', 'pr', 'team'];
+const CHALLENGE_STATUS_STYLES = {
+  active:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  upcoming: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  ended:    'bg-white/6 text-[#6B7280] border-white/10',
+};
+
+const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'];
+
 // ── Main component ──────────────────────────────────────────
 export default function GymDetail() {
-  const { id } = useParams();
+  const { gymId } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
 
@@ -65,12 +75,27 @@ export default function GymDetail() {
   const [editingGym, setEditingGym] = useState({ name: '', slug: '' });
   const [savingGym, setSavingGym] = useState(false);
 
+  // New tab states
+  const [challenges, setChallenges] = useState([]);
+  const [programs, setPrograms] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+  const [rewardsAvailable, setRewardsAvailable] = useState(null); // null = unknown, false = no table, array = data
+
+  // Modal states
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [editingChallenge, setEditingChallenge] = useState(null);
+  const [showProgramModal, setShowProgramModal] = useState(false);
+  const [editingProgram, setEditingProgram] = useState(null);
+  const [showAchievementModal, setShowAchievementModal] = useState(false);
+  const [editingAchievement, setEditingAchievement] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { type, id }
+
   // ── Fetch gym + branding ──────────────────────────────────
   const fetchGym = async () => {
     const { data } = await supabase
       .from('gyms')
       .select('*')
-      .eq('id', id)
+      .eq('id', gymId)
       .single();
     if (data) {
       setGym(data);
@@ -80,7 +105,7 @@ export default function GymDetail() {
     const { data: b } = await supabase
       .from('gym_branding')
       .select('*')
-      .eq('gym_id', id)
+      .eq('gym_id', gymId)
       .maybeSingle();
     setBranding(b);
   };
@@ -90,7 +115,7 @@ export default function GymDetail() {
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, username, role, created_at, last_active_at, membership_status')
-      .eq('gym_id', id)
+      .eq('gym_id', gymId)
       .order('created_at', { ascending: false });
     setMembers(data ?? []);
   };
@@ -100,7 +125,7 @@ export default function GymDetail() {
     const { data: sess } = await supabase
       .from('workout_sessions')
       .select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)')
-      .eq('gym_id', id)
+      .eq('gym_id', gymId)
       .order('started_at', { ascending: false })
       .limit(20);
     setSessions(sess ?? []);
@@ -108,7 +133,7 @@ export default function GymDetail() {
     const { data: ci } = await supabase
       .from('check_ins')
       .select('id, profile_id, checked_in_at, profiles(full_name)')
-      .eq('gym_id', id)
+      .eq('gym_id', gymId)
       .order('checked_in_at', { ascending: false })
       .limit(20);
     setCheckIns(ci ?? []);
@@ -119,19 +144,76 @@ export default function GymDetail() {
     const { data } = await supabase
       .from('gym_invites')
       .select('*')
-      .eq('gym_id', id)
+      .eq('gym_id', gymId)
       .order('expires_at', { ascending: false });
     setInvites(data ?? []);
+  };
+
+  // ── Fetch challenges ──────────────────────────────────────
+  const fetchChallenges = async () => {
+    const { data } = await supabase
+      .from('challenges')
+      .select('*, challenge_participants(id)')
+      .eq('gym_id', gymId)
+      .order('start_date', { ascending: false });
+    setChallenges(data ?? []);
+  };
+
+  // ── Fetch programs ────────────────────────────────────────
+  const fetchPrograms = async () => {
+    const { data } = await supabase
+      .from('gym_programs')
+      .select('*')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false });
+    setPrograms(data ?? []);
+  };
+
+  // ── Fetch achievements ────────────────────────────────────
+  const fetchAchievements = async () => {
+    const { data } = await supabase
+      .from('achievement_definitions')
+      .select('*, user_achievements(id)')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false });
+    setAchievements(data ?? []);
+  };
+
+  // ── Fetch rewards ─────────────────────────────────────────
+  const fetchRewards = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reward_points')
+        .select('*')
+        .eq('gym_id', gymId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        setRewardsAvailable(false);
+      } else {
+        setRewardsAvailable(data ?? []);
+      }
+    } catch {
+      setRewardsAvailable(false);
+    }
   };
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([fetchGym(), fetchMembers(), fetchActivity(), fetchInvites()]);
+      await Promise.all([
+        fetchGym(),
+        fetchMembers(),
+        fetchActivity(),
+        fetchInvites(),
+        fetchChallenges(),
+        fetchPrograms(),
+        fetchAchievements(),
+        fetchRewards(),
+      ]);
       setLoading(false);
     };
     load();
-  }, [id]);
+  }, [gymId]);
 
   // ── Computed stats ────────────────────────────────────────
   const stats = useMemo(() => {
@@ -149,7 +231,7 @@ export default function GymDetail() {
     const { error } = await supabase
       .from('gyms')
       .update({ is_active: !gym.is_active })
-      .eq('id', id);
+      .eq('id', gymId);
     if (!error) setGym(prev => ({ ...prev, is_active: !prev.is_active }));
   };
 
@@ -157,7 +239,7 @@ export default function GymDetail() {
     const { error } = await supabase
       .from('gyms')
       .update({ subscription_tier: tier })
-      .eq('id', id);
+      .eq('id', gymId);
     if (!error) {
       setGym(prev => ({ ...prev, subscription_tier: tier }));
       setEditingTier(false);
@@ -189,9 +271,91 @@ export default function GymDetail() {
     const { error } = await supabase
       .from('gyms')
       .update({ name: editingGym.name, slug: editingGym.slug })
-      .eq('id', id);
+      .eq('id', gymId);
     if (!error) setGym(prev => ({ ...prev, name: editingGym.name, slug: editingGym.slug }));
     setSavingGym(false);
+  };
+
+  // ── Challenge CRUD ────────────────────────────────────────
+  const saveChallenge = async (formData) => {
+    if (editingChallenge?.id) {
+      const { error } = await supabase
+        .from('challenges')
+        .update(formData)
+        .eq('id', editingChallenge.id);
+      if (!error) await fetchChallenges();
+    } else {
+      const { error } = await supabase
+        .from('challenges')
+        .insert({ ...formData, gym_id: gymId });
+      if (!error) await fetchChallenges();
+    }
+    setShowChallengeModal(false);
+    setEditingChallenge(null);
+  };
+
+  const deleteChallenge = async (challengeId) => {
+    const { error } = await supabase.from('challenges').delete().eq('id', challengeId);
+    if (!error) setChallenges(prev => prev.filter(c => c.id !== challengeId));
+    setDeleteConfirm(null);
+  };
+
+  // ── Program CRUD ──────────────────────────────────────────
+  const saveProgram = async (formData) => {
+    if (editingProgram?.id) {
+      const { error } = await supabase
+        .from('gym_programs')
+        .update(formData)
+        .eq('id', editingProgram.id);
+      if (!error) await fetchPrograms();
+    } else {
+      const { error } = await supabase
+        .from('gym_programs')
+        .insert({ ...formData, gym_id: gymId });
+      if (!error) await fetchPrograms();
+    }
+    setShowProgramModal(false);
+    setEditingProgram(null);
+  };
+
+  const toggleProgramPublish = async (prog) => {
+    const { error } = await supabase
+      .from('gym_programs')
+      .update({ is_published: !prog.is_published })
+      .eq('id', prog.id);
+    if (!error) {
+      setPrograms(prev => prev.map(p => p.id === prog.id ? { ...p, is_published: !p.is_published } : p));
+    }
+  };
+
+  const deleteProgram = async (programId) => {
+    const { error } = await supabase.from('gym_programs').delete().eq('id', programId);
+    if (!error) setPrograms(prev => prev.filter(p => p.id !== programId));
+    setDeleteConfirm(null);
+  };
+
+  // ── Achievement CRUD ──────────────────────────────────────
+  const saveAchievement = async (formData) => {
+    if (editingAchievement?.id) {
+      const { error } = await supabase
+        .from('achievement_definitions')
+        .update(formData)
+        .eq('id', editingAchievement.id);
+      if (!error) await fetchAchievements();
+    } else {
+      const { error } = await supabase
+        .from('achievement_definitions')
+        .insert({ ...formData, gym_id: gymId });
+      if (!error) await fetchAchievements();
+    }
+    setShowAchievementModal(false);
+    setEditingAchievement(null);
+  };
+
+  const deleteAchievement = async (achievementId) => {
+    const { error } = await supabase.from('achievement_definitions').delete().eq('id', achievementId);
+    if (!error) setAchievements(prev => prev.filter(a => a.id !== achievementId));
+    setDeleteConfirm(null);
   };
 
   // ── Filtered members ──────────────────────────────────────
@@ -204,6 +368,15 @@ export default function GymDetail() {
       (m.role ?? '').toLowerCase().includes(q)
     );
   }, [members, search]);
+
+  // ── Challenge status helper ───────────────────────────────
+  const getChallengeStatus = (c) => {
+    const now = new Date();
+    if (c.status) return c.status;
+    if (c.end_date && new Date(c.end_date) < now) return 'ended';
+    if (c.start_date && new Date(c.start_date) > now) return 'upcoming';
+    return 'active';
+  };
 
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
@@ -226,9 +399,13 @@ export default function GymDetail() {
   }
 
   const tabs = [
-    { key: 'members',  label: 'Members',  icon: Users },
-    { key: 'activity', label: 'Activity', icon: Activity },
-    { key: 'settings', label: 'Settings', icon: Settings },
+    { key: 'members',      label: 'Members',      icon: Users },
+    { key: 'activity',     label: 'Activity',     icon: Activity },
+    { key: 'challenges',   label: 'Challenges',   icon: Trophy },
+    { key: 'programs',     label: 'Programs',     icon: BookOpen },
+    { key: 'achievements', label: 'Achievements', icon: Award },
+    { key: 'rewards',      label: 'Rewards',      icon: Gift },
+    { key: 'settings',     label: 'Settings',     icon: Settings },
   ];
 
   return (
@@ -321,19 +498,19 @@ export default function GymDetail() {
         </div>
 
         {/* ── Tabs ───────────────────────────────────────────── */}
-        <div className="flex gap-1 border-b border-white/6 mb-6">
+        <div className="flex gap-1 border-b border-white/6 mb-6 overflow-x-auto scrollbar-hide">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${
                 tab === t.key
                   ? 'bg-white/[0.03] text-[#D4AF37] border-b-2 border-[#D4AF37]'
                   : 'text-[#6B7280] hover:text-[#9CA3AF]'
               }`}
             >
               <t.icon className="w-4 h-4" />
-              {t.label}
+              <span className="hidden sm:inline">{t.label}</span>
             </button>
           ))}
         </div>
@@ -385,7 +562,7 @@ export default function GymDetail() {
 
                   {/* Username */}
                   <div className="flex items-center">
-                    <span className="text-[12px] text-[#6B7280] font-mono truncate">@{m.username ?? '—'}</span>
+                    <span className="text-[12px] text-[#6B7280] font-mono truncate">@{m.username ?? '\u2014'}</span>
                   </div>
 
                   {/* Role dropdown */}
@@ -404,7 +581,7 @@ export default function GymDetail() {
                   {/* Joined */}
                   <div className="flex items-center">
                     <span className="text-[12px] text-[#6B7280]">
-                      {m.created_at ? format(new Date(m.created_at), 'MMM d, yyyy') : '—'}
+                      {m.created_at ? format(new Date(m.created_at), 'MMM d, yyyy') : '\u2014'}
                     </span>
                   </div>
 
@@ -470,7 +647,7 @@ export default function GymDetail() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-[#6B7280]">
-                        <span>{s.started_at ? format(new Date(s.started_at), 'MMM d, h:mm a') : '—'}</span>
+                        <span>{s.started_at ? format(new Date(s.started_at), 'MMM d, h:mm a') : '\u2014'}</span>
                         {s.total_volume_lbs != null && (
                           <span>{Number(s.total_volume_lbs).toLocaleString()} lbs</span>
                         )}
@@ -497,13 +674,279 @@ export default function GymDetail() {
                         {ci.profiles?.full_name ?? 'Unknown'}
                       </span>
                       <span className="text-[11px] text-[#6B7280]">
-                        {ci.checked_in_at ? format(new Date(ci.checked_in_at), 'MMM d, h:mm a') : '—'}
+                        {ci.checked_in_at ? format(new Date(ci.checked_in_at), 'MMM d, h:mm a') : '\u2014'}
                       </span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── Challenges tab ─────────────────────────────────── */}
+        {tab === 'challenges' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Challenges</h3>
+              <button
+                onClick={() => { setEditingChallenge(null); setShowChallengeModal(true); }}
+                className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Challenge
+              </button>
+            </div>
+
+            {challenges.length === 0 ? (
+              <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
+                <Trophy className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
+                <p className="text-[#6B7280] text-sm">No challenges yet. Create your first one!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {challenges.map(c => {
+                  const status = getChallengeStatus(c);
+                  const statusStyle = CHALLENGE_STATUS_STYLES[status] ?? CHALLENGE_STATUS_STYLES.ended;
+                  const participantCount = c.challenge_participants?.length ?? 0;
+                  return (
+                    <div key={c.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{c.title}</h4>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle}`}>
+                              {status}
+                            </span>
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
+                              {c.type ?? 'general'}
+                            </span>
+                          </div>
+                          {c.description && (
+                            <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{c.description}</p>
+                          )}
+                          <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
+                            {c.start_date && <span>Start: {format(new Date(c.start_date), 'MMM d, yyyy')}</span>}
+                            {c.end_date && <span>End: {format(new Date(c.end_date), 'MMM d, yyyy')}</span>}
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3 h-3" />
+                              {participantCount} participants
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setEditingChallenge(c); setShowChallengeModal(true); }}
+                            className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: 'challenge', id: c.id, name: c.title })}
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Programs tab ───────────────────────────────────── */}
+        {tab === 'programs' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Programs</h3>
+              <button
+                onClick={() => { setEditingProgram(null); setShowProgramModal(true); }}
+                className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Program
+              </button>
+            </div>
+
+            {programs.length === 0 ? (
+              <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
+                <BookOpen className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
+                <p className="text-[#6B7280] text-sm">No programs yet. Create your first one!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {programs.map(p => (
+                  <div key={p.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{p.name}</h4>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            p.is_published
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          }`}>
+                            {p.is_published ? 'Published' : 'Draft'}
+                          </span>
+                          {p.difficulty_level && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/6 text-[#9CA3AF] border border-white/10">
+                              {p.difficulty_level}
+                            </span>
+                          )}
+                        </div>
+                        {p.description && (
+                          <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{p.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 text-[11px] text-[#6B7280]">
+                          {p.duration_weeks && <span>{p.duration_weeks} weeks</span>}
+                          {p.created_at && <span>Created {format(new Date(p.created_at), 'MMM d, yyyy')}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleProgramPublish(p)}
+                          className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                          title={p.is_published ? 'Unpublish' : 'Publish'}
+                        >
+                          {p.is_published
+                            ? <ToggleRight className="w-4 h-4 text-emerald-400" />
+                            : <ToggleLeft className="w-4 h-4" />
+                          }
+                        </button>
+                        <button
+                          onClick={() => { setEditingProgram(p); setShowProgramModal(true); }}
+                          className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm({ type: 'program', id: p.id, name: p.name })}
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Achievements tab ───────────────────────────────── */}
+        {tab === 'achievements' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Achievement Definitions</h3>
+              <button
+                onClick={() => { setEditingAchievement(null); setShowAchievementModal(true); }}
+                className="flex items-center gap-1.5 bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Achievement
+              </button>
+            </div>
+
+            {achievements.length === 0 ? (
+              <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
+                <Award className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
+                <p className="text-[#6B7280] text-sm">No achievements defined yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {achievements.map(a => {
+                  const earnedCount = a.user_achievements?.length ?? 0;
+                  return (
+                    <div key={a.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{a.name}</h4>
+                            {a.type && (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
+                                {a.type}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {earnedCount} earned
+                            </span>
+                          </div>
+                          {a.description && (
+                            <p className="text-[12px] text-[#6B7280] mb-1 line-clamp-1">{a.description}</p>
+                          )}
+                          {a.requirement_value != null && (
+                            <span className="text-[11px] text-[#6B7280]">
+                              Requirement: {a.requirement_value}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setEditingAchievement(a); setShowAchievementModal(true); }}
+                            className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: 'achievement', id: a.id, name: a.name })}
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Rewards tab ────────────────────────────────────── */}
+        {tab === 'rewards' && (
+          <div>
+            {rewardsAvailable === false ? (
+              <div className="bg-[#0F172A] border border-white/6 rounded-xl py-20 text-center">
+                <Gift className="w-10 h-10 text-[#D4AF37]/40 mx-auto mb-4" />
+                <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">Rewards System Coming Soon</h3>
+                <p className="text-[12px] text-[#6B7280] max-w-sm mx-auto">
+                  The rewards and points system is under development. Members will be able to earn and redeem points for achievements, challenges, and consistency.
+                </p>
+              </div>
+            ) : Array.isArray(rewardsAvailable) && rewardsAvailable.length === 0 ? (
+              <div className="bg-[#0F172A] border border-white/6 rounded-xl py-16 text-center">
+                <Gift className="w-8 h-8 text-[#6B7280] mx-auto mb-3" />
+                <p className="text-[#6B7280] text-sm">No reward items configured for this gym.</p>
+              </div>
+            ) : Array.isArray(rewardsAvailable) ? (
+              <div className="space-y-3">
+                {rewardsAvailable.map(r => (
+                  <div key={r.id} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                        <Gift className="w-5 h-5 text-[#D4AF37]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name ?? r.title ?? 'Reward'}</h4>
+                        {r.description && (
+                          <p className="text-[12px] text-[#6B7280] line-clamp-1">{r.description}</p>
+                        )}
+                      </div>
+                      {r.points != null && (
+                        <span className="text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-lg">
+                          {r.points} pts
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -573,7 +1016,7 @@ export default function GymDetail() {
                           className="w-8 h-8 rounded-lg border border-white/10"
                           style={{ backgroundColor: branding.primary_color ?? '#D4AF37' }}
                         />
-                        <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.primary_color ?? '—'}</span>
+                        <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.primary_color ?? '\u2014'}</span>
                       </div>
                     </div>
                     <div>
@@ -583,7 +1026,7 @@ export default function GymDetail() {
                           className="w-8 h-8 rounded-lg border border-white/10"
                           style={{ backgroundColor: branding.accent_color ?? '#E6C766' }}
                         />
-                        <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.accent_color ?? '—'}</span>
+                        <span className="text-[12px] text-[#9CA3AF] font-mono">{branding.accent_color ?? '\u2014'}</span>
                       </div>
                     </div>
                   </div>
@@ -652,6 +1095,421 @@ export default function GymDetail() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Challenge Modal ──────────────────────────────────── */}
+      {showChallengeModal && (
+        <ChallengeModal
+          challenge={editingChallenge}
+          onSave={saveChallenge}
+          onClose={() => { setShowChallengeModal(false); setEditingChallenge(null); }}
+        />
+      )}
+
+      {/* ── Program Modal ────────────────────────────────────── */}
+      {showProgramModal && (
+        <ProgramModal
+          program={editingProgram}
+          onSave={saveProgram}
+          onClose={() => { setShowProgramModal(false); setEditingProgram(null); }}
+        />
+      )}
+
+      {/* ── Achievement Modal ────────────────────────────────── */}
+      {showAchievementModal && (
+        <AchievementModal
+          achievement={editingAchievement}
+          onSave={saveAchievement}
+          onClose={() => { setShowAchievementModal(false); setEditingAchievement(null); }}
+        />
+      )}
+
+      {/* ── Delete Confirmation ──────────────────────────────── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">Delete {deleteConfirm.type}?</h3>
+            <p className="text-[13px] text-[#6B7280] mb-6">
+              Are you sure you want to delete <span className="text-[#E5E7EB]">{deleteConfirm.name}</span>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (deleteConfirm.type === 'challenge') deleteChallenge(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'program') deleteProgram(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'achievement') deleteAchievement(deleteConfirm.id);
+                }}
+                className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Challenge Modal Component ─────────────────────────────────
+function ChallengeModal({ challenge, onSave, onClose }) {
+  const [form, setForm] = useState({
+    title: challenge?.title ?? '',
+    type: challenge?.type ?? 'consistency',
+    description: challenge?.description ?? '',
+    start_date: challenge?.start_date ? challenge.start_date.slice(0, 10) : '',
+    end_date: challenge?.end_date ? challenge.end_date.slice(0, 10) : '',
+    scoring_method: challenge?.scoring_method ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    setSaving(true);
+    await onSave({
+      title: form.title.trim(),
+      type: form.type,
+      description: form.description.trim() || null,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      scoring_method: form.scoring_method.trim() || null,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
+            {challenge ? 'Edit Challenge' : 'New Challenge'}
+          </h3>
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Title *</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))}
+              placeholder="Challenge title"
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Type</label>
+            <select
+              value={form.type}
+              onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
+            >
+              {CHALLENGE_TYPES.map(t => (
+                <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Description</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describe the challenge..."
+              rows={3}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Start Date</label>
+              <input
+                type="date"
+                value={form.start_date}
+                onChange={e => setForm(prev => ({ ...prev, start_date: e.target.value }))}
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">End Date</label>
+              <input
+                type="date"
+                value={form.end_date}
+                onChange={e => setForm(prev => ({ ...prev, end_date: e.target.value }))}
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Scoring Method</label>
+            <input
+              type="text"
+              value={form.scoring_method}
+              onChange={e => setForm(prev => ({ ...prev, scoring_method: e.target.value }))}
+              placeholder="e.g., total_volume, check_in_count"
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : challenge ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Program Modal Component ───────────────────────────────────
+function ProgramModal({ program, onSave, onClose }) {
+  const [form, setForm] = useState({
+    name: program?.name ?? '',
+    description: program?.description ?? '',
+    difficulty_level: program?.difficulty_level ?? 'beginner',
+    duration_weeks: program?.duration_weeks ?? '',
+    is_published: program?.is_published ?? false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    await onSave({
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      difficulty_level: form.difficulty_level,
+      duration_weeks: form.duration_weeks ? parseInt(form.duration_weeks, 10) : null,
+      is_published: form.is_published,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
+            {program ? 'Edit Program' : 'New Program'}
+          </h3>
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Name *</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Program name"
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Description</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describe the program..."
+              rows={3}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Difficulty</label>
+              <select
+                value={form.difficulty_level}
+                onChange={e => setForm(prev => ({ ...prev, difficulty_level: e.target.value }))}
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
+              >
+                {DIFFICULTY_LEVELS.map(d => (
+                  <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Duration (weeks)</label>
+              <input
+                type="number"
+                value={form.duration_weeks}
+                onChange={e => setForm(prev => ({ ...prev, duration_weeks: e.target.value }))}
+                placeholder="e.g., 8"
+                min="1"
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_published"
+              checked={form.is_published}
+              onChange={e => setForm(prev => ({ ...prev, is_published: e.target.checked }))}
+              className="accent-[#D4AF37]"
+            />
+            <label htmlFor="is_published" className="text-[12px] text-[#9CA3AF]">Publish immediately</label>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : program ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Achievement Modal Component ───────────────────────────────
+function AchievementModal({ achievement, onSave, onClose }) {
+  const [form, setForm] = useState({
+    name: achievement?.name ?? '',
+    description: achievement?.description ?? '',
+    type: achievement?.type ?? '',
+    requirement_value: achievement?.requirement_value ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    await onSave({
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      type: form.type.trim() || null,
+      requirement_value: form.requirement_value !== '' ? Number(form.requirement_value) : null,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
+            {achievement ? 'Edit Achievement' : 'New Achievement'}
+          </h3>
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Name *</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Achievement name"
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Description</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Describe the achievement..."
+              rows={3}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Type</label>
+              <input
+                type="text"
+                value={form.type}
+                onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))}
+                placeholder="e.g., streak, volume, pr"
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Requirement Value</label>
+              <input
+                type="number"
+                value={form.requirement_value}
+                onChange={e => setForm(prev => ({ ...prev, requirement_value: e.target.value }))}
+                placeholder="e.g., 30"
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : achievement ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

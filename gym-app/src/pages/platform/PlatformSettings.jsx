@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ChevronDown,
+  ChevronUp,
   Search,
   Plus,
   Trash2,
@@ -11,6 +12,9 @@ import {
   Trophy,
   BookOpen,
   BarChart3,
+  Pencil,
+  ExternalLink,
+  Video,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -94,6 +98,261 @@ function Field({ label, children }) {
       <span className="text-[12px] text-[#9CA3AF] mb-1 block">{label}</span>
       {children}
     </label>
+  );
+}
+
+/* ───────────────────────── Video URL helper ───────────────────────── */
+
+function getYouTubeThumbnail(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return match ? `https://img.youtube.com/vi/${match[1]}/mqdefault.jpg` : null;
+}
+
+function VideoUrlDisplay({ url }) {
+  if (!url) return null;
+  const thumbnail = getYouTubeThumbnail(url);
+  return (
+    <div className="mt-1.5">
+      {thumbnail ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block group">
+          <div className="relative w-32 h-20 rounded-md overflow-hidden border border-white/6">
+            <img src={thumbnail} alt="Video thumbnail" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Video className="w-5 h-5 text-white" />
+            </div>
+          </div>
+        </a>
+      ) : (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] text-[#D4AF37] hover:text-[#E6C766] transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          <span className="truncate max-w-[200px]">{url}</span>
+        </a>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── Exercise Row (expandable) ───────────────────────── */
+
+function ExerciseRow({ ex, onDelete, onUpdate }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: ex.name || '',
+    muscle_group: ex.muscle_group || '',
+    equipment: ex.equipment || '',
+    default_sets: ex.default_sets ?? 3,
+    default_reps: ex.default_reps ?? 10,
+    instructions: ex.instructions || '',
+    video_url: ex.video_url || '',
+  });
+
+  const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.muscle_group) return;
+    setSaving(true);
+    const updates = {
+      name: form.name.trim(),
+      muscle_group: form.muscle_group,
+      equipment: form.equipment || null,
+      default_sets: Number(form.default_sets) || 3,
+      default_reps: Number(form.default_reps) || 10,
+      instructions: form.instructions.trim() || null,
+      video_url: form.video_url.trim() || null,
+    };
+    const { error } = await supabase.from('exercises').update(updates).eq('id', ex.id);
+    setSaving(false);
+    if (!error) {
+      onUpdate({ ...ex, ...updates });
+      setEditing(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setForm({
+      name: ex.name || '',
+      muscle_group: ex.muscle_group || '',
+      equipment: ex.equipment || '',
+      default_sets: ex.default_sets ?? 3,
+      default_reps: ex.default_reps ?? 10,
+      instructions: ex.instructions || '',
+      video_url: ex.video_url || '',
+    });
+    setEditing(false);
+  };
+
+  const createdDate = ex.created_at
+    ? new Date(ex.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : null;
+
+  return (
+    <div className="bg-[#111827] border border-white/6 rounded-lg">
+      {/* Main row — click to expand */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-start justify-between px-3 py-2.5 text-left"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[13px] font-medium text-[#E5E7EB]">{ex.name}</p>
+            {ex.muscle_group && (
+              <span className="bg-indigo-500/15 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full">
+                {ex.muscle_group}
+              </span>
+            )}
+            {ex.equipment && (
+              <span className="bg-blue-500/15 text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full">
+                {ex.equipment}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-[11px] text-[#6B7280]">
+              {ex.default_sets}x{ex.default_reps}
+            </span>
+            {ex.instructions && (
+              <span className="text-[11px] text-[#4B5563] truncate max-w-[250px]">
+                — {ex.instructions}
+              </span>
+            )}
+            {ex.video_url && (
+              <span className="text-[10px] text-[#D4AF37] flex items-center gap-0.5">
+                <Video className="w-3 h-3" /> Video
+              </span>
+            )}
+            {createdDate && (
+              <span className="text-[10px] text-[#4B5563]">{createdDate}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-3 mt-0.5">
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-[#6B7280]" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-[#6B7280]" />
+          )}
+        </div>
+      </button>
+
+      {/* Expanded detail + edit form */}
+      {expanded && (
+        <div className="px-3 pb-3">
+          <div className="bg-[#111827]/60 rounded-lg p-3 mt-2 border border-white/4">
+            {!editing ? (
+              /* ── Detail view ── */
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-semibold text-[#9CA3AF]">Details</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+                      className="flex items-center gap-1 text-[11px] text-[#D4AF37] hover:text-[#E6C766]"
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                      className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-red-400"
+                    >
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px]">
+                  <div>
+                    <span className="text-[#6B7280]">Muscle Group: </span>
+                    <span className="text-[#E5E7EB]">{ex.muscle_group || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#6B7280]">Equipment: </span>
+                    <span className="text-[#E5E7EB]">{ex.equipment || 'None'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#6B7280]">Default Sets: </span>
+                    <span className="text-[#E5E7EB]">{ex.default_sets}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#6B7280]">Default Reps: </span>
+                    <span className="text-[#E5E7EB]">{ex.default_reps}</span>
+                  </div>
+                  {createdDate && (
+                    <div className="col-span-2">
+                      <span className="text-[#6B7280]">Created: </span>
+                      <span className="text-[#E5E7EB]">{createdDate}</span>
+                    </div>
+                  )}
+                </div>
+
+                {ex.instructions && (
+                  <div>
+                    <p className="text-[11px] text-[#6B7280] mb-0.5">Instructions</p>
+                    <p className="text-[12px] text-[#9CA3AF] whitespace-pre-wrap">{ex.instructions}</p>
+                  </div>
+                )}
+
+                <VideoUrlDisplay url={ex.video_url} />
+              </div>
+            ) : (
+              /* ── Edit form ── */
+              <div>
+                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">Edit Exercise</p>
+                <Field label="Name *">
+                  <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} />
+                </Field>
+                <Field label="Muscle Group *">
+                  <select className={inputCls} value={form.muscle_group} onChange={(e) => set('muscle_group', e.target.value)}>
+                    <option value="">Select...</option>
+                    {MUSCLE_GROUPS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </Field>
+                <Field label="Equipment">
+                  <select className={inputCls} value={form.equipment} onChange={(e) => set('equipment', e.target.value)}>
+                    <option value="">None</option>
+                    {EQUIPMENT.map((e) => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Default Sets">
+                    <input className={inputCls} type="number" min={1} value={form.default_sets} onChange={(e) => set('default_sets', e.target.value)} />
+                  </Field>
+                  <Field label="Default Reps">
+                    <input className={inputCls} type="number" min={1} value={form.default_reps} onChange={(e) => set('default_reps', e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="Instructions">
+                  <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Coaching cues..." />
+                </Field>
+                <Field label="Video URL (optional)">
+                  <input className={inputCls} value={form.video_url} onChange={(e) => set('video_url', e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+                </Field>
+                <div className="flex justify-end gap-3 mt-2">
+                  <button onClick={handleCancel} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || !form.name.trim() || !form.muscle_group}
+                    className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -202,6 +461,12 @@ export default function PlatformSettings() {
     if (table === 'program_templates') fetchPrograms();
   };
 
+  /* ────────────────── optimistic exercise update ────────────────── */
+
+  const handleExerciseUpdate = (updated) => {
+    setExercises((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
+  };
+
   /* ────────────────── filtered exercises ────────────────── */
 
   const filteredExercises = exercises.filter((ex) => {
@@ -283,23 +548,12 @@ export default function PlatformSettings() {
             {/* list */}
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {filteredExercises.map((ex) => (
-                <div
+                <ExerciseRow
                   key={ex.id}
-                  className="flex items-center justify-between bg-[#111827] border border-white/6 rounded-lg px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-[13px] text-[#E5E7EB] truncate">{ex.name}</p>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {ex.muscle_group} &middot; {ex.equipment || 'No equip.'} &middot; {ex.default_sets}x{ex.default_reps}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setConfirmDelete({ table: 'exercises', id: ex.id, label: ex.name })}
-                    className="ml-3 text-[#6B7280] hover:text-red-400 shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                  ex={ex}
+                  onDelete={() => setConfirmDelete({ table: 'exercises', id: ex.id, label: ex.name })}
+                  onUpdate={handleExerciseUpdate}
+                />
               ))}
               {filteredExercises.length === 0 && (
                 <p className="text-[12px] text-[#4B5563] text-center py-6">No exercises found.</p>
@@ -504,6 +758,7 @@ function ExerciseModal({ onClose, onSaved }) {
     default_sets: 3,
     default_reps: 10,
     instructions: '',
+    video_url: '',
   });
 
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
@@ -519,6 +774,7 @@ function ExerciseModal({ onClose, onSaved }) {
       default_sets: Number(form.default_sets) || 3,
       default_reps: Number(form.default_reps) || 10,
       instructions: form.instructions.trim() || null,
+      video_url: form.video_url.trim() || null,
     });
     setSaving(false);
     onSaved();
@@ -551,6 +807,9 @@ function ExerciseModal({ onClose, onSaved }) {
       </div>
       <Field label="Instructions">
         <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Optional coaching cues..." />
+      </Field>
+      <Field label="Video URL (optional)">
+        <input className={inputCls} value={form.video_url} onChange={(e) => set('video_url', e.target.value)} placeholder="https://youtube.com/watch?v=..." />
       </Field>
       <div className="flex justify-end gap-3 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">Cancel</button>
