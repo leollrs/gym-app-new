@@ -7,8 +7,9 @@ import {
 import {
   Building2, Users, Dumbbell, TrendingUp, TrendingDown,
   UserPlus, Activity, ArrowUpDown, ChevronRight, AlertTriangle,
+  DollarSign,
 } from 'lucide-react';
-import { format, subDays, subWeeks, startOfWeek, parseISO } from 'date-fns';
+import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -97,7 +98,7 @@ export default function PlatformAnalytics() {
       const ninetyDaysAgo = subDays(now, 90).toISOString();
 
       const [gymRes, profileRes, sessionRes, checkInRes, churnRes, recentProfileRes] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, is_active, created_at').eq('is_active', true),
+        supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price'),
         supabase.from('profiles').select('id, gym_id, role, created_at, last_active_at, membership_status'),
         supabase.from('workout_sessions').select('id, gym_id, profile_id, status, started_at').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
         supabase.from('check_ins').select('id, gym_id, profile_id, checked_in_at').gte('checked_in_at', thirtyDaysAgo),
@@ -157,6 +158,46 @@ export default function PlatformAnalytics() {
     if (!totalMembers) return 0;
     return ((activeMembers / totalMembers) * 100).toFixed(1);
   }, [activeMembers, totalMembers]);
+
+  // ── Revenue metrics ──────────────────────────────────────────
+  const TIER_DEFAULTS = { free: 0, starter: 49, pro: 99, enterprise: 199 };
+
+  const mrr = useMemo(() => {
+    return gyms
+      .filter(g => g.is_active)
+      .reduce((sum, g) => sum + (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0), 0);
+  }, [gyms]);
+
+  const revenueByGym = useMemo(() => {
+    return gyms
+      .map(g => ({
+        id: g.id,
+        name: g.name,
+        tier: g.subscription_tier || 'free',
+        price: parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0,
+        isActive: g.is_active,
+        created_at: g.created_at,
+      }))
+      .sort((a, b) => b.price - a.price);
+  }, [gyms]);
+
+  const monthlyIncomeChart = useMemo(() => {
+    const now = new Date();
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthStart = startOfMonth(subMonths(now, i));
+      const monthLabel = format(monthStart, 'MMM yyyy');
+      const income = gyms
+        .filter(g => new Date(g.created_at) <= monthStart && g.is_active)
+        .reduce((sum, g) => sum + (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0), 0);
+      months.push({ month: format(monthStart, 'MMM'), income });
+    }
+    return months;
+  }, [gyms]);
+
+  const arr = mrr * 12;
+  const payingGyms = gyms.filter(g => g.is_active && (parseFloat(g.monthly_price) || TIER_DEFAULTS[g.subscription_tier] || 0) > 0).length;
+  const avgRevenuePerGym = payingGyms > 0 ? (mrr / payingGyms) : 0;
 
   // ── Per-gym breakdown ──────────────────────────────────────
   const gymBreakdown = useMemo(() => {
@@ -298,6 +339,87 @@ export default function PlatformAnalytics() {
           )}
         </div>
       </FadeIn>
+
+      {/* ── Revenue Stats ─────────────────────────────────────── */}
+      <FadeIn delay={120}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <StatCard value={`$${mrr.toLocaleString()}`} label="Monthly Revenue (MRR)" icon={DollarSign} color="#10B981" delay={0} />
+          <StatCard value={`$${arr.toLocaleString()}`} label="Annual Run Rate (ARR)" icon={TrendingUp} color="#3B82F6" delay={50} />
+          <StatCard value={payingGyms} label="Paying Gyms" icon={Building2} color="#8B5CF6" delay={100} />
+          <StatCard value={`$${avgRevenuePerGym.toFixed(0)}`} label="Avg Revenue / Gym" icon={Activity} color="#F59E0B" delay={150} />
+        </div>
+      </FadeIn>
+
+      {/* ── Monthly Income Chart + Per-Gym Revenue ─────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 mb-6">
+        <FadeIn delay={140}>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">Monthly Income (Last 12 Months)</h2>
+            <div className="h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyIncomeChart}>
+                  <defs>
+                    <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#10B981" stopOpacity={0.3} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="month" tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
+                  <Tooltip
+                    {...tooltipStyle}
+                    formatter={(value) => [`$${value.toLocaleString()}`, 'Income']}
+                  />
+                  <Bar dataKey="income" fill="url(#incomeGrad)" radius={[4, 4, 0, 0]} barSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={160}>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-3">Revenue by Gym</h2>
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+              {revenueByGym.map(gym => (
+                <div
+                  key={gym.id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] cursor-pointer transition-colors"
+                  onClick={() => navigate(`/platform/gym/${gym.id}`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{gym.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        gym.tier === 'enterprise' ? 'bg-[#D4AF37]/15 text-[#D4AF37]' :
+                        gym.tier === 'pro' ? 'bg-indigo-500/15 text-indigo-400' :
+                        gym.tier === 'starter' ? 'bg-blue-500/15 text-blue-400' :
+                        'bg-white/5 text-[#6B7280]'
+                      }`}>
+                        {gym.tier}
+                      </span>
+                      {!gym.isActive && (
+                        <span className="text-[10px] text-red-400">inactive</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[15px] font-bold text-[#E5E7EB] tabular-nums">
+                    ${gym.price}<span className="text-[10px] text-[#6B7280] font-normal">/mo</span>
+                  </p>
+                </div>
+              ))}
+              {revenueByGym.length === 0 && (
+                <p className="text-[13px] text-[#6B7280] py-8 text-center">No gyms yet</p>
+              )}
+            </div>
+            <div className="mt-3 pt-3 border-t border-white/6 flex items-center justify-between px-3">
+              <span className="text-[12px] text-[#9CA3AF]">Total MRR</span>
+              <span className="text-[16px] font-bold text-emerald-400 tabular-nums">${mrr.toLocaleString()}</span>
+            </div>
+          </div>
+        </FadeIn>
+      </div>
 
       {/* ── Two-column: Top Gyms + Struggling Gyms ──────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
