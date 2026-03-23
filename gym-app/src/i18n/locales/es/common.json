@@ -1,0 +1,87 @@
+{
+  "continue": "Continuar",
+  "back": "Atrás",
+  "save": "Guardar",
+  "saving": "Guardando…",
+  "cancel": "Cancelar",
+  "delete": "Eliminar",
+  "confirm": "Confirmar",
+  "loading": "Cargando…",
+  "error": "Error",
+  "success": "Éxito",
+  "yes": "Sí",
+  "no": "No",
+  "skip": "Omitir por ahora",
+  "done": "Listo",
+  "close": "Cerrar",
+  "search": "Buscar",
+  "edit": "Editar",
+  "create": "Crear",
+  "submit": "Enviar",
+  "retry": "Intentar de nuevo",
+  "somethingWentWrong": "Algo salió mal. Por favor, inténtalo de nuevo.",
+  "required": "Requerido",
+  "optional": "opcional",
+
+  "nav": {
+    "home": "Inicio",
+    "workouts": "Entrenos",
+    "start": "Iniciar",
+    "progress": "Progreso",
+    "community": "Comunidad",
+    "notifications": "Notificaciones",
+    "profile": "Perfil"
+  },
+
+  "adminNav": {
+    "main": "PRINCIPAL",
+    "overview": "Resumen",
+    "members": "Miembros",
+    "intelligence": "INTELIGENCIA",
+    "churnIntel": "Riesgo de Baja",
+    "analytics": "Analíticas",
+    "engage": "INTERACCIÓN",
+    "attendance": "Asistencia",
+    "challenges": "Retos",
+    "trainers": "Entrenadores",
+    "programs": "Programas",
+    "leaderboard": "Clasificación",
+    "messages": "Mensajes",
+    "store": "Tienda",
+    "announcements": "Anuncios",
+    "system": "SISTEMA",
+    "moderation": "Moderación",
+    "settings": "Ajustes",
+    "admin": "Admin",
+    "signOut": "Cerrar sesión",
+    "morePages": "Más Páginas",
+    "more": "Más",
+    "skipToMain": "Saltar al contenido principal"
+  },
+
+  "days": {
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mié",
+    "thu": "Jue",
+    "fri": "Vie",
+    "sat": "Sáb",
+    "sun": "Dom",
+    "monday": "Lunes",
+    "tuesday": "Martes",
+    "wednesday": "Miércoles",
+    "thursday": "Jueves",
+    "friday": "Viernes",
+    "saturday": "Sábado",
+    "sunday": "Domingo"
+  },
+
+  "language": {
+    "label": "Language / Idioma",
+    "en": "English",
+    "es": "Español"
+  },
+
+  "privacyPolicy": "Política de Privacidad",
+  "termsOfService": "Términos de Servicio"
+}

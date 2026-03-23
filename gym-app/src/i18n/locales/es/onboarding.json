@@ -1,0 +1,128 @@
+{
+  "title": "Vamos a configurarte",
+  "subtitle": "Unas preguntas rápidas para crear tu plan perfecto",
+
+  "langStep": {
+    "title": "Elige tu idioma",
+    "subtitle": "Puedes cambiarlo en cualquier momento en ajustes"
+  },
+
+  "fitnessLevel": {
+    "title": "¿Cuál es tu nivel de experiencia?",
+    "subtitle": "Escoge la opción que mejor te describa.",
+    "hint": "Esto determina qué tan rápido aumentamos tus pesos y qué tan técnicos serán los ejercicios. Sé honesto — empezar muy pesado causa lesiones, empezar muy ligero solo significa progresión más rápida.",
+    "beginner": {
+      "label": "Recién empezando",
+      "desc": "Menos de un año de entrenamiento regular, o regresando después de un descanso largo",
+      "badge": "Principiante"
+    },
+    "intermediate": {
+      "label": "Entreno de forma constante",
+      "desc": "1–3 años de entrenamiento regular, cómodo con lo básico",
+      "badge": "Intermedio"
+    },
+    "advanced": {
+      "label": "Sé lo que hago",
+      "desc": "3+ años de entrenamiento estructurado, cómodo con ejercicios complejos",
+      "badge": "Avanzado"
+    }
+  },
+
+  "goal": {
+    "title": "¿Cuál es tu objetivo principal?",
+    "subtitle": "Esto define tus rangos de repeticiones y estilo de progresión.",
+    "hint": "Tu objetivo cambia cómo programamos tus series y repeticiones. Por ejemplo, el entrenamiento de fuerza usa menos repeticiones con más peso, mientras que el desarrollo muscular usa peso moderado con más volumen. Siempre puedes cambiar esto después.",
+    "muscle_gain": { "label": "Ganar Músculo", "desc": "Crecer y definirte más" },
+    "fat_loss": { "label": "Perder Grasa", "desc": "Quemar grasa manteniendo tu músculo" },
+    "strength": { "label": "Más Fuerte", "desc": "Levantar más peso, lograr nuevos récords" },
+    "endurance": { "label": "Resistencia", "desc": "Mejorar cardio y aguante" },
+    "general_fitness": { "label": "Mantenerme en Forma", "desc": "Estar activo, saludable y consistente" }
+  },
+
+  "training": {
+    "title": "Configuración de entrenamiento",
+    "subtitle": "¿Con qué frecuencia entrenas y qué equipo tienes?",
+    "daysPerWeek": "Días por semana",
+    "daysCommit": "¿Cuántos días puedes comprometerte de forma realista?",
+    "freq1": "Sesiones de cuerpo completo funcionan mejor",
+    "freq3": "Ideal para empuje/tirón/piernas o tren superior/inferior",
+    "freq4": "La división superior/inferior funciona muy bien aquí",
+    "freq5": "Empuje/tirón/piernas + 2 días extra",
+    "freq6": "Alta frecuencia — asegúrate de recuperarte bien",
+    "equipment": "Equipo disponible",
+    "equipmentHint": "Selecciona todo lo que tienes disponible en tu gimnasio.",
+    "barbell": "Barra",
+    "dumbbells": "Mancuernas",
+    "cables": "Cables",
+    "machines": "Máquinas",
+    "bodyweight": "Peso Corporal",
+    "kettlebells": "Kettlebells",
+    "resistanceBands": "Bandas de Resistencia",
+    "smithMachine": "Smith Machine"
+  },
+
+  "schedule": {
+    "title": "Establece Tu Horario",
+    "subtitle": "Los miembros que se comprometen con días específicos tienen 2x más probabilidades de mantenerse",
+    "whichDays": "¿Qué días vas a entrenar?",
+    "daysPrefilled": "Pre-seleccionado según tu frecuencia — ajusta según necesites.",
+    "selectAtLeast": "Selecciona al menos un día para continuar.",
+    "daysSelected": "{{count}} día seleccionado",
+    "daysSelected_plural": "{{count}} días seleccionados",
+    "preferTime": "Prefiero entrenar en la...",
+    "timeHint": "Programaremos tus recordatorios para que coincidan.",
+    "morning": "Mañana",
+    "morningSub": "6am – 12pm",
+    "afternoon": "Tarde",
+    "afternoonSub": "12pm – 5pm",
+    "evening": "Noche",
+    "eveningSub": "5pm – 10pm",
+    "workoutPartner": "Compañero de entrenamiento",
+    "partnerQuestion": "¿Tienes un compañero de entrenamiento en este gimnasio?",
+    "partnerPlaceholder": "Su nombre de usuario (opcional)",
+    "findPartner": "Te ayudaremos a encontrar uno"
+  },
+
+  "bodyStats": {
+    "title": "Casi listo",
+    "subtitle": "Omite lo que no quieras llenar — siempre puedes agregarlo después.",
+    "weight": "Peso Actual (lbs)",
+    "weightHint": "Se usa para rastrear tu progreso.",
+    "weightPlaceholder": "ej. 175",
+    "injuries": "¿Algún dolor o limitación?",
+    "injuriesHint": "Evitaremos ejercicios que afecten estas áreas y sugeriremos alternativas más seguras.",
+    "noneSelected": "Nada seleccionado — todos los ejercicios disponibles.",
+    "areasCount": "{{count}} área marcada — trabajaremos alrededor de esta.",
+    "areasCount_plural": "{{count}} áreas marcadas — trabajaremos alrededor de estas.",
+    "lowerBack": "Espalda Baja",
+    "knees": "Rodillas",
+    "shoulders": "Hombros",
+    "wrists": "Muñecas",
+    "elbows": "Codos",
+    "hips": "Caderas",
+    "neck": "Cuello",
+    "ankles": "Tobillos"
+  },
+
+  "social": {
+    "title": "Encuentra Tu Grupo del Gym",
+    "subtitle": "Los miembros con 3+ amigos en el gym se quedan un 56% más",
+    "hint": "Ve a la pestaña Social después de la configuración para agregar amigos — los que entrenan juntos, permanecen juntos.",
+    "feedPreview": "Lo que verás en tu feed social",
+    "mockPR": "logró un nuevo PR",
+    "mockSession": "completó una sesión",
+    "mockStreak": "lleva una",
+    "mockStreakDays": "racha de 14 días",
+    "mockStreakDesc": "No ha faltado un día en dos semanas",
+    "minAgo": "hace 2 min",
+    "minAgo18": "hace 18 min",
+    "hrAgo": "hace 1 hr",
+    "nice": "Bien",
+    "crushIt": "Dale duro",
+    "insane": "Increíble"
+  },
+
+  "disclaimer": "Esta aplicación provee herramientas de seguimiento fitness únicamente y no constituye consejo médico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
+  "finish": "¡Listo, vamos!",
+  "initialWeightNote": "Peso inicial al registrarse"
+}

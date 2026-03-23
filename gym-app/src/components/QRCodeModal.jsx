@@ -1,0 +1,230 @@
+import { useRef, useCallback, useState } from 'react';
+import { X, Download, Wallet, Smartphone } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import Barcode from 'react-barcode';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const WalletPass = registerPlugin('WalletPass');
+import { supabase } from '../lib/supabase';
+
+/**
+ * Fullscreen modal that displays a member's QR code or barcode for scanning
+ * at the gym's access system. Designed for maximum scanability:
+ * white background, large code, high contrast.
+ *
+ * @param {string} payload       - The string to encode
+ * @param {string} memberName    - Member's display name
+ * @param {string} displayFormat - 'qr_code' | 'barcode_128' | 'barcode_39'
+ * @param {string} gymName       - Gym name for wallet pass
+ * @param {function} onClose     - Close handler
+ */
+export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose }) {
+  const codeRef = useRef(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState('');
+
+  const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
+  const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';
+
+  const handleDownload = useCallback(() => {
+    if (!codeRef.current) return;
+    const svg = codeRef.current.querySelector('svg');
+    if (!svg) return;
+
+    const canvas = document.createElement('canvas');
+    const size = 1024;
+    const width = isBarcode ? size : size;
+    const height = isBarcode ? 400 : size;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const img = new Image();
+    img.onload = () => {
+      const padding = isBarcode ? 40 : 80;
+      ctx.drawImage(img, padding, padding, width - padding * 2, height - padding * 2);
+      const link = document.createElement('a');
+      link.download = `gym-pass-${memberName?.replace(/\s+/g, '-').toLowerCase() || 'code'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  }, [memberName, isBarcode]);
+
+  const handleAddToWallet = useCallback(async () => {
+    setWalletLoading(true);
+    setWalletError('');
+    try {
+      const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      // Fetch member's active punch cards to include on the wallet pass
+      let punchCards = [];
+      try {
+        const { data: cards } = await supabase
+          .from('member_punch_cards')
+          .select('punches, total_completed, gym_products!inner(name, punch_card_target, punch_card_enabled)')
+          .eq('member_id', session.user.id)
+          .eq('gym_products.punch_card_enabled', true);
+
+        if (cards?.length) {
+          punchCards = cards.map(c => ({
+            name: c.gym_products.name,
+            punches: c.punches,
+            target: c.gym_products.punch_card_target,
+            completed: c.total_completed,
+          }));
+        }
+      } catch { /* proceed without punch card data */ }
+
+      const { data, error } = await supabase.functions.invoke(
+        platform === 'ios' ? 'generate-apple-pass' : 'generate-google-pass',
+        {
+          body: { payload, memberName, gymName, punchCards },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (error) throw error;
+
+      // Check for error in response body (function always returns 200)
+      if (data?.error) {
+        throw new Error(data.error + (data.stack ? '\n' + data.stack : ''));
+      }
+
+      // Edge function returns { unsupported: true } if certs aren't configured
+      if (data?.unsupported) {
+        throw new Error('Wallet passes not yet configured for this gym');
+      }
+
+      if (platform === 'ios') {
+        // Use native Swift plugin to present PKAddPassesViewController
+        await WalletPass.addPass({ pkpassBase64: data.pkpass });
+      } else {
+        // Edge function returns a Google Wallet save URL
+        window.open(data.saveUrl, '_blank');
+      }
+    } catch (err) {
+      setWalletError(err.message || 'Failed to generate wallet pass');
+    } finally {
+      setWalletLoading(false);
+    }
+  }, [payload, memberName, gymName]);
+
+  if (!payload) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+
+      {/* Modal */}
+      <div
+        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+        >
+          <X size={18} />
+        </button>
+
+        {/* Code display area — white bg for max scanability */}
+        <div className={`bg-white flex flex-col items-center ${isBarcode ? 'p-6 pt-10' : 'p-8'}`}>
+          <div ref={codeRef}>
+            {isBarcode ? (
+              <Barcode
+                value={payload}
+                format={barcodeFormat}
+                width={2}
+                height={100}
+                displayValue={false}
+                background="#FFFFFF"
+                lineColor="#000000"
+              />
+            ) : (
+              <QRCodeSVG
+                value={payload}
+                size={240}
+                level="H"
+                includeMargin={false}
+                bgColor="#FFFFFF"
+                fgColor="#000000"
+              />
+            )}
+          </div>
+          <p className={`mt-4 font-mono font-bold text-black/70 text-center select-all ${isBarcode ? 'text-[18px] tracking-[0.25em]' : 'text-[14px] tracking-widest'}`}>
+            {payload}
+          </p>
+        </div>
+
+        {/* Info + actions — dark bg */}
+        <div className="bg-[#0F172A] border-t border-white/8 p-5">
+          <p className="text-[15px] font-bold text-[#E5E7EB] text-center mb-1">
+            {memberName || 'Your Gym Pass'}
+          </p>
+          <p className="text-[12px] text-[#6B7280] text-center mb-4">
+            Show this code at the scanner to check in
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleDownload}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              style={{
+                background: 'rgba(212,175,55,0.1)',
+                border: '1.5px solid rgba(212,175,55,0.3)',
+                color: '#D4AF37',
+              }}
+            >
+              <Download size={15} />
+              Save Image
+            </button>
+            <button
+              onClick={handleAddToWallet}
+              disabled={walletLoading}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
+              style={{
+                background: 'rgba(212,175,55,0.1)',
+                border: '1.5px solid rgba(212,175,55,0.3)',
+                color: '#D4AF37',
+              }}
+            >
+              {walletLoading ? (
+                <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+              ) : (
+                <Wallet size={15} />
+              )}
+              {walletLoading
+                ? 'Generating...'
+                : Capacitor.getPlatform() === 'ios'
+                  ? 'Apple Wallet'
+                  : Capacitor.getPlatform() === 'android'
+                    ? 'Google Wallet'
+                    : 'Add to Wallet'}
+            </button>
+          </div>
+
+          {walletError && (
+            <p className="text-[11px] text-red-400 text-center mt-2">{walletError}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function base64ToBlob(base64, mimeType) {
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mimeType });
+}

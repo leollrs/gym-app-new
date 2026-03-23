@@ -1,0 +1,87 @@
+{
+  "continue": "Continue",
+  "back": "Back",
+  "save": "Save",
+  "saving": "Saving…",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm": "Confirm",
+  "loading": "Loading…",
+  "error": "Error",
+  "success": "Success",
+  "yes": "Yes",
+  "no": "No",
+  "skip": "Skip for now",
+  "done": "Done",
+  "close": "Close",
+  "search": "Search",
+  "edit": "Edit",
+  "create": "Create",
+  "submit": "Submit",
+  "retry": "Try again",
+  "somethingWentWrong": "Something went wrong. Please try again.",
+  "required": "Required",
+  "optional": "optional",
+
+  "nav": {
+    "home": "Home",
+    "workouts": "Workouts",
+    "start": "Start",
+    "progress": "Progress",
+    "community": "Community",
+    "notifications": "Notifications",
+    "profile": "Profile"
+  },
+
+  "adminNav": {
+    "main": "MAIN",
+    "overview": "Overview",
+    "members": "Members",
+    "intelligence": "INTELLIGENCE",
+    "churnIntel": "Churn Intel",
+    "analytics": "Analytics",
+    "engage": "ENGAGE",
+    "attendance": "Attendance",
+    "challenges": "Challenges",
+    "trainers": "Trainers",
+    "programs": "Programs",
+    "leaderboard": "Leaderboard",
+    "messages": "Messages",
+    "store": "Store",
+    "announcements": "Announcements",
+    "system": "SYSTEM",
+    "moderation": "Moderation",
+    "settings": "Settings",
+    "admin": "Admin",
+    "signOut": "Sign out",
+    "morePages": "More Pages",
+    "more": "More",
+    "skipToMain": "Skip to main content"
+  },
+
+  "days": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  },
+
+  "language": {
+    "label": "Language / Idioma",
+    "en": "English",
+    "es": "Español"
+  },
+
+  "privacyPolicy": "Privacy Policy",
+  "termsOfService": "Terms of Service"
+}

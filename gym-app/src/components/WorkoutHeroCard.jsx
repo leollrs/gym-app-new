@@ -1,0 +1,173 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Timer } from 'lucide-react';
+
+const CYCLE_INTERVAL = 4000; // ms per exercise
+
+const WorkoutHeroCard = ({
+  routineId,
+  exercises = [],
+  isActive = false,
+  activeSetsCompleted = 0,
+  activeSetsTotal = 0,
+}) => {
+  const navigate = useNavigate();
+  const { t } = useTranslation('pages');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Cycle through exercises
+  useEffect(() => {
+    if (exercises.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentIndex(prev => (prev + 1) % exercises.length);
+    }, CYCLE_INTERVAL);
+    return () => clearInterval(timer);
+  }, [exercises.length]);
+
+  const current = exercises[currentIndex] || {};
+  const exerciseName = current.name || t('workoutHeroCard.workout');
+  const exerciseVideo = current.video || null;
+  const hasMedia = !!exerciseVideo;
+
+  const fallbackBg = 'linear-gradient(145deg, #1a1f35 0%, #0d1117 50%, #0a0f1a 100%)';
+
+  return (
+    <motion.button
+      type="button"
+      onClick={() => navigate(`/session/${routineId}`)}
+      className="relative w-full rounded-[20px] overflow-hidden text-left group"
+      style={{ aspectRatio: '9 / 10' }}
+      whileTap={{ scale: 0.985 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+    >
+      {/* Background: cycling video/gradient */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentIndex}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6 }}
+          className="absolute inset-0"
+        >
+          {exerciseVideo ? (
+            <video
+              key={exerciseVideo}
+              src={exerciseVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full" style={{ background: fallbackBg }}>
+              <div
+                className="absolute inset-0 opacity-[0.04]"
+                style={{
+                  backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                  backgroundSize: '24px 24px',
+                }}
+              />
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Gradient overlay */}
+      <div className={`absolute inset-0 z-[1] ${
+        hasMedia
+          ? 'bg-gradient-to-t from-black/95 via-black/50 to-black/20'
+          : 'bg-gradient-to-t from-black/90 via-black/40 to-transparent'
+      }`} />
+
+      {/* Accent glow */}
+      {isActive ? (
+        <div className="absolute top-0 left-0 right-0 h-1 z-[2] bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-400" />
+      ) : (
+        <div className="absolute top-0 left-0 right-0 h-[2px] z-[2] bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent" />
+      )}
+
+      {/* Content */}
+      <div className="relative z-10 h-full flex flex-col justify-end p-5">
+        {/* Status badge */}
+        {isActive && (
+          <div className="absolute top-4 left-5 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 backdrop-blur-sm">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
+                {t('dashboard.inProgress')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Exercise counter dots */}
+        {exercises.length > 1 && (
+          <div className="absolute top-4 right-5 flex items-center gap-1">
+            {exercises.map((_, i) => (
+              <div
+                key={i}
+                className={`rounded-full transition-all duration-300 ${
+                  i === currentIndex
+                    ? 'w-4 h-1.5 bg-white/80'
+                    : 'w-1.5 h-1.5 bg-white/25'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Exercise info */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentIndex}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.3 }}
+          >
+            <p className="text-[13px] font-medium text-white/60 mb-1">
+              {t('workoutHeroCard.exerciseXOfY', { current: currentIndex + 1, total: exercises.length })}
+            </p>
+            <h3 className="text-[22px] font-black text-white tracking-tight leading-tight">
+              {exerciseName}
+            </h3>
+            {current.sets && current.reps && (
+              <p className="text-[12px] text-white/40 mt-0.5">
+                {t('workoutHeroCard.setsXReps', { sets: current.sets, reps: current.reps })}
+              </p>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Suggested routine hint */}
+        <p className="text-[10px] text-white/30 mt-3 leading-relaxed">
+          {t('dashboard.suggestedRoutineHint')}
+        </p>
+
+        {/* CTA Button */}
+        <div
+          className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 transition-all mt-2 ${
+            isActive
+              ? 'bg-emerald-500 shadow-[0_4px_24px_rgba(16,185,129,0.3)]'
+              : 'bg-[#D4AF37] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+          }`}
+        >
+          {isActive ? (
+            <Timer size={18} className="text-black" strokeWidth={2.5} />
+          ) : (
+            <Play size={18} className="text-black" fill="black" strokeWidth={0} />
+          )}
+          <span className="text-[16px] font-black text-black tracking-wide uppercase">
+            {isActive ? t('workoutHeroCard.resumeWorkout') : t('workoutHeroCard.startWorkout')}
+          </span>
+        </div>
+      </div>
+    </motion.button>
+  );
+};
+
+export default WorkoutHeroCard;

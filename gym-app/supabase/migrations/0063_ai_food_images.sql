@@ -1,0 +1,716 @@
+-- Migration 0063: Replace generic food images with AI-generated specific images
+-- 646 images generated with FLUX.1-schnell, one per food item
+
+-- Proteins
+UPDATE food_items SET image_url = '/foods/chicken_breast.png' WHERE name ILIKE '%Chicken Breast%' OR name ILIKE '%Pechuga de Pollo%';
+UPDATE food_items SET image_url = '/foods/chicken_thigh.png' WHERE name ILIKE '%Chicken Thigh%' OR name ILIKE '%Muslo de Pollo%';
+UPDATE food_items SET image_url = '/foods/ground_turkey.png' WHERE name ILIKE '%Ground Turkey%';
+UPDATE food_items SET image_url = '/foods/ground_beef_90.png' WHERE name ILIKE '%Ground Beef%90%' OR name ILIKE '%Ground Beef (90%';
+UPDATE food_items SET image_url = '/foods/ground_beef_80.png' WHERE name ILIKE '%Ground Beef%80%' OR name ILIKE '%Ground Beef (80%';
+UPDATE food_items SET image_url = '/foods/salmon_fillet.png' WHERE name ILIKE '%Salmon Fillet%' OR name ILIKE '%Salmon%cooked%';
+UPDATE food_items SET image_url = '/foods/tuna_canned.png' WHERE name ILIKE '%Tuna%canned%' OR name ILIKE '%Tuna%water%' OR name ILIKE '%Atún%';
+UPDATE food_items SET image_url = '/foods/shrimp_cooked.png' WHERE name ILIKE '%Shrimp%cooked%';
+UPDATE food_items SET image_url = '/foods/tilapia_cooked.png' WHERE name ILIKE '%Tilapia%';
+UPDATE food_items SET image_url = '/foods/pork_tenderloin.png' WHERE name ILIKE '%Pork Tenderloin%';
+UPDATE food_items SET image_url = '/foods/steak_sirloin.png' WHERE name ILIKE '%Sirloin%';
+UPDATE food_items SET image_url = '/foods/steak_ribeye.png' WHERE name ILIKE '%Ribeye%';
+UPDATE food_items SET image_url = '/foods/turkey_breast_deli.png' WHERE name ILIKE '%Turkey Breast%deli%';
+UPDATE food_items SET image_url = '/foods/bacon_cooked.png' WHERE name ILIKE '%Bacon%cooked%' OR name = 'Bacon';
+UPDATE food_items SET image_url = '/foods/sausage_link.png' WHERE name ILIKE '%Sausage Link%';
+UPDATE food_items SET image_url = '/foods/cod_baked.png' WHERE name ILIKE '%Cod%baked%';
+UPDATE food_items SET image_url = '/foods/halibut_baked.png' WHERE name ILIKE '%Halibut%';
+UPDATE food_items SET image_url = '/foods/sardines_canned.png' WHERE name ILIKE '%Sardine%';
+UPDATE food_items SET image_url = '/foods/catfish_baked.png' WHERE name ILIKE '%Catfish%';
+UPDATE food_items SET image_url = '/foods/mahi_mahi.png' WHERE name ILIKE '%Mahi%';
+UPDATE food_items SET image_url = '/foods/crab_meat.png' WHERE name ILIKE '%Crab%';
+UPDATE food_items SET image_url = '/foods/lobster_steamed.png' WHERE name ILIKE '%Lobster%';
+UPDATE food_items SET image_url = '/foods/beef_brisket.png' WHERE name ILIKE '%Brisket%';
+UPDATE food_items SET image_url = '/foods/lamb_chop.png' WHERE name ILIKE '%Lamb Chop%';
+UPDATE food_items SET image_url = '/foods/veal_cutlet.png' WHERE name ILIKE '%Veal%';
+UPDATE food_items SET image_url = '/foods/turkey_burger.png' WHERE name ILIKE '%Turkey Burger%';
+UPDATE food_items SET image_url = '/foods/bison_burger.png' WHERE name ILIKE '%Bison%';
+UPDATE food_items SET image_url = '/foods/venison_roasted.png' WHERE name ILIKE '%Venison%';
+UPDATE food_items SET image_url = '/foods/pork_chop.png' WHERE name ILIKE '%Pork Chop%';
+UPDATE food_items SET image_url = '/foods/lamb_ground.png' WHERE name ILIKE '%Lamb%ground%';
+
+-- Eggs & Dairy
+UPDATE food_items SET image_url = '/foods/egg_whole.png' WHERE name ILIKE 'Egg%large%' OR name = 'Egg (whole, large)';
+UPDATE food_items SET image_url = '/foods/egg_white.png' WHERE name ILIKE '%Egg White%';
+UPDATE food_items SET image_url = '/foods/greek_yogurt_0.png' WHERE name ILIKE '%Greek Yogurt%0%%';
+UPDATE food_items SET image_url = '/foods/greek_yogurt_2.png' WHERE name ILIKE '%Greek Yogurt%2%%' AND name NOT ILIKE '%Chobani%';
+UPDATE food_items SET image_url = '/foods/cottage_cheese_2.png' WHERE name ILIKE '%Cottage Cheese%2%%';
+UPDATE food_items SET image_url = '/foods/milk_whole.png' WHERE name = 'Milk (whole)';
+UPDATE food_items SET image_url = '/foods/milk_2percent.png' WHERE name = 'Milk (2%)';
+UPDATE food_items SET image_url = '/foods/milk_skim.png' WHERE name = 'Milk (skim)';
+UPDATE food_items SET image_url = '/foods/cheese_cheddar.png' WHERE name ILIKE '%Cheddar%';
+UPDATE food_items SET image_url = '/foods/cheese_mozzarella.png' WHERE name ILIKE '%Mozzarella%';
+UPDATE food_items SET image_url = '/foods/butter.png' WHERE name = 'Butter';
+UPDATE food_items SET image_url = '/foods/cream_cheese.png' WHERE name ILIKE '%Cream Cheese%';
+
+-- Grains & Starches
+UPDATE food_items SET image_url = '/foods/white_rice.png' WHERE name ILIKE '%White Rice%cooked%';
+UPDATE food_items SET image_url = '/foods/brown_rice.png' WHERE name ILIKE '%Brown Rice%';
+UPDATE food_items SET image_url = '/foods/jasmine_rice.png' WHERE name ILIKE '%Jasmine Rice%';
+UPDATE food_items SET image_url = '/foods/quinoa.png' WHERE name ILIKE '%Quinoa%';
+UPDATE food_items SET image_url = '/foods/pasta_cooked.png' WHERE name = 'Pasta (cooked)';
+UPDATE food_items SET image_url = '/foods/bread_white.png' WHERE name ILIKE '%Bread%White%' OR name = 'Bread — White';
+UPDATE food_items SET image_url = '/foods/bread_whole_wheat.png' WHERE name ILIKE '%Bread%Whole Wheat%' OR name = 'Bread — Whole Wheat';
+UPDATE food_items SET image_url = '/foods/tortilla_flour.png' WHERE name ILIKE '%Tortilla%Flour%';
+UPDATE food_items SET image_url = '/foods/tortilla_corn.png' WHERE name ILIKE '%Tortilla%Corn%';
+UPDATE food_items SET image_url = '/foods/oatmeal.png' WHERE name ILIKE '%Oatmeal%dry%';
+UPDATE food_items SET image_url = '/foods/bagel_plain.png' WHERE name ILIKE '%Bagel%plain%';
+UPDATE food_items SET image_url = '/foods/potato_baked.png' WHERE name ILIKE '%Potato%baked%medium%';
+UPDATE food_items SET image_url = '/foods/sweet_potato_baked.png' WHERE name ILIKE '%Sweet Potato%baked%';
+UPDATE food_items SET image_url = '/foods/couscous.png' WHERE name ILIKE '%Couscous%';
+UPDATE food_items SET image_url = '/foods/bulgur_wheat.png' WHERE name ILIKE '%Bulgur%';
+UPDATE food_items SET image_url = '/foods/farro.png' WHERE name ILIKE '%Farro%';
+UPDATE food_items SET image_url = '/foods/barley.png' WHERE name ILIKE '%Barley%';
+UPDATE food_items SET image_url = '/foods/wild_rice.png' WHERE name ILIKE '%Wild Rice%';
+
+-- Fruits
+UPDATE food_items SET image_url = '/foods/banana.png' WHERE name = 'Banana';
+UPDATE food_items SET image_url = '/foods/apple.png' WHERE name = 'Apple';
+UPDATE food_items SET image_url = '/foods/orange.png' WHERE name = 'Orange';
+UPDATE food_items SET image_url = '/foods/blueberries.png' WHERE name = 'Blueberries';
+UPDATE food_items SET image_url = '/foods/strawberries.png' WHERE name = 'Strawberries';
+UPDATE food_items SET image_url = '/foods/grapes.png' WHERE name = 'Grapes';
+UPDATE food_items SET image_url = '/foods/avocado.png' WHERE name = 'Avocado';
+UPDATE food_items SET image_url = '/foods/mango.png' WHERE name = 'Mango';
+UPDATE food_items SET image_url = '/foods/watermelon.png' WHERE name = 'Watermelon';
+UPDATE food_items SET image_url = '/foods/pineapple.png' WHERE name = 'Pineapple';
+UPDATE food_items SET image_url = '/foods/peach.png' WHERE name = 'Peach';
+UPDATE food_items SET image_url = '/foods/plum.png' WHERE name = 'Plum';
+UPDATE food_items SET image_url = '/foods/kiwi.png' WHERE name = 'Kiwi';
+UPDATE food_items SET image_url = '/foods/pomegranate_seeds.png' WHERE name ILIKE '%Pomegranate%';
+UPDATE food_items SET image_url = '/foods/figs_fresh.png' WHERE name ILIKE '%Figs%fresh%';
+UPDATE food_items SET image_url = '/foods/dates_medjool.png' WHERE name ILIKE '%Dates%Medjool%';
+UPDATE food_items SET image_url = '/foods/dried_cranberries.png' WHERE name ILIKE '%Dried Cranberries%';
+UPDATE food_items SET image_url = '/foods/raisins.png' WHERE name = 'Raisins';
+UPDATE food_items SET image_url = '/foods/raspberries.png' WHERE name = 'Raspberries';
+UPDATE food_items SET image_url = '/foods/blackberries.png' WHERE name = 'Blackberries';
+UPDATE food_items SET image_url = '/foods/cantaloupe.png' WHERE name ILIKE '%Cantaloupe%';
+UPDATE food_items SET image_url = '/foods/honeydew.png' WHERE name ILIKE '%Honeydew%';
+
+-- Vegetables
+UPDATE food_items SET image_url = '/foods/broccoli.png' WHERE name ILIKE '%Broccoli%cooked%';
+UPDATE food_items SET image_url = '/foods/spinach_raw.png' WHERE name ILIKE '%Spinach%raw%';
+UPDATE food_items SET image_url = '/foods/mixed_salad_greens.png' WHERE name ILIKE '%Mixed Salad%' OR name ILIKE '%Salad Greens%';
+UPDATE food_items SET image_url = '/foods/carrots_raw.png' WHERE name ILIKE '%Carrots%raw%' OR name = 'Carrots (raw)';
+UPDATE food_items SET image_url = '/foods/bell_pepper.png' WHERE name ILIKE '%Bell Pepper%';
+UPDATE food_items SET image_url = '/foods/tomato.png' WHERE name = 'Tomato';
+UPDATE food_items SET image_url = '/foods/cucumber.png' WHERE name = 'Cucumber';
+UPDATE food_items SET image_url = '/foods/green_beans.png' WHERE name ILIKE '%Green Beans%';
+UPDATE food_items SET image_url = '/foods/asparagus.png' WHERE name ILIKE '%Asparagus%';
+UPDATE food_items SET image_url = '/foods/corn_cooked.png' WHERE name ILIKE '%Corn%cooked%';
+UPDATE food_items SET image_url = '/foods/mushrooms_raw.png' WHERE name ILIKE '%Mushrooms%raw%';
+UPDATE food_items SET image_url = '/foods/onion_raw.png' WHERE name ILIKE '%Onion%raw%';
+UPDATE food_items SET image_url = '/foods/zucchini_cooked.png' WHERE name ILIKE '%Zucchini%';
+UPDATE food_items SET image_url = '/foods/kale_raw.png' WHERE name ILIKE '%Kale%';
+UPDATE food_items SET image_url = '/foods/cauliflower_raw.png' WHERE name ILIKE '%Cauliflower%';
+UPDATE food_items SET image_url = '/foods/brussels_sprouts.png' WHERE name ILIKE '%Brussels%';
+UPDATE food_items SET image_url = '/foods/eggplant_cooked.png' WHERE name ILIKE '%Eggplant%';
+UPDATE food_items SET image_url = '/foods/artichoke_cooked.png' WHERE name ILIKE '%Artichoke%';
+UPDATE food_items SET image_url = '/foods/beets_cooked.png' WHERE name ILIKE '%Beets%';
+UPDATE food_items SET image_url = '/foods/cabbage_raw.png' WHERE name ILIKE '%Cabbage%';
+UPDATE food_items SET image_url = '/foods/celery_raw.png' WHERE name ILIKE '%Celery%';
+UPDATE food_items SET image_url = '/foods/radishes_raw.png' WHERE name ILIKE '%Radish%';
+UPDATE food_items SET image_url = '/foods/snap_peas_raw.png' WHERE name ILIKE '%Snap Peas%';
+
+-- Legumes & Nuts
+UPDATE food_items SET image_url = '/foods/black_beans.png' WHERE name ILIKE '%Black Beans%cooked%';
+UPDATE food_items SET image_url = '/foods/chickpeas.png' WHERE name ILIKE '%Chickpeas%';
+UPDATE food_items SET image_url = '/foods/lentils.png' WHERE name ILIKE '%Lentils%';
+UPDATE food_items SET image_url = '/foods/peanut_butter.png' WHERE name = 'Peanut Butter';
+UPDATE food_items SET image_url = '/foods/almond_butter.png' WHERE name = 'Almond Butter';
+UPDATE food_items SET image_url = '/foods/almonds.png' WHERE name = 'Almonds';
+UPDATE food_items SET image_url = '/foods/walnuts.png' WHERE name = 'Walnuts';
+UPDATE food_items SET image_url = '/foods/cashews.png' WHERE name = 'Cashews';
+UPDATE food_items SET image_url = '/foods/mixed_nuts.png' WHERE name = 'Mixed Nuts';
+UPDATE food_items SET image_url = '/foods/pistachios.png' WHERE name = 'Pistachios';
+UPDATE food_items SET image_url = '/foods/macadamia_nuts.png' WHERE name ILIKE '%Macadamia%';
+UPDATE food_items SET image_url = '/foods/pecans.png' WHERE name = 'Pecans';
+UPDATE food_items SET image_url = '/foods/pine_nuts.png' WHERE name ILIKE '%Pine Nuts%';
+UPDATE food_items SET image_url = '/foods/sunflower_seeds.png' WHERE name ILIKE '%Sunflower Seeds%';
+UPDATE food_items SET image_url = '/foods/pumpkin_seeds.png' WHERE name ILIKE '%Pumpkin Seeds%';
+UPDATE food_items SET image_url = '/foods/chia_seeds.png' WHERE name ILIKE '%Chia Seeds%';
+UPDATE food_items SET image_url = '/foods/flax_seeds.png' WHERE name ILIKE '%Flax%';
+UPDATE food_items SET image_url = '/foods/hemp_hearts.png' WHERE name ILIKE '%Hemp%';
+UPDATE food_items SET image_url = '/foods/tahini.png' WHERE name ILIKE '%Tahini%';
+UPDATE food_items SET image_url = '/foods/kidney_beans.png' WHERE name ILIKE '%Kidney Beans%';
+UPDATE food_items SET image_url = '/foods/pinto_beans.png' WHERE name ILIKE '%Pinto Beans%';
+UPDATE food_items SET image_url = '/foods/navy_beans.png' WHERE name ILIKE '%Navy Beans%';
+UPDATE food_items SET image_url = '/foods/refried_beans.png' WHERE name ILIKE '%Refried Beans%';
+UPDATE food_items SET image_url = '/foods/tofu_firm.png' WHERE name ILIKE '%Tofu%';
+UPDATE food_items SET image_url = '/foods/tempeh.png' WHERE name ILIKE '%Tempeh%';
+UPDATE food_items SET image_url = '/foods/seitan.png' WHERE name ILIKE '%Seitan%';
+UPDATE food_items SET image_url = '/foods/edamame.png' WHERE name ILIKE '%Edamame%';
+UPDATE food_items SET image_url = '/foods/beyond_meat_burger.png' WHERE name ILIKE '%Beyond Meat%';
+UPDATE food_items SET image_url = '/foods/impossible_burger.png' WHERE name ILIKE '%Impossible Burger Patty%';
+
+-- Supplements
+UPDATE food_items SET image_url = '/foods/whey_protein_shake.png' WHERE name ILIKE '%Whey Protein%';
+UPDATE food_items SET image_url = '/foods/casein_protein_shake.png' WHERE name ILIKE '%Casein Protein%';
+UPDATE food_items SET image_url = '/foods/mass_gainer_shake.png' WHERE name ILIKE '%Mass Gainer%';
+UPDATE food_items SET image_url = '/foods/protein_bar.png' WHERE name ILIKE '%Protein Bar%average%';
+
+-- Oils & Condiments
+UPDATE food_items SET image_url = '/foods/olive_oil.png' WHERE name = 'Olive Oil';
+UPDATE food_items SET image_url = '/foods/coconut_oil.png' WHERE name = 'Coconut Oil';
+UPDATE food_items SET image_url = '/foods/honey.png' WHERE name = 'Honey';
+UPDATE food_items SET image_url = '/foods/soy_sauce.png' WHERE name = 'Soy Sauce';
+UPDATE food_items SET image_url = '/foods/hot_sauce.png' WHERE name = 'Hot Sauce';
+UPDATE food_items SET image_url = '/foods/ketchup.png' WHERE name = 'Ketchup';
+UPDATE food_items SET image_url = '/foods/mustard.png' WHERE name = 'Mustard';
+UPDATE food_items SET image_url = '/foods/ranch_dressing.png' WHERE name = 'Ranch Dressing';
+UPDATE food_items SET image_url = '/foods/salsa.png' WHERE name = 'Salsa';
+UPDATE food_items SET image_url = '/foods/hummus.png' WHERE name = 'Hummus';
+UPDATE food_items SET image_url = '/foods/guacamole.png' WHERE name = 'Guacamole';
+UPDATE food_items SET image_url = '/foods/bbq_sauce.png' WHERE name = 'BBQ Sauce';
+UPDATE food_items SET image_url = '/foods/mayonnaise.png' WHERE name = 'Mayonnaise';
+UPDATE food_items SET image_url = '/foods/sriracha.png' WHERE name = 'Sriracha';
+UPDATE food_items SET image_url = '/foods/balsamic_vinaigrette.png' WHERE name = 'Balsamic Vinaigrette';
+UPDATE food_items SET image_url = '/foods/italian_dressing.png' WHERE name = 'Italian Dressing';
+UPDATE food_items SET image_url = '/foods/caesar_dressing.png' WHERE name = 'Caesar Dressing';
+UPDATE food_items SET image_url = '/foods/teriyaki_sauce.png' WHERE name = 'Teriyaki Sauce';
+UPDATE food_items SET image_url = '/foods/maple_syrup.png' WHERE name = 'Maple Syrup';
+UPDATE food_items SET image_url = '/foods/jam_jelly.png' WHERE name ILIKE '%Jam%' OR name ILIKE '%Jelly%';
+UPDATE food_items SET image_url = '/foods/nutella.png' WHERE name = 'Nutella';
+
+-- Drinks
+UPDATE food_items SET image_url = '/foods/water_glass.png' WHERE name = 'Water';
+UPDATE food_items SET image_url = '/foods/black_coffee.png' WHERE name = 'Black Coffee';
+UPDATE food_items SET image_url = '/foods/orange_juice.png' WHERE name = 'Orange Juice';
+UPDATE food_items SET image_url = '/foods/coca_cola.png' WHERE name = 'Coca-Cola';
+UPDATE food_items SET image_url = '/foods/diet_coke.png' WHERE name = 'Diet Coke';
+UPDATE food_items SET image_url = '/foods/gatorade.png' WHERE name = 'Gatorade';
+UPDATE food_items SET image_url = '/foods/almond_milk.png' WHERE name ILIKE '%Almond Milk%unsweetened%';
+UPDATE food_items SET image_url = '/foods/oat_milk.png' WHERE name = 'Oat Milk';
+UPDATE food_items SET image_url = '/foods/gatorade_zero.png' WHERE name = 'Gatorade Zero';
+UPDATE food_items SET image_url = '/foods/body_armor_lyte.png' WHERE name ILIKE '%Body Armor Lyte%';
+UPDATE food_items SET image_url = '/foods/monster_energy.png' WHERE name ILIKE '%Monster Energy%Original%';
+UPDATE food_items SET image_url = '/foods/monster_zero_ultra.png' WHERE name ILIKE '%Monster%Zero Ultra%';
+UPDATE food_items SET image_url = '/foods/red_bull.png' WHERE name ILIKE '%Red Bull%Original%' OR name ILIKE '%Red Bull%8.4%' AND name NOT ILIKE '%Sugar Free%';
+UPDATE food_items SET image_url = '/foods/red_bull_sugar_free.png' WHERE name ILIKE '%Red Bull%Sugar Free%';
+UPDATE food_items SET image_url = '/foods/celsius_sparkling.png' WHERE name ILIKE '%Celsius%';
+UPDATE food_items SET image_url = '/foods/fairlife_chocolate_shake.png' WHERE name ILIKE '%Fairlife%Chocolate%';
+UPDATE food_items SET image_url = '/foods/fairlife_vanilla_shake.png' WHERE name ILIKE '%Fairlife%Vanilla%';
+UPDATE food_items SET image_url = '/foods/premier_protein_chocolate.png' WHERE name ILIKE '%Premier Protein%Chocolate%';
+UPDATE food_items SET image_url = '/foods/premier_protein_vanilla.png' WHERE name ILIKE '%Premier Protein%Vanilla%';
+UPDATE food_items SET image_url = '/foods/muscle_milk_shake.png' WHERE name ILIKE '%Muscle Milk%';
+UPDATE food_items SET image_url = '/foods/powerade_zero.png' WHERE name ILIKE '%Powerade%';
+
+-- Common Meals
+UPDATE food_items SET image_url = '/foods/chicken_rice_bowl.png' WHERE name ILIKE '%Chicken%Rice Bowl%';
+UPDATE food_items SET image_url = '/foods/protein_smoothie.png' WHERE name ILIKE '%Protein Smoothie%';
+UPDATE food_items SET image_url = '/foods/turkey_sandwich.png' WHERE name ILIKE '%Turkey Sandwich%';
+UPDATE food_items SET image_url = '/foods/steak_and_potatoes.png' WHERE name ILIKE '%Steak%Potatoes%';
+UPDATE food_items SET image_url = '/foods/salmon_and_veggies.png' WHERE name ILIKE '%Salmon%Veggies%';
+UPDATE food_items SET image_url = '/foods/egg_toast_breakfast.png' WHERE name ILIKE '%Egg%Toast%';
+UPDATE food_items SET image_url = '/foods/overnight_oats.png' WHERE name ILIKE '%Overnight Oats%';
+UPDATE food_items SET image_url = '/foods/tuna_salad.png' WHERE name ILIKE '%Tuna Salad%';
+UPDATE food_items SET image_url = '/foods/burrito_bowl.png' WHERE name ILIKE '%Burrito Bowl%' AND name NOT ILIKE '%Chipotle%' AND name NOT ILIKE '%Qdoba%';
+UPDATE food_items SET image_url = '/foods/greek_yogurt_parfait.png' WHERE name ILIKE '%Greek Yogurt Parfait%';
+
+-- McDonald's
+UPDATE food_items SET image_url = '/foods/mcdonalds_big_mac.png' WHERE name ILIKE '%Big Mac%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_quarter_pounder.png' WHERE name ILIKE '%Quarter Pounder with Cheese%' AND name NOT ILIKE '%Double%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_mcchicken.png' WHERE name ILIKE '%McChicken%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_nuggets_4pc.png' WHERE name ILIKE '%McNuggets%4%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_nuggets_6pc.png' WHERE name ILIKE '%McNuggets%6%' AND name NOT ILIKE '%Meal%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_nuggets_10pc.png' WHERE name ILIKE '%McNuggets%10%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_nuggets_20pc.png' WHERE name ILIKE '%McNuggets%20%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_filet_o_fish.png' WHERE name ILIKE '%Filet-O-Fish%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_mcdouble.png' WHERE name ILIKE '%McDouble%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_egg_mcmuffin.png' WHERE name ILIKE '%Egg McMuffin%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_sausage_mcmuffin.png' WHERE name ILIKE '%Sausage McMuffin%' AND name NOT ILIKE '%Egg%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_sausage_mcmuffin_egg.png' WHERE name ILIKE '%Sausage McMuffin with Egg%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_hash_brown.png' WHERE name ILIKE '%Hash Brown%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_large_fries.png' WHERE name ILIKE '%Large Fries%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_medium_fries.png' WHERE name ILIKE '%Medium Fries%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_small_fries.png' WHERE name ILIKE '%Small Fries%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_grilled_chicken_salad.png' WHERE name ILIKE '%Southwest Grilled Chicken Salad%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_apple_slices.png' WHERE name ILIKE '%Apple Slices%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_mcflurry_oreo.png' WHERE name ILIKE '%McFlurry%Oreo%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_mcflurry_mm.png' WHERE name ILIKE '%McFlurry%M&M%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_hotcakes.png' WHERE name ILIKE '%Hotcakes%' AND name NOT ILIKE '%Big Breakfast%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_big_breakfast.png' WHERE name ILIKE '%Big Breakfast%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_bacon_egg_biscuit.png' WHERE name ILIKE '%Bacon Egg%Biscuit%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_iced_coffee.png' WHERE name ILIKE '%Iced Coffee%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_chocolate_shake.png' WHERE name ILIKE '%Chocolate Shake%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_vanilla_shake.png' WHERE name ILIKE '%Vanilla Shake%' AND name ILIKE '%McDonald%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_double_quarter_pounder.png' WHERE name ILIKE '%Double Quarter Pounder%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_crispy_chicken_sandwich.png' WHERE name ILIKE '%Crispy Chicken Sandwich%' AND name ILIKE '%McDonald%';
+
+-- Chick-fil-A
+UPDATE food_items SET image_url = '/foods/chickfila_original_sandwich.png' WHERE name ILIKE '%Original Chicken Sandwich%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_spicy_sandwich.png' WHERE name ILIKE '%Spicy Chicken Sandwich%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_grilled_sandwich.png' WHERE name ILIKE '%Grilled Chicken Sandwich%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_nuggets_8ct.png' WHERE name ILIKE '%Chicken Nuggets%8%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_nuggets_12ct.png' WHERE name ILIKE '%Chicken Nuggets%12%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_grilled_nuggets.png' WHERE name ILIKE '%Grilled Nuggets%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_waffle_fries_medium.png' WHERE name ILIKE '%Waffle Fries%medium%';
+UPDATE food_items SET image_url = '/foods/chickfila_waffle_fries_large.png' WHERE name ILIKE '%Waffle Fries%large%';
+UPDATE food_items SET image_url = '/foods/chickfila_mac_cheese.png' WHERE name ILIKE '%Mac%Cheese%medium%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_chicken_biscuit.png' WHERE name ILIKE '%Chicken Biscuit%';
+UPDATE food_items SET image_url = '/foods/chickfila_spicy_southwest_salad.png' WHERE name ILIKE '%Spicy Southwest Salad%';
+UPDATE food_items SET image_url = '/foods/chickfila_grilled_cool_wrap.png' WHERE name ILIKE '%Grilled Cool Wrap%';
+UPDATE food_items SET image_url = '/foods/chickfila_chick_n_strips.png' WHERE name ILIKE '%Chick-n-Strips%';
+UPDATE food_items SET image_url = '/foods/chickfila_frosted_lemonade.png' WHERE name ILIKE '%Frosted Lemonade%';
+UPDATE food_items SET image_url = '/foods/chickfila_milkshake.png' WHERE name ILIKE '%Cookies%Cream Milkshake%';
+UPDATE food_items SET image_url = '/foods/chickfila_hash_brown_burrito.png' WHERE name ILIKE '%Hash Brown Scramble Burrito%';
+UPDATE food_items SET image_url = '/foods/chickfila_tortilla_soup.png' WHERE name ILIKE '%Chicken Tortilla Soup%';
+UPDATE food_items SET image_url = '/foods/chickfila_side_salad.png' WHERE name ILIKE '%Side Salad%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_cobb_salad.png' WHERE name ILIKE '%Cobb Salad%';
+UPDATE food_items SET image_url = '/foods/chickfila_fruit_cup.png' WHERE name ILIKE '%Fruit Cup%';
+UPDATE food_items SET image_url = '/foods/chickfila_chocolate_chip_cookie.png' WHERE name ILIKE '%Chocolate Chip Cookie%' AND name ILIKE '%Chick-fil-A%';
+UPDATE food_items SET image_url = '/foods/chickfila_sauce.png' WHERE name ILIKE '%Chick-fil-A Sauce%';
+
+-- Chipotle
+UPDATE food_items SET image_url = '/foods/chipotle_chicken_burrito.png' WHERE name ILIKE '%Chicken Burrito%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_steak_burrito.png' WHERE name ILIKE '%Steak Burrito%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_chicken_bowl.png' WHERE name ILIKE '%Chicken Bowl%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_steak_bowl.png' WHERE name ILIKE '%Steak Bowl%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_carnitas_bowl.png' WHERE name ILIKE '%Carnitas Bowl%';
+UPDATE food_items SET image_url = '/foods/chipotle_sofritas_bowl.png' WHERE name ILIKE '%Sofritas Bowl%';
+UPDATE food_items SET image_url = '/foods/chipotle_chips_guacamole.png' WHERE name ILIKE '%Chips%Guacamole%';
+UPDATE food_items SET image_url = '/foods/chipotle_chips_queso.png' WHERE name ILIKE '%Chips%Queso%';
+UPDATE food_items SET image_url = '/foods/chipotle_cilantro_lime_rice.png' WHERE name ILIKE '%Cilantro-Lime%Rice%';
+UPDATE food_items SET image_url = '/foods/chipotle_black_beans.png' WHERE name ILIKE '%Black Beans%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_pinto_beans.png' WHERE name ILIKE '%Pinto Beans%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_chicken_quesadilla.png' WHERE name ILIKE '%Chicken Quesadilla%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_steak_tacos.png' WHERE name ILIKE '%Steak Tacos%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_chicken_tacos.png' WHERE name ILIKE '%Chicken Tacos%' AND name ILIKE '%Chipotle%';
+UPDATE food_items SET image_url = '/foods/chipotle_barbacoa_bowl.png' WHERE name ILIKE '%Barbacoa Bowl%';
+UPDATE food_items SET image_url = '/foods/chipotle_veggie_bowl.png' WHERE name ILIKE '%Veggie Bowl%' AND name ILIKE '%Chipotle%';
+
+-- Subway
+UPDATE food_items SET image_url = '/foods/subway_turkey_6inch.png' WHERE name ILIKE '%6"%Turkey Breast%' OR name ILIKE '%6" Turkey Breast%';
+UPDATE food_items SET image_url = '/foods/subway_italian_bmt_6inch.png' WHERE name ILIKE '%6"%Italian BMT%' OR name ILIKE '%6" Italian BMT%';
+UPDATE food_items SET image_url = '/foods/subway_chicken_teriyaki_6inch.png' WHERE name ILIKE '%6"%Chicken Teriyaki%' OR name ILIKE '%6" Chicken Teriyaki%';
+UPDATE food_items SET image_url = '/foods/subway_meatball_marinara_6inch.png' WHERE name ILIKE '%6"%Meatball%' OR name ILIKE '%6" Meatball%';
+UPDATE food_items SET image_url = '/foods/subway_tuna_6inch.png' WHERE name ILIKE '%6"%Tuna%' OR name ILIKE '%6" Tuna%';
+UPDATE food_items SET image_url = '/foods/subway_veggie_delite_6inch.png' WHERE name ILIKE '%6"%Veggie Delite%' OR name ILIKE '%6" Veggie Delite%';
+UPDATE food_items SET image_url = '/foods/subway_steak_cheese_6inch.png' WHERE name ILIKE '%6"%Steak%Cheese%' OR name ILIKE '%6" Steak%Cheese%';
+UPDATE food_items SET image_url = '/foods/subway_spicy_italian_6inch.png' WHERE name ILIKE '%6"%Spicy Italian%' OR name ILIKE '%6" Spicy Italian%';
+UPDATE food_items SET image_url = '/foods/subway_turkey_footlong.png' WHERE name ILIKE '%Footlong Turkey%';
+UPDATE food_items SET image_url = '/foods/subway_italian_bmt_footlong.png' WHERE name ILIKE '%Footlong Italian BMT%';
+UPDATE food_items SET image_url = '/foods/subway_chicken_teriyaki_footlong.png' WHERE name ILIKE '%Footlong Chicken Teriyaki%';
+UPDATE food_items SET image_url = '/foods/subway_chocolate_chip_cookie.png' WHERE name ILIKE '%Chocolate Chip Cookie%' AND name ILIKE '%Subway%';
+UPDATE food_items SET image_url = '/foods/subway_rotisserie_chicken_6inch.png' WHERE name ILIKE '%Rotisserie Chicken%' AND name ILIKE '%Subway%';
+UPDATE food_items SET image_url = '/foods/subway_cold_cut_combo_6inch.png' WHERE name ILIKE '%Cold Cut Combo%';
+UPDATE food_items SET image_url = '/foods/subway_black_forest_ham_6inch.png' WHERE name ILIKE '%Black Forest Ham%';
+UPDATE food_items SET image_url = '/foods/subway_meatball_marinara_footlong.png' WHERE name ILIKE '%Footlong Meatball%';
+
+-- Taco Bell
+UPDATE food_items SET image_url = '/foods/tacobell_crunchy_taco.png' WHERE name ILIKE '%Crunchy Taco%' AND name NOT ILIKE '%Supreme%' AND name NOT ILIKE '%Doritos%' AND name NOT ILIKE '%Del Taco%';
+UPDATE food_items SET image_url = '/foods/tacobell_soft_taco.png' WHERE name ILIKE '%Soft Taco%' AND name NOT ILIKE '%Supreme%';
+UPDATE food_items SET image_url = '/foods/tacobell_crunchy_taco_supreme.png' WHERE name ILIKE '%Crunchy Taco Supreme%';
+UPDATE food_items SET image_url = '/foods/tacobell_burrito_supreme.png' WHERE name ILIKE '%Burrito Supreme%';
+UPDATE food_items SET image_url = '/foods/tacobell_crunchwrap_supreme.png' WHERE name ILIKE '%Crunchwrap Supreme%';
+UPDATE food_items SET image_url = '/foods/tacobell_chicken_quesadilla.png' WHERE name ILIKE '%Chicken Quesadilla%' AND name ILIKE '%Taco Bell%';
+UPDATE food_items SET image_url = '/foods/tacobell_steak_quesadilla.png' WHERE name ILIKE '%Steak Quesadilla%' AND name ILIKE '%Taco Bell%';
+UPDATE food_items SET image_url = '/foods/tacobell_mexican_pizza.png' WHERE name ILIKE '%Mexican Pizza%';
+UPDATE food_items SET image_url = '/foods/tacobell_nachos_bellgrande.png' WHERE name ILIKE '%Nachos BellGrande%';
+UPDATE food_items SET image_url = '/foods/tacobell_cheesy_gordita_crunch.png' WHERE name ILIKE '%Cheesy Gordita Crunch%';
+UPDATE food_items SET image_url = '/foods/tacobell_bean_burrito.png' WHERE name ILIKE '%Bean Burrito%' AND name ILIKE '%Taco Bell%';
+UPDATE food_items SET image_url = '/foods/tacobell_chalupa_supreme.png' WHERE name ILIKE '%Chalupa Supreme%';
+UPDATE food_items SET image_url = '/foods/tacobell_beefy_5layer_burrito.png' WHERE name ILIKE '%Beefy 5-Layer%';
+UPDATE food_items SET image_url = '/foods/tacobell_doritos_locos_taco.png' WHERE name ILIKE '%Doritos Locos%';
+UPDATE food_items SET image_url = '/foods/tacobell_cheese_quesadilla.png' WHERE name ILIKE '%Cheese Quesadilla%' AND name ILIKE '%Taco Bell%';
+UPDATE food_items SET image_url = '/foods/tacobell_chicken_burrito.png' WHERE name ILIKE '%Chicken Burrito%' AND name ILIKE '%Taco Bell%';
+UPDATE food_items SET image_url = '/foods/tacobell_nachos_cheese.png' WHERE name ILIKE '%Nachos%Cheese%' AND name ILIKE '%Taco Bell%';
+
+-- Wendy's
+UPDATE food_items SET image_url = '/foods/wendys_daves_single.png' WHERE name ILIKE '%Dave%Single%';
+UPDATE food_items SET image_url = '/foods/wendys_daves_double.png' WHERE name ILIKE '%Dave%Double%';
+UPDATE food_items SET image_url = '/foods/wendys_daves_triple.png' WHERE name ILIKE '%Dave%Triple%';
+UPDATE food_items SET image_url = '/foods/wendys_baconator.png' WHERE name ILIKE '%Baconator%';
+UPDATE food_items SET image_url = '/foods/wendys_spicy_chicken_sandwich.png' WHERE name ILIKE '%Spicy Chicken Sandwich%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_jr_cheeseburger.png' WHERE name ILIKE '%Jr. Cheeseburger%' AND name NOT ILIKE '%Bacon%';
+UPDATE food_items SET image_url = '/foods/wendys_jr_bacon_cheeseburger.png' WHERE name ILIKE '%Jr. Bacon Cheeseburger%';
+UPDATE food_items SET image_url = '/foods/wendys_nuggets_4ct.png' WHERE name ILIKE '%Nuggets%4%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_nuggets_10ct.png' WHERE name ILIKE '%Nuggets%10%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_large_fries.png' WHERE name ILIKE '%Large Fries%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_chili_small.png' WHERE name ILIKE '%Chili%small%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_chili_large.png' WHERE name ILIKE '%Chili%large%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_baked_potato.png' WHERE name ILIKE '%Baked Potato%plain%' AND name ILIKE '%Wendy%';
+UPDATE food_items SET image_url = '/foods/wendys_frosty_chocolate.png' WHERE name ILIKE '%Frosty%Chocolate%';
+UPDATE food_items SET image_url = '/foods/wendys_frosty_vanilla.png' WHERE name ILIKE '%Frosty%Vanilla%';
+UPDATE food_items SET image_url = '/foods/wendys_classic_chicken_sandwich.png' WHERE name ILIKE '%Classic Chicken Sandwich%' AND name ILIKE '%Wendy%';
+
+-- Burger King
+UPDATE food_items SET image_url = '/foods/bk_whopper.png' WHERE name ILIKE '%Whopper%' AND name NOT ILIKE '%Jr%' AND name NOT ILIKE '%Cheese%' AND name NOT ILIKE '%Double%' AND name NOT ILIKE '%Impossible%';
+UPDATE food_items SET image_url = '/foods/bk_whopper_jr.png' WHERE name ILIKE '%Whopper Jr%' AND name NOT ILIKE '%Cheese%';
+UPDATE food_items SET image_url = '/foods/bk_whopper_with_cheese.png' WHERE name ILIKE '%Whopper with Cheese%';
+UPDATE food_items SET image_url = '/foods/bk_original_chicken_sandwich.png' WHERE name ILIKE '%Original Chicken Sandwich%' AND name ILIKE '%Burger King%';
+UPDATE food_items SET image_url = '/foods/bk_chicken_fries.png' WHERE name ILIKE '%Chicken Fries%';
+UPDATE food_items SET image_url = '/foods/bk_onion_rings.png' WHERE name ILIKE '%Onion Rings%';
+UPDATE food_items SET image_url = '/foods/bk_bacon_cheeseburger.png' WHERE name ILIKE '%Bacon Cheeseburger%' AND name ILIKE '%Burger King%';
+UPDATE food_items SET image_url = '/foods/bk_double_whopper.png' WHERE name ILIKE '%Double Whopper%';
+UPDATE food_items SET image_url = '/foods/bk_impossible_whopper.png' WHERE name ILIKE '%Impossible Whopper%';
+UPDATE food_items SET image_url = '/foods/bk_french_fries_medium.png' WHERE name ILIKE '%French Fries%medium%' AND name ILIKE '%Burger King%';
+UPDATE food_items SET image_url = '/foods/bk_chicken_jr.png' WHERE name ILIKE '%Chicken Jr%';
+UPDATE food_items SET image_url = '/foods/bk_hash_browns.png' WHERE name ILIKE '%Hash Browns%medium%' AND name ILIKE '%Burger King%';
+
+-- Five Guys
+UPDATE food_items SET image_url = '/foods/fiveguys_cheeseburger.png' WHERE name ILIKE '%Cheeseburger%' AND name ILIKE '%Five Guys%';
+UPDATE food_items SET image_url = '/foods/fiveguys_little_cheeseburger.png' WHERE name ILIKE '%Little Cheeseburger%';
+UPDATE food_items SET image_url = '/foods/fiveguys_bacon_cheeseburger.png' WHERE name ILIKE '%Bacon Cheeseburger%' AND name ILIKE '%Five Guys%';
+UPDATE food_items SET image_url = '/foods/fiveguys_little_bacon_cheeseburger.png' WHERE name ILIKE '%Little Bacon Cheeseburger%';
+UPDATE food_items SET image_url = '/foods/fiveguys_cajun_fries.png' WHERE name ILIKE '%Cajun Fries%' AND name ILIKE '%Five Guys%';
+UPDATE food_items SET image_url = '/foods/fiveguys_regular_fries.png' WHERE name ILIKE '%Regular Fries%' AND name ILIKE '%Five Guys%';
+UPDATE food_items SET image_url = '/foods/fiveguys_hot_dog.png' WHERE name ILIKE '%Hot Dog%' AND name ILIKE '%Five Guys%';
+UPDATE food_items SET image_url = '/foods/fiveguys_veggie_sandwich.png' WHERE name ILIKE '%Veggie Sandwich%' AND name ILIKE '%Five Guys%';
+
+-- Panda Express
+UPDATE food_items SET image_url = '/foods/panda_orange_chicken.png' WHERE name ILIKE '%Orange Chicken%';
+UPDATE food_items SET image_url = '/foods/panda_beijing_beef.png' WHERE name ILIKE '%Beijing Beef%';
+UPDATE food_items SET image_url = '/foods/panda_kung_pao_chicken.png' WHERE name ILIKE '%Kung Pao Chicken%';
+UPDATE food_items SET image_url = '/foods/panda_broccoli_beef.png' WHERE name ILIKE '%Broccoli Beef%';
+UPDATE food_items SET image_url = '/foods/panda_fried_rice.png' WHERE name ILIKE '%Fried Rice%' AND name ILIKE '%Panda%';
+UPDATE food_items SET image_url = '/foods/panda_chow_mein.png' WHERE name ILIKE '%Chow Mein%';
+UPDATE food_items SET image_url = '/foods/panda_super_greens.png' WHERE name ILIKE '%Super Greens%';
+UPDATE food_items SET image_url = '/foods/panda_string_bean_chicken.png' WHERE name ILIKE '%String Bean Chicken%';
+UPDATE food_items SET image_url = '/foods/panda_teriyaki_chicken.png' WHERE name ILIKE '%Grilled Teriyaki Chicken%';
+UPDATE food_items SET image_url = '/foods/panda_honey_walnut_shrimp.png' WHERE name ILIKE '%Honey Walnut Shrimp%';
+UPDATE food_items SET image_url = '/foods/panda_mushroom_chicken.png' WHERE name ILIKE '%Mushroom Chicken%';
+UPDATE food_items SET image_url = '/foods/panda_steamed_white_rice.png' WHERE name ILIKE '%Steamed White Rice%' AND name ILIKE '%Panda%';
+
+-- Popeyes
+UPDATE food_items SET image_url = '/foods/popeyes_classic_chicken_sandwich.png' WHERE name ILIKE '%Classic Chicken Sandwich%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_spicy_chicken_sandwich.png' WHERE name ILIKE '%Spicy Chicken Sandwich%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_chicken_breast.png' WHERE name ILIKE '%Chicken Breast%mild%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_chicken_thigh.png' WHERE name ILIKE '%Chicken Thigh%mild%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_cajun_fries.png' WHERE name ILIKE '%Cajun Fries%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_red_beans_rice.png' WHERE name ILIKE '%Red Beans%Rice%';
+UPDATE food_items SET image_url = '/foods/popeyes_biscuit.png' WHERE name ILIKE '%Biscuit%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_chicken_tenders.png' WHERE name ILIKE '%Chicken Tenders%' AND name ILIKE '%Popeyes%';
+UPDATE food_items SET image_url = '/foods/popeyes_mashed_potatoes.png' WHERE name ILIKE '%Mashed Potatoes%Gravy%';
+UPDATE food_items SET image_url = '/foods/popeyes_coleslaw.png' WHERE name ILIKE '%Coleslaw%';
+
+-- Starbucks
+UPDATE food_items SET image_url = '/foods/starbucks_caramel_frappuccino.png' WHERE name ILIKE '%Caramel Frappuccino%';
+UPDATE food_items SET image_url = '/foods/starbucks_caffe_latte.png' WHERE name ILIKE '%Caffè Latte%' OR name ILIKE '%Caffe Latte%';
+UPDATE food_items SET image_url = '/foods/starbucks_caffe_mocha.png' WHERE name ILIKE '%Caffè Mocha%' OR name ILIKE '%Caffe Mocha%';
+UPDATE food_items SET image_url = '/foods/starbucks_pike_place_coffee.png' WHERE name ILIKE '%Pike Place%';
+UPDATE food_items SET image_url = '/foods/starbucks_iced_caramel_macchiato.png' WHERE name ILIKE '%Iced Caramel Macchiato%';
+UPDATE food_items SET image_url = '/foods/starbucks_cake_pop.png' WHERE name ILIKE '%Cake Pop%';
+UPDATE food_items SET image_url = '/foods/starbucks_bacon_gouda_sandwich.png' WHERE name ILIKE '%Bacon Gouda%';
+UPDATE food_items SET image_url = '/foods/starbucks_spinach_feta_wrap.png' WHERE name ILIKE '%Spinach Feta%';
+UPDATE food_items SET image_url = '/foods/starbucks_impossible_sandwich.png' WHERE name ILIKE '%Impossible Breakfast Sandwich%';
+UPDATE food_items SET image_url = '/foods/starbucks_butter_croissant.png' WHERE name ILIKE '%Butter Croissant%' AND name ILIKE '%Starbucks%';
+UPDATE food_items SET image_url = '/foods/starbucks_blueberry_muffin.png' WHERE name ILIKE '%Blueberry Muffin%' AND name ILIKE '%Starbucks%';
+UPDATE food_items SET image_url = '/foods/starbucks_banana_nut_bread.png' WHERE name ILIKE '%Banana Nut Bread%';
+UPDATE food_items SET image_url = '/foods/starbucks_protein_box.png' WHERE name ILIKE '%Protein Box%Eggs%';
+UPDATE food_items SET image_url = '/foods/starbucks_vanilla_sweet_cream_cold_brew.png' WHERE name ILIKE '%Vanilla Sweet Cream Cold Brew%';
+UPDATE food_items SET image_url = '/foods/starbucks_matcha_latte.png' WHERE name ILIKE '%Matcha Latte%';
+UPDATE food_items SET image_url = '/foods/starbucks_chai_tea_latte.png' WHERE name ILIKE '%Chai Tea Latte%';
+UPDATE food_items SET image_url = '/foods/starbucks_double_chocolate_brownie.png' WHERE name ILIKE '%Double Chocolate Brownie%';
+
+-- Dunkin
+UPDATE food_items SET image_url = '/foods/dunkin_iced_coffee_cream_sugar.png' WHERE name ILIKE '%Iced Coffee%cream%sugar%' AND name ILIKE '%Dunkin%';
+UPDATE food_items SET image_url = '/foods/dunkin_iced_coffee_black.png' WHERE name ILIKE '%Iced Coffee%black%' AND name ILIKE '%Dunkin%';
+UPDATE food_items SET image_url = '/foods/dunkin_glazed_donut.png' WHERE name ILIKE '%Glazed Donut%';
+UPDATE food_items SET image_url = '/foods/dunkin_boston_kreme_donut.png' WHERE name ILIKE '%Boston Kreme%';
+UPDATE food_items SET image_url = '/foods/dunkin_chocolate_frosted_donut.png' WHERE name ILIKE '%Chocolate Frosted Donut%';
+UPDATE food_items SET image_url = '/foods/dunkin_bacon_egg_cheese_croissant.png' WHERE name ILIKE '%Bacon Egg%Cheese Croissant%';
+UPDATE food_items SET image_url = '/foods/dunkin_bacon_egg_cheese_bagel.png' WHERE name ILIKE '%Bacon Egg%Cheese%Bagel%';
+UPDATE food_items SET image_url = '/foods/dunkin_plain_bagel_cream_cheese.png' WHERE name ILIKE '%Plain Bagel with Cream Cheese%';
+UPDATE food_items SET image_url = '/foods/dunkin_hash_browns.png' WHERE name ILIKE '%Hash Browns%6%' AND name ILIKE '%Dunkin%';
+UPDATE food_items SET image_url = '/foods/dunkin_munchkins.png' WHERE name ILIKE '%Munchkins%';
+UPDATE food_items SET image_url = '/foods/dunkin_sausage_egg_cheese_wrap.png' WHERE name ILIKE '%Wake-Up Wrap%';
+UPDATE food_items SET image_url = '/foods/dunkin_hot_latte.png' WHERE name ILIKE '%Hot Latte%' AND name ILIKE '%Dunkin%';
+
+-- Pizza
+UPDATE food_items SET image_url = '/foods/pizzahut_cheese_pizza_slice.png' WHERE name ILIKE '%Cheese Pizza%slice%' AND name ILIKE '%Pizza Hut%';
+UPDATE food_items SET image_url = '/foods/pizzahut_pepperoni_pizza_slice.png' WHERE name ILIKE '%Pepperoni Pizza%slice%' AND name ILIKE '%Pizza Hut%';
+UPDATE food_items SET image_url = '/foods/pizzahut_supreme_pizza_slice.png' WHERE name ILIKE '%Supreme Pizza%' AND name ILIKE '%Pizza Hut%';
+UPDATE food_items SET image_url = '/foods/pizzahut_breadsticks.png' WHERE name ILIKE '%Breadstick%' AND name ILIKE '%Pizza Hut%';
+UPDATE food_items SET image_url = '/foods/pizzahut_garlic_bread.png' WHERE name ILIKE '%Garlic Bread%' AND name ILIKE '%Pizza Hut%';
+UPDATE food_items SET image_url = '/foods/pizzahut_bone_out_wings.png' WHERE name ILIKE '%Bone-Out Wings%';
+UPDATE food_items SET image_url = '/foods/dominos_cheese_pizza_slice.png' WHERE name ILIKE '%Cheese%slice%' AND name ILIKE '%Domino%';
+UPDATE food_items SET image_url = '/foods/dominos_pepperoni_pizza_slice.png' WHERE name ILIKE '%Pepperoni%slice%' AND name ILIKE '%Domino%';
+UPDATE food_items SET image_url = '/foods/dominos_cinnamon_bread_twists.png' WHERE name ILIKE '%Cinnamon Bread Twists%';
+UPDATE food_items SET image_url = '/foods/dominos_boneless_wings.png' WHERE name ILIKE '%Boneless Wings%' AND name ILIKE '%Domino%';
+UPDATE food_items SET image_url = '/foods/papajohns_cheese_pizza_slice.png' WHERE name ILIKE '%Cheese%slice%' AND name ILIKE '%Papa John%';
+UPDATE food_items SET image_url = '/foods/papajohns_pepperoni_pizza_slice.png' WHERE name ILIKE '%Pepperoni%slice%' AND name ILIKE '%Papa John%';
+UPDATE food_items SET image_url = '/foods/papajohns_garlic_knots.png' WHERE name ILIKE '%Garlic Knots%';
+UPDATE food_items SET image_url = '/foods/papajohns_breadsticks.png' WHERE name ILIKE '%Breadsticks%' AND name ILIKE '%Papa John%';
+
+-- Casual Dining
+UPDATE food_items SET image_url = '/foods/olivegarden_chicken_alfredo.png' WHERE name ILIKE '%Chicken Alfredo%' AND name ILIKE '%Olive Garden%';
+UPDATE food_items SET image_url = '/foods/olivegarden_tour_of_italy.png' WHERE name ILIKE '%Tour of Italy%';
+UPDATE food_items SET image_url = '/foods/olivegarden_breadstick.png' WHERE name ILIKE '%Breadstick%' AND name ILIKE '%Olive Garden%';
+UPDATE food_items SET image_url = '/foods/olivegarden_house_salad.png' WHERE name ILIKE '%House Salad%' AND name ILIKE '%Olive Garden%';
+UPDATE food_items SET image_url = '/foods/olivegarden_chicken_parmigiana.png' WHERE name ILIKE '%Chicken Parmigiana%';
+UPDATE food_items SET image_url = '/foods/olivegarden_fettuccine_alfredo.png' WHERE name ILIKE '%Fettuccine Alfredo%';
+UPDATE food_items SET image_url = '/foods/applebees_classic_burger.png' WHERE name ILIKE '%Classic Burger%' AND name ILIKE '%Applebee%';
+UPDATE food_items SET image_url = '/foods/applebees_boneless_wings.png' WHERE name ILIKE '%Boneless Wings%' AND name ILIKE '%Applebee%';
+UPDATE food_items SET image_url = '/foods/applebees_chicken_tenders_basket.png' WHERE name ILIKE '%Chicken Tenders Basket%';
+UPDATE food_items SET image_url = '/foods/applebees_loaded_fries.png' WHERE name ILIKE '%Loaded Fries%';
+UPDATE food_items SET image_url = '/foods/chilis_oldtimer_burger.png' WHERE name ILIKE '%Oldtimer%';
+UPDATE food_items SET image_url = '/foods/chilis_chicken_crispers.png' WHERE name ILIKE '%Chicken Crispers%';
+UPDATE food_items SET image_url = '/foods/chilis_baby_back_ribs.png' WHERE name ILIKE '%Baby Back Ribs%';
+UPDATE food_items SET image_url = '/foods/chilis_chicken_bacon_ranch_quesadillas.png' WHERE name ILIKE '%Chicken Bacon Ranch Quesadilla%';
+UPDATE food_items SET image_url = '/foods/chilis_classic_buffalo_wings.png' WHERE name ILIKE '%Classic Buffalo Wings%';
+UPDATE food_items SET image_url = '/foods/tgifridays_cajun_shrimp_chicken_pasta.png' WHERE name ILIKE '%Cajun Shrimp%Chicken Pasta%';
+UPDATE food_items SET image_url = '/foods/tgifridays_fridays_burger.png' WHERE name ILIKE '%Fridays Burger%';
+UPDATE food_items SET image_url = '/foods/tgifridays_sesame_jack_chicken_strips.png' WHERE name ILIKE '%Sesame Jack Chicken Strips%';
+
+-- Protein Bars
+UPDATE food_items SET image_url = '/foods/quest_chocolate_chip_cookie_dough.png' WHERE name ILIKE '%Chocolate Chip Cookie Dough%' AND name ILIKE '%Quest%';
+UPDATE food_items SET image_url = '/foods/quest_birthday_cake.png' WHERE name ILIKE '%Birthday Cake%' AND name ILIKE '%Quest%';
+UPDATE food_items SET image_url = '/foods/rxbar_chocolate_sea_salt.png' WHERE name ILIKE '%Chocolate Sea Salt%' AND name ILIKE '%RXBar%';
+UPDATE food_items SET image_url = '/foods/rxbar_peanut_butter_chocolate.png' WHERE name ILIKE '%Peanut Butter Chocolate%' AND name ILIKE '%RXBar%';
+UPDATE food_items SET image_url = '/foods/onebar_birthday_cake.png' WHERE name ILIKE '%Birthday Cake%' AND name ILIKE '%ONE Bar%';
+UPDATE food_items SET image_url = '/foods/clifbar_crunchy_peanut_butter.png' WHERE name ILIKE '%Crunchy Peanut Butter%' AND name ILIKE '%Clif%';
+UPDATE food_items SET image_url = '/foods/kind_dark_chocolate_nuts.png' WHERE name ILIKE '%Dark Chocolate Nuts%Sea Salt%';
+UPDATE food_items SET image_url = '/foods/larabar_peanut_butter_chocolate_chip.png' WHERE name ILIKE '%Peanut Butter Chocolate Chip%' AND name ILIKE '%Larabar%';
+
+-- Cereals
+UPDATE food_items SET image_url = '/foods/cheerios.png' WHERE name = 'Cheerios';
+UPDATE food_items SET image_url = '/foods/frosted_flakes.png' WHERE name = 'Frosted Flakes';
+UPDATE food_items SET image_url = '/foods/special_k.png' WHERE name ILIKE '%Special K%';
+UPDATE food_items SET image_url = '/foods/raisin_bran.png' WHERE name = 'Raisin Bran';
+UPDATE food_items SET image_url = '/foods/lucky_charms.png' WHERE name = 'Lucky Charms';
+UPDATE food_items SET image_url = '/foods/cinnamon_toast_crunch.png' WHERE name = 'Cinnamon Toast Crunch';
+UPDATE food_items SET image_url = '/foods/honey_nut_cheerios.png' WHERE name = 'Honey Nut Cheerios';
+UPDATE food_items SET image_url = '/foods/froot_loops.png' WHERE name = 'Froot Loops';
+
+-- Snacks
+UPDATE food_items SET image_url = '/foods/doritos_nacho_cheese.png' WHERE name ILIKE '%Nacho Cheese Doritos%';
+UPDATE food_items SET image_url = '/foods/doritos_cool_ranch.png' WHERE name ILIKE '%Cool Ranch Doritos%';
+UPDATE food_items SET image_url = '/foods/cheez_its_original.png' WHERE name ILIKE '%Cheez-It%';
+UPDATE food_items SET image_url = '/foods/goldfish_cheddar.png' WHERE name ILIKE '%Goldfish%';
+UPDATE food_items SET image_url = '/foods/hard_pretzels.png' WHERE name ILIKE '%Hard Pretzels%';
+UPDATE food_items SET image_url = '/foods/rice_cakes_lightly_salted.png' WHERE name ILIKE '%Rice Cakes%';
+UPDATE food_items SET image_url = '/foods/movie_theater_popcorn.png' WHERE name ILIKE '%Movie Theater Popcorn%';
+UPDATE food_items SET image_url = '/foods/skinny_pop.png' WHERE name ILIKE '%Skinny Pop%';
+UPDATE food_items SET image_url = '/foods/trail_mix.png' WHERE name = 'Trail Mix';
+UPDATE food_items SET image_url = '/foods/beef_jerky_original.png' WHERE name ILIKE '%Original Beef Jerky%';
+UPDATE food_items SET image_url = '/foods/beef_jerky_teriyaki.png' WHERE name ILIKE '%Teriyaki Beef Jerky%';
+UPDATE food_items SET image_url = '/foods/cheddar_sour_cream_chips.png' WHERE name ILIKE '%Cheddar%Sour Cream%Chips%';
+UPDATE food_items SET image_url = '/foods/peanut_butter_crackers.png' WHERE name ILIKE '%Peanut Butter Crackers%';
+UPDATE food_items SET image_url = '/foods/veggie_straws_original.png' WHERE name ILIKE '%Veggie Straws%';
+
+-- Frozen Meals
+UPDATE food_items SET image_url = '/foods/lean_cuisine_chicken_alfredo.png' WHERE name ILIKE '%Chicken Alfredo%' AND name ILIKE '%Lean Cuisine%';
+UPDATE food_items SET image_url = '/foods/lean_cuisine_herb_roasted_chicken.png' WHERE name ILIKE '%Herb Roasted Chicken%';
+UPDATE food_items SET image_url = '/foods/healthy_choice_cafe_steamers.png' WHERE name ILIKE '%Café Steamers%' OR name ILIKE '%Cafe Steamers%';
+UPDATE food_items SET image_url = '/foods/healthy_choice_power_bowl.png' WHERE name ILIKE '%Power Bowl%';
+UPDATE food_items SET image_url = '/foods/hot_pockets_cheese_pizza.png' WHERE name ILIKE '%Cheese Pizza Pocket%';
+UPDATE food_items SET image_url = '/foods/hot_pockets_pepperoni_pizza.png' WHERE name ILIKE '%Pepperoni Pizza Pocket%';
+UPDATE food_items SET image_url = '/foods/digiorno_cheese_pizza_slice.png' WHERE name ILIKE '%DiGiorno%Cheese%';
+UPDATE food_items SET image_url = '/foods/digiorno_pepperoni_pizza_slice.png' WHERE name ILIKE '%DiGiorno%Pepperoni%';
+UPDATE food_items SET image_url = '/foods/totinos_pizza_rolls.png' WHERE name ILIKE '%Pizza Rolls%';
+UPDATE food_items SET image_url = '/foods/totinos_party_pizza.png' WHERE name ILIKE '%Party Pizza%';
+UPDATE food_items SET image_url = '/foods/amys_bean_cheese_burrito.png' WHERE name ILIKE '%Burrito%bean%cheese%' AND name ILIKE '%Amy%';
+UPDATE food_items SET image_url = '/foods/amys_cheese_enchilada.png' WHERE name ILIKE '%Cheese Enchilada%';
+
+-- Breads & Bakery
+UPDATE food_items SET image_url = '/foods/daves_killer_bread_21_grains.png' WHERE name ILIKE '%21 Whole Grains%';
+UPDATE food_items SET image_url = '/foods/daves_killer_bread_good_seed.png' WHERE name ILIKE '%Good Seed%';
+UPDATE food_items SET image_url = '/foods/ezekiel_sprouted_bread.png' WHERE name ILIKE '%Ezekiel%';
+UPDATE food_items SET image_url = '/foods/english_muffin_whole_wheat.png' WHERE name ILIKE '%English Muffin%';
+UPDATE food_items SET image_url = '/foods/pita_bread.png' WHERE name ILIKE '%Pita Bread%';
+UPDATE food_items SET image_url = '/foods/naan_bread.png' WHERE name ILIKE '%Naan%';
+UPDATE food_items SET image_url = '/foods/croissant_large.png' WHERE name ILIKE '%Croissant%large%';
+UPDATE food_items SET image_url = '/foods/hamburger_bun.png' WHERE name = 'Hamburger Bun';
+
+-- Dairy brands
+UPDATE food_items SET image_url = '/foods/fairlife_2percent_milk.png' WHERE name ILIKE '%Fairlife 2%%';
+UPDATE food_items SET image_url = '/foods/fairlife_fat_free_milk.png' WHERE name ILIKE '%Fairlife Fat Free%';
+UPDATE food_items SET image_url = '/foods/chobani_vanilla_greek_yogurt.png' WHERE name ILIKE '%Vanilla Greek Yogurt%Chobani%';
+UPDATE food_items SET image_url = '/foods/yoplait_strawberry_yogurt.png' WHERE name ILIKE '%Strawberry Yogurt%Yoplait%';
+UPDATE food_items SET image_url = '/foods/light_string_cheese.png' WHERE name ILIKE '%String Cheese%';
+UPDATE food_items SET image_url = '/foods/cottage_cheese_4percent.png' WHERE name ILIKE '%Cottage Cheese%4%%';
+UPDATE food_items SET image_url = '/foods/parmesan_cheese_grated.png' WHERE name ILIKE '%Parmesan%';
+UPDATE food_items SET image_url = '/foods/swiss_cheese_slice.png' WHERE name ILIKE '%Swiss Cheese%';
+
+-- Desserts
+UPDATE food_items SET image_url = '/foods/vanilla_ice_cream.png' WHERE name = 'Vanilla Ice Cream';
+UPDATE food_items SET image_url = '/foods/chocolate_ice_cream.png' WHERE name = 'Chocolate Ice Cream';
+UPDATE food_items SET image_url = '/foods/frozen_yogurt_vanilla.png' WHERE name ILIKE '%Frozen Yogurt%vanilla%';
+UPDATE food_items SET image_url = '/foods/brownie_homemade.png' WHERE name ILIKE '%Brownie%homemade%';
+UPDATE food_items SET image_url = '/foods/chocolate_chip_cookie_large.png' WHERE name ILIKE '%Chocolate Chip Cookie%large%';
+UPDATE food_items SET image_url = '/foods/cheesecake_slice.png' WHERE name ILIKE '%Cheesecake%slice%';
+UPDATE food_items SET image_url = '/foods/apple_pie_slice.png' WHERE name ILIKE '%Apple Pie%slice%';
+UPDATE food_items SET image_url = '/foods/plain_glazed_donut.png' WHERE name ILIKE '%Plain Glazed Donut%';
+UPDATE food_items SET image_url = '/foods/cinnamon_roll_large.png' WHERE name ILIKE '%Cinnamon Roll%large%';
+UPDATE food_items SET image_url = '/foods/blueberry_muffin_bakery.png' WHERE name ILIKE '%Blueberry Muffin%bakery%';
+UPDATE food_items SET image_url = '/foods/pancakes_3.png' WHERE name ILIKE '%Pancakes%plain%3%';
+UPDATE food_items SET image_url = '/foods/waffles_2.png' WHERE name ILIKE '%Waffles%plain%2%';
+UPDATE food_items SET image_url = '/foods/french_toast_2_slices.png' WHERE name ILIKE '%French Toast%2 slices%';
+UPDATE food_items SET image_url = '/foods/dark_chocolate_70.png' WHERE name ILIKE '%Dark Chocolate%70%%';
+UPDATE food_items SET image_url = '/foods/milk_chocolate.png' WHERE name = 'Milk Chocolate';
+UPDATE food_items SET image_url = '/foods/snickers_bar.png' WHERE name = 'Snickers Bar';
+UPDATE food_items SET image_url = '/foods/kit_kat_4finger.png' WHERE name ILIKE '%Kit Kat%';
+UPDATE food_items SET image_url = '/foods/reeses_peanut_butter_cups.png' WHERE name ILIKE '%Reese%s Peanut Butter Cups%';
+UPDATE food_items SET image_url = '/foods/mms_peanut.png' WHERE name ILIKE '%M&M%peanut%';
+UPDATE food_items SET image_url = '/foods/skittles_original.png' WHERE name ILIKE '%Skittles%original%';
+UPDATE food_items SET image_url = '/foods/oreo_cookies_3.png' WHERE name ILIKE '%Oreo%3%';
+UPDATE food_items SET image_url = '/foods/chips_ahoy_3.png' WHERE name ILIKE '%Chips Ahoy%';
+UPDATE food_items SET image_url = '/foods/rice_krispies_treat.png' WHERE name ILIKE '%Rice Krispies Treat%';
+UPDATE food_items SET image_url = '/foods/pop_tart_frosted_strawberry.png' WHERE name ILIKE '%Pop-Tart%strawberry%';
+UPDATE food_items SET image_url = '/foods/ben_and_jerrys_chocolate_fudge_brownie.png' WHERE name ILIKE '%Ben%Jerry%Chocolate Fudge Brownie%';
+UPDATE food_items SET image_url = '/foods/halo_top_vanilla_bean.png' WHERE name ILIKE '%Halo Top%Vanilla Bean%';
+
+-- Puerto Rican & Caribbean
+UPDATE food_items SET image_url = '/foods/arroz_blanco.png' WHERE name ILIKE '%Arroz Blanco%';
+UPDATE food_items SET image_url = '/foods/arroz_amarillo.png' WHERE name ILIKE '%Arroz Amarillo%';
+UPDATE food_items SET image_url = '/foods/arroz_con_gandules.png' WHERE name ILIKE '%Arroz con Gandules%';
+UPDATE food_items SET image_url = '/foods/arroz_con_pollo.png' WHERE name ILIKE '%Arroz con Pollo%';
+UPDATE food_items SET image_url = '/foods/arroz_con_habichuelas.png' WHERE name ILIKE '%Arroz con Habichuelas%';
+UPDATE food_items SET image_url = '/foods/arroz_con_salchichas.png' WHERE name ILIKE '%Arroz con Salchichas%';
+UPDATE food_items SET image_url = '/foods/arroz_con_maiz.png' WHERE name ILIKE '%Arroz con Maíz%' OR name ILIKE '%Arroz con Maiz%';
+UPDATE food_items SET image_url = '/foods/arroz_mamposteao.png' WHERE name ILIKE '%Mamposteao%';
+UPDATE food_items SET image_url = '/foods/arroz_con_dulce.png' WHERE name ILIKE '%Arroz con Dulce%';
+UPDATE food_items SET image_url = '/foods/pegao.png' WHERE name ILIKE '%Pegao%';
+UPDATE food_items SET image_url = '/foods/habichuelas_guisadas_rosadas.png' WHERE name ILIKE '%Habichuelas Guisadas%rosadas%';
+UPDATE food_items SET image_url = '/foods/habichuelas_guisadas_rojas.png' WHERE name ILIKE '%Habichuelas Guisadas%rojas%';
+UPDATE food_items SET image_url = '/foods/habichuelas_guisadas_blancas.png' WHERE name ILIKE '%Habichuelas Guisadas%blancas%';
+UPDATE food_items SET image_url = '/foods/habichuelas_negras_guisadas.png' WHERE name ILIKE '%Habichuelas Negras%';
+UPDATE food_items SET image_url = '/foods/gandules_guisados.png' WHERE name ILIKE '%Gandules Guisados%';
+UPDATE food_items SET image_url = '/foods/pernil.png' WHERE name ILIKE '%Pernil%';
+UPDATE food_items SET image_url = '/foods/lechon_asado.png' WHERE name ILIKE '%Lechón Asado%' OR name ILIKE '%Lechon Asado%';
+UPDATE food_items SET image_url = '/foods/pollo_guisado.png' WHERE name ILIKE '%Pollo Guisado%';
+UPDATE food_items SET image_url = '/foods/carne_guisada.png' WHERE name ILIKE '%Carne Guisada%';
+UPDATE food_items SET image_url = '/foods/bistec_encebollado.png' WHERE name ILIKE '%Bistec Encebollado%';
+UPDATE food_items SET image_url = '/foods/chuleta_kan_kan.png' WHERE name ILIKE '%Chuleta Kan Kan%';
+UPDATE food_items SET image_url = '/foods/churrasco.png' WHERE name ILIKE '%Churrasco%';
+UPDATE food_items SET image_url = '/foods/pollo_frito.png' WHERE name ILIKE '%Pollo Frito%';
+UPDATE food_items SET image_url = '/foods/pollo_a_la_brasa.png' WHERE name ILIKE '%Pollo a la Brasa%';
+UPDATE food_items SET image_url = '/foods/carne_frita.png' WHERE name ILIKE '%Carne Frita%';
+UPDATE food_items SET image_url = '/foods/chicharron_de_pollo.png' WHERE name ILIKE '%Chicharrón de Pollo%' OR name ILIKE '%Chicharron de Pollo%';
+UPDATE food_items SET image_url = '/foods/chicharron_de_cerdo.png' WHERE name ILIKE '%Chicharrón de Cerdo%' OR name ILIKE '%Chicharron de Cerdo%';
+UPDATE food_items SET image_url = '/foods/camarones_al_ajillo.png' WHERE name ILIKE '%Camarones al Ajillo%';
+UPDATE food_items SET image_url = '/foods/mofongo_relleno_camarones.png' WHERE name ILIKE '%Mofongo%Camarones%';
+UPDATE food_items SET image_url = '/foods/asopao_de_camarones.png' WHERE name ILIKE '%Asopao de Camarones%';
+UPDATE food_items SET image_url = '/foods/pescado_frito.png' WHERE name ILIKE '%Pescado Frito%';
+UPDATE food_items SET image_url = '/foods/ensalada_de_pulpo.png' WHERE name ILIKE '%Ensalada de Pulpo%';
+UPDATE food_items SET image_url = '/foods/bacalao_guisado.png' WHERE name ILIKE '%Bacalao Guisado%';
+UPDATE food_items SET image_url = '/foods/serenata_de_bacalao.png' WHERE name ILIKE '%Serenata de Bacalao%';
+UPDATE food_items SET image_url = '/foods/mofongo_plain.png' WHERE name ILIKE '%Mofongo%' AND name NOT ILIKE '%Relleno%' AND name NOT ILIKE '%Yuca%';
+UPDATE food_items SET image_url = '/foods/mofongo_relleno_pollo.png' WHERE name ILIKE '%Mofongo%Pollo%';
+UPDATE food_items SET image_url = '/foods/mofongo_relleno_carne.png' WHERE name ILIKE '%Mofongo%Carne%';
+UPDATE food_items SET image_url = '/foods/tostones.png' WHERE name ILIKE '%Tostones%';
+UPDATE food_items SET image_url = '/foods/amarillos_maduros.png' WHERE name ILIKE '%Amarillos%' OR name ILIKE '%Maduros%';
+UPDATE food_items SET image_url = '/foods/trifongo.png' WHERE name ILIKE '%Trifongo%';
+UPDATE food_items SET image_url = '/foods/mofongo_de_yuca.png' WHERE name ILIKE '%Mofongo de Yuca%';
+UPDATE food_items SET image_url = '/foods/alcapurria_meat.png' WHERE name ILIKE '%Alcapurria%meat%' OR name ILIKE '%Alcapurria%carne%';
+UPDATE food_items SET image_url = '/foods/alcapurria_crab.png' WHERE name ILIKE '%Alcapurria%crab%' OR name ILIKE '%Alcapurria%jueyes%';
+UPDATE food_items SET image_url = '/foods/bacalaito.png' WHERE name ILIKE '%Bacalaíto%' OR name ILIKE '%Bacalaito%';
+UPDATE food_items SET image_url = '/foods/empanadilla_carne.png' WHERE name ILIKE '%Empanadilla de Carne%';
+UPDATE food_items SET image_url = '/foods/empanadilla_pollo.png' WHERE name ILIKE '%Empanadilla de Pollo%';
+UPDATE food_items SET image_url = '/foods/empanadilla_pizza.png' WHERE name ILIKE '%Empanadilla de Pizza%';
+UPDATE food_items SET image_url = '/foods/sorullito_de_maiz.png' WHERE name ILIKE '%Sorullito%';
+UPDATE food_items SET image_url = '/foods/relleno_de_papa.png' WHERE name ILIKE '%Relleno de Papa%';
+UPDATE food_items SET image_url = '/foods/papa_rellena.png' WHERE name ILIKE '%Papa Rellena%';
+UPDATE food_items SET image_url = '/foods/pionono.png' WHERE name ILIKE '%Pionono%';
+UPDATE food_items SET image_url = '/foods/aranitas_de_platano.png' WHERE name ILIKE '%Arañitas%' OR name ILIKE '%Aranitas%';
+UPDATE food_items SET image_url = '/foods/toston_relleno.png' WHERE name ILIKE '%Tostón Relleno%' OR name ILIKE '%Toston Relleno%';
+UPDATE food_items SET image_url = '/foods/sancocho_puertorriqueno.png' WHERE name ILIKE '%Sancocho Puertorriqueño%' OR name ILIKE '%Sancocho Puertorriqueno%';
+UPDATE food_items SET image_url = '/foods/asopao_de_pollo.png' WHERE name ILIKE '%Asopao de Pollo%';
+UPDATE food_items SET image_url = '/foods/sopa_de_pollo_fideos.png' WHERE name ILIKE '%Sopa de Pollo con Fideos%';
+UPDATE food_items SET image_url = '/foods/sopa_de_platano.png' WHERE name ILIKE '%Sopa de Plátano%' OR name ILIKE '%Sopa de Platano%';
+UPDATE food_items SET image_url = '/foods/caldo_de_res.png' WHERE name ILIKE '%Caldo de Res%';
+UPDATE food_items SET image_url = '/foods/yuca_hervida.png' WHERE name ILIKE '%Yuca Hervida%';
+UPDATE food_items SET image_url = '/foods/yuca_frita.png' WHERE name ILIKE '%Yuca Frita%';
+UPDATE food_items SET image_url = '/foods/batata_boniato.png' WHERE name ILIKE '%Batata%' OR name ILIKE '%Boniato%';
+UPDATE food_items SET image_url = '/foods/guineo_verde_hervido.png' WHERE name ILIKE '%Guineo Verde%';
+UPDATE food_items SET image_url = '/foods/platano_hervido.png' WHERE name ILIKE '%Plátano Hervido%' OR name ILIKE '%Platano Hervido%';
+UPDATE food_items SET image_url = '/foods/ensalada_de_coditos.png' WHERE name ILIKE '%Ensalada de Coditos%';
+UPDATE food_items SET image_url = '/foods/ensalada_de_papa.png' WHERE name ILIKE '%Ensalada de Papa%';
+UPDATE food_items SET image_url = '/foods/pastelon_de_platano_maduro.png' WHERE name ILIKE '%Pastelón%' OR name ILIKE '%Pastelon%';
+UPDATE food_items SET image_url = '/foods/pasteles_pork.png' WHERE name ILIKE '%Pasteles%pork%' OR name ILIKE '%Pasteles%cerdo%';
+UPDATE food_items SET image_url = '/foods/pasteles_de_yuca.png' WHERE name ILIKE '%Pasteles de Yuca%';
+UPDATE food_items SET image_url = '/foods/lasagna_boricua.png' WHERE name ILIKE '%Lasagna Boricua%';
+UPDATE food_items SET image_url = '/foods/huevos_revueltos_jamon.png' WHERE name ILIKE '%Huevos Revueltos%';
+UPDATE food_items SET image_url = '/foods/tortilla_de_huevo.png' WHERE name ILIKE '%Tortilla de Huevo%';
+UPDATE food_items SET image_url = '/foods/avena_pr.png' WHERE name ILIKE '%Avena%' AND name NOT ILIKE '%Overnight%';
+UPDATE food_items SET image_url = '/foods/pan_sobao.png' WHERE name ILIKE '%Pan Sobao%';
+UPDATE food_items SET image_url = '/foods/pan_de_agua.png' WHERE name ILIKE '%Pan de Agua%';
+UPDATE food_items SET image_url = '/foods/mallorca_bread.png' WHERE name ILIKE '%Mallorca%' AND name NOT ILIKE '%Jamón%' AND name NOT ILIKE '%Jamon%';
+UPDATE food_items SET image_url = '/foods/mallorca_jamon_queso.png' WHERE name ILIKE '%Mallorca%Jamón%' OR name ILIKE '%Mallorca%Jamon%';
+UPDATE food_items SET image_url = '/foods/quesito.png' WHERE name ILIKE '%Quesito%';
+UPDATE food_items SET image_url = '/foods/pastelillo_de_guayaba.png' WHERE name ILIKE '%Pastelillo de Guayaba%' AND name NOT ILIKE '%Queso%';
+UPDATE food_items SET image_url = '/foods/pastelillo_guayaba_queso.png' WHERE name ILIKE '%Pastelillo%Guayaba%Queso%';
+UPDATE food_items SET image_url = '/foods/tembleque.png' WHERE name ILIKE '%Tembleque%';
+UPDATE food_items SET image_url = '/foods/flan_de_queso.png' WHERE name ILIKE '%Flan de Queso%';
+UPDATE food_items SET image_url = '/foods/flan_de_coco.png' WHERE name ILIKE '%Flan de Coco%';
+UPDATE food_items SET image_url = '/foods/tres_leches_cake.png' WHERE name ILIKE '%Tres Leches%';
+UPDATE food_items SET image_url = '/foods/limber_de_coco.png' WHERE name ILIKE '%Limber de Coco%';
+UPDATE food_items SET image_url = '/foods/piragua.png' WHERE name ILIKE '%Piragua%';
+UPDATE food_items SET image_url = '/foods/cafe_con_leche.png' WHERE name ILIKE '%Café con Leche%' OR name ILIKE '%Cafe con Leche%';
+UPDATE food_items SET image_url = '/foods/cafe_puya.png' WHERE name ILIKE '%Café Puya%' OR name ILIKE '%Cafe Puya%';
+UPDATE food_items SET image_url = '/foods/malta_india.png' WHERE name ILIKE '%Malta India%';
+UPDATE food_items SET image_url = '/foods/coquito.png' WHERE name ILIKE '%Coquito%';
+UPDATE food_items SET image_url = '/foods/jugo_de_parcha.png' WHERE name ILIKE '%Jugo de Parcha%';
+UPDATE food_items SET image_url = '/foods/jugo_de_guayaba.png' WHERE name ILIKE '%Jugo de Guayaba%';
+UPDATE food_items SET image_url = '/foods/pina_colada.png' WHERE name ILIKE '%Piña Colada%' OR name ILIKE '%Pina Colada%';
+UPDATE food_items SET image_url = '/foods/polloTropical_tropichop.png' WHERE name ILIKE '%TropiChop%';
+UPDATE food_items SET image_url = '/foods/polloTropical_quarter_chicken_dark.png' WHERE name ILIKE '%Quarter Chicken%dark%' AND name ILIKE '%Pollo Tropical%';
+UPDATE food_items SET image_url = '/foods/polloTropical_quarter_chicken_white.png' WHERE name ILIKE '%Quarter Chicken%white%' AND name ILIKE '%Pollo Tropical%';
+UPDATE food_items SET image_url = '/foods/polloTropical_moro_rice.png' WHERE name ILIKE '%Moro Rice%';
+UPDATE food_items SET image_url = '/foods/polloTropical_sweet_plantains.png' WHERE name ILIKE '%Sweet Plantains%' AND name ILIKE '%Pollo Tropical%';
+UPDATE food_items SET image_url = '/foods/pica_pollo.png' WHERE name ILIKE '%Pica Pollo%';
+UPDATE food_items SET image_url = '/foods/yaroa_de_pollo.png' WHERE name ILIKE '%Yaroa%';
+UPDATE food_items SET image_url = '/foods/mangu.png' WHERE name ILIKE '%Mangú%' OR name ILIKE '%Mangu%';
+UPDATE food_items SET image_url = '/foods/tres_golpes.png' WHERE name ILIKE '%Tres Golpes%';
+UPDATE food_items SET image_url = '/foods/sancocho_dominicano.png' WHERE name ILIKE '%Sancocho Dominicano%';
+UPDATE food_items SET image_url = '/foods/chimichurri_burger.png' WHERE name ILIKE '%Chimichurri Burger%';
+UPDATE food_items SET image_url = '/foods/moro_habichuelas_negras.png' WHERE name ILIKE '%Moro de Habichuelas Negras%';
+UPDATE food_items SET image_url = '/foods/moro_gandules.png' WHERE name ILIKE '%Moro de Gandules%';
+UPDATE food_items SET image_url = '/foods/habichuela_con_dulce.png' WHERE name ILIKE '%Habichuela con Dulce%';
+UPDATE food_items SET image_url = '/foods/concon.png' WHERE name ILIKE '%Concón%' OR name ILIKE '%Concon%';
+UPDATE food_items SET image_url = '/foods/chofan.png' WHERE name ILIKE '%Chofán%' OR name ILIKE '%Chofan%';
+UPDATE food_items SET image_url = '/foods/cubano_sandwich.png' WHERE name ILIKE '%Cubano Sandwich%';
+UPDATE food_items SET image_url = '/foods/ropa_vieja.png' WHERE name ILIKE '%Ropa Vieja%';
+UPDATE food_items SET image_url = '/foods/vaca_frita.png' WHERE name ILIKE '%Vaca Frita%';
+UPDATE food_items SET image_url = '/foods/medianoche_sandwich.png' WHERE name ILIKE '%Medianoche%';
+UPDATE food_items SET image_url = '/foods/croquetas_de_jamon.png' WHERE name ILIKE '%Croquetas de Jamón%' OR name ILIKE '%Croquetas de Jamon%';
+
+-- International
+UPDATE food_items SET image_url = '/foods/california_roll.png' WHERE name ILIKE '%California Roll%';
+UPDATE food_items SET image_url = '/foods/spicy_tuna_roll.png' WHERE name ILIKE '%Spicy Tuna Roll%';
+UPDATE food_items SET image_url = '/foods/salmon_roll.png' WHERE name ILIKE '%Salmon Roll%';
+UPDATE food_items SET image_url = '/foods/pad_thai_chicken.png' WHERE name ILIKE '%Pad Thai%chicken%';
+UPDATE food_items SET image_url = '/foods/fried_rice_takeout.png' WHERE name ILIKE '%Fried Rice%takeout%';
+UPDATE food_items SET image_url = '/foods/lo_mein_chicken.png' WHERE name ILIKE '%Lo Mein%chicken%';
+UPDATE food_items SET image_url = '/foods/general_tsos_chicken.png' WHERE name ILIKE '%General Tso%';
+UPDATE food_items SET image_url = '/foods/chicken_tikka_masala.png' WHERE name ILIKE '%Chicken Tikka Masala%';
+UPDATE food_items SET image_url = '/foods/falafel.png' WHERE name ILIKE '%Falafel%';
+UPDATE food_items SET image_url = '/foods/chicken_shawarma_wrap.png' WHERE name ILIKE '%Chicken Shawarma%';
+UPDATE food_items SET image_url = '/foods/gyro_lamb_beef.png' WHERE name ILIKE '%Gyro%';
+UPDATE food_items SET image_url = '/foods/pho_beef.png' WHERE name ILIKE '%Pho%';
+UPDATE food_items SET image_url = '/foods/instant_ramen.png' WHERE name ILIKE '%Instant Ramen%';
+UPDATE food_items SET image_url = '/foods/restaurant_ramen_tonkotsu.png' WHERE name ILIKE '%Ramen%tonkotsu%';
+UPDATE food_items SET image_url = '/foods/bibimbap.png' WHERE name ILIKE '%Bibimbap%';
+UPDATE food_items SET image_url = '/foods/pork_tamale.png' WHERE name ILIKE '%Pork Tamale%';
+UPDATE food_items SET image_url = '/foods/beef_empanada.png' WHERE name ILIKE '%Beef Empanada%';
+UPDATE food_items SET image_url = '/foods/pupusa_cheese.png' WHERE name ILIKE '%Pupusa%';
+UPDATE food_items SET image_url = '/foods/jerk_chicken_thigh.png' WHERE name ILIKE '%Jerk Chicken%';
+UPDATE food_items SET image_url = '/foods/chicken_curry_thai_green.png' WHERE name ILIKE '%Thai green%curry%' OR name ILIKE '%Chicken Curry%Thai%';
+UPDATE food_items SET image_url = '/foods/chicken_curry_japanese.png' WHERE name ILIKE '%Japanese%curry%' OR name ILIKE '%Chicken Curry%Japanese%';
+UPDATE food_items SET image_url = '/foods/pork_dumplings_steamed.png' WHERE name ILIKE '%Pork Dumplings%steamed%';
+UPDATE food_items SET image_url = '/foods/pork_dumplings_fried.png' WHERE name ILIKE '%Pork Dumplings%fried%';
+UPDATE food_items SET image_url = '/foods/vegetable_spring_rolls.png' WHERE name ILIKE '%Vegetable Spring Rolls%';
+UPDATE food_items SET image_url = '/foods/pork_egg_rolls.png' WHERE name ILIKE '%Pork Egg Rolls%';
+UPDATE food_items SET image_url = '/foods/arepas_cheese.png' WHERE name ILIKE '%Arepas%cheese%';
+UPDATE food_items SET image_url = '/foods/chicken_teriyaki_bowl.png' WHERE name ILIKE '%Chicken Teriyaki Bowl%';
+UPDATE food_items SET image_url = '/foods/butter_chicken.png' WHERE name ILIKE '%Butter Chicken%';
+UPDATE food_items SET image_url = '/foods/lamb_curry_vindaloo.png' WHERE name ILIKE '%Lamb%vindaloo%';
+UPDATE food_items SET image_url = '/foods/vegetable_samosa.png' WHERE name ILIKE '%Vegetable Samosa%';
+UPDATE food_items SET image_url = '/foods/chicken_satay.png' WHERE name ILIKE '%Chicken Satay%';
+
+-- More fast food
+UPDATE food_items SET image_url = '/foods/innout_double_double.png' WHERE name ILIKE '%Double-Double%';
+UPDATE food_items SET image_url = '/foods/innout_cheeseburger_protein_style.png' WHERE name ILIKE '%protein style%' AND name ILIKE '%In-N-Out%';
+UPDATE food_items SET image_url = '/foods/innout_animal_style_fries.png' WHERE name ILIKE '%Animal Style Fries%';
+UPDATE food_items SET image_url = '/foods/deltaco_crunchy_taco.png' WHERE name ILIKE '%Crunchy Taco%' AND name ILIKE '%Del Taco%';
+UPDATE food_items SET image_url = '/foods/whitecastle_original_slider.png' WHERE name ILIKE '%Original Slider%' OR name ILIKE '%White Castle%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_6pc_nuggets_meal.png' WHERE name ILIKE '%6pc%McNuggets%Meal%' OR name ILIKE '%6 piece%McNuggets%medium%meal%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_bacon_clubhouse_burger.png' WHERE name ILIKE '%Bacon Clubhouse%';
+UPDATE food_items SET image_url = '/foods/mcdonalds_grilled_chicken_deluxe.png' WHERE name ILIKE '%Grilled Chicken Deluxe%';
+UPDATE food_items SET image_url = '/foods/qdoba_chicken_burrito_bowl.png' WHERE name ILIKE '%Chicken Burrito Bowl%' AND name ILIKE '%Qdoba%';
+UPDATE food_items SET image_url = '/foods/arbys_original_roast_beef.png' WHERE name ILIKE '%Original Roast Beef%' OR name ILIKE '%Arby%';

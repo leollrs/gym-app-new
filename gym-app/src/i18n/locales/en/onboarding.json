@@ -1,0 +1,128 @@
+{
+  "title": "Let's set you up",
+  "subtitle": "A few quick questions so we can build your perfect plan",
+
+  "langStep": {
+    "title": "Choose your language",
+    "subtitle": "You can change this anytime in settings"
+  },
+
+  "fitnessLevel": {
+    "title": "How experienced are you?",
+    "subtitle": "Pick the one that sounds most like you.",
+    "hint": "This sets how fast we push your weights up and how technical the exercises get. Honest is better — starting too heavy causes injury, starting too light just means faster progression.",
+    "beginner": {
+      "label": "Just getting started",
+      "desc": "Less than a year of regular training, or getting back after a long break",
+      "badge": "Beginner"
+    },
+    "intermediate": {
+      "label": "I train consistently",
+      "desc": "1–3 years of regular training, comfortable with the basics",
+      "badge": "Intermediate"
+    },
+    "advanced": {
+      "label": "I know what I'm doing",
+      "desc": "3+ years of structured training, comfortable with complex lifts",
+      "badge": "Advanced"
+    }
+  },
+
+  "goal": {
+    "title": "What's your main goal?",
+    "subtitle": "This shapes your rep ranges and progression style.",
+    "hint": "Your goal changes how we program your sets and reps. For example, strength training uses lower reps with heavier weight, while muscle building uses moderate weight with more volume. You can always change this later.",
+    "muscle_gain": { "label": "Build Muscle", "desc": "Get bigger and more defined" },
+    "fat_loss": { "label": "Lose Fat", "desc": "Burn fat while keeping your muscle" },
+    "strength": { "label": "Get Stronger", "desc": "Lift heavier, hit new personal bests" },
+    "endurance": { "label": "Build Endurance", "desc": "Improve cardio and stamina" },
+    "general_fitness": { "label": "Stay in Shape", "desc": "Stay active, healthy and consistent" }
+  },
+
+  "training": {
+    "title": "Training setup",
+    "subtitle": "How often do you train, and what equipment do you have?",
+    "daysPerWeek": "Days per week",
+    "daysCommit": "How many days can you realistically commit to?",
+    "freq1": "Full body sessions work best",
+    "freq3": "Great for push/pull/legs or upper/lower splits",
+    "freq4": "Upper/lower split works great here",
+    "freq5": "Push/pull/legs + 2 extra days",
+    "freq6": "High frequency — make sure you're recovering well",
+    "equipment": "Available equipment",
+    "equipmentHint": "Select everything you have access to at your gym.",
+    "barbell": "Barbell",
+    "dumbbells": "Dumbbells",
+    "cables": "Cables",
+    "machines": "Machines",
+    "bodyweight": "Bodyweight",
+    "kettlebells": "Kettlebells",
+    "resistanceBands": "Resistance Bands",
+    "smithMachine": "Smith Machine"
+  },
+
+  "schedule": {
+    "title": "Lock In Your Schedule",
+    "subtitle": "Members who commit to specific days are 2x more likely to stick with it",
+    "whichDays": "Which days will you train?",
+    "daysPrefilled": "Pre-filled based on your frequency — adjust as needed.",
+    "selectAtLeast": "Select at least one day to continue.",
+    "daysSelected": "{{count}} day selected",
+    "daysSelected_plural": "{{count}} days selected",
+    "preferTime": "I prefer to train in the...",
+    "timeHint": "We'll time your reminders to match.",
+    "morning": "Morning",
+    "morningSub": "6am – 12pm",
+    "afternoon": "Afternoon",
+    "afternoonSub": "12pm – 5pm",
+    "evening": "Evening",
+    "eveningSub": "5pm – 10pm",
+    "workoutPartner": "Workout partner",
+    "partnerQuestion": "Do you have a workout partner at this gym?",
+    "partnerPlaceholder": "Their username (optional)",
+    "findPartner": "We'll help you find one"
+  },
+
+  "bodyStats": {
+    "title": "Almost done",
+    "subtitle": "Skip anything you don't want to fill in — you can always add it later.",
+    "weight": "Current Weight (lbs)",
+    "weightHint": "Used to track your progress over time.",
+    "weightPlaceholder": "e.g. 175",
+    "injuries": "Any pain or limitations?",
+    "injuriesHint": "We'll avoid exercises that stress these areas and suggest safer alternatives.",
+    "noneSelected": "Nothing selected — all exercises available.",
+    "areasCount": "{{count}} area flagged — we'll work around these.",
+    "areasCount_plural": "{{count}} areas flagged — we'll work around these.",
+    "lowerBack": "Lower Back",
+    "knees": "Knees",
+    "shoulders": "Shoulders",
+    "wrists": "Wrists",
+    "elbows": "Elbows",
+    "hips": "Hips",
+    "neck": "Neck",
+    "ankles": "Ankles"
+  },
+
+  "social": {
+    "title": "Find Your Gym Squad",
+    "subtitle": "Members with 3+ gym friends stay 56% longer",
+    "hint": "Head to the Social tab after setup to add friends — members who train together, stay together.",
+    "feedPreview": "What you'll see in your social feed",
+    "mockPR": "hit a new PR",
+    "mockSession": "completed a session",
+    "mockStreak": "is on a",
+    "mockStreakDays": "14-day streak",
+    "mockStreakDesc": "Hasn't missed a day in two weeks",
+    "minAgo": "2 min ago",
+    "minAgo18": "18 min ago",
+    "hrAgo": "1 hr ago",
+    "nice": "Nice",
+    "crushIt": "Crush it",
+    "insane": "Insane"
+  },
+
+  "disclaimer": "This app provides fitness tracking tools only and does not constitute medical advice. Consult a healthcare professional before beginning any exercise program.",
+  "finish": "Got it, let's go!",
+  "initialWeightNote": "Initial weight at signup"
+}
