@@ -565,9 +565,10 @@ const Profile = () => {
       </div>
 
       {/* ── Quick-access cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 mb-6 stagger-fade-in">
+      <div className="grid grid-cols-3 gap-3 mb-6 stagger-fade-in">
         {[
           { to: '/checkin',    icon: QrCode,           label: t('profile.checkIn'),  color: '#3B82F6' },
+          { to: '/nutrition',  icon: UtensilsCrossed,  label: t('dashboard.nutrition'), color: '#10B981' },
           { to: null,          icon: Building2,        label: t('profile.myGym'),    color: '#D4AF37', action: 'gym' },
         ].map(item => (
           <button

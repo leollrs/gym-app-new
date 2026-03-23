@@ -6,9 +6,12 @@ import { subDays } from 'date-fns';
 const getGymSlug = () => new URLSearchParams(window.location.search).get('gym');
 
 const METRICS = [
-  { key: 'volume',   label: 'VOLUME',   unit: 'LBS',     period: 'THIS MONTH' },
-  { key: 'workouts', label: 'WORKOUTS', unit: 'SESSIONS', period: 'THIS MONTH' },
-  { key: 'prs',      label: 'TOP PRs',  unit: 'RECORDS',  period: 'ALL TIME'   },
+  { key: 'volume',      label: 'VOLUME',        unit: 'LBS',       period: 'THIS MONTH', rpc: 'volume' },
+  { key: 'workouts',    label: 'WORKOUTS',      unit: 'SESSIONS',  period: 'THIS MONTH', rpc: 'volume' },
+  { key: 'prs',         label: 'TOP PRs',       unit: 'RECORDS',   period: 'ALL TIME',   rpc: 'prs' },
+  { key: 'improved',    label: 'MOST IMPROVED', unit: '%',          period: 'THIS MONTH', rpc: 'improved' },
+  { key: 'consistency', label: 'CONSISTENCY',   unit: '%',          period: 'THIS MONTH', rpc: 'consistency' },
+  { key: 'checkins',    label: 'CHECK-INS',     unit: 'VISITS',    period: 'THIS MONTH', rpc: 'checkins' },
 ];
 
 const MEDAL_COLORS = ['#D4AF37', '#9CA3AF', '#CD7F32'];
@@ -84,23 +87,36 @@ export default function TVDisplay() {
     if (!gymId) return;
     setLoading(true);
     const from = subDays(new Date(), 30).toISOString();
+    let result = [];
 
-    if (metric.key === 'prs') {
+    if (metric.rpc === 'prs') {
       const { data } = await supabase.rpc('get_leaderboard_prs', {
-        p_gym_id: gymId,
-        p_start_date: null,
-        p_limit: 10,
+        p_gym_id: gymId, p_start_date: null, p_limit: 10,
       });
-      setEntries(data || []);
+      result = data || [];
+    } else if (metric.rpc === 'improved') {
+      const { data } = await supabase.rpc('get_leaderboard_most_improved', {
+        p_gym_id: gymId, p_metric: 'volume', p_period: 'monthly', p_tier: null, p_limit: 10,
+      });
+      result = data || [];
+    } else if (metric.rpc === 'consistency') {
+      const { data } = await supabase.rpc('get_leaderboard_consistency', {
+        p_gym_id: gymId, p_period: 'monthly', p_tier: null, p_limit: 10,
+      });
+      result = data || [];
+    } else if (metric.rpc === 'checkins') {
+      const { data } = await supabase.rpc('get_leaderboard_checkins', {
+        p_gym_id: gymId, p_start_date: from, p_tier: null, p_limit: 10,
+      });
+      result = data || [];
     } else {
       const { data } = await supabase.rpc('get_leaderboard_volume', {
-        p_gym_id: gymId,
-        p_metric: metric.key,
-        p_start_date: from,
-        p_limit: 10,
+        p_gym_id: gymId, p_metric: metric.key, p_start_date: from, p_limit: 10,
       });
-      setEntries(data || []);
+      result = data || [];
     }
+
+    setEntries(result);
     setLoading(false);
   };
 
@@ -140,6 +156,8 @@ export default function TVDisplay() {
   const maxScore = entries[0]?.score || 1;
 
   const fmtScore = (score) => {
+    if (metric.key === 'improved') return `+${score}%`;
+    if (metric.key === 'consistency') return `${score}%`;
     if (metric.key === 'volume') {
       if (score >= 1_000_000) return `${(score / 1_000_000).toFixed(2)}M`;
       if (score >= 1000)      return `${(score / 1000).toFixed(1)}K`;

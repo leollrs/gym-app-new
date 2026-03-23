@@ -203,6 +203,8 @@ const Workouts = () => {
   const [switchingProgram, setSwitchingProgram] = useState(false);
   const [expandedRoutineId, setExpandedRoutineId] = useState(null);
   const [showAllRoutines, setShowAllRoutines] = useState(false);
+  const [showAllMyPrograms, setShowAllMyPrograms] = useState(false);
+  const [showAllGymPrograms, setShowAllGymPrograms] = useState(false);
 
   // Gym programs
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -719,7 +721,7 @@ const Workouts = () => {
           </div>
         ) : (
           <div className="space-y-2">
-            {allPrograms.map(prog => {
+            {(showAllMyPrograms ? allPrograms : allPrograms.slice(0, 5)).map(prog => {
               const isActive = new Date(prog.expires_at) > new Date();
               const weekNum = isActive
                 ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6) : 6;
@@ -755,6 +757,22 @@ const Workouts = () => {
                 </div>
               );
             })}
+            {!showAllMyPrograms && allPrograms.length > 5 && (
+              <button
+                onClick={() => setShowAllMyPrograms(true)}
+                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+              >
+                Show all {allPrograms.length} programs
+              </button>
+            )}
+            {showAllMyPrograms && allPrograms.length > 5 && (
+              <button
+                onClick={() => setShowAllMyPrograms(false)}
+                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+              >
+                Show less
+              </button>
+            )}
           </div>
         )}
 
@@ -763,7 +781,7 @@ const Workouts = () => {
           <div className="mt-6">
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.15em] mb-3">From Your Gym</p>
             <div className="space-y-1.5">
-              {gymPrograms.map(prog => {
+              {(showAllGymPrograms ? gymPrograms : gymPrograms.slice(0, 5)).map(prog => {
                 const enrolled = enrolledIds.has(prog.id);
                 return (
                   <button
@@ -789,6 +807,22 @@ const Workouts = () => {
                   </button>
                 );
               })}
+              {!showAllGymPrograms && gymPrograms.length > 5 && (
+                <button
+                  onClick={() => setShowAllGymPrograms(true)}
+                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                >
+                  Show all {gymPrograms.length} gym programs
+                </button>
+              )}
+              {showAllGymPrograms && gymPrograms.length > 5 && (
+                <button
+                  onClick={() => setShowAllGymPrograms(false)}
+                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                >
+                  Show less
+                </button>
+              )}
             </div>
           </div>
         )}

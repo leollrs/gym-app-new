@@ -187,6 +187,11 @@ const WorkoutLog = ({ embedded = false }) => {
 
   const months = Object.keys(grouped);
 
+  // Collapse state per month — first month open by default
+  const [collapsedMonths, setCollapsedMonths] = useState({});
+  const toggleMonth = (month) =>
+    setCollapsedMonths(prev => ({ ...prev, [month]: !prev[month] }));
+
   return (
     <div className={embedded ? 'animate-fade-in' : 'mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in'}>
 
@@ -228,19 +233,37 @@ const WorkoutLog = ({ embedded = false }) => {
         />
       )}
 
-      {/* Sessions grouped by month */}
-      {!loading && months.map(month => (
-        <div key={month} className="mb-8">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-3 text-[#9CA3AF]">
-            {month}
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {grouped[month].map(session => (
-              <SessionCard key={session.id} session={session} />
-            ))}
+      {/* Sessions grouped by month (collapsible) */}
+      {!loading && months.map((month, idx) => {
+        const isCollapsed = collapsedMonths[month] ?? (idx > 0);
+        return (
+          <div key={month} className="mb-8">
+            <button
+              type="button"
+              onClick={() => toggleMonth(month)}
+              className="flex items-center gap-2 mb-3 group w-full text-left"
+            >
+              <ChevronDown
+                size={14}
+                className={`text-[#6B7280] transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+              />
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9CA3AF] group-hover:text-[#E5E7EB] transition-colors">
+                {month}
+              </p>
+              <span className="text-[10px] font-medium text-[#6B7280] ml-1">
+                ({grouped[month].length})
+              </span>
+            </button>
+            {!isCollapsed && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in">
+                {grouped[month].map(session => (
+                  <SessionCard key={session.id} session={session} />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Load more button */}
       {!loading && visibleCount < sessions.length && (

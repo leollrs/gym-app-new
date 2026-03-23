@@ -675,19 +675,23 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   };
 
   useEffect(() => {
+    const scrollY = window.scrollY;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prevOverflow; };
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.scrollTo(0, scrollY);
+    };
   }, []);
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-[120] flex items-center justify-center px-4"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-[480px] rounded-t-[24px] sm:rounded-[24px] p-6 max-h-[85vh] overflow-y-auto animate-slide-up"
+        className="w-full max-w-[480px] rounded-[24px] p-6 max-h-[80vh] overflow-y-auto animate-slide-up"
         style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)' }}
       >
         {/* Handle (mobile) */}

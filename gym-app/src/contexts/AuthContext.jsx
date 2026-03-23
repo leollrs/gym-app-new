@@ -34,7 +34,7 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = async (userId) => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload')
+      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload, leaderboard_visible')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);

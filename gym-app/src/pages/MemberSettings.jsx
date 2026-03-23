@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check,
+  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -14,11 +14,12 @@ const LANGUAGES = [
 
 export default function MemberSettings() {
   const navigate = useNavigate();
-  const { deleteAccount, user } = useAuth();
+  const { deleteAccount, user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
 
   return (
     <div className="min-h-screen bg-[#05070B] text-[#E5E7EB] pb-32 overscroll-none overflow-y-auto" style={{ overscrollBehavior: 'none' }}>
@@ -102,6 +103,35 @@ export default function MemberSettings() {
                 <span className="text-[14px] font-semibold text-[#E5E7EB]">{t('settings.healthIntegration')}</span>
               </div>
               <ChevronRight size={16} className="text-[#6B7280]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Privacy */}
+        <div>
+          <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">Privacy</h3>
+          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden">
+            <button
+              type="button"
+              onClick={async () => {
+                const newVal = !leaderboardVisible;
+                setLeaderboardVisible(newVal);
+                if (user?.id) {
+                  await supabase.from('profiles').update({ leaderboard_visible: newVal }).eq('id', user.id);
+                }
+              }}
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                {leaderboardVisible ? <Eye size={16} className="text-[#6B7280]" /> : <EyeOff size={16} className="text-[#6B7280]" />}
+                <div>
+                  <span className="text-[14px] font-semibold text-[#E5E7EB]">Show me on leaderboards</span>
+                  <p className="text-[11px] text-[#6B7280] mt-0.5">When off, you won't appear on any public leaderboard</p>
+                </div>
+              </div>
+              <div className={`w-10 h-6 rounded-full transition-colors relative ${leaderboardVisible ? 'bg-[#10B981]' : 'bg-[#374151]'}`}>
+                <div className={`w-4.5 h-4.5 rounded-full bg-white absolute top-[3px] transition-transform ${leaderboardVisible ? 'translate-x-[19px]' : 'translate-x-[3px]'}`} />
+              </div>
             </button>
           </div>
         </div>

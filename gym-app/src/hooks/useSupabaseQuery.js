@@ -44,9 +44,9 @@ export function useRoutines(userId) {
 }
 
 // ── Leaderboard ─────────────────────────────────────────────────────────────
-export function useLeaderboard(gymId, metric, startDate) {
+export function useLeaderboard(gymId, metric, startDate, tier = null) {
   return useSupabaseQuery(
-    ['leaderboard', gymId, metric, startDate],
+    ['leaderboard', gymId, metric, startDate, tier],
     () => {
       if (metric === 'streak') {
         return supabase
@@ -62,8 +62,86 @@ export function useLeaderboard(gymId, metric, startDate) {
         p_metric: metric,
         p_start_date: startDate || null,
         p_limit: 20,
+        p_tier: tier,
       }).then(res => ({ data: res.data, error: res.error }));
     },
+    { enabled: !!gymId },
+  );
+}
+
+export function useLeaderboardMostImproved(gymId, metric, period, tier = null) {
+  return useSupabaseQuery(
+    ['leaderboard-improved', gymId, metric, period, tier],
+    () => supabase.rpc('get_leaderboard_most_improved', {
+      p_gym_id: gymId,
+      p_metric: metric,
+      p_period: period,
+      p_tier: tier,
+      p_limit: 20,
+    }).then(res => ({ data: res.data, error: res.error })),
+    { enabled: !!gymId },
+  );
+}
+
+export function useLeaderboardConsistency(gymId, period, tier = null) {
+  return useSupabaseQuery(
+    ['leaderboard-consistency', gymId, period, tier],
+    () => supabase.rpc('get_leaderboard_consistency', {
+      p_gym_id: gymId,
+      p_period: period,
+      p_tier: tier,
+      p_limit: 20,
+    }).then(res => ({ data: res.data, error: res.error })),
+    { enabled: !!gymId },
+  );
+}
+
+export function useLeaderboardPrs(gymId, startDate, tier = null) {
+  return useSupabaseQuery(
+    ['leaderboard-prs', gymId, startDate, tier],
+    () => supabase.rpc('get_leaderboard_prs', {
+      p_gym_id: gymId,
+      p_start_date: startDate || null,
+      p_limit: 20,
+      p_tier: tier,
+    }).then(res => ({ data: res.data, error: res.error })),
+    { enabled: !!gymId },
+  );
+}
+
+export function useLeaderboardCheckins(gymId, startDate, tier = null) {
+  return useSupabaseQuery(
+    ['leaderboard-checkins', gymId, startDate, tier],
+    () => supabase.rpc('get_leaderboard_checkins', {
+      p_gym_id: gymId,
+      p_start_date: startDate || null,
+      p_tier: tier,
+      p_limit: 20,
+    }).then(res => ({ data: res.data, error: res.error })),
+    { enabled: !!gymId },
+  );
+}
+
+export function useLeaderboardNewcomers(gymId, metric, startDate) {
+  return useSupabaseQuery(
+    ['leaderboard-newcomers', gymId, metric, startDate],
+    () => supabase.rpc('get_leaderboard_newcomers', {
+      p_gym_id: gymId,
+      p_metric: metric,
+      p_start_date: startDate || null,
+      p_limit: 20,
+    }).then(res => ({ data: res.data, error: res.error })),
+    { enabled: !!gymId },
+  );
+}
+
+export function useMilestoneFeed(gymId) {
+  return useSupabaseQuery(
+    ['milestone-feed', gymId],
+    () => supabase.rpc('get_milestone_feed', {
+      p_gym_id: gymId,
+      p_limit: 30,
+    }).then(res => ({ data: res.data, error: res.error })),
     { enabled: !!gymId },
   );
 }

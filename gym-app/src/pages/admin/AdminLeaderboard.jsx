@@ -6,18 +6,28 @@ import { useAuth } from '../../contexts/AuthContext';
 import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, FilterBar } from '../../components/admin';
+import { PageHeader, AdminCard, FadeIn, FilterBar } from '../../components/admin';
 
 const METRICS = [
-  { key: 'volume',    label: 'Total Volume',     desc: 'lbs lifted' },
-  { key: 'workouts',  label: 'Workout Count',    desc: 'sessions completed' },
-  { key: 'pr_count',  label: 'Personal Records', desc: 'PRs set' },
+  { key: 'volume',      label: 'Total Volume',     scoreLabel: 'lbs' },
+  { key: 'workouts',    label: 'Workout Count',    scoreLabel: 'sessions' },
+  { key: 'pr_count',    label: 'Personal Records', scoreLabel: 'PRs' },
+  { key: 'checkins',    label: 'Check-Ins',        scoreLabel: 'check-ins' },
+  { key: 'improved',    label: 'Most Improved',    scoreLabel: '%' },
+  { key: 'consistency', label: 'Consistency',       scoreLabel: '%' },
 ];
 
 const PERIODS = [
   { key: '7',   label: 'This Week' },
   { key: '30',  label: 'This Month' },
   { key: 'all', label: 'All Time' },
+];
+
+const TIERS = [
+  { key: 'all',          label: 'All Tiers' },
+  { key: 'beginner',     label: 'Beginner' },
+  { key: 'intermediate', label: 'Intermediate' },
+  { key: 'advanced',     label: 'Advanced' },
 ];
 
 const MEDAL = ['🥇', '🥈', '🥉'];
@@ -28,28 +38,47 @@ export default function AdminLeaderboard() {
   const gymId = profile?.gym_id;
   const [metric, setMetric] = useState('volume');
   const [period, setPeriod] = useState('30');
+  const [tier, setTier]     = useState('all');
 
   useEffect(() => { document.title = 'Admin - Leaderboard | IronForge'; }, []);
 
+  // Clamp period for boards that don't support all-time
+  const effectivePeriod = (['improved', 'consistency'].includes(metric) && period === 'all') ? '30' : period;
+  const from = effectivePeriod !== 'all' ? subDays(new Date(), parseInt(effectivePeriod)).toISOString() : null;
+  const tierParam = tier === 'all' ? null : tier;
+  const periodLabel = effectivePeriod === '7' ? 'weekly' : 'monthly';
+
   // ── Fetch leaderboard ──
   const { data: entries = [], isLoading, refetch } = useQuery({
-    queryKey: [...adminKeys.leaderboard(gymId), metric, period],
+    queryKey: [...adminKeys.leaderboard(gymId), metric, effectivePeriod, tier],
     queryFn: async () => {
-      const from = period !== 'all' ? subDays(new Date(), parseInt(period)).toISOString() : null;
-
       if (metric === 'pr_count') {
         const { data } = await supabase.rpc('get_leaderboard_prs', {
-          p_gym_id: gymId,
-          p_start_date: from || null,
-          p_limit: 20,
+          p_gym_id: gymId, p_start_date: from, p_limit: 20, p_tier: tierParam,
+        });
+        return data || [];
+      }
+      if (metric === 'checkins') {
+        const { data } = await supabase.rpc('get_leaderboard_checkins', {
+          p_gym_id: gymId, p_start_date: from, p_tier: tierParam, p_limit: 20,
+        });
+        return data || [];
+      }
+      if (metric === 'improved') {
+        const { data } = await supabase.rpc('get_leaderboard_most_improved', {
+          p_gym_id: gymId, p_metric: 'volume', p_period: periodLabel,
+          p_tier: tierParam, p_limit: 20,
+        });
+        return data || [];
+      }
+      if (metric === 'consistency') {
+        const { data } = await supabase.rpc('get_leaderboard_consistency', {
+          p_gym_id: gymId, p_period: periodLabel, p_tier: tierParam, p_limit: 20,
         });
         return data || [];
       }
       const { data } = await supabase.rpc('get_leaderboard_volume', {
-        p_gym_id: gymId,
-        p_metric: metric,
-        p_start_date: from || null,
-        p_limit: 20,
+        p_gym_id: gymId, p_metric: metric, p_start_date: from, p_limit: 20, p_tier: tierParam,
       });
       return data || [];
     },
@@ -70,8 +99,15 @@ export default function AdminLeaderboard() {
     return () => supabase.removeChannel(channel);
   }, [gymId, queryClient]);
 
-  const scoreLabel = metric === 'volume' ? 'lbs' : metric === 'workouts' ? 'sessions' : 'PRs';
-  const metricLabel = METRICS.find(m => m.key === metric)?.label ?? 'Score';
+  const currentMetric = METRICS.find(m => m.key === metric);
+  const scoreLabel = currentMetric?.scoreLabel ?? 'pts';
+  const metricLabel = currentMetric?.label ?? 'Score';
+
+  const formatScore = (e) => {
+    if (metric === 'improved') return `+${e.score}%`;
+    if (metric === 'consistency') return `${e.score}%`;
+    return e.score.toLocaleString();
+  };
 
   const handleExport = () => {
     exportCSV({
@@ -80,8 +116,9 @@ export default function AdminLeaderboard() {
         { key: 'rank', label: 'Rank' },
         { key: 'name', label: 'Name' },
         { key: 'score', label: metricLabel },
+        { key: 'tier', label: 'Tier' },
       ],
-      data: entries.map((e, i) => ({ ...e, rank: i + 1 })),
+      data: entries.map((e, i) => ({ ...e, rank: i + 1, tier: e.tier ?? '—' })),
     });
   };
 
@@ -116,8 +153,13 @@ export default function AdminLeaderboard() {
         />
         <FilterBar
           options={PERIODS}
-          active={period}
+          active={effectivePeriod}
           onChange={setPeriod}
+        />
+        <FilterBar
+          options={TIERS}
+          active={tier}
+          onChange={setTier}
         />
       </div>
 
@@ -148,6 +190,9 @@ export default function AdminLeaderboard() {
                     <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                       {e.name}
                     </p>
+                    {e.tier && (
+                      <span className="text-[10px] text-[#4B5563] capitalize">{e.tier}</span>
+                    )}
                   </div>
                   <div className="hidden md:block w-24 flex-shrink-0">
                     <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
@@ -155,8 +200,10 @@ export default function AdminLeaderboard() {
                     </div>
                   </div>
                   <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
-                    {e.score.toLocaleString()}
-                    <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
+                    {formatScore(e)}
+                    {!['improved', 'consistency'].includes(metric) && (
+                      <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
+                    )}
                   </p>
                 </div>
               ))}
