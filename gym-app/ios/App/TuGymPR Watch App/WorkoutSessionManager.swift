@@ -1,6 +1,7 @@
 import Foundation
 import HealthKit
 import Combine
+import WatchConnectivity
 
 enum HeartRateZone: String {
     case warmup  = "WARM UP"
@@ -101,6 +102,16 @@ class WorkoutSessionManager: NSObject, ObservableObject {
                     self.heartRateZone = HeartRateZone.from(bpm: bpm)
                     self.heartRateSamples.append(bpm)
                     self.averageHeartRate = self.heartRateSamples.reduce(0, +) / Double(self.heartRateSamples.count)
+
+                    // Send live HR to phone (every 5th sample to avoid flooding)
+                    if self.heartRateSamples.count % 5 == 0, WCSession.default.isReachable {
+                        WCSession.default.sendMessage([
+                            "action": "heart_rate_update",
+                            "bpm": Int(bpm),
+                            "avgBPM": Int(self.averageHeartRate),
+                            "zone": self.heartRateZone.rawValue,
+                        ], replyHandler: nil, errorHandler: nil)
+                    }
                 }
             }
 
@@ -116,10 +127,26 @@ class WorkoutSessionManager: NSObject, ObservableObject {
             healthStore.stop(query)
             hrQuery = nil
         }
+        // Send HR summary to phone before ending
+        sendHeartRateSummary()
         workoutSession?.end()
         builder?.endCollection(withEnd: Date()) { [weak self] _, _ in
             self?.builder?.finishWorkout { _, _ in }
         }
         isSessionActive = false
+    }
+
+    /// Send heart rate data to the iPhone for the session summary
+    private func sendHeartRateSummary() {
+        guard WCSession.default.isReachable else { return }
+        let maxHR = heartRateSamples.max() ?? 0
+        let minHR = heartRateSamples.filter { $0 > 0 }.min() ?? 0
+        WCSession.default.sendMessage([
+            "action": "heart_rate_summary",
+            "averageBPM": Int(averageHeartRate),
+            "maxBPM": Int(maxHR),
+            "minBPM": Int(minHR),
+            "samples": heartRateSamples.count,
+        ], replyHandler: nil, errorHandler: nil)
     }
 }

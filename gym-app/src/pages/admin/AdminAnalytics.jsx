@@ -16,7 +16,7 @@ export default function AdminAnalytics() {
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
 
-  useEffect(() => { document.title = 'Admin - Analytics | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Analytics | TuGymPR'; }, []);
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">

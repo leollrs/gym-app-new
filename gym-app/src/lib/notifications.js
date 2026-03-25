@@ -1,15 +1,17 @@
 import { supabase } from './supabase';
 
 // ── NOTIFICATION TYPE CONSTANTS ────────────────────────────
+// Valid DB enum values: workout_reminder, streak_warning, challenge_update,
+// friend_activity, overload_suggestion, announcement, pr_beaten, trainer_message, churn_followup
 export const NOTIFICATION_TYPES = {
   STREAK_WARNING:  'streak_warning',
-  MILESTONE:       'milestone',
+  MILESTONE:       'workout_reminder',
   FRIEND_ACTIVITY: 'friend_activity',
-  WIN_BACK:        'win_back',
-  ACHIEVEMENT:     'achievement',
-  HABIT_CHECKIN:   'habit_checkin',
-  WEEKLY_SUMMARY:  'weekly_summary',
-  SYSTEM:          'system',
+  WIN_BACK:        'churn_followup',
+  ACHIEVEMENT:     'pr_beaten',
+  HABIT_CHECKIN:   'workout_reminder',
+  WEEKLY_SUMMARY:  'workout_reminder',
+  SYSTEM:          'workout_reminder',
   ANNOUNCEMENT:    'announcement',
 };
 
@@ -32,6 +34,7 @@ export async function createNotification({ profileId, gymId, type, title, body =
 
 /**
  * Insert the same notification for every member in a gym (used for announcements).
+ * Also fires a native push notification to all registered devices.
  */
 export async function broadcastNotification({ gymId, type, title, body = null, data = {} }) {
   const { data: members } = await supabase
@@ -42,9 +45,18 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
 
   if (!members?.length) return;
 
+  // Insert in-app notifications for all members
   await supabase.from('notifications').insert(
     members.map(m => ({ profile_id: m.id, gym_id: gymId, type, title, body, data }))
   );
+
+  // Fire native push notifications via edge function (fire-and-forget)
+  supabase.functions.invoke('send-push', {
+    body: { gym_id: gymId, title, body: body || '', data: { route: '/notifications', type } },
+  }).then(({ data: res, error }) => {
+    if (error) console.warn('[Push] send-push error:', error.message);
+    else console.info('[Push] send-push result:', res);
+  }).catch(err => console.warn('[Push] send-push failed:', err));
 }
 
 /**
@@ -57,13 +69,11 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
  */
 export async function sendNotification(userId, gymId, { title, body, type = NOTIFICATION_TYPES.SYSTEM, actionUrl = null }) {
   const { error } = await supabase.from('notifications').insert({
-    user_id:    userId,
+    profile_id: userId,
     gym_id:     gymId,
     title,
     body,
     type,
-    read:       false,
-    action_url: actionUrl,
   });
   if (error) throw error;
 }

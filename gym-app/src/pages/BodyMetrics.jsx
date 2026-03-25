@@ -235,7 +235,7 @@ export default function BodyMetrics() {
     addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight').catch(() => {});
     // Sync weight to Apple Health / Health Connect if enabled
     try {
-      const hs = JSON.parse(localStorage.getItem('ironforge_health_settings') || '{}');
+      const hs = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');
       if (hs.syncWeight) writeWeight(w);
     } catch {}
     setWeightInput('');

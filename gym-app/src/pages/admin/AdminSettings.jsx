@@ -95,7 +95,7 @@ export default function AdminSettings() {
   const [openDays, setOpenDays]    = useState([0, 1, 2, 3, 4, 5, 6]);
 
 
-  useEffect(() => { document.title = 'Admin - Settings | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Settings | TuGymPR'; }, []);
 
   // ── Load settings ──
   const { data: settingsData, isLoading } = useQuery({

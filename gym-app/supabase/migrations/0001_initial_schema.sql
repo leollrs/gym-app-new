@@ -45,7 +45,7 @@ CREATE TYPE announcement_type  AS ENUM ('news', 'event', 'challenge', 'maintenan
 CREATE TABLE gyms (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name              TEXT NOT NULL,
-    slug              TEXT NOT NULL UNIQUE,    -- e.g. "ironforge-barbell" → subdomain routing
+    slug              TEXT NOT NULL UNIQUE,    -- e.g. "tugympr-demo" → subdomain routing
     owner_user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     country           TEXT,
     timezone          TEXT NOT NULL DEFAULT 'UTC',

@@ -35,7 +35,7 @@ export default function AdminPrograms() {
   const [enrolledMembers, setEnrolledMembers] = useState({});
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Programs | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Programs | TuGymPR'; }, []);
 
   // ── Queries ──────────────────────────────────────────────
 

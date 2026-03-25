@@ -116,12 +116,12 @@ const HeroStat = ({ label, value, sub }) => (
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { t } = useTranslation('pages');
-  const { user, profile, signOut, deleteAccount, refreshProfile } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile, lifetimePoints: ctxLifetimePoints } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('achievements');
 
-  useEffect(() => { document.title = 'Profile | IronForge'; }, []);
+  useEffect(() => { document.title = 'Profile | TuGymPR'; }, []);
 
   // Data state
   const [gymName, setGymName]                         = useState('');
@@ -137,7 +137,8 @@ const Profile = () => {
   const [achievementStats, setAchievementStats]       = useState(null);
 
   // Level / points
-  const [userPoints, setUserPoints] = useState(0);
+  const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
+  useEffect(() => { if (ctxLifetimePoints != null) setUserPoints(ctxLifetimePoints); }, [ctxLifetimePoints]);
   const [gymInfo, setGymInfo] = useState(null);
 
   // Goals state
@@ -173,7 +174,7 @@ const Profile = () => {
 
       // Fetch user points for level display
       const ptsData = await getUserPoints(user.id);
-      setUserPoints(ptsData.total_points || 0);
+      setUserPoints(ptsData.lifetime_points || 0);
 
       // 2. Recent completed sessions (capped for performance)
       const { data: sessionData } = await supabase

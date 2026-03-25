@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
-  Search, UserPlus, Check, X, Users, Share2, Flag, Gift,
+  Search, UserPlus, Check, X, Users, Flag, Gift,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,7 @@ import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import LoadMoreButton from '../components/LoadMoreButton';
 import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
+
 import { sanitize } from '../lib/sanitize';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -255,24 +256,6 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         >
           <MessageCircle size={16} />
           {item.commentCount > 0 ? item.commentCount : t('social.comment')}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const name = item.profiles?.full_name ?? 'Someone';
-            const workoutName = item.data?.routine_name ?? 'a workout';
-            const volume = fmtVolume(item.data?.total_volume_lbs);
-            const text = `${name} just crushed ${workoutName} — ${volume} total volume!`;
-            if (navigator.share) {
-              navigator.share({ text }).catch(() => {});
-            } else {
-              navigator.clipboard.writeText(text).catch(() => {});
-            }
-          }}
-          className="flex items-center gap-2 text-[13px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
-        >
-          <Share2 size={16} />
-          {t('social.share')}
         </button>
         {item.actor_id !== currentUserId && (
           <button
@@ -605,7 +588,7 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting, t }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const SocialFeed = ({ embedded = false }) => {
   const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { user, profile, gymName } = useAuth();
   const [feed, setFeed]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -619,7 +602,7 @@ const SocialFeed = ({ embedded = false }) => {
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
-  useEffect(() => { document.title = 'Social Feed | IronForge'; }, []);
+  useEffect(() => { document.title = 'Social Feed | TuGymPR'; }, []);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {

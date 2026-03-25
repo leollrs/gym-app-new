@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
-  ScrollText, MoreHorizontal, X, Shield, MessageSquare,
+  ScrollText, MoreHorizontal, X, Shield, MessageSquare, Bug,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -20,6 +20,7 @@ const NAV_SECTIONS = [
       { to: '/platform/members',    label: 'Member Lookup',  icon: Search },
       { to: '/platform/sms',        label: 'SMS',            icon: MessageSquare },
       { to: '/platform/audit-log',  label: 'Audit Log',      icon: ScrollText },
+      { to: '/platform/error-logs', label: 'Error Logs',     icon: Bug },
     ],
   },
   {

@@ -6,7 +6,7 @@ export const currentUser = {
     fullName: 'Alex Chen',
     avatarUrl: 'https://i.pravatar.cc/150?img=11',
     joinDate: '2023-11-15',
-    homeGym: 'IronForge Barbell Club',
+    homeGym: 'TuGymPR Demo Gym',
     stats: {
         workoutsCompleted: 142,
         currentStreak: 4,

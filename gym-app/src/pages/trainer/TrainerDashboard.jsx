@@ -15,7 +15,7 @@ export default function TrainerDashboard() {
   const [recentSessions, setRecentSessions] = useState([]);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
 
-  useEffect(() => { document.title = 'Trainer - Dashboard | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Dashboard | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Trophy, Dumbbell, Clock, Zap, BarChart2, CheckCircle, Share2 } from 'lucide-react';
+import { Trophy, Dumbbell, Clock, Zap, BarChart2, CheckCircle, Heart, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { writeWorkout } from '../lib/healthSync';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,7 +11,7 @@ import AchievementToast from '../components/AchievementToast';
 import { sanitize } from '../lib/sanitize';
 import AnimatedCounter from '../components/AnimatedCounter';
 import { formatDurationLong as formatTime } from '../lib/dateUtils';
-import html2canvas from 'html2canvas';
+
 import { useTranslation } from 'react-i18next';
 
 const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
@@ -32,12 +32,10 @@ const StatCard = ({ icon: Icon, label, value, accent }) => (
 const SessionSummary = () => {
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { user, profile } = useAuth();
+  const { user, profile, gymName, gymLogoUrl } = useAuth();
   const { t } = useTranslation('pages');
   const [visible, setVisible] = useState(false);
   const [newAchievements, setNewAchievements] = useState([]);
-  const [sharing, setSharing] = useState(false);
-  const shareCardRef = useRef(null);
 
   // Data passed from ActiveSession via navigate state
   const {
@@ -50,6 +48,8 @@ const SessionSummary = () => {
     sessionPRs     = [],
     completedAt    = new Date().toISOString(),
     xpEarned       = 0,
+    heartRate      = null,
+    streak         = 0,
   } = location.state ?? {};
 
   // Entrance animation
@@ -61,7 +61,7 @@ const SessionSummary = () => {
   // Sync completed workout to Apple Health / Health Connect if enabled
   useEffect(() => {
     try {
-      const hs = JSON.parse(localStorage.getItem('ironforge_health_settings') || '{}');
+      const hs = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');
       if (hs.syncWorkouts) {
         const end = completedAt ? new Date(completedAt) : new Date();
         const start = new Date(end.getTime() - (elapsedTime || 0) * 1000);
@@ -90,7 +90,7 @@ const SessionSummary = () => {
         await createNotification({
           profileId: user.id,
           gymId:     profile.gym_id,
-          type:      'milestone',
+          type:      'workout_reminder',
           title:     `${count} workout${count === 1 ? '' : 's'} completed!`,
           body:      count === 1
             ? 'Welcome to your fitness journey. Keep it up!'
@@ -103,7 +103,7 @@ const SessionSummary = () => {
         await createNotification({
           profileId: user.id,
           gymId:     profile.gym_id,
-          type:      'pr',
+          type:      'pr_beaten',
           title:     `${sessionPRs.length} new PR${sessionPRs.length > 1 ? 's' : ''} this session!`,
           body:      sessionPRs.slice(0, 3).map(p => p.exerciseName ?? p.exercise_name ?? 'Exercise').join(', '),
         });
@@ -130,10 +130,10 @@ const SessionSummary = () => {
         else if (type === 'volume')  delta = totalVolume ?? 0;
         else if (type === 'pr_count') delta = sessionPRs?.length ?? 0;
         if (delta === 0) continue;
-        await supabase
-          .from('challenge_participants')
-          .update({ score: (p.score ?? 0) + delta })
-          .eq('id', p.id);
+        await supabase.rpc('increment_challenge_score', {
+          p_participant_id: p.id,
+          p_delta: delta,
+        });
       }
 
       // ── Check and award achievements ─────────────────────────────────────
@@ -235,6 +235,7 @@ const SessionSummary = () => {
             { icon: BarChart2, label: t('sessionSummary.volume'),   value: `${formatVolume(totalVolume)} lbs`, accent: '#D4AF37' },
             { icon: Zap,      label: t('sessionSummary.setsDone'), value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, accent: '#34D399' },
             { icon: Dumbbell, label: t('sessionSummary.exercises'), value: totalExercises,             accent: '#A78BFA' },
+            ...(heartRate?.averageBPM ? [{ icon: Heart, label: 'Avg Heart Rate', value: `${heartRate.averageBPM} bpm`, accent: '#EF4444' }] : []),
           ].map((stat, index) => (
             <motion.div
               key={stat.label}
@@ -334,55 +335,6 @@ const SessionSummary = () => {
             {t('sessionSummary.backToTheGrind')}
           </button>
           <button
-            disabled={sharing}
-            onClick={async () => {
-              setSharing(true);
-              try {
-                const node = shareCardRef.current;
-                if (node) {
-                  node.style.display = 'flex';
-                  const canvas = await html2canvas(node, {
-                    backgroundColor: '#05070B',
-                    scale: 2,
-                    useCORS: true,
-                  });
-                  node.style.display = 'none';
-                  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-                  const file = new File([blob], 'workout-summary.png', { type: 'image/png' });
-
-                  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-                    await navigator.share({
-                      title: 'Workout Complete',
-                      text: `${routineName} — ${formatTime(elapsedTime)} | ${formatVolume(totalVolume)} lbs | ${completedSets} sets`,
-                      files: [file],
-                    });
-                  } else if (navigator.share) {
-                    await navigator.share({
-                      title: 'Workout Complete',
-                      text: `${routineName} — ${formatTime(elapsedTime)} | ${formatVolume(totalVolume)} lbs | ${completedSets} sets${sessionPRs.length > 0 ? ` | ${sessionPRs.length} PRs` : ''}`,
-                    });
-                  } else {
-                    // Fallback: download image
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'workout-summary.png';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }
-                }
-              } catch (e) {
-                // silent fail
-              } finally {
-                setSharing(false);
-              }
-            }}
-            className="w-full py-3.5 rounded-2xl bg-white/5 border border-white/10 text-[#E5E7EB] font-semibold text-[15px] flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-50"
-          >
-            <Share2 size={16} />
-            {sharing ? t('sessionSummary.generating') : t('sessionSummary.shareWorkout')}
-          </button>
-          <button
             onClick={() => navigate('/workouts')}
             className="w-full bg-white/5 hover:bg-white/10 text-[#9CA3AF] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors border border-white/8"
           >
@@ -391,52 +343,6 @@ const SessionSummary = () => {
         </div>
       </div>
 
-      {/* Hidden share card — rendered offscreen, captured by html2canvas */}
-      <div
-        ref={shareCardRef}
-        style={{
-          display: 'none',
-          position: 'fixed',
-          left: '-9999px',
-          top: 0,
-          width: '400px',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '40px 32px',
-          background: 'linear-gradient(180deg, #0A0F1A 0%, #05070B 100%)',
-          borderRadius: '24px',
-          fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-        }}
-      >
-        <div style={{ fontSize: '14px', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>
-          {t('sessionSummary.workoutComplete')}
-        </div>
-        <div style={{ fontSize: '28px', color: '#E5E7EB', fontWeight: 900, marginBottom: '24px', textAlign: 'center' }}>
-          {routineName}
-        </div>
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', width: '100%', justifyContent: 'center' }}>
-          {[
-            { label: t('sessionSummary.duration'), value: formatTime(elapsedTime), color: '#60A5FA' },
-            { label: t('sessionSummary.volume'), value: `${formatVolume(totalVolume)} lbs`, color: '#D4AF37' },
-            { label: t('sessionSummary.sets'), value: String(completedSets), color: '#34D399' },
-          ].map(s => (
-            <div key={s.label} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '16px', padding: '16px 12px', textAlign: 'center', flex: 1 }}>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fff' }}>{s.value}</div>
-              <div style={{ fontSize: '10px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginTop: '4px' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-        {sessionPRs.length > 0 && (
-          <div style={{ background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.2)', borderRadius: '16px', padding: '12px 16px', width: '100%', textAlign: 'center', marginBottom: '16px' }}>
-            <span style={{ fontSize: '14px', fontWeight: 800, color: '#D4AF37' }}>
-              🏆 {sessionPRs.length} New PR{sessionPRs.length > 1 ? 's' : ''}
-            </span>
-          </div>
-        )}
-        <div style={{ fontSize: '11px', color: '#4B5563', marginTop: '8px' }}>
-          {new Date(completedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-        </div>
-      </div>
     </div>
   );
 };

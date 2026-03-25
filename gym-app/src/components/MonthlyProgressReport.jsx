@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus,
-  Trophy, Flame, Dumbbell, Calendar, Clock, Target, Share2, Award,
-  Camera, Weight, BarChart3, Zap, Check, Copy,
+  Trophy, Flame, Dumbbell, Calendar, Clock, Target, Award,
+  Camera, Weight, BarChart3, Zap, Copy,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { epley1RM } from '../lib/overloadEngine';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
+
 import Skeleton from './Skeleton';
 import FadeIn from './FadeIn';
 import ChartTooltip from './ChartTooltip';
@@ -134,12 +135,11 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
 // ══ MonthlyProgressReport ════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════════
 const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, gymName, gymLogoUrl } = useAuth();
   const targetId = profileIdProp || user?.id;
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
-  const [copied, setCopied] = useState(false);
 
   // Don't allow navigating into the future
   const canGoNext = isAfter(startOfMonth(new Date()), addMonths(month, 1)) ||
@@ -326,7 +326,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           return d >= weekStart && d <= weekEnd;
         });
         const vol = weekSessions.reduce((sum, ss) => sum + (parseFloat(ss.total_volume_lbs) || 0), 0);
-        weeklyVolume.push({ name: `Wk ${weekNum}`, volume: Math.round(vol) });
+        weeklyVolume.push({ name: `Wk ${weekNum}`, volume: Math.round(vol), count: weekSessions.length });
         weekStart = new Date(weekEnd);
         weekStart.setDate(weekStart.getDate() + 1);
         weekNum++;
@@ -434,34 +434,6 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── Share (copy text summary to clipboard) ───────────────────────────────
-  const handleShare = useCallback(async () => {
-    if (!data) return;
-    const lines = [
-      `Monthly Progress Report — ${format(month, 'MMMM yyyy')}`,
-      '',
-      `Workouts: ${data.totalWorkouts}`,
-      `Volume: ${fmtNum(Math.round(data.totalVolume))} lbs`,
-      `Time: ${fmtDuration(data.totalTime)}`,
-      `Consistency: ${data.attendanceRate}%`,
-      `Best Streak: ${data.bestStreak} day${data.bestStreak !== 1 ? 's' : ''}`,
-    ];
-    if (data.prs.length > 0) {
-      lines.push('', `PRs Hit: ${data.prs.length}`);
-      data.prs.slice(0, 5).forEach(pr => {
-        lines.push(`  ${pr.exerciseName}: ${pr.weight_lbs} lbs x ${pr.reps} (e1RM: ${Math.round(pr.e1rm)} lbs)`);
-      });
-    }
-    if (data.weightChange) {
-      lines.push('', `Weight: ${data.weightChange > 0 ? '+' : ''}${data.weightChange} lbs`);
-    }
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* clipboard not available */ }
-  }, [data, month]);
-
   // ── Motivational summary ─────────────────────────────────────────────────
   const motivationalText = useMemo(() => {
     if (!data) return '';
@@ -513,14 +485,14 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   if (isModal && !isOpen) return null;
 
   const content = (
-    <div className={`${isModal ? 'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto' : 'w-full'}`}>
-      <div className={`w-full ${isModal ? 'max-w-2xl mx-auto my-4 md:my-8' : 'max-w-2xl mx-auto'}`}>
+    <div className={`${isModal ? 'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full'}`}>
+      <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-4 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className={`${CARD} p-4 mb-3 sticky top-0 z-10 backdrop-blur-2xl bg-[#0F172A]/95`}
+          className={`${CARD} p-4 mb-3`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -528,13 +500,6 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
               <h2 className="text-[17px] font-bold text-[#E5E7EB]">Monthly Report</h2>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleShare}
-                className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors"
-                title="Copy summary to clipboard"
-              >
-                {copied ? <Check size={16} className="text-[#10B981]" /> : <Share2 size={16} className="text-[#9CA3AF]" />}
-              </button>
               {isModal && onClose && (
                 <button onClick={onClose} className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors">
                   <X size={16} className="text-[#9CA3AF]" />

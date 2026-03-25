@@ -101,7 +101,7 @@ const DashboardSkeleton = () => (
 
 /* ── Main ────────────────────────────────────────────────── */
 const Dashboard = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
 
@@ -115,7 +115,8 @@ const Dashboard = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeSession] = useState(() => readActiveSession());
   const [liveChallenge, setLiveChallenge] = useState(null);
-  const [userPoints, setUserPoints] = useState(0);
+  const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
+  useEffect(() => { if (ctxLifetimePoints != null) setUserPoints(ctxLifetimePoints); }, [ctxLifetimePoints]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDay, setPickerDay] = useState(0);
   const [activeProgram, setActiveProgram] = useState(null);
@@ -131,7 +132,7 @@ const Dashboard = () => {
     ? Object.values(activeSession.loggedSets).flat().length
     : 0;
 
-  useEffect(() => { document.title = 'Dashboard | IronForge'; }, []);
+  useEffect(() => { document.title = 'Dashboard | TuGymPR'; }, []);
 
   // Hydrate from cache
   useEffect(() => {
@@ -441,19 +442,23 @@ const Dashboard = () => {
             <ChevronDown size={14} className="text-[#4B5563]" />
           </button>
 
-          <div className="flex items-center gap-1.5" data-tour="tour-quick-buttons">
-            <Link to="/nutrition" className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition-colors" aria-label="Nutrition">
-              <Apple size={14} className="text-[#4B5563]" />
-              <span className="text-[10px] font-semibold text-[#4B5563]">{t('dashboard.nutrition')}</span>
+          <div className="flex items-center gap-2" data-tour="tour-quick-buttons">
+            <Link to="/nutrition"
+              className="flex items-center gap-1.5 px-3 h-[34px] rounded-[12px] active:scale-[0.95] transition-all"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+              aria-label="Nutrition">
+              <Apple size={14} className="text-[#10B981]" />
+              <span className="text-[10px] font-bold text-[#9CA3AF]">{t('dashboard.nutrition')}</span>
             </Link>
             <button
               type="button"
               onClick={() => setShowQR(true)}
-              className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+              className="flex items-center gap-1.5 px-3 h-[34px] rounded-[12px] active:scale-[0.95] transition-all"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
               aria-label="QR Code"
             >
-              <QrCode size={14} className="text-[#4B5563]" />
-              <span className="text-[10px] font-semibold text-[#4B5563]">{t('dashboard.qr')}</span>
+              <QrCode size={14} className="text-[#D4AF37]" />
+              <span className="text-[10px] font-bold text-[#9CA3AF]">{t('dashboard.qr')}</span>
             </button>
           </div>
         </header>

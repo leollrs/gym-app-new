@@ -564,7 +564,7 @@ export default function Challenges({ embedded = false }) {
   const chalTabIndex = TABS.indexOf(tab);
   const handleChalSwipe = (i) => setTab(TABS[i]);
 
-  useEffect(() => { document.title = 'Challenges | IronForge'; }, []);
+  useEffect(() => { document.title = 'Challenges | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.gym_id || !user?.id) return;

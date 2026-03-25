@@ -143,9 +143,9 @@ const WorkoutLog = ({ embedded = false }) => {
 
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading]   = useState(true);
-  const [visibleCount, setVisibleCount] = useState(20);
+  const [visibleCount, setVisibleCount] = useState(embedded ? 5 : 20);
 
-  useEffect(() => { document.title = 'Workout Log | IronForge'; }, []);
+  useEffect(() => { document.title = 'Workout Log | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -164,7 +164,8 @@ const WorkoutLog = ({ embedded = false }) => {
         `)
         .eq('profile_id', user.id)
         .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+        .order('completed_at', { ascending: false })
+        .limit(embedded ? 5 : 100);
 
       if (error) { logger.error('WorkoutLog: failed to load sessions:', error); }
       setSessions(data ?? []);

@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyBranding } from '../lib/branding';
+import { setErrorTrackerAuth } from '../lib/errorTracker';
+import { syncUserContextToWatch, syncFriendsToWatch, syncRoutinesToWatch } from '../lib/watchBridge';
+import { removePushTokens } from '../lib/pushNotifications';
+import posthog from 'posthog-js';
 import i18n from '../i18n/i18n';
 
 const AuthContext = createContext({});
@@ -15,6 +19,7 @@ export const AuthProvider = ({ children }) => {
   const [gymDeactivated, setGymDeactivated] = useState(false);
   const [gymConfig, setGymConfig] = useState({});
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
+  const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
 
   // Fetch unread notification count for the current profile
   const fetchUnreadNotifications = async (profileId) => {
@@ -22,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       .from('notifications')
       .select('*', { count: 'exact', head: true })
       .eq('profile_id', profileId)
-      .eq('read', false);
+      .is('read_at', null);
     if (!error) setUnreadNotifications(count || 0);
   };
 
@@ -34,10 +39,20 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = async (userId) => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload, leaderboard_visible')
+      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);
+
+    // Fetch lifetime points for level calculation (non-blocking)
+    if (data?.id) {
+      supabase
+        .from('reward_points')
+        .select('lifetime_points')
+        .eq('profile_id', data.id)
+        .maybeSingle()
+        .then(({ data: pts }) => setLifetimePoints(pts?.lifetime_points ?? 0));
+    }
 
     // Check if the individual member is blocked (deactivated or banned)
     const blockedStatus = data?.membership_status;
@@ -75,6 +90,7 @@ export const AuthProvider = ({ children }) => {
       if (isDeactivated) {
         setGymName('');
         setGymLogoUrl('');
+        setErrorTrackerAuth({ id: userId }, data, '');
         setLoading(false);
         return;
       }
@@ -91,6 +107,20 @@ export const AuthProvider = ({ children }) => {
         qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
       });
 
+      setErrorTrackerAuth({ id: userId }, data, gym?.name || branding?.custom_app_name || '');
+
+      // Identify user in PostHog
+      try {
+        posthog.identify(userId, {
+          name: data.full_name || data.username,
+          role: data.role,
+          gym_id: data.gym_id,
+          gym_name: gym?.name || branding?.custom_app_name || '',
+          platform: window.Capacitor?.getPlatform?.() || 'web',
+        });
+      } catch {}
+
+
       // Resolve a signed logo URL — non-blocking (don't delay auth loading)
       if (branding?.logo_url) {
         supabase.storage
@@ -105,9 +135,106 @@ export const AuthProvider = ({ children }) => {
     } else {
       setGymLogoUrl('');
       setGymDeactivated(false);
+      setErrorTrackerAuth({ id: userId }, data, '');
     }
 
     setLoading(false);
+
+    // Sync user context to Apple Watch (non-blocking)
+    if (data?.id) {
+      Promise.all([
+        supabase.from('check_ins').select('checked_in_at').eq('profile_id', data.id).order('checked_in_at', { ascending: false }).limit(30),
+        supabase.from('workout_sessions').select('completed_at').eq('profile_id', data.id).eq('status', 'completed').gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString()),
+      ]).then(([checkInsRes, weeklyRes]) => {
+        // Calculate streak from check-ins
+        let streak = 0;
+        const checkIns = checkInsRes.data || [];
+        if (checkIns.length > 0) {
+          const today = new Date(); today.setHours(0,0,0,0);
+          let checkDay = new Date(checkIns[0].checked_in_at); checkDay.setHours(0,0,0,0);
+          const diffDays = Math.round((today - checkDay) / 86400000);
+          if (diffDays <= 1) {
+            streak = 1;
+            for (let i = 1; i < checkIns.length; i++) {
+              const prev = new Date(checkIns[i].checked_in_at); prev.setHours(0,0,0,0);
+              if (Math.round((checkDay - prev) / 86400000) === 1) {
+                streak++;
+                checkDay = prev;
+              } else break;
+            }
+          }
+        }
+        syncUserContextToWatch({
+          qrPayload: data.qr_code_payload || '',
+          userName: data.full_name || data.username || '',
+          streak,
+          lastWorkoutDate: weeklyRes.data?.[0]?.completed_at || '',
+          weeklyWorkoutCount: weeklyRes.data?.length || 0,
+        });
+      }).catch(() => {});
+
+      // Sync friends activity to Watch (non-blocking)
+      supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${data.id},addressee_id.eq.${data.id}`)
+        .eq('status', 'accepted')
+        .limit(20)
+        .then(({ data: friendships }) => {
+          if (!friendships?.length) return;
+          const friendIds = friendships.map(f => f.requester_id === data.id ? f.addressee_id : f.requester_id);
+          const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours
+          Promise.all([
+            supabase.from('profiles').select('id, full_name, username').in('id', friendIds),
+            supabase.from('workout_sessions').select('profile_id, started_at, status, name').in('profile_id', friendIds).gte('started_at', cutoff).order('started_at', { ascending: false }),
+          ]).then(([profilesRes, sessionsRes]) => {
+            const profiles = profilesRes.data || [];
+            const sessions = sessionsRes.data || [];
+            const friends = profiles.map(p => {
+              const activeSession = sessions.find(s => s.profile_id === p.id && s.status === 'in_progress');
+              const lastSession = sessions.find(s => s.profile_id === p.id);
+              return {
+                name: p.full_name || p.username || 'Friend',
+                isActive: !!activeSession,
+                status: activeSession ? (activeSession.name || 'Working out') : (lastSession ? 'Recently active' : ''),
+              };
+            }).filter(f => f.isActive || f.status);
+            syncFriendsToWatch(friends);
+          });
+        }).catch(() => {});
+
+      // Sync routines to Watch on login (non-blocking)
+      Promise.all([
+        supabase.from('routines').select('id, name, routine_exercises(id)').eq('created_by', data.id).eq('is_template', false).order('created_at', { ascending: false }),
+        supabase.from('workout_sessions').select('routine_id, completed_at').eq('profile_id', data.id).eq('status', 'completed').order('completed_at', { ascending: false }).limit(50),
+        supabase.from('generated_programs').select('program_start, expires_at').eq('profile_id', data.id).order('created_at', { ascending: false }).limit(1),
+      ]).then(([routinesRes, sessionsRes, programsRes]) => {
+        const routines = routinesRes.data || [];
+        const lastPerformed = {};
+        (sessionsRes.data || []).forEach(s => {
+          if (s.routine_id && !lastPerformed[s.routine_id]) lastPerformed[s.routine_id] = s.completed_at;
+        });
+        // Determine today's program routines
+        let todayIds = new Set();
+        const prog = programsRes.data?.[0];
+        if (prog && new Date(prog.expires_at) > new Date()) {
+          const weekNum = Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1;
+          const isWeekA = weekNum % 2 === 1;
+          todayIds = new Set(
+            routines.filter(r => r.name?.startsWith('Auto:') && (isWeekA ? (r.name.endsWith(' A') || !r.name.endsWith(' B')) : r.name.endsWith(' B'))).map(r => r.id)
+          );
+        }
+        syncRoutinesToWatch(routines.map(r => ({
+          id: r.id,
+          name: r.name,
+          exercises: r.routine_exercises || [],
+          exerciseCount: r.routine_exercises?.length || 0,
+          lastUsed: lastPerformed[r.id] || '',
+          isProgram: r.name?.startsWith('Auto:') || false,
+          isTodayWorkout: todayIds.has(r.id),
+        })));
+      }).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -127,6 +254,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setProfile(null);
         setLoading(false);
+        try { posthog.reset(); } catch {}
       }
     });
 
@@ -134,9 +262,24 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // Fetch unread notification count whenever the profile is loaded/changed
+  // + subscribe to realtime inserts so the bell badge updates live
   useEffect(() => {
     if (profile?.id) {
       fetchUnreadNotifications(profile.id);
+
+      const channel = supabase
+        .channel('unread-notif-badge')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `profile_id=eq.${profile.id}`,
+        }, () => {
+          setUnreadNotifications(prev => prev + 1);
+        })
+        .subscribe();
+
+      return () => supabase.removeChannel(channel);
     } else {
       setUnreadNotifications(0);
     }
@@ -212,6 +355,9 @@ export const AuthProvider = ({ children }) => {
 
   // ── SIGN OUT ───────────────────────────────────────────────
   const signOut = async () => {
+    // Remove push tokens so the device stops receiving notifications
+    if (user?.id) await removePushTokens(user.id);
+
     // Clear session drafts and preferences from localStorage to prevent data leakage
     try {
       const keysToRemove = [];
@@ -264,6 +410,13 @@ export const AuthProvider = ({ children }) => {
       gymDeactivated,
       gymConfig,
       memberBlocked,
+      lifetimePoints,
+      refreshLifetimePoints: () => {
+        if (profile?.id) {
+          supabase.from('reward_points').select('lifetime_points').eq('profile_id', profile.id).maybeSingle()
+            .then(({ data: pts }) => setLifetimePoints(pts?.lifetime_points ?? 0));
+        }
+      },
       signUp,
       signIn,
       signOut,

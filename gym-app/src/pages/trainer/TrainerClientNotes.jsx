@@ -27,7 +27,7 @@ export default function TrainerClientNotes() {
   const [measurements, setMeasurements] = useState(null);
   const [showReport, setShowReport] = useState(false);
 
-  useEffect(() => { document.title = 'Trainer - Client Notes | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Client Notes | TuGymPR'; }, []);
 
   useEffect(() => {
     if (clientId && profile?.id) {

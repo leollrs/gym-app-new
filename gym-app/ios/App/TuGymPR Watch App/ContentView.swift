@@ -3,7 +3,6 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var session: WatchSessionManager
     @StateObject private var workoutSession = WorkoutSessionManager()
-    @StateObject private var repCounter = RepCountingManager()
 
     var body: some View {
         Group {
@@ -11,21 +10,34 @@ struct ContentView: View {
                 WorkoutSummaryView(workoutSession: workoutSession)
                     .onAppear {
                         workoutSession.stopSession()
-                        repCounter.stopCounting()
                     }
             } else if session.isWorkoutActive {
-                TabView {
-                    ActiveWorkoutView(repCounter: repCounter)
-                    RestTimerView()
-                    HeartRateZoneView(workoutSession: workoutSession)
+                ZStack {
+                    TabView {
+                        ActiveWorkoutView()
+                        HeartRateZoneView(workoutSession: workoutSession)
+                    }
+                    .tabViewStyle(.verticalPage)
+
+                    if session.isResting {
+                        RestTimerView()
+                            .transition(.opacity)
+                            .zIndex(10)
+                    }
                 }
-                .tabViewStyle(.verticalPage)
+                .animation(.easeInOut(duration: 0.3), value: session.isResting)
                 .onAppear {
                     workoutSession.startSession()
-                    repCounter.startCounting(for: session.exerciseCategory)
                 }
             } else {
-                QuickStartView()
+                NavigationStack {
+                    TabView {
+                        QRCheckInView()
+                        StartWorkoutPage()
+                        FriendsActiveView()
+                    }
+                    .tabViewStyle(.verticalPage)
+                }
             }
         }
         .environmentObject(session)

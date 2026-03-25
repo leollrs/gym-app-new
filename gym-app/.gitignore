@@ -15,3 +15,5 @@ Lateral_raises_video.mp4
 
 # Supabase local
 supabase/.temp/
+build_output/
+gym-app/

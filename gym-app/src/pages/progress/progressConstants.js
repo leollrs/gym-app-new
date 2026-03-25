@@ -41,15 +41,19 @@ export const getTierProgress = (orm, bw, tiers, tier) => {
 
 // ── Body metrics constants ──────────────────────────────────────────────────
 export const MEASUREMENT_FIELDS = [
-  { key: 'chest_cm', label: 'Chest', unit: 'cm' },
-  { key: 'waist_cm', label: 'Waist', unit: 'cm' },
-  { key: 'hips_cm', label: 'Hips', unit: 'cm' },
-  { key: 'left_arm_cm', label: 'Left Arm', unit: 'cm' },
-  { key: 'right_arm_cm', label: 'Right Arm', unit: 'cm' },
-  { key: 'left_thigh_cm', label: 'Left Thigh', unit: 'cm' },
-  { key: 'right_thigh_cm', label: 'Right Thigh', unit: 'cm' },
-  { key: 'body_fat_pct', label: 'Body Fat', unit: '%' },
+  { key: 'chest_cm', label: 'Chest', unit: 'in', dbUnit: 'cm' },
+  { key: 'waist_cm', label: 'Waist', unit: 'in', dbUnit: 'cm' },
+  { key: 'hips_cm', label: 'Hips', unit: 'in', dbUnit: 'cm' },
+  { key: 'left_arm_cm', label: 'Left Arm', unit: 'in', dbUnit: 'cm' },
+  { key: 'right_arm_cm', label: 'Right Arm', unit: 'in', dbUnit: 'cm' },
+  { key: 'left_thigh_cm', label: 'Left Thigh', unit: 'in', dbUnit: 'cm' },
+  { key: 'right_thigh_cm', label: 'Right Thigh', unit: 'in', dbUnit: 'cm' },
+  { key: 'body_fat_pct', label: 'Body Fat', unit: '%', dbUnit: '%' },
 ];
+
+// DB stores cm, UI shows inches
+export const cmToIn = (cm) => cm != null ? Math.round(cm / 2.54 * 10) / 10 : null;
+export const inToCm = (inches) => inches != null ? Math.round(inches * 2.54 * 10) / 10 : null;
 
 export const PERIOD_OPTIONS = [
   { label: '1M', days: 30 },

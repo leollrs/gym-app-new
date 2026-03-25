@@ -4,7 +4,7 @@ import { ArrowLeft, Heart, Activity, Scale, Dumbbell, Check, RefreshCw } from 'l
 import * as healthSync from '../lib/healthSync';
 
 // ── localStorage key ───────────────────────────────────────────────────────────
-const SETTINGS_KEY = 'ironforge_health_settings';
+const SETTINGS_KEY = 'tugympr_health_settings';
 
 const defaultSettings = {
   syncWeight: false,
@@ -64,9 +64,14 @@ const HealthSync = () => {
 
   const [settings, setSettings] = useState(loadSettings);
 
-  // Check availability on mount
+  // Check availability on mount — on iOS always treat as available
   useEffect(() => {
-    healthSync.isAvailable().then((ok) => setAvailable(ok));
+    const isIOS = /iphone|ipad/i.test(navigator.userAgent);
+    if (isIOS) {
+      setAvailable(true);
+    } else {
+      healthSync.isAvailable().then((ok) => setAvailable(ok));
+    }
   }, []);
 
   // Fetch activity data when connected
@@ -99,12 +104,29 @@ const HealthSync = () => {
     });
   };
 
+  // Restore connected state from localStorage
+  useEffect(() => {
+    if (localStorage.getItem('tugympr_health_connected') === 'true') {
+      setConnected(true);
+    }
+  }, []);
+
   // Connect handler
   const handleConnect = async () => {
     setConnecting(true);
-    const { granted } = await healthSync.requestPermissions();
-    if (granted) {
+    try {
+      const { granted } = await healthSync.requestPermissions();
+      // On iOS, requestPermissions shows the system dialog.
+      // Even if user partially grants, treat as connected.
       setConnected(true);
+      localStorage.setItem('tugympr_health_connected', 'true');
+    } catch {
+      // If the plugin throws, still mark connected on iOS — the system
+      // dialog may have appeared. User can verify in Settings > Health.
+      if (/iphone|ipad/i.test(navigator.userAgent)) {
+        setConnected(true);
+        localStorage.setItem('tugympr_health_connected', 'true');
+      }
     }
     setConnecting(false);
   };
@@ -144,10 +166,20 @@ const HealthSync = () => {
             </div>
 
             {connected ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#10B981]/15 text-[#10B981] text-[12px] font-semibold">
-                <Check size={14} />
-                Connected
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setConnected(false);
+                  localStorage.removeItem('tugympr_health_connected');
+                  setTodaySteps(0);
+                  setWeeklyCalories(0);
+                  setSettings(defaultSettings);
+                  saveSettings(defaultSettings);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 text-red-400 text-[12px] font-semibold active:scale-95 transition-transform"
+              >
+                Disconnect
+              </button>
             ) : (
               <button
                 type="button"

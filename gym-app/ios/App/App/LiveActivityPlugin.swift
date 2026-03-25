@@ -146,10 +146,12 @@ private class LiveActivityManager {
         restEndTimer = nil
         endBackgroundTask()
         isRestActive = false
+        restDoneUntil = nil
+        cachedRestEndDate = nil
 
         let content = ActivityContent(state: state, staleDate: nil)
         for activity in Activity<WorkoutActivityAttributes>.activities {
-            await activity.end(content, dismissalPolicy: .default)
+            await activity.end(content, dismissalPolicy: .immediate)
         }
         currentActivity = nil
     }

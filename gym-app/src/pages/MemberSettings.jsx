@@ -141,7 +141,7 @@ export default function MemberSettings() {
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settings.legal')}</h3>
           <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
             <a
-              href="https://ironforge.app/privacy"
+              href="https://tugympr.com/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
@@ -153,7 +153,7 @@ export default function MemberSettings() {
               <ChevronRight size={16} className="text-[#6B7280]" />
             </a>
             <a
-              href="https://ironforge.app/terms"
+              href="https://tugympr.com/terms"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"

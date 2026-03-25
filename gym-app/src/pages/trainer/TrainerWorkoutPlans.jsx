@@ -454,7 +454,7 @@ export default function TrainerWorkoutPlans() {
   const [filterClient, setFilterClient] = useState('all');
   const [expandedPlan, setExpandedPlan] = useState(null);
 
-  useEffect(() => { document.title = 'Trainer - Workout Plans | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Workout Plans | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.id) return;

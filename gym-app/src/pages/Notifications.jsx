@@ -27,7 +27,7 @@ const ANN_ACCENT = {
 };
 
 export default function Notifications() {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshNotifications } = useAuth();
   const navigate = useNavigate();
   const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id);
   const { invalidateNotifications } = useInvalidate();
@@ -83,7 +83,10 @@ export default function Notifications() {
   const markRead = async (id) => {
     const now = new Date().toISOString();
     setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: now } : n));
-    await supabase.from('notifications').update({ read_at: now }).eq('id', id);
+    const { error } = await supabase.from('notifications').update({ read_at: now }).eq('id', id);
+    if (error) console.error('[Notif] markRead failed:', error.message, error.code);
+    else console.log('[Notif] markRead success:', id);
+    refreshNotifications();
   };
 
   // Mark all as read
@@ -93,7 +96,10 @@ export default function Notifications() {
     if (unread.length) {
       const now = new Date().toISOString();
       setItems(prev => prev.map(n => ({ ...n, read_at: now })));
-      await supabase.from('notifications').update({ read_at: now }).eq('profile_id', user.id).is('read_at', null);
+      const { error } = await supabase.from('notifications').update({ read_at: now }).eq('profile_id', user.id).is('read_at', null);
+      if (error) console.error('[Notif] markAllRead failed:', error.message, error.code);
+      else console.log('[Notif] markAllRead success:', unread.length, 'notifications');
+      refreshNotifications();
     }
     setMarking(false);
   };

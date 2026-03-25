@@ -159,7 +159,7 @@ export default function AdminChallenges() {
   const [expanded, setExpanded]     = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Challenges | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Challenges | TuGymPR'; }, []);
 
   // ── Fetch challenges ──
   const { data: challenges = [], isLoading } = useQuery({

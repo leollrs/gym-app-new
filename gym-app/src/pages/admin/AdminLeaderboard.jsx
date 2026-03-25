@@ -40,7 +40,7 @@ export default function AdminLeaderboard() {
   const [period, setPeriod] = useState('30');
   const [tier, setTier]     = useState('all');
 
-  useEffect(() => { document.title = 'Admin - Leaderboard | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Leaderboard | TuGymPR'; }, []);
 
   // Clamp period for boards that don't support all-time
   const effectivePeriod = (['improved', 'consistency'].includes(metric) && period === 'all') ? '30' : period;

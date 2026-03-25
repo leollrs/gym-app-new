@@ -113,7 +113,7 @@ export default function AdminAnnouncements() {
   const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Announcements | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Announcements | TuGymPR'; }, []);
 
   // ── Fetch announcements ──
   const { data: announcements = [], isLoading } = useQuery({

@@ -21,7 +21,7 @@ export default function AdminAttendance() {
   const gymId = profile?.gym_id;
   const [period, setPeriod] = useState('30');
 
-  useEffect(() => { document.title = 'Admin - Attendance | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Attendance | TuGymPR'; }, []);
 
   // ── Fetch attendance data ──
   const { data, isLoading } = useQuery({

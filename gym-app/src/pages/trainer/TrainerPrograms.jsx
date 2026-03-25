@@ -26,7 +26,7 @@ export default function TrainerPrograms() {
   const [loading,   setLoading]   = useState(true);
   const [expanded,  setExpanded]  = useState(null);
 
-  useEffect(() => { document.title = 'Trainer - Programs | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Programs | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.gym_id) return;

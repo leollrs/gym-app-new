@@ -159,7 +159,7 @@ export async function getLeaderboard(gymId, limit = 10) {
     avatarUrl: row.profiles?.avatar_url ?? null,
     totalPoints: row.total_points,
     lifetimePoints: row.lifetime_points,
-    tier: getRewardTier(row.total_points),
+    tier: getRewardTier(row.lifetime_points),
   }));
 }
 

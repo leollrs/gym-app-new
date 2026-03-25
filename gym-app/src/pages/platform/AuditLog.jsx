@@ -77,7 +77,7 @@ function LogEntry({ entry }) {
   const config = ACTION_CONFIG[entry.action] || { icon: Settings, color: 'blue', label: entry.action };
   const colors = COLOR_MAP[config.color] || COLOR_MAP.blue;
   const Icon = config.icon;
-  const actorName = entry.actor?.full_name || entry.actor?.email || 'System';
+  const actorName = entry.actor?.full_name || entry.actor?.username || 'System';
   const gymName = entry.gym?.name || (entry.gym_id ? 'Unknown Gym' : 'Platform');
   const description = buildDescription(entry.action, entry.metadata);
   const createdAt = new Date(entry.created_at);
@@ -157,7 +157,7 @@ export default function AuditLog() {
       .from('audit_log')
       .select(`
         id, gym_id, actor_id, action, target_type, target_id, metadata, created_at,
-        actor:profiles!audit_log_actor_id_fkey ( id, full_name, email ),
+        actor:profiles!audit_log_actor_id_fkey ( id, full_name, username ),
         gym:gyms!audit_log_gym_id_fkey ( id, name )
       `)
       .order('created_at', { ascending: false })

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { Capacitor } from '@capacitor/core';
+import { isAvailable as healthAvailable, requestPermissions as healthRequest } from '../lib/healthSync';
 
 // ── DATA ───────────────────────────────────────────────────
 // values are stored in DB; labels come from translation files
@@ -69,10 +71,10 @@ function getDefaultDays(freq) {
 // Map English day names to index for display
 const DAY_NAME_TO_INDEX = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
 
-const TOTAL_STEPS = 7; // added language step as step 0
+const TOTAL_STEPS = 8; // added language step as step 0, health step as step 6
 
 // ── STEP INDICATOR ─────────────────────────────────────────
-const STEP_LABELS = ['Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Metrics'];
+const STEP_LABELS = ['Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics'];
 
 const StepIndicator = ({ current }) => (
   <div className="flex items-center justify-between mb-8 px-2">
@@ -155,9 +157,13 @@ const Onboarding = () => {
     preferred_training_time:    null,
     has_workout_buddy:          null,
     workout_buddy_username:     '',
+    health_linked:              false,
+    known_maxes:                { ex_bp: '', ex_sq: '', ex_dl: '', ex_ohp: '' },
   });
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
+  const setMax = (exerciseId, value) =>
+    setData(d => ({ ...d, known_maxes: { ...d.known_maxes, [exerciseId]: value } }));
 
   const selectLanguage = (lang) => {
     set('language', lang);
@@ -195,6 +201,30 @@ const Onboarding = () => {
       training_days_per_week:  n,
       preferred_training_days: getDefaultDays(n),
     }));
+  };
+
+  const [healthStatus, setHealthStatus] = useState('idle'); // idle | linking | linked | unavailable | error
+  const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
+  const healthPlatformName = platform === 'ios' ? 'Apple Health' : platform === 'android' ? 'Health Connect' : 'Health';
+
+  const handleLinkHealth = async () => {
+    setHealthStatus('linking');
+    try {
+      const available = await healthAvailable();
+      if (!available) {
+        setHealthStatus('unavailable');
+        return;
+      }
+      const { granted } = await healthRequest();
+      if (granted) {
+        setHealthStatus('linked');
+        set('health_linked', true);
+      } else {
+        setHealthStatus('error');
+      }
+    } catch {
+      setHealthStatus('error');
+    }
   };
 
   const canAdvance = () => {
@@ -261,6 +291,28 @@ const Onboarding = () => {
           weight_lbs: parseFloat(data.initial_weight_lbs),
           notes:      t('initialWeightNote'),
         });
+      }
+
+      // Save known maxes as personal records so the overload engine can suggest weights
+      const maxEntries = Object.entries(data.known_maxes)
+        .filter(([, val]) => val && parseFloat(val) > 0)
+        .map(([exerciseId, val]) => {
+          const weight = parseFloat(val);
+          return {
+            profile_id:    user.id,
+            gym_id:        gymId,
+            exercise_id:   exerciseId,
+            weight_lbs:    weight,
+            reps:          1,
+            estimated_1rm: weight,
+            achieved_at:   new Date().toISOString(),
+          };
+        });
+
+      if (maxEntries.length > 0) {
+        await supabase
+          .from('personal_records')
+          .upsert(maxEntries, { onConflict: 'profile_id,exercise_id' });
       }
 
       refreshProfile();
@@ -351,6 +403,53 @@ const Onboarding = () => {
                 />
               ))}
             </div>
+
+            {/* ── Known maxes for intermediate / advanced ── */}
+            {(data.fitness_level === 'intermediate' || data.fitness_level === 'advanced') && (
+              <div className="mt-6 animate-fade-in">
+                <div className="bg-[#D4AF37]/6 border border-[#D4AF37]/15 rounded-xl px-4 py-3 mb-4">
+                  <p className="text-[13px] text-[#E5E7EB] font-semibold mb-0.5">
+                    {t('fitnessLevel.maxes.title', { defaultValue: 'Nice — you\'ve got experience! 💪', interpolation: { escapeValue: false } })}
+                  </p>
+                  <p className="text-[12px] text-[#9CA3AF] leading-relaxed">
+                    {t('fitnessLevel.maxes.subtitle', { defaultValue: 'Enter your estimated 1-rep maxes so we can dial in your weights from day one. Leave blank any you don\'t know.', interpolation: { escapeValue: false } })}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {[
+                    { id: 'ex_bp',  label: t('fitnessLevel.maxes.bench',    { defaultValue: 'Bench Press' }),     icon: '🏋️' },
+                    { id: 'ex_sq',  label: t('fitnessLevel.maxes.squat',    { defaultValue: 'Back Squat' }),      icon: '🦵' },
+                    { id: 'ex_dl',  label: t('fitnessLevel.maxes.deadlift', { defaultValue: 'Deadlift' }),        icon: '🔥' },
+                    { id: 'ex_ohp', label: t('fitnessLevel.maxes.ohp',      { defaultValue: 'Overhead Press' }),  icon: '🙌' },
+                  ].map(lift => (
+                    <div key={lift.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
+                      <span className="text-lg flex-shrink-0">{lift.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-[13px] font-semibold text-[#E5E7EB] mb-1">{lift.label}</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            max="1500"
+                            placeholder="—"
+                            value={data.known_maxes[lift.id]}
+                            onChange={e => setMax(lift.id, e.target.value)}
+                            className="w-full bg-[#0B1220] border border-white/8 rounded-lg px-3 py-2 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors pr-10"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#4B5563] font-medium">lbs</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-[#4B5563] mt-3 text-center">
+                  {t('fitnessLevel.maxes.hint', { defaultValue: 'We\'ll use these to calculate suggested weights for all your exercises.', interpolation: { escapeValue: false } })}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -713,8 +812,90 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 6: FIND YOUR GYM SQUAD (final step) ── */}
+        {/* ── STEP 6: HEALTH INTEGRATION ── */}
         {step === 6 && (
+          <div className="animate-fade-in">
+            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('health.title', { defaultValue: 'Connect Your Health Data' })}</h2>
+            <p className="text-[13px] text-[#6B7280] mb-6">{t('health.subtitle', { defaultValue: 'Sync steps, heart rate, and more to get a complete picture of your fitness.' })}</p>
+
+            <Hint>{t('health.hint', { defaultValue: 'Linking your health data helps us track recovery, calories burned, and overall activity — even outside the gym.' })}</Hint>
+
+            {/* Platform illustration */}
+            <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-6 mb-6 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 mb-4">
+                <Heart size={28} className="text-[#D4AF37]" />
+              </div>
+              <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">
+                {platform === 'web' ? t('health.webTitle', { defaultValue: 'Health Integration' }) : healthPlatformName}
+              </p>
+              <p className="text-[12px] text-[#6B7280] mb-5">
+                {platform === 'web'
+                  ? t('health.webDesc', { defaultValue: 'Download the app on your phone to sync with Apple Health or Health Connect.' })
+                  : t('health.nativeDesc', { defaultValue: 'We\'ll read steps, heart rate, weight, and calories. You can change this anytime in settings.', interpolation: { escapeValue: false } })}
+              </p>
+
+              {/* Data types we sync */}
+              <div className="flex justify-center gap-3 mb-5">
+                {[
+                  { label: t('health.steps', { defaultValue: 'Steps' }), icon: '👟' },
+                  { label: t('health.heartRate', { defaultValue: 'Heart Rate' }), icon: '❤️' },
+                  { label: t('health.calories', { defaultValue: 'Calories' }), icon: '🔥' },
+                  { label: t('health.weight', { defaultValue: 'Weight' }), icon: '⚖️' },
+                ].map(item => (
+                  <div key={item.label} className="flex flex-col items-center gap-1.5">
+                    <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-lg">
+                      {item.icon}
+                    </div>
+                    <span className="text-[10px] text-[#6B7280] font-medium">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Connect button */}
+              {platform !== 'web' && healthStatus !== 'linked' && (
+                <button
+                  type="button"
+                  onClick={handleLinkHealth}
+                  disabled={healthStatus === 'linking'}
+                  className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3.5 rounded-xl transition-all"
+                >
+                  {healthStatus === 'linking' ? (
+                    <>{t('health.connecting', { defaultValue: 'Connecting...' })}</>
+                  ) : (
+                    <><Smartphone size={16} /> {t('health.connect', { defaultValue: `Connect ${healthPlatformName}`, healthPlatformName })}</>
+                  )}
+                </button>
+              )}
+
+              {/* Success state */}
+              {healthStatus === 'linked' && (
+                <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
+                  <Check size={18} className="text-emerald-400" />
+                  <span className="text-[14px] font-semibold text-emerald-400">
+                    {t('health.connected', { defaultValue: `${healthPlatformName} Connected`, healthPlatformName })}
+                  </span>
+                </div>
+              )}
+
+              {/* Unavailable state */}
+              {healthStatus === 'unavailable' && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
+                  <p className="text-[13px] text-yellow-400">{t('health.unavailable', { defaultValue: `${healthPlatformName} is not available on this device. You can set this up later in settings.`, healthPlatformName })}</p>
+                </div>
+              )}
+
+              {/* Error state */}
+              {healthStatus === 'error' && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mt-3">
+                  <p className="text-[13px] text-red-400">{t('health.error', { defaultValue: 'Could not connect. You can try again later in settings.' })}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 7: FIND YOUR GYM SQUAD (final step) ── */}
+        {step === 7 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('social.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('social.subtitle')}</p>
@@ -837,14 +1018,14 @@ const Onboarding = () => {
           )}
         </div>
 
-        {/* Skip on body stats step */}
-        {step === 5 && (
+        {/* Skip on body stats or health step */}
+        {(step === 5 || step === 6) && (
           <button
             type="button"
-            onClick={() => setStep(6)}
+            onClick={() => setStep(s => s + 1)}
             className="w-full text-center text-[12px] text-[#4B5563] hover:text-[#6B7280] mt-3 py-2 transition-colors"
           >
-            {t('common:skip')}
+            {step === 6 ? t('health.skip', { defaultValue: 'Set up later' }) : t('common:skip')}
           </button>
         )}
       </div>

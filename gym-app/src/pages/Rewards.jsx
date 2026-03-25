@@ -7,6 +7,7 @@ import {
   Coffee, Ticket, Shirt, Medal, Wallet, QrCode,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
@@ -165,32 +166,72 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
   );
 };
 
-// ── Success Toast ────────────────────────────────────────────────────────────
-const SuccessToast = ({ reward, onDone, t }) => {
+// ── Redemption QR Modal ──────────────────────────────────────────────────────
+const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, onClose }) => {
+  const payload = `gym-redeem:${gymId}:${userId}:${reward.id}:${redemptionId}`;
+
   useEffect(() => {
-    const t = setTimeout(onDone, 3000);
-    return () => clearTimeout(t);
-  }, [onDone]);
+    const prevOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   return (
-    <motion.div
-      className="fixed top-24 left-1/2 z-50 -translate-x-1/2"
-      initial={{ y: -30, opacity: 0, scale: 0.9 }}
-      animate={{ y: 0, opacity: 1, scale: 1 }}
-      exit={{ y: -30, opacity: 0 }}
-    >
-      <div className="flex items-center gap-3 bg-[#10B981]/20 border border-[#10B981]/40 px-5 py-3 rounded-2xl backdrop-blur-xl shadow-lg">
-        <CheckCircle2 size={20} className="text-[#10B981]" />
-        <span className="text-[14px] font-semibold text-[#10B981]">
-          {t('rewards.redeemed', { name: reward.name })}
-        </span>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+        >
+          <X size={18} />
+        </button>
+
+        {/* Success badge */}
+        <div className="bg-[#10B981]/10 flex items-center justify-center gap-2 py-3">
+          <CheckCircle2 size={16} className="text-[#10B981]" />
+          <span className="text-[13px] font-bold text-[#10B981]">Reward Redeemed!</span>
+        </div>
+
+        {/* QR code */}
+        <div className="bg-white flex flex-col items-center p-8">
+          <QRCodeSVG
+            value={payload}
+            size={220}
+            level="H"
+            includeMargin={false}
+            bgColor="#FFFFFF"
+            fgColor="#000000"
+          />
+        </div>
+
+        {/* Info */}
+        <div className="bg-[#0F172A] border-t border-white/8 p-5">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <RewardIcon name={reward.icon} size={20} className="text-[#D4AF37]" />
+            <p className="text-[16px] font-bold text-[#E5E7EB]">{reward.name}</p>
+          </div>
+          <p className="text-[13px] text-[#9CA3AF] text-center mb-1">{memberName}</p>
+          <p className="text-[12px] text-[#6B7280] text-center">
+            Show this QR code to staff to claim your reward
+          </p>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
 // ── Points History Tab ───────────────────────────────────────────────────────
 const HistoryTab = ({ history, loading, t }) => {
+  const [showAll, setShowAll] = useState(false);
+
   if (loading) {
     return <Skeleton variant="list-item" count={4} />;
   }
@@ -207,10 +248,12 @@ const HistoryTab = ({ history, loading, t }) => {
     );
   }
 
+  const visible = showAll ? history : history.slice(0, 5);
+
   return (
     <FadeIn>
     <div className="space-y-2">
-      {history.map((entry) => {
+      {visible.map((entry) => {
         const rawMeta = ACTION_META[entry.action] || { icon: Star, color: '#6B7280', labelKey: entry.action };
         const meta = { ...rawMeta, label: t(`rewards.actionLabels.${rawMeta.labelKey}`, rawMeta.labelKey) };
         const Icon = meta.icon;
@@ -233,12 +276,28 @@ const HistoryTab = ({ history, loading, t }) => {
                 {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
               </p>
             </div>
-            <span className="text-[14px] font-bold text-[#10B981] flex-shrink-0">
-              +{entry.points}
+            <span className={`text-[14px] font-bold flex-shrink-0 ${entry.points >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+              {entry.points >= 0 ? '+' : ''}{entry.points}
             </span>
           </div>
         );
       })}
+      {!showAll && history.length > 5 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+        >
+          Show all {history.length} entries
+        </button>
+      )}
+      {showAll && history.length > 5 && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+        >
+          Show less
+        </button>
+      )}
     </div>
     </FadeIn>
   );
@@ -361,6 +420,87 @@ const PunchCardStamps = ({ punches, target, emoji }) => {
 };
 
 // ── Purchases Tab ────────────────────────────────────────────────────────────
+const PurchasesList = ({ purchases, t }) => {
+  const [showAll, setShowAll] = useState(false);
+
+  if (purchases.length === 0) {
+    return (
+      <div className="text-center py-14 px-6 rounded-[14px] bg-[#0F172A] border border-white/8">
+        <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
+          <ShoppingBag size={28} className="text-[#6B7280]" />
+        </div>
+        <p className="text-[15px] font-semibold text-[#E5E7EB]">{t('rewards.noPurchasesYet')}</p>
+        <p className="text-[13px] text-[#9CA3AF] mt-1">{t('rewards.purchaseHistoryHint')}</p>
+      </div>
+    );
+  }
+
+  const visible = showAll ? purchases : purchases.slice(0, 5);
+
+  return (
+    <div className="space-y-2">
+      {visible.map((purchase) => (
+        <div
+          key={purchase.id}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all"
+        >
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#D4AF37]/10">
+            <span className="text-[16px]">
+              {purchase.gym_products?.emoji_icon || <ShoppingBag size={17} className="text-[#D4AF37]" />}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+                {purchase.gym_products?.name || 'Product'}
+              </p>
+              {purchase.quantity > 1 && (
+                <span className="text-[11px] text-[#9CA3AF]">x{purchase.quantity}</span>
+              )}
+              {purchase.is_free_reward && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
+                  {t('rewards.free')}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">
+              {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true })}
+            </p>
+          </div>
+          <div className="flex flex-col items-end flex-shrink-0">
+            {!purchase.is_free_reward && (
+              <span className="text-[13px] font-bold text-[#E5E7EB]">
+                ${parseFloat(purchase.total_price || 0).toFixed(2)}
+              </span>
+            )}
+            {purchase.points_earned > 0 && (
+              <span className="text-[11px] font-semibold text-[#10B981]">
+                +{purchase.points_earned} pts
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+      {!showAll && purchases.length > 5 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+        >
+          Show all {purchases.length} purchases
+        </button>
+      )}
+      {showAll && purchases.length > 5 && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+        >
+          Show less
+        </button>
+      )}
+    </div>
+  );
+};
+
 const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
   const [walletLoadingId, setWalletLoadingId] = useState(null);
   const [walletError, setWalletError] = useState('');
@@ -571,62 +711,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
             {t('rewards.purchaseHistory')}
           </h3>
 
-          {purchases.length === 0 ? (
-            <div className="text-center py-14 px-6 rounded-[14px] bg-[#0F172A] border border-white/8">
-              <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
-                <ShoppingBag size={28} className="text-[#6B7280]" />
-              </div>
-              <p className="text-[15px] font-semibold text-[#E5E7EB]">{t('rewards.noPurchasesYet')}</p>
-              <p className="text-[13px] text-[#9CA3AF] mt-1">
-                {t('rewards.purchaseHistoryHint')}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {purchases.map((purchase) => (
-                <div
-                  key={purchase.id}
-                  className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all"
-                >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#D4AF37]/10">
-                    <span className="text-[16px]">
-                      {purchase.gym_products?.emoji_icon || <ShoppingBag size={17} className="text-[#D4AF37]" />}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                        {purchase.gym_products?.name || 'Product'}
-                      </p>
-                      {purchase.quantity > 1 && (
-                        <span className="text-[11px] text-[#9CA3AF]">x{purchase.quantity}</span>
-                      )}
-                      {purchase.is_free_reward && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
-                          {t('rewards.free')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[#6B7280] mt-0.5">
-                      {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end flex-shrink-0">
-                    {!purchase.is_free_reward && (
-                      <span className="text-[13px] font-bold text-[#E5E7EB]">
-                        ${parseFloat(purchase.total_price || 0).toFixed(2)}
-                      </span>
-                    )}
-                    {purchase.points_earned > 0 && (
-                      <span className="text-[11px] font-semibold text-[#10B981]">
-                        +{purchase.points_earned} pts
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <PurchasesList purchases={purchases} t={t} />
         </div>
       </div>
 
@@ -672,15 +757,16 @@ const TAB_KEYS = ['rewards', 'purchases', 'history'];
 
 export default function Rewards() {
   const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
   const [tab, setTab] = useState('rewards');
   const [loading, setLoading] = useState(true);
-  const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: 0 });
+  const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
+  useEffect(() => { if (ctxLifetimePoints != null) setPointsData(prev => ({ ...prev, lifetime_points: ctxLifetimePoints })); }, [ctxLifetimePoints]);
   const [history, setHistory] = useState([]);
   const [punchCards, setPunchCards] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [redeemTarget, setRedeemTarget] = useState(null);
-  const [successReward, setSuccessReward] = useState(null);
+  const [successReward, setSuccessReward] = useState(null); // { reward, redemptionId }
 
   const tier = getRewardTier(pointsData.lifetime_points);
 
@@ -690,7 +776,7 @@ export default function Rewards() {
 
     const [pts, hist, punchCardsRes, purchasesRes] = await Promise.all([
       getUserPoints(user.id),
-      getPointsHistory(user.id, 50),
+      getPointsHistory(user.id, 20),
       supabase
         .from('member_punch_cards')
         .select('*, gym_products!inner(id, name, emoji_icon, punch_card_enabled, punch_card_target)')
@@ -701,7 +787,7 @@ export default function Rewards() {
         .select('*, gym_products(name, emoji_icon)')
         .eq('member_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50),
+        .limit(20),
     ]);
 
     setPointsData(pts);
@@ -719,57 +805,56 @@ export default function Rewards() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const [redeemError, setRedeemError] = useState(null);
+
   const handleRedeem = async (reward) => {
     if (!user?.id || !profile?.gym_id) return;
+    setRedeemError(null);
 
-    // Insert redemption record
-    const { error } = await supabase
-      .from('reward_redemptions')
-      .insert({
-        profile_id: user.id,
-        gym_id: profile.gym_id,
-        reward_id: reward.id,
-        reward_name: reward.name,
-        points_spent: reward.cost,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      });
+    const { data, error } = await supabase.rpc('redeem_reward', {
+      p_reward_id: reward.id,
+      p_reward_name: reward.name,
+      p_cost: reward.cost,
+    });
 
     if (error) {
       logger.error('Redemption error:', error);
+      setRedeemError(error.message?.includes('Insufficient') ? 'Not enough points' : 'Redemption failed. Please try again.');
+      setRedeemTarget(null);
+      setTimeout(() => setRedeemError(null), 3000);
       return;
     }
 
-    // Deduct points from reward_points
-    const newTotal = Math.max(0, pointsData.total_points - reward.cost);
-    await supabase
-      .from('reward_points')
-      .update({ total_points: newTotal, last_updated: new Date().toISOString() })
-      .eq('profile_id', user.id);
-
-    // Log the deduction
-    await supabase
-      .from('reward_points_log')
-      .insert({
-        profile_id: user.id,
-        gym_id: profile.gym_id,
-        action: 'redemption',
-        points: -reward.cost,
-        description: `Redeemed: ${reward.name}`,
-        created_at: new Date().toISOString(),
-      });
-
     setRedeemTarget(null);
-    setSuccessReward(reward);
+    setSuccessReward({ reward, redemptionId: data?.redemption_id || 'unknown' });
     loadData();
   };
 
   return (
     <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
-      {/* Success toast */}
+      {/* Redemption QR modal */}
+      {successReward && (
+        <RedemptionQRModal
+          reward={successReward.reward}
+          redemptionId={successReward.redemptionId}
+          userId={user?.id}
+          gymId={profile?.gym_id}
+          memberName={profile?.full_name || 'Member'}
+          onClose={() => setSuccessReward(null)}
+        />
+      )}
+
+      {/* Error toast */}
       <AnimatePresence>
-        {successReward && (
-          <SuccessToast reward={successReward} onDone={() => setSuccessReward(null)} t={t} />
+        {redeemError && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl bg-[#EF4444]/15 border border-[#EF4444]/20 backdrop-blur-xl shadow-xl"
+          >
+            <p className="text-[13px] font-semibold text-[#EF4444]">{redeemError}</p>
+          </motion.div>
         )}
       </AnimatePresence>
 

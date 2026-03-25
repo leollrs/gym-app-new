@@ -128,7 +128,7 @@ export default function AdminChurn() {
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
 
-  useEffect(() => { document.title = 'Admin - Churn | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Churn | TuGymPR'; }, []);
 
   const [tab, setTab] = useState('at-risk');
   const [search, setSearch] = useState('');

@@ -1,10 +1,13 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { usePostHog } from '@posthog/react';
+import QRCodeModal from './components/QRCodeModal';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import Skeleton from './components/Skeleton';
+import { initPushNotifications } from './lib/pushNotifications';
 
 // ── Eagerly loaded (critical path for members) ──────────────
 import Navigation from './components/Navigation';
@@ -70,6 +73,7 @@ const MemberLookup       = lazy(() => import('./pages/platform/MemberLookup'));
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const SmsManagement      = lazy(() => import('./pages/platform/SmsManagement'));
+const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
 
 // ── LOADING SCREEN (animated runner) ─────────────────────────
 const LoadingScreen = () => (
@@ -311,8 +315,77 @@ const PublicRoute = ({ children }) => {
 
 // ── APP ────────────────────────────────────────────────────
 function App() {
+  const { user, profile, gymName, gymConfig, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const posthog = usePostHog();
+  const [watchQROpen, setWatchQROpen] = useState(false);
+
+  // Track page views
+  useEffect(() => {
+    if (posthog) posthog.capture('$pageview', { $current_url: `https://app.tugympr.com${location.pathname}` });
+  }, [location.pathname, posthog]);
+
+  // Listen for Watch-triggered actions
+  useEffect(() => {
+    const qrHandler = () => setWatchQROpen(true);
+    const navHandler = (e) => {
+      if (e.detail) {
+        // Store in localStorage so it survives app restarts
+        localStorage.setItem('watchPendingNav', e.detail);
+        // Try navigating immediately if auth is ready
+        if (user && !loading) {
+          localStorage.removeItem('watchPendingNav');
+          navigate(e.detail);
+        }
+      }
+    };
+
+    window.addEventListener('watch-open-qr', qrHandler);
+    window.addEventListener('watch-navigate', navHandler);
+
+    return () => {
+      window.removeEventListener('watch-open-qr', qrHandler);
+      window.removeEventListener('watch-navigate', navHandler);
+    };
+  }, [navigate, user, loading]);
+
+  // Process pending Watch navigation once auth is loaded
+  useEffect(() => {
+    if (!loading && user) {
+      const pending = localStorage.getItem('watchPendingNav') || window.__watchPendingNav;
+      if (pending) {
+        localStorage.removeItem('watchPendingNav');
+        window.__watchPendingNav = null;
+        navigate(pending);
+      }
+    }
+  }, [loading, user, navigate]);
+
+  // Register for push notifications once user is logged in + onboarded
+  useEffect(() => {
+    if (!loading && user?.id && profile?.gym_id && profile?.is_onboarded) {
+      initPushNotifications({
+        userId: user.id,
+        gymId: profile.gym_id,
+        onNotificationTap: (data) => {
+          navigate(data?.route || '/notifications');
+        },
+      });
+    }
+  }, [loading, user?.id, profile?.gym_id, profile?.is_onboarded, navigate]);
+
   return (
     <Suspense fallback={<LoadingScreen />}>
+    {watchQROpen && profile?.qr_code_payload && (
+      <QRCodeModal
+        payload={profile.qr_code_payload}
+        memberName={profile?.full_name}
+        displayFormat={gymConfig?.qrDisplayFormat}
+        gymName={gymName}
+        onClose={() => setWatchQROpen(false)}
+      />
+    )}
     <Routes>
 
       {/* Public — unauthenticated only */}
@@ -344,6 +417,7 @@ function App() {
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/sms"          element={<SmsManagement />} />
                 <Route path="/audit-log"    element={<AuditLog />} />
+                <Route path="/error-logs"  element={<ErrorLogs />} />
                 <Route path="*"            element={<Navigate to="/platform" replace />} />
               </Routes>
               </Suspense>

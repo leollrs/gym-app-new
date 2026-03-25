@@ -38,6 +38,8 @@ const fireNotification = async (title, body) => {
         body,
         schedule: { at: new Date(Date.now() + 1500) },
         sound: 'default',
+        importance: 4,
+        visibility: 1,
       }],
     });
   } catch (e) {

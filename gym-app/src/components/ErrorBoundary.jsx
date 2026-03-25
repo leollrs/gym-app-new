@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { trackError } from '../lib/errorTracker';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -13,6 +14,7 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('[ErrorBoundary]', error, errorInfo);
+    trackError('react_crash', error, { componentStack: errorInfo.componentStack });
   }
 
   handleRetry = () => {

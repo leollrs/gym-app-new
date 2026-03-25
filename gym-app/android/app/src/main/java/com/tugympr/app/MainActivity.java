@@ -1,4 +1,4 @@
-package com.ironforge.app;
+package com.tugympr.app;
 
 import com.getcapacitor.BridgeActivity;
 

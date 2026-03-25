@@ -109,7 +109,7 @@ export default function AdminTrainers() {
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
 
-  useEffect(() => { document.title = 'Admin - Trainers | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Trainers | TuGymPR'; }, []);
 
   const [expanded, setExpanded]         = useState(null);
   const [showAssign, setShowAssign]     = useState(null);

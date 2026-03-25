@@ -52,7 +52,7 @@ export default function AdminMessaging() {
   const threadEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { document.title = 'Admin - Messages | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Messages | TuGymPR'; }, []);
 
   // Load conversations + member list
   useEffect(() => {

@@ -82,7 +82,7 @@ export default function PlatformAnalytics() {
   const [topMetric, setTopMetric] = useState('members');
 
   useEffect(() => {
-    document.title = 'Platform Analytics | IronForge';
+    document.title = 'Platform Analytics | TuGymPR';
   }, []);
 
   // ── Fetch all data ─────────────────────────────────────────

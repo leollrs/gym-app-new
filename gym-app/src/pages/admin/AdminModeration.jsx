@@ -656,7 +656,7 @@ export default function AdminModeration() {
   const { profile } = useAuth();
   const [tab, setTab] = useState('posts');
 
-  useEffect(() => { document.title = 'Admin - Moderation | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Moderation | TuGymPR'; }, []);
 
   const gymId = profile?.gym_id;
 

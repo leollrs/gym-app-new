@@ -921,7 +921,7 @@ export default function AdminStore() {
   const gymId = profile?.gym_id;
   const [activeTab, setActiveTab] = useState('products');
 
-  useEffect(() => { document.title = 'Admin - Store | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Store | TuGymPR'; }, []);
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">

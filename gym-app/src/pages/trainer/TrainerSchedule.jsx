@@ -215,7 +215,7 @@ export default function TrainerSchedule() {
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  useEffect(() => { document.title = 'Trainer - Schedule | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Schedule | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.id) return;

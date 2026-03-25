@@ -39,6 +39,8 @@ export const scheduleRestDoneNotification = async (exerciseName, delaySeconds) =
           body: `Time for your next set of ${exerciseName}!`,
           schedule: { at: new Date(Date.now() + delaySeconds * 1000) },
           sound: 'default',
+          importance: 4,
+          visibility: 1,
         }],
       });
     } catch (e) { logger.warn('LocalNotifications error:', e); }

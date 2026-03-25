@@ -6,7 +6,7 @@ import {
   Heart, Check, Bookmark, ShoppingCart, ChevronLeft,
   Dumbbell, Zap, TrendingDown, TrendingUp, DollarSign,
   Star, Edit2, Circle, CheckCircle, UtensilsCrossed,
-  Sunrise, Sun, Moon, Apple,
+  Sunrise, Sun, Moon, Apple, Camera, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { List as VirtualList } from 'react-window';
 import { supabase } from '../lib/supabase';
@@ -174,28 +174,61 @@ const MacroBar = ({ label, value, max, color, t }) => {
 };
 
 // ── MACRO RING ───────────────────────────────────────────────
-const MacroRing = ({ value, max, color, trackColor, size = 72, strokeWidth = 5, label, unit }) => {
-  const radius = (size - strokeWidth) / 2;
+const MacroRing = ({ value, max, color, trackColor, size = 72, strokeWidth = 5, label, unit, hero = false }) => {
+  const radius = (size - strokeWidth * 2) / 2;
   const circumference = 2 * Math.PI * radius;
   const pct = max > 0 ? Math.min(value / max, 1) : 0;
   const offset = circumference - pct * circumference;
   const remaining = Math.max(0, max - value);
+  const gradId = `ring-${label || 'cal'}-${size}`;
+  const glowId = `glow-${label || 'cal'}-${size}`;
   return (
     <div className="flex flex-col items-center">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={trackColor||'rgba(255,255,255,0.06)'} strokeWidth={strokeWidth} />
-          <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth}
-            strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset}
-            className="transition-all duration-700 ease-out" />
+          <defs>
+            <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor={color} stopOpacity="1" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.6" />
+            </linearGradient>
+            <filter id={glowId}>
+              <feGaussianBlur stdDeviation={hero ? 4 : 2.5} result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          {/* Track ring */}
+          <circle cx={size/2} cy={size/2} r={radius} fill="none"
+            stroke={trackColor || 'rgba(255,255,255,0.04)'} strokeWidth={strokeWidth}
+          />
+          {/* Inner shadow track */}
+          <circle cx={size/2} cy={size/2} r={radius - strokeWidth * 0.4} fill="none"
+            stroke="rgba(0,0,0,0.15)" strokeWidth={strokeWidth * 0.3}
+          />
+          {/* Active progress */}
+          {pct > 0 && (
+            <circle cx={size/2} cy={size/2} r={radius} fill="none"
+              stroke={`url(#${gradId})`} strokeWidth={strokeWidth}
+              strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset}
+              filter={pct > 0.05 ? `url(#${glowId})` : undefined}
+              className="transition-all duration-700 ease-out"
+            />
+          )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[16px] font-black text-white tabular-nums">{Math.round(value)}</span>
-          <span className="text-[7px] text-[#6B7280] uppercase tracking-wider font-semibold">{unit}</span>
+          <span className={`font-black text-white tabular-nums leading-none ${hero ? 'text-[28px]' : 'text-[15px]'}`}>
+            {Math.round(value)}
+          </span>
+          <span className={`uppercase tracking-wider font-semibold ${hero ? 'text-[9px] text-[#4B5563] mt-1' : 'text-[7px] text-[#374151] mt-0.5'}`}>
+            {unit}
+          </span>
         </div>
       </div>
-      <p className="text-[10px] font-semibold text-[#9CA3AF] mt-2.5">{label}</p>
-      <p className="text-[9px] text-[#4B5563] mt-0.5">{remaining > 0 ? `${Math.round(remaining)} left` : 'Hit!'}</p>
+      {label && <p className={`font-semibold mt-2 ${hero ? 'text-[11px] text-[#9CA3AF]' : 'text-[10px] text-[#6B7280]'}`}>{label}</p>}
+      {label && (
+        <p className="text-[9px] mt-0.5 tabular-nums" style={{ color: remaining > 0 ? '#374151' : color }}>
+          {remaining > 0 ? `${Math.round(remaining)} left` : 'Target hit!'}
+        </p>
+      )}
     </div>
   );
 };
@@ -247,7 +280,7 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md' }) => {
 
 // ── CATEGORY ROW ────────────────────────────────────────────
 const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen }) => {
-  const items = recipes.filter(r => r.category === category.id);
+  const items = (recipes || []).filter(r => r?.category === category.id);
   if (!items.length) return null;
   return (
     <div className="mb-7">
@@ -353,7 +386,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
                 style={{ color: 'rgba(255,255,255,0.3)' }}>{t('nutrition.ingredients')}</p>
               <div className="flex flex-wrap gap-2">
                 {recipe.ingredients.map(ing => {
-                  const allIngredients = Object.values(INGREDIENT_CATEGORIES).flat();
+                  const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
                   const match = allIngredients.find(i => i.id === ing);
                   return (
                     <span key={ing}
@@ -419,7 +452,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
 };
 
 // ── FOOD SEARCH MODAL ───────────────────────────────────────
-const FoodSearchModal = ({ open, onClose, onSelect, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
+const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
   const { t } = useTranslation('pages');
   const isEs = lang === 'es';
   const foodName = (food) => (isEs && food.name_es) ? food.name_es : food.name;
@@ -427,6 +460,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, favorites = [], recentFoods 
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [tab, setTab] = useState('search');
+  const fileRef = { current: null };
 
   useEffect(() => { if (!open) { setQuery(''); setResults([]); setTab('search'); } }, [open]);
 
@@ -461,11 +495,35 @@ const FoodSearchModal = ({ open, onClose, onSelect, favorites = [], recentFoods 
               <X size={16} className="text-[#6B7280]" />
             </button>
           </div>
-          <div className="relative mb-3">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
-            <input type="text" value={query} onChange={e => { setQuery(e.target.value); setTab('search'); }}
-              placeholder={t('nutrition.searchFoods')} autoFocus
-              className="w-full bg-white/[0.04] rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06] transition-colors" />
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+              <input type="text" value={query} onChange={e => { setQuery(e.target.value); setTab('search'); }}
+                placeholder={t('nutrition.searchFoods')} autoFocus
+                className="w-full bg-white/[0.04] rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06] transition-colors" />
+            </div>
+            {onPhotoCapture && (
+              <>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-[46px] h-[46px] rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
+                >
+                  <Camera size={18} className="text-[#D4AF37]" />
+                </button>
+                <input
+                  ref={el => { fileRef.current = el; }}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) { onPhotoCapture(file); onClose(); }
+                    e.target.value = '';
+                  }}
+                />
+              </>
+            )}
           </div>
           <div className="flex gap-1">
             {[{ key: 'search', label: 'Search', Icon: Search }, { key: 'recent', label: 'Recent', Icon: Clock }, { key: 'favorites', label: 'Favorites', Icon: Heart }]
@@ -597,6 +655,454 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
   );
 };
 
+// ── FOOD PHOTO RESULT MODAL ─────────────────────────────────
+const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose, onLog, lang = 'en' }) => {
+  const [servings, setServings] = useState(1);
+  const [mealType, setMealType] = useState('snack');
+  const [saving, setSaving] = useState(false);
+  const [editedMacros, setEditedMacros] = useState(null);
+  const [totalGrams, setTotalGrams] = useState(0);
+  const [originalGrams, setOriginalGrams] = useState(0);
+
+  useEffect(() => {
+    if (result) {
+      const grams = result.items?.reduce((s, i) => s + (i.grams || 0), 0) || 0;
+      setOriginalGrams(grams);
+      setTotalGrams(grams);
+      setEditedMacros({
+        calories: result.total_calories,
+        protein_g: result.total_protein_g,
+        carbs_g: result.total_carbs_g,
+        fat_g: result.total_fat_g,
+      });
+      setServings(1);
+    }
+  }, [result]);
+
+  if (!analyzing && !result && !error) return null;
+
+  // When grams change, scale macros proportionally
+  const handleGramsChange = (newGrams) => {
+    const g = Math.max(1, parseFloat(newGrams) || 0);
+    setTotalGrams(g);
+    if (originalGrams > 0 && result) {
+      const scale = g / originalGrams;
+      setEditedMacros({
+        calories: Math.round(result.total_calories * scale),
+        protein_g: Math.round(result.total_protein_g * scale * 10) / 10,
+        carbs_g: Math.round(result.total_carbs_g * scale * 10) / 10,
+        fat_g: Math.round(result.total_fat_g * scale * 10) / 10,
+      });
+    }
+  };
+
+  const adjust = (d) => setServings(prev => Math.max(0.5, Math.round((prev + d) * 2) / 2));
+  const s = parseFloat(servings) || 0;
+  const macros = editedMacros || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const cal = Math.round(macros.calories * s);
+  const pro = Math.round(macros.protein_g * s * 10) / 10;
+  const carb = Math.round(macros.carbs_g * s * 10) / 10;
+  const fat = Math.round(macros.fat_g * s * 10) / 10;
+
+  const confidenceColors = { high: '#10B981', medium: '#F59E0B', low: '#EF4444' };
+
+  const handleLog = async () => {
+    setSaving(true);
+    await onLog({
+      food: { id: null, name: result.food_name },
+      servings: s, mealType, cal, pro, carb, fat,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+      <div className="relative w-full max-w-sm max-h-[90vh] rounded-[24px] bg-[#0A0F1A] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10">
+          <X size={15} className="text-white/60" />
+        </button>
+
+        {/* Loading state */}
+        {analyzing && (
+          <div className="px-5 py-16 text-center">
+            {photoPreview && (
+              <div className="w-24 h-24 mx-auto mb-5 rounded-2xl overflow-hidden">
+                <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-[14px] text-[#9CA3AF]">Analyzing your food...</p>
+            <p className="text-[11px] text-[#4B5563] mt-1">Identifying items & looking up nutrition</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && !analyzing && (
+          <div className="px-5 py-12 text-center">
+            <AlertCircle size={32} className="text-[#EF4444] mx-auto mb-3" />
+            <p className="text-[14px] text-[#E5E7EB] mb-1">Analysis Failed</p>
+            <p className="text-[12px] text-[#6B7280] mb-5">{error}</p>
+            <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20">
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* Result state */}
+        {result && !analyzing && (
+          <>
+            {/* Photo + food name */}
+            <div className="relative">
+              {photoPreview ? (
+                <div className="relative aspect-[16/9] overflow-hidden rounded-t-[24px]">
+                  <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0A0F1A] via-[#0A0F1A]/40 to-black/10" />
+                </div>
+              ) : <div className="h-16" />}
+              <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                    style={{ color: confidenceColors[result.confidence], backgroundColor: `${confidenceColors[result.confidence]}15` }}>
+                    {result.confidence} confidence
+                  </span>
+                </div>
+                <h3 className="text-[20px] font-black text-white leading-tight">{result.food_name}</h3>
+              </div>
+            </div>
+
+            <div className="px-5 pt-4 pb-5">
+              {/* Item breakdown */}
+              {result.items?.length > 0 && (
+                <div className="mb-5">
+                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-2">Identified Items</p>
+                  <div className="space-y-1.5">
+                    {result.items.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#111827] border border-white/[0.04]">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-medium text-[#E5E7EB] truncate capitalize">{item.name}</p>
+                          <p className="text-[10px] text-[#4B5563]">{item.grams}g · {item.calories} cal · {item.protein_g}g P</p>
+                        </div>
+                        {item.usda_match ? (
+                          <CheckCircle2 size={14} className="text-[#10B981] flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={14} className="text-[#F59E0B] flex-shrink-0" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-[#374151] mt-1.5 flex items-center gap-1">
+                    <CheckCircle2 size={9} className="text-[#10B981]" /> USDA verified
+                    <span className="mx-1">·</span>
+                    <AlertCircle size={9} className="text-[#F59E0B]" /> AI estimate
+                  </p>
+                </div>
+              )}
+
+              {/* AI disclaimer */}
+              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[#F59E0B]/8 border border-[#F59E0B]/15 mb-4">
+                <AlertCircle size={14} className="text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-[#F59E0B]/80 leading-relaxed">
+                  AI-estimated values may not be fully accurate. Adjust the portion size or macros below before logging.
+                </p>
+              </div>
+
+              {/* Portion size adjuster */}
+              {totalGrams > 0 && (
+                <div className="mb-5">
+                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">Portion Size</p>
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#111827] border border-[#1E293B]">
+                    <button onClick={() => handleGramsChange(totalGrams - 10)}
+                      className="w-9 h-9 rounded-xl bg-[#0A0F1A] border border-white/[0.06] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all">
+                      <span className="text-[16px] font-light leading-none">−</span>
+                    </button>
+                    <div className="flex-1 text-center">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={Math.round(totalGrams) || ''}
+                        onFocus={e => e.target.select()}
+                        onChange={e => handleGramsChange(e.target.value)}
+                        className="w-full text-center text-[24px] font-black text-white leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                      />
+                      <p className="text-[9px] text-[#6B7280] mt-1">grams (adjust to match actual portion)</p>
+                    </div>
+                    <button onClick={() => handleGramsChange(totalGrams + 10)}
+                      className="w-9 h-9 rounded-xl bg-[#0A0F1A] border border-white/[0.06] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all">
+                      <span className="text-[16px] font-light leading-none">+</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Editable macros */}
+              <div className="mb-5">
+                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">Nutrition (per serving)</p>
+                <div className="rounded-2xl bg-[#111827] border border-[#1E293B] px-4 py-4">
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { key: 'calories', l: 'Cal', c: '#F59E0B', unit: '' },
+                      { key: 'protein_g', l: 'Protein', c: '#10B981', unit: 'g' },
+                      { key: 'carbs_g', l: 'Carbs', c: '#60A5FA', unit: 'g' },
+                      { key: 'fat_g', l: 'Fat', c: '#A78BFA', unit: 'g' },
+                    ].map(m => (
+                      <div key={m.key} className="text-center">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={macros[m.key] || ''}
+                          onFocus={e => e.target.select()}
+                          onChange={e => setEditedMacros(prev => ({ ...prev, [m.key]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full text-center text-[18px] font-black leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                          style={{ color: m.c }}
+                        />
+                        <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.1em] mt-2">{m.l}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Servings */}
+              <div className="mb-5">
+                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">Servings</p>
+                <div className="flex items-center justify-center gap-5">
+                  <button onClick={() => adjust(-0.5)} disabled={s <= 0.5}
+                    className="w-10 h-10 rounded-xl bg-[#111827] border border-[#1E293B] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all disabled:opacity-25">
+                    <span className="text-[18px] font-light leading-none">−</span>
+                  </button>
+                  <p className="text-[28px] font-black text-white tabular-nums w-16 text-center">{s}</p>
+                  <button onClick={() => adjust(0.5)}
+                    className="w-10 h-10 rounded-xl bg-[#111827] border border-[#1E293B] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all">
+                    <span className="text-[18px] font-light leading-none">+</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Meal type */}
+              <div className="mb-5">
+                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">Meal</p>
+                <div className="flex gap-2">
+                  {MEAL_TYPES.map(m => (
+                    <button key={m.key} onClick={() => setMealType(m.key)}
+                      className={`flex-1 py-3 rounded-xl text-[11px] font-semibold transition-all ${mealType === m.key ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-[#111827] text-[#4B5563] border border-[#111827]'}`}>
+                      <m.icon size={17} className={`mb-1 transition-all ${mealType === m.key ? '' : 'opacity-50'}`} style={{ color: mealType === m.key ? m.color : '#4B5563' }} />
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total + Log button */}
+              <div className="rounded-2xl bg-[#111827] border border-[#1E293B] px-4 py-4 mb-5">
+                <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-2">Total ({s} serving{s !== 1 ? 's' : ''})</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {[{ v: cal, l: 'Cal', c: '#F59E0B' }, { v: `${pro}g`, l: 'Protein', c: '#10B981' }, { v: `${carb}g`, l: 'Carbs', c: '#60A5FA' }, { v: `${fat}g`, l: 'Fat', c: '#A78BFA' }].map(m => (
+                    <div key={m.l} className="text-center">
+                      <p className="text-[18px] font-black leading-none tabular-nums" style={{ color: m.c }}>{m.v}</p>
+                      <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.1em] mt-2">{m.l}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={handleLog} disabled={saving || s <= 0}
+                className="w-full py-[18px] rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] active:scale-[0.97] transition-all disabled:opacity-40">
+                {saving ? 'Logging...' : 'Log Food'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── FOOD LOG DETAIL MODAL ───────────────────────────────────
+const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) => {
+  const [editing, setEditing] = useState(false);
+  const [editValues, setEditValues] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (log) {
+      setEditValues({
+        calories: log.calories,
+        protein_g: log.protein_g,
+        carbs_g: log.carbs_g,
+        fat_g: log.fat_g,
+      });
+      setEditing(false);
+    }
+  }, [log]);
+
+  if (!log) return null;
+
+  const displayName = log.food_item
+    ? ((lang === 'es' && log.food_item.name_es) ? log.food_item.name_es : log.food_item.name)
+    : (log.custom_name || 'Food');
+  const isAiLogged = !log.food_item_id;
+  const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || log.food_item?.image_url;
+  const loggedAt = new Date(log.created_at);
+  const timeStr = loggedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onUpdate(log.id, {
+      calories: parseFloat(editValues.calories) || 0,
+      protein_g: parseFloat(editValues.protein_g) || 0,
+      carbs_g: parseFloat(editValues.carbs_g) || 0,
+      fat_g: parseFloat(editValues.fat_g) || 0,
+    });
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const handleDelete = () => {
+    onDelete(log.id);
+    onClose();
+  };
+
+  const mealColor = MEAL_TYPES.find(m => m.key === log.meal_type)?.color || '#6B7280';
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" />
+      <div className="relative w-full max-w-sm max-h-[85vh] rounded-[28px] overflow-y-auto"
+        style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.04)' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Close button */}
+        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center z-10"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <X size={14} className="text-white/70" />
+        </button>
+
+        {/* Photo */}
+        <div className="relative">
+          {photoSrc ? (
+            <div className="relative aspect-[4/3] overflow-hidden rounded-t-[28px]">
+              <img src={photoSrc} alt="" className="w-full h-full object-cover scale-[1.02]" />
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, #080D18 0%, rgba(8,13,24,0.7) 35%, rgba(8,13,24,0.15) 65%, rgba(0,0,0,0.2) 100%)' }} />
+            </div>
+          ) : (
+            <div className="h-24 rounded-t-[28px]" style={{ background: 'linear-gradient(180deg, #111827 0%, #080D18 100%)' }} />
+          )}
+          <div className="absolute bottom-0 left-0 right-0 px-6 pb-5">
+            <div className="flex items-center gap-2 mb-2">
+              {MEAL_TYPES.map(m => m.key).includes(log.meal_type) && (
+                <span className="text-[9px] font-bold uppercase tracking-[0.1em] px-2.5 py-[3px] rounded-full"
+                  style={{ background: `${mealColor}18`, color: `${mealColor}CC`, border: `1px solid ${mealColor}15` }}>
+                  {log.meal_type}
+                </span>
+              )}
+              <span className="text-[9px] text-[#4B5563] font-medium">{timeStr}</span>
+            </div>
+            <h3 className="text-[22px] font-black text-white leading-tight tracking-tight">{displayName}</h3>
+          </div>
+        </div>
+
+        <div className="px-6 pt-5 pb-6">
+          {/* AI disclaimer */}
+          {isAiLogged && (
+            <div className="flex items-start gap-3 px-4 py-3.5 rounded-[14px] mb-5"
+              style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.08)' }}>
+              <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: 'rgba(245,158,11,0.1)' }}>
+                <AlertCircle size={11} className="text-[#F59E0B]/70" />
+              </div>
+              <p className="text-[10px] text-[#9CA3AF] leading-[1.6]">
+                Logged via AI photo analysis. Values are estimates — <button onClick={() => setEditing(true)} className="text-[#D4AF37] font-semibold">tap to edit</button>.
+              </p>
+            </div>
+          )}
+
+          {/* Macros */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3.5">
+              <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-[0.15em]">Nutrition</p>
+              <button onClick={() => setEditing(!editing)}
+                className="text-[10px] font-bold tracking-wide transition-colors"
+                style={{ color: editing ? '#9CA3AF' : '#D4AF37' }}>
+                {editing ? 'Cancel' : 'Edit'}
+              </button>
+            </div>
+            <div className="rounded-[18px] px-4 py-5"
+              style={{ background: 'linear-gradient(180deg, rgba(17,24,39,0.8) 0%, rgba(13,19,32,0.8) 100%)', border: '1px solid rgba(255,255,255,0.04)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>
+              {/* Calories hero row */}
+              <div className="text-center mb-5">
+                {editing ? (
+                  <input
+                    type="number" inputMode="numeric"
+                    value={editValues.calories || ''}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setEditValues(prev => ({ ...prev, calories: e.target.value }))}
+                    className="w-full text-center text-[36px] font-black leading-none tabular-nums bg-transparent outline-none text-[#F59E0B] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                  />
+                ) : (
+                  <p className="text-[36px] font-black leading-none tabular-nums text-[#F59E0B]"
+                    style={{ textShadow: '0 0 20px rgba(245,158,11,0.15)' }}>
+                    {Math.round(log.calories)}
+                  </p>
+                )}
+                <p className="text-[9px] font-bold text-[#4B5563] uppercase tracking-[0.15em] mt-2">Calories</p>
+              </div>
+              {/* Macro row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key: 'protein_g', l: 'Protein', c: '#10B981' },
+                  { key: 'carbs_g', l: 'Carbs', c: '#60A5FA' },
+                  { key: 'fat_g', l: 'Fat', c: '#A78BFA' },
+                ].map(m => (
+                  <div key={m.key} className="text-center py-3 rounded-[12px]"
+                    style={{ background: `${m.c}06` }}>
+                    {editing ? (
+                      <input
+                        type="number" inputMode="decimal"
+                        value={editValues[m.key] || ''}
+                        onFocus={e => e.target.select()}
+                        onChange={e => setEditValues(prev => ({ ...prev, [m.key]: e.target.value }))}
+                        className="w-full text-center text-[18px] font-black leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                        style={{ color: m.c }}
+                      />
+                    ) : (
+                      <p className="text-[20px] font-black leading-none tabular-nums" style={{ color: m.c, textShadow: `0 0 16px ${m.c}15` }}>
+                        {Math.round(log[m.key])}<span className="text-[13px] font-bold opacity-60">g</span>
+                      </p>
+                    )}
+                    <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.12em] mt-2">{m.l}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Servings */}
+          <div className="flex items-center justify-between px-1 mb-6">
+            <span className="text-[11px] font-medium text-[#4B5563]">Servings</span>
+            <span className="text-[14px] font-black text-[#E5E7EB] tabular-nums">{log.servings}</span>
+          </div>
+
+          {/* Actions */}
+          {editing && (
+            <button onClick={handleSave} disabled={saving}
+              className="w-full py-[16px] rounded-[16px] font-bold text-[14px] active:scale-[0.97] transition-all disabled:opacity-40 mb-3"
+              style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #C4A030 100%)', color: '#000', boxShadow: '0 4px 16px rgba(212,175,55,0.2), inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          )}
+
+          <button onClick={handleDelete}
+            className="w-full py-[13px] rounded-[14px] font-semibold text-[12px] active:scale-[0.97] transition-all"
+            style={{ color: '#EF4444AA', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.08)' }}>
+            Delete Entry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── TARGET EDIT MODAL ───────────────────────────────────────
 const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAutoCalculate }) => {
   const { t } = useTranslation('pages');
@@ -636,181 +1142,166 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
 };
 
 // ── HOME VIEW ───────────────────────────────────────────────
-const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onOpenSearch, onDeleteLog, setView, openEdit }) => {
+const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit }) => {
   const { t } = useTranslation('pages');
-  const caloriesLeft = Math.max(0, (targets?.daily_calories || 2000) - todayTotals.calories);
-  const caloriesOver = todayTotals.calories > (targets?.daily_calories || 2000);
+  const calTarget = targets?.daily_calories || 2000;
+  const caloriesLeft = Math.max(0, calTarget - todayTotals.calories);
+  const caloriesOver = todayTotals.calories > calTarget;
+
+  const mealGroups = MEAL_TYPES.reduce((acc, mt) => {
+    acc[mt.key] = todayLogs.filter(l => l.meal_type === mt.key);
+    return acc;
+  }, {});
 
   return (
     <div className="pb-28">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-5">
+      <div className="flex items-center justify-between px-5 pt-4 pb-6">
         <div>
-          <h1 className="text-[24px] font-black text-white tracking-tight">{t('nutrition.title')}</h1>
-          <p className="text-[12px] text-[#4B5563] mt-0.5">{format(new Date(), 'EEEE, MMM d')}</p>
+          <h1 className="text-[26px] font-black text-white tracking-tight leading-none">{t('nutrition.title')}</h1>
+          <p className="text-[12px] text-[#4B5563] mt-1 font-medium">{format(new Date(), 'EEEE, MMM d')}</p>
         </div>
-        <button onClick={openEdit} className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
+        <button onClick={openEdit} className="w-10 h-10 rounded-[14px] bg-white/[0.03] border border-white/[0.06] flex items-center justify-center active:scale-90 transition-all">
           <Edit2 size={15} className="text-[#6B7280]" />
         </button>
       </div>
 
-      {/* ── Daily Targets ── */}
-      <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-5">{t('nutrition.dailyTargets')}</p>
-      <div className="mx-5 mb-7 rounded-[22px] overflow-hidden bg-[#0F172A] border border-white/[0.06]">
-        {/* Calories remaining hero */}
-        <div className="px-5 pt-5 pb-4 border-b border-white/[0.05]">
-          <div className="flex items-end justify-between mb-1">
-            <div>
-              <p className="text-[11px] font-semibold text-[#4B5563] uppercase tracking-widest mb-1">
-                {caloriesOver ? t('nutrition.overBy') : t('nutrition.caloriesLeft')}
-              </p>
-              <p className={`text-[44px] font-black leading-none tabular-nums ${caloriesOver ? 'text-[#EF4444]' : 'text-white'}`}>
-                {caloriesOver ? Math.round(todayTotals.calories - (targets?.daily_calories || 2000)) : Math.round(caloriesLeft)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[11px] text-[#4B5563] mb-0.5">of {targets?.daily_calories || 2000}</p>
-              <p className="text-[13px] font-bold text-[#F59E0B] tabular-nums">{Math.round(todayTotals.calories)} {t('nutrition.eaten')}</p>
-            </div>
-          </div>
-          {/* Calories bar */}
-          <div className="mt-3 h-[6px] bg-white/[0.05] rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${Math.min((todayTotals.calories / (targets?.daily_calories || 2000)) * 100, 100)}%`, backgroundColor: caloriesOver ? '#EF4444' : '#F59E0B' }} />
-          </div>
+      {/* ── Calorie Ring + Macro Rings ── */}
+      <div className="mx-5 mb-7 rounded-[20px] overflow-hidden"
+        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+        {/* Calorie ring hero */}
+        <div className="flex flex-col items-center pt-8 pb-5">
+          <MacroRing
+            value={todayTotals.calories}
+            max={calTarget}
+            color={caloriesOver ? '#EF4444' : '#F59E0B'}
+            size={148}
+            strokeWidth={10}
+            label=""
+            unit="kcal"
+            hero
+          />
+          <p className="text-[11px] text-[#4B5563] mt-3 font-medium tracking-wide">
+            {caloriesOver
+              ? <span className="text-[#EF4444] font-semibold">{Math.round(todayTotals.calories - calTarget)} over target</span>
+              : <><span className="text-[#9CA3AF] font-semibold">{Math.round(caloriesLeft)}</span> remaining of <span className="text-[#6B7280]">{calTarget}</span></>
+            }
+          </p>
         </div>
 
-        {/* Macro bars */}
-        <div className="px-5 py-4 space-y-3">
-          <MacroBar label={t('nutrition.protein')} value={todayTotals.protein} max={targets?.daily_protein_g || 150} color="#10B981" t={t} />
-          <MacroBar label={t('nutrition.carbs')}   value={todayTotals.carbs}   max={targets?.daily_carbs_g   || 200} color="#60A5FA" t={t} />
-          <MacroBar label={t('nutrition.fat')}     value={todayTotals.fat}     max={targets?.daily_fat_g     || 65}  color="#A78BFA" t={t} />
+        {/* Macro mini-rings row */}
+        <div className="flex justify-around px-5 pb-6 pt-5 mx-4 border-t border-white/[0.04]">
+          <MacroRing value={todayTotals.protein} max={targets?.daily_protein_g || 150} color="#10B981" size={66} strokeWidth={4.5} label={t('nutrition.protein')} unit="g" />
+          <MacroRing value={todayTotals.carbs}   max={targets?.daily_carbs_g   || 200} color="#60A5FA" size={66} strokeWidth={4.5} label={t('nutrition.carbs')}   unit="g" />
+          <MacroRing value={todayTotals.fat}     max={targets?.daily_fat_g     || 65}  color="#A78BFA" size={66} strokeWidth={4.5} label={t('nutrition.fat')}     unit="g" />
         </div>
 
         {/* Log food CTA */}
         <div className="px-5 pb-5">
           <button onClick={onOpenSearch}
-            className="w-full py-3.5 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all">
-            <Plus size={16} />{t('nutrition.addFood')}
+            className="w-full py-[14px] rounded-[16px] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+            style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #C4A030 100%)', color: '#000', boxShadow: '0 4px 16px rgba(212,175,55,0.25), inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+            <Plus size={16} strokeWidth={2.5} />{t('nutrition.addFood')}
           </button>
         </div>
       </div>
 
       {/* ── Today's Meals ── */}
-      {todayLogs.length > 0 && (
-        <div className="mb-7">
-          <div className="flex items-center justify-between px-5 mb-3">
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest">{t('nutrition.todaysMeals')}</p>
-            <span className="text-[11px] text-[#4B5563]">{todayLogs.length} item{todayLogs.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div className="px-5 space-y-2">
-            {todayLogs.slice(0, 5).map(log => (
-              <div key={log.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#0F172A] border border-white/[0.05]">
-                {(getFoodImage(log.food_item?.name, log.food_item?.brand) || log.food_item?.image_url) && (
-                  <img src={getFoodImage(log.food_item?.name, log.food_item?.brand) || log.food_item?.image_url} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0 bg-[#1E293B]" />
+      <div className="mb-8 px-5">
+        <p className="text-[10px] font-extrabold text-[#525C6B] uppercase tracking-[0.18em] mb-5">{t('nutrition.todaysMeals')}</p>
+        {MEAL_TYPES.map((mt, idx) => {
+          const logs = mealGroups[mt.key];
+          const Icon = mt.icon;
+          const mealCals = logs.reduce((s, l) => s + (l.calories || 0), 0);
+          return (
+            <div key={mt.key} className={idx < MEAL_TYPES.length - 1 ? 'mb-5' : ''}>
+              {/* Section header */}
+              <div className="flex items-center gap-2.5 mb-2.5">
+                <div className="w-[22px] h-[22px] rounded-[7px] flex items-center justify-center"
+                  style={{ backgroundColor: `${mt.color}12`, boxShadow: `0 0 8px ${mt.color}08` }}>
+                  <Icon size={11} style={{ color: mt.color }} />
+                </div>
+                <span className="text-[12px] font-bold text-[#D1D5DB] capitalize tracking-wide">{mt.key}</span>
+                {logs.length > 0 && (
+                  <span className="text-[10px] font-semibold ml-auto tabular-nums" style={{ color: `${mt.color}99` }}>{mealCals} cal</span>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{log.food_item?.name || 'Food'}</p>
-                  <p className="text-[10px] text-[#4B5563]">{log.calories} cal · {log.protein_g}g P · {log.meal_type}</p>
-                </div>
-                <button onClick={() => onDeleteLog(log.id)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
-                  <Trash2 size={13} className="text-[#374151]" />
+              </div>
+              {/* Empty state */}
+              {logs.length === 0 ? (
+                <button onClick={onOpenSearch}
+                  className="w-full py-3.5 rounded-[14px] text-[11px] font-semibold transition-all active:scale-[0.97]"
+                  style={{ background: 'rgba(15,23,42,0.4)', border: '1px solid rgba(255,255,255,0.04)', color: '#4B5563' }}>
+                  <span className="opacity-60">+</span> Add {mt.key}
                 </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Recipes ── */}
-      <div className="mb-2">
-        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest px-5 mb-5">{t('nutrition.recipes')}</p>
-        {CATEGORIES.map(cat => (
-          <CategoryRow key={cat.id} category={cat} recipes={RECIPES} savedIds={savedIds} onSave={onSave} onOpen={onOpenRecipe} />
-        ))}
-      </div>
-
-      {/* ── Cook with What You Have Banner ── */}
-      <div className="mx-5 mb-7">
-        <button onClick={() => setView('discover')}
-          className="w-full rounded-2xl overflow-hidden relative bg-[#0F172A] border border-[#D4AF37]/15 p-5 text-left active:scale-[0.98] transition-all">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/8 via-transparent to-transparent" />
-          <div className="relative">
-            <div className="flex items-center gap-2 mb-2">
-              <UtensilsCrossed size={16} className="text-[#D4AF37]" />
-              <span className="text-[11px] font-bold text-[#D4AF37] uppercase tracking-widest">{t('nutrition.featured')}</span>
-            </div>
-            <h3 className="text-[18px] font-black text-white mb-1">{t('nutrition.cookWithWhatYouHave')}</h3>
-            <p className="text-[12px] text-[#6B7280] mb-4 leading-relaxed">{t('nutrition.cookDescription')}</p>
-            <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#D4AF37]">
-              {t('nutrition.findRecipes')} <ChevronRight size={14} />
-            </div>
-          </div>
-        </button>
-      </div>
-
-      {/* ── Weekly Collections ── */}
-      <div className="mb-7">
-        <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-widest px-5 mb-4">{t('nutrition.weeklyCollections')}</p>
-        <div className="px-5 space-y-3">
-          {WEEKLY_COLLECTIONS.map(col => {
-            const recipes = RECIPES.filter(r => col.recipeIds.includes(r.id));
-            return (
-              <div key={col.id} className="rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 pr-3">
-                      <h4 className="text-[14px] font-bold text-[#E5E7EB] leading-snug">{col.title}</h4>
-                      <p className="text-[11px] text-[#4B5563] mt-0.5">{col.subtitle}</p>
-                    </div>
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${col.accent}18` }}>
-                      <span className="text-[11px] font-black" style={{ color: col.accent }}>{col.recipeIds.length}</span>
-                    </div>
-                  </div>
-                  {/* Mini recipe previews */}
-                  <div className="flex gap-2 overflow-x-auto scrollbar-none">
-                    {recipes.slice(0, 4).map(r => (
-                      <button key={r.id} onClick={() => onOpenRecipe(r)}
-                        className="relative w-[64px] h-[52px] rounded-xl overflow-hidden flex-shrink-0 bg-[#1E293B]">
-                        <img src={r.image} alt={r.title} className="w-full h-full object-cover" loading="lazy" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+              ) : (
+                <div className="space-y-2">
+                  {logs.slice(0, 3).map(log => {
+                    const logImg = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || log.food_item?.image_url;
+                    return (
+                      <button key={log.id} onClick={() => onOpenLog(log)}
+                        className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[16px] text-left transition-all active:scale-[0.975]"
+                        style={{
+                          background: 'linear-gradient(180deg, rgba(17,24,39,0.95) 0%, rgba(13,19,32,0.95) 100%)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03)',
+                        }}>
+                        {/* Color accent edge */}
+                        <div className="absolute left-0 top-[30%] bottom-[30%] w-[2px] rounded-r-full" style={{ backgroundColor: `${mt.color}40` }} />
+                        {logImg ? (
+                          <div className="relative flex-shrink-0">
+                            <img src={logImg} alt="" className="w-10 h-10 rounded-[11px] object-cover bg-[#1E293B]"
+                              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06)' }} />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-[11px] flex-shrink-0 flex items-center justify-center"
+                            style={{ backgroundColor: `${mt.color}10` }}>
+                            <Icon size={16} style={{ color: `${mt.color}60` }} />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[#F1F3F5] truncate leading-snug">{log.food_item?.name || log.custom_name || 'Food'}</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] font-semibold tabular-nums" style={{ color: '#F59E0B99' }}>{log.calories} cal</span>
+                            <span className="text-[8px] text-[#2A3040]">·</span>
+                            <span className="text-[10px] font-medium text-[#4B5563] tabular-nums">{log.protein_g}g P</span>
+                            {log.carbs_g > 0 && <>
+                              <span className="text-[8px] text-[#2A3040]">·</span>
+                              <span className="text-[10px] font-medium text-[#3B4252] tabular-nums">{log.carbs_g}g C</span>
+                            </>}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="text-[#2A3040] flex-shrink-0 ml-1" />
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-                <div className="flex border-t border-white/[0.04]">
-                  <button
-                    onClick={() => {
-                      recipes.forEach(r => {});
-                    }}
-                    className="flex-1 py-3 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors border-r border-white/[0.04]">
-                    <ShoppingCart size={12} />{t('nutrition.addToGrocery')}
-                  </button>
-                  <button onClick={() => setView('saved')}
-                    className="flex-1 py-3 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors">
-                    <Bookmark size={12} />{t('nutrition.saveAll')}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* ── Quick Links ── */}
-      <div className="px-5 grid grid-cols-2 gap-3 mb-4">
-        <button onClick={() => setView('saved')}
-          className="rounded-[16px] bg-[#0F172A] border border-white/[0.05] p-4 text-left active:scale-[0.97] transition-all">
-          <Bookmark size={18} className="text-[#D4AF37] mb-2.5" />
-          <p className="text-[13px] font-bold text-[#E5E7EB]">{t('nutrition.savedRecipes')}</p>
-          <p className="text-[10px] text-[#4B5563] mt-0.5">{t('nutrition.yourCollection')}</p>
-        </button>
-        <button onClick={() => setView('grocery')}
-          className="rounded-[16px] bg-[#0F172A] border border-white/[0.05] p-4 text-left active:scale-[0.97] transition-all">
-          <ShoppingCart size={18} className="text-[#60A5FA] mb-2.5" />
-          <p className="text-[13px] font-bold text-[#E5E7EB]">{t('nutrition.groceryList')}</p>
-          <p className="text-[10px] text-[#4B5563] mt-0.5">{t('nutrition.planShopping')}</p>
-        </button>
+      {/* ── Quick Actions ── */}
+      <div className="px-5 grid grid-cols-3 gap-3 mb-4">
+        {[
+          { view: 'discover', icon: UtensilsCrossed, color: '#D4AF37', label: t('nutrition.recipes') },
+          { view: 'saved',    icon: Bookmark,         color: '#F59E0B', label: t('nutrition.savedRecipes') },
+          { view: 'grocery',  icon: ShoppingCart,      color: '#60A5FA', label: t('nutrition.groceryList') },
+        ].map(a => (
+          <button key={a.view} onClick={() => setView(a.view)}
+            className="rounded-[16px] p-4 flex flex-col items-center gap-2.5 active:scale-[0.94] transition-all"
+            style={{
+              background: 'linear-gradient(180deg, rgba(17,24,39,0.7) 0%, rgba(13,19,32,0.7) 100%)',
+              border: '1px solid rgba(255,255,255,0.05)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)',
+            }}>
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+              style={{ backgroundColor: `${a.color}10`, boxShadow: `0 0 12px ${a.color}08` }}>
+              <a.icon size={17} style={{ color: a.color }} />
+            </div>
+            <p className="text-[10px] font-bold text-[#6B7280] text-center leading-tight tracking-wide">{a.label}</p>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -832,14 +1323,15 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
     setShowResults(false);
   };
 
-  const allIngredients = Object.values(INGREDIENT_CATEGORIES).flat();
+  const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
   const filteredForQuery = ingredientQuery.length > 0
     ? allIngredients.filter(i => i.label.toLowerCase().includes(ingredientQuery.toLowerCase()))
-    : INGREDIENT_CATEGORIES[activeCategory];
+    : (INGREDIENT_CATEGORIES[activeCategory] || []);
 
   const matchedRecipes = useMemo(() => {
     if (selectedIngredients.length === 0) return [];
-    return RECIPES.filter(recipe => {
+    return (RECIPES || []).filter(recipe => {
+      if (!recipe?.ingredients) return false;
       if (activeFilter !== 'all' && recipe.category !== activeFilter) return false;
       const matchCount = recipe.ingredients.filter(ing => selectedIngredients.includes(ing)).length;
       return matchCount > 0;
@@ -850,7 +1342,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
   }, [selectedIngredients, activeFilter]);
 
   return (
-    <div className="pb-28">
+    <div className="pb-28" >
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-5">
         <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
@@ -893,7 +1385,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
       {/* Category tabs */}
       {!ingredientQuery && (
         <div className="flex gap-2 overflow-x-auto px-5 mb-4 scrollbar-none">
-          {Object.keys(INGREDIENT_CATEGORIES).map(cat => (
+          {Object.keys(INGREDIENT_CATEGORIES || {}).map(cat => (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2 rounded-full text-[12px] font-semibold flex-shrink-0 transition-all ${
                 activeCategory === cat ? 'bg-[#D4AF37] text-black' : 'bg-[#0F172A] border border-white/[0.06] text-[#6B7280]'
@@ -963,48 +1455,39 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
               <p className="text-[12px] text-[#4B5563]">Try adding more ingredients or changing the filter.</p>
             </div>
           ) : (
-            <VirtualList
-              height={Math.min(matchedRecipes.length * 100, 600)}
-              itemCount={matchedRecipes.length}
-              itemSize={100}
-              width="100%"
-              className="scrollbar-hide"
-            >
-              {({ index, style }) => {
-                const recipe = matchedRecipes[index];
+            <div className="space-y-3">
+              {matchedRecipes.slice(0, 20).map(recipe => {
                 const canMake = recipe.missing === 0;
                 const almostThere = recipe.missing <= 2;
                 return (
-                  <div style={style} className="pb-3">
-                    <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
-                      className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
-                      <div className="relative w-[72px] h-[72px] rounded-[12px] overflow-hidden flex-shrink-0 bg-[#1E293B]">
-                        <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover" loading="lazy" />
+                  <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
+                    className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
+                    <div className="relative w-[72px] h-[72px] rounded-[12px] overflow-hidden flex-shrink-0 bg-[#1E293B]">
+                      <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                          canMake ? 'bg-[#10B981]/15 text-[#10B981]' : almostThere ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-white/[0.06] text-[#6B7280]'
+                        }`}>
+                          {canMake ? '✓ Can make now' : `Needs ${recipe.missing} more`}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                            canMake ? 'bg-[#10B981]/15 text-[#10B981]' : almostThere ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-white/[0.06] text-[#6B7280]'
-                          }`}>
-                            {canMake ? '✓ Can make now' : `Needs ${recipe.missing} more`}
-                          </span>
-                        </div>
-                        <p className="text-[13px] font-bold text-[#E5E7EB] leading-snug mb-1.5 line-clamp-1">{recipe.title}</p>
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[11px] font-semibold text-[#F59E0B]">{recipe.calories} cal</span>
-                          <span className="text-[11px] font-bold text-[#10B981]">{recipe.protein}g P</span>
-                          <span className="flex items-center gap-0.5 text-[10px] text-[#4B5563]"><Clock size={9} />{recipe.prepTime}m</span>
-                        </div>
+                      <p className="text-[13px] font-bold text-[#E5E7EB] leading-snug mb-1.5 line-clamp-1">{recipe.title}</p>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[11px] font-semibold text-[#F59E0B]">{recipe.calories} cal</span>
+                        <span className="text-[11px] font-bold text-[#10B981]">{recipe.protein}g P</span>
+                        <span className="flex items-center gap-0.5 text-[10px] text-[#4B5563]"><Clock size={9} />{recipe.prepTime}m</span>
                       </div>
-                      <button onClick={e => { e.stopPropagation(); onSave(recipe.id); }}
-                        className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.04] flex-shrink-0">
-                        <Bookmark size={13} className={savedIds.has(recipe.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-[#4B5563]'} />
-                      </button>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); onSave(recipe.id); }}
+                      className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.04] flex-shrink-0">
+                      <Bookmark size={13} className={savedIds.has(recipe.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-[#4B5563]'} />
                     </button>
-                  </div>
+                  </button>
                 );
-              }}
-            </VirtualList>
+              })}
+            </div>
           )}
         </div>
       )}
@@ -1018,6 +1501,48 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
           </div>
         </div>
       )}
+
+      {/* ── Browse by Category ── */}
+      <div className="mt-8 mb-2">
+        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest px-5 mb-5">Browse Recipes</p>
+        {CATEGORIES.map(cat => (
+          <CategoryRow key={cat.id} category={cat} recipes={RECIPES} savedIds={savedIds} onSave={onSave} onOpen={onOpenRecipe} />
+        ))}
+      </div>
+
+      {/* ── Weekly Collections ── */}
+      <div className="mb-7">
+        <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-widest px-5 mb-4">Weekly Collections</p>
+        <div className="px-5 space-y-3">
+          {WEEKLY_COLLECTIONS.map(col => {
+            const colRecipes = RECIPES.filter(r => col.recipeIds.includes(r.id));
+            return (
+              <div key={col.id} className="rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 pr-3">
+                      <h4 className="text-[14px] font-bold text-[#E5E7EB] leading-snug">{col.title}</h4>
+                      <p className="text-[11px] text-[#4B5563] mt-0.5">{col.subtitle}</p>
+                    </div>
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${col.accent}18` }}>
+                      <span className="text-[11px] font-black" style={{ color: col.accent }}>{col.recipeIds.length}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                    {colRecipes.slice(0, 4).map(r => (
+                      <button key={r.id} onClick={() => onOpenRecipe(r)}
+                        className="relative w-[64px] h-[52px] rounded-xl overflow-hidden flex-shrink-0 bg-[#1E293B]">
+                        <img src={r.image} alt={r.title} className="w-full h-full object-cover" loading="lazy" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };
@@ -1027,7 +1552,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
   const savedRecipes = RECIPES.filter(r => savedIds.has(r.id));
 
   return (
-    <div className="pb-28">
+    <div className="pb-28" >
       <div className="flex items-center gap-3 px-5 pt-4 pb-5">
         <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
           <ChevronLeft size={18} className="text-[#9CA3AF]" />
@@ -1108,7 +1633,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   const checkedCount = groceryList.filter(i => i.checked).length;
 
   return (
-    <div className="pb-28">
+    <div className="pb-28" >
       <div className="flex items-center justify-between px-5 pt-4 pb-5">
         <div className="flex items-center gap-3">
           <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
@@ -1205,7 +1730,16 @@ export default function Nutrition() {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
 
-  const [view, setView] = useState('home');
+  const [view, setViewRaw] = useState('home');
+  const setView = useCallback((v) => {
+    setViewRaw(v);
+    // Scroll to top — try multiple methods for Capacitor webview compatibility
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    // Also scroll the nearest scrollable parent
+    document.querySelector('.min-h-screen')?.scrollTo(0, 0);
+  }, []);
   const [targets, setTargets] = useState(null);
   const [todayLogs, setTodayLogs] = useState([]);
   const [onboarding, setOnboarding] = useState(null);
@@ -1216,6 +1750,11 @@ export default function Nutrition() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [logFood, setLogFood] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
+  const [photoResult, setPhotoResult] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [detailLog, setDetailLog] = useState(null);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -1248,12 +1787,12 @@ export default function Nutrition() {
   };
 
   const handleAddToGrocery = (recipe) => {
-    const allIngredients = Object.values(INGREDIENT_CATEGORIES).flat();
+    const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
     const newItems = recipe.ingredients
       .filter(ing => !groceryList.some(i => i.id === ing && i.fromRecipe === recipe.title))
       .map(ing => {
         const match = allIngredients.find(i => i.id === ing);
-        const catEntry = Object.entries(INGREDIENT_CATEGORIES).find(([, items]) => items.some(i => i.id === ing));
+        const catEntry = Object.entries(INGREDIENT_CATEGORIES || {}).find(([, items]) => items.some(i => i.id === ing));
         return {
           id: `${ing}_${recipe.id}`,
           label: match?.label || ing.replace(/_/g, ' '),
@@ -1351,18 +1890,127 @@ export default function Nutrition() {
     return t;
   }, [todayLogs]);
 
+  const handlePhotoCapture = async (file) => {
+    setPhotoAnalyzing(true);
+    setPhotoResult(null);
+    setPhotoError('');
+
+    try {
+      // Load image once, create both AI version and tiny thumbnail
+      const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        i.onload = () => { URL.revokeObjectURL(objectUrl); resolve(i); };
+        i.onerror = (err) => { URL.revokeObjectURL(objectUrl); reject(err); };
+        i.src = objectUrl;
+      });
+
+      // Thumbnail for preview + DB storage (~10-15KB)
+      const thumbCanvas = document.createElement('canvas');
+      const thumbScale = Math.min(1, 200 / img.width);
+      thumbCanvas.width = Math.round(img.width * thumbScale);
+      thumbCanvas.height = Math.round(img.height * thumbScale);
+      thumbCanvas.getContext('2d').drawImage(img, 0, 0, thumbCanvas.width, thumbCanvas.height);
+      const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.5);
+      setPhotoPreview(thumbnail);
+
+      // AI version (800px, better quality for analysis)
+      const aiCanvas = document.createElement('canvas');
+      const aiScale = Math.min(1, 800 / img.width);
+      aiCanvas.width = Math.round(img.width * aiScale);
+      aiCanvas.height = Math.round(img.height * aiScale);
+      aiCanvas.getContext('2d').drawImage(img, 0, 0, aiCanvas.width, aiCanvas.height);
+      const compressed = await new Promise((resolve) => aiCanvas.toBlob(resolve, 'image/jpeg', 0.6));
+
+      // Convert to base64
+      const base64 = await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(',')[1]);
+        r.readAsDataURL(compressed);
+      });
+
+      // Call edge function
+      console.log('[FoodAnalysis] Sending image, base64 length:', base64.length);
+      const { data, error: fnError } = await supabase.functions.invoke('analyze-food-photo', {
+        body: { image: base64 },
+      });
+      console.log('[FoodAnalysis] Response:', { data, fnError: fnError?.message });
+
+      // supabase-js puts non-2xx response body in data, error is a FunctionsHttpError
+      const result = data || {};
+      if (fnError) {
+        let msg = fnError.message || 'Analysis service error';
+        try { const b = await fnError.context?.json(); if (b?.error) msg = b.error; } catch {}
+        console.error('[FoodAnalysis] Error details:', msg);
+        throw new Error(msg);
+      }
+      if (result.error === 'no_food_detected') throw new Error('No food detected in the image. Try a clearer photo.');
+      if (result.error) throw new Error(result.error);
+      if (!result.items?.length) throw new Error('Could not identify food items');
+
+      setPhotoResult(result);
+    } catch (err) {
+      setPhotoError(err.message || 'Failed to analyze food photo');
+    } finally {
+      setPhotoAnalyzing(false);
+    }
+  };
+
   const handleLogFood = async ({ food, servings, mealType, cal, pro, carb, fat }) => {
-    const { data, error } = await supabase.from('food_logs').insert({
-      profile_id: user.id, gym_id: profile.gym_id, food_item_id: food.id,
+    // Save AI correction if user modified macros from an AI scan
+    if (!food.id && photoResult) {
+      const aiCal = photoResult.total_calories;
+      const aiPro = photoResult.total_protein_g;
+      const aiCarb = photoResult.total_carbs_g;
+      const aiFat = photoResult.total_fat_g;
+      const aiGrams = photoResult.items?.reduce((s, i) => s + (i.grams || 0), 0) || 0;
+      // Only save if user actually changed something
+      if (cal !== aiCal || pro !== aiPro || carb !== aiCarb || fat !== aiFat) {
+        supabase.from('ai_food_corrections').insert({
+          profile_id: user.id,
+          food_name: food.name,
+          ai_calories: aiCal, ai_protein_g: aiPro, ai_carbs_g: aiCarb, ai_fat_g: aiFat, ai_grams: aiGrams,
+          user_calories: cal, user_protein_g: pro, user_carbs_g: carb, user_fat_g: fat, user_grams: aiGrams,
+        }); // fire and forget
+      }
+    }
+
+    const insertPayload = {
+      profile_id: user.id, gym_id: profile.gym_id,
+      food_item_id: food.id || null,
+      custom_name: food.id ? null : food.name,
+      photo_url: !food.id && photoPreview ? photoPreview : null,
       meal_type: mealType, log_date: todayStr(), servings,
       calories: cal, protein_g: pro, carbs_g: carb, fat_g: fat,
-    }).select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)').single();
-    if (!error && data) { setTodayLogs(prev => [data, ...prev]); setLogFood(null); setSearchOpen(false); }
+    };
+    const { data, error } = await supabase.from('food_logs')
+      .insert(insertPayload)
+      .select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)')
+      .single();
+    if (!error && data) {
+      setTodayLogs(prev => [data, ...prev]);
+      setLogFood(null);
+      setSearchOpen(false);
+      setPhotoResult(null);
+      setPhotoPreview(null);
+    }
   };
 
   const handleDeleteLog = async (logId) => {
     await supabase.from('food_logs').delete().eq('id', logId);
     setTodayLogs(prev => prev.filter(l => l.id !== logId));
+  };
+
+  const handleUpdateLog = async (logId, updates) => {
+    const { data, error } = await supabase.from('food_logs')
+      .update(updates)
+      .eq('id', logId)
+      .select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)')
+      .single();
+    if (!error && data) {
+      setTodayLogs(prev => prev.map(l => l.id === logId ? data : l));
+      setDetailLog(data);
+    }
   };
 
   const handleToggleFavorite = async (foodItemId) => {
@@ -1466,6 +2114,7 @@ export default function Nutrition() {
             todayLogs={todayLogs}
             onOpenSearch={() => setSearchOpen(true)}
             onDeleteLog={handleDeleteLog}
+            onOpenLog={setDetailLog}
             setView={setView}
             openEdit={openEdit}
           />
@@ -1499,6 +2148,7 @@ export default function Nutrition() {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onSelect={food => { setSearchOpen(false); setLogFood(food); }}
+        onPhotoCapture={handlePhotoCapture}
         favorites={favorites}
         recentFoods={recentFoods}
         onToggleFavorite={handleToggleFavorite}
@@ -1509,6 +2159,24 @@ export default function Nutrition() {
         food={logFood}
         onClose={() => setLogFood(null)}
         onLog={handleLogFood}
+        lang={lang}
+      />
+
+      <FoodPhotoResultModal
+        result={photoResult}
+        analyzing={photoAnalyzing}
+        error={photoError}
+        photoPreview={photoPreview}
+        onClose={() => { setPhotoResult(null); setPhotoError(''); setPhotoAnalyzing(false); setPhotoPreview(null); }}
+        onLog={handleLogFood}
+        lang={lang}
+      />
+
+      <FoodLogDetailModal
+        log={detailLog}
+        onClose={() => setDetailLog(null)}
+        onUpdate={handleUpdateLog}
+        onDelete={handleDeleteLog}
         lang={lang}
       />
 

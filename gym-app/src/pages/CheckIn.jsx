@@ -1,42 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, CheckCircle, Clock, Navigation, QrCode } from 'lucide-react';
+import { ArrowLeft, MapPin, CheckCircle, QrCode } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
-import { Geolocation } from '@capacitor/geolocation';
-import { Capacitor } from '@capacitor/core';
 import QRCodeModal from '../components/QRCodeModal';
 
 const METHOD_LABELS = { manual: 'Manual', qr: 'QR Scan', gps: 'GPS' };
 const METHOD_COLORS = { manual: '#9CA3AF', qr: '#D4AF37', gps: '#10B981' };
-
-const GPS_RADIUS_METERS = 200;
-
-function haversineMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function getBrowserPosition() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by this browser'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ coords: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } }),
-      err => reject(err),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  });
-}
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function CheckIn() {
@@ -46,13 +19,9 @@ export default function CheckIn() {
 
   const [checkins,  setCheckins]  = useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [checking,  setChecking]  = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [error,     setError]     = useState('');
-  const [gpsStatus, setGpsStatus] = useState(''); // '', 'locating', 'success', 'error'
   const [showQR,    setShowQR]    = useState(false);
 
-  const qrPayload = gymConfig?.qrEnabled ? profile?.qr_code_payload : null;
+  const qrPayload = profile?.qr_code_payload || null;
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -70,85 +39,6 @@ export default function CheckIn() {
 
   // Already checked in today?
   const todayCheckIn = checkins.find(c => isToday(new Date(c.checked_in_at)));
-
-  const handleCheckIn = async () => {
-    if (todayCheckIn) return;
-    setChecking(true);
-    setError('');
-    const { error: err } = await supabase.from('check_ins').insert({
-      profile_id:    user.id,
-      gym_id:        profile.gym_id,
-      method:        'manual',
-      checked_in_at: new Date().toISOString(),
-    });
-    if (err) { setError(err.message); setChecking(false); showToast(err.message, 'error'); return; }
-    addPoints(user.id, profile.gym_id, 'check_in', 20, 'Gym check-in').catch(() => {});
-    supabase.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id);
-    setConfirmed(true);
-    showToast('Checked in — +20 pts!', 'success');
-    await load();
-    setChecking(false);
-    setTimeout(() => setConfirmed(false), 3000);
-  };
-
-  const handleGPSCheckIn = async () => {
-    if (todayCheckIn) return;
-    setGpsStatus('locating');
-    setError('');
-    try {
-      let position;
-      if (Capacitor.isNativePlatform()) {
-        position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
-      } else {
-        position = await getBrowserPosition();
-      }
-      const userLat = position.coords.latitude;
-      const userLon = position.coords.longitude;
-
-      // Gym location: prefer gym record coords, fall back to profile, then null
-      const gymLat = profile?.gym?.latitude ?? profile?.gym?.lat ?? null;
-      const gymLon = profile?.gym?.longitude ?? profile?.gym?.lng ?? profile?.gym?.lon ?? null;
-
-      if (gymLat == null || gymLon == null) {
-        setGpsStatus('error');
-        setError('Gym location is not configured. Please use manual check-in.');
-        showToast('Gym location not configured', 'error');
-        return;
-      }
-
-      const distance = haversineMeters(userLat, userLon, gymLat, gymLon);
-
-      if (distance > GPS_RADIUS_METERS) {
-        setGpsStatus('error');
-        setError("You don't appear to be at the gym");
-        showToast("You don't appear to be at the gym", 'error');
-        return;
-      }
-
-      // Within radius — perform check-in
-      setChecking(true);
-      const { error: err } = await supabase.from('check_ins').insert({
-        profile_id:    user.id,
-        gym_id:        profile.gym_id,
-        method:        'gps',
-        checked_in_at: new Date().toISOString(),
-      });
-      if (err) { setError(err.message); setChecking(false); setGpsStatus('error'); showToast(err.message, 'error'); return; }
-      addPoints(user.id, profile.gym_id, 'check_in', 20, 'Gym check-in').catch(() => {});
-      supabase.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id);
-      setGpsStatus('success');
-      setConfirmed(true);
-      showToast('GPS check-in — +20 pts!', 'success');
-      await load();
-      setChecking(false);
-      setTimeout(() => { setConfirmed(false); setGpsStatus(''); }, 3000);
-    } catch (err) {
-      setGpsStatus('error');
-      const msg = err?.message || 'Unable to get your location';
-      setError(msg);
-      showToast(msg, 'error');
-    }
-  };
 
   // ── Streak ──────────────────────────────────────────────────────────────────
   const streak = (() => {
@@ -187,101 +77,46 @@ export default function CheckIn() {
         </button>
         <div>
           <h1 className="text-[20px] font-bold text-[#E5E7EB]">Check In</h1>
-          <p className="text-[12px] text-[#9CA3AF]">Log your gym visit</p>
+          <p className="text-[12px] text-[#9CA3AF]">Scan your QR code at the gym</p>
         </div>
       </div>
 
-      {/* ── Check-in button ──────────────────────────────────────────────────── */}
+      {/* ── QR Check-in ──────────────────────────────────────────────────── */}
       <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-6 mb-5 flex flex-col items-center text-center">
-        {/* Big check-in button */}
-        <button
-          onClick={handleCheckIn}
-          disabled={checking || !!todayCheckIn}
-          className="relative w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 transition-all duration-300 mb-5 active:scale-95"
-          style={
-            todayCheckIn
-              ? { background: 'rgba(16,185,129,0.12)', border: '3px solid rgba(16,185,129,0.4)', cursor: 'default' }
-              : confirmed
-              ? { background: 'rgba(212,175,55,0.2)', border: '3px solid rgba(212,175,55,0.6)', boxShadow: '0 0 40px rgba(212,175,55,0.3)' }
-              : { background: 'rgba(212,175,55,0.1)', border: '3px solid rgba(212,175,55,0.3)' }
-          }
-        >
-          {checking ? (
-            <div className="w-10 h-10 border-3 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          ) : todayCheckIn ? (
-            <CheckCircle size={44} style={{ color: '#10B981' }} strokeWidth={1.5} />
-          ) : (
-            <MapPin size={44} style={{ color: '#D4AF37' }} strokeWidth={1.5} />
-          )}
-          <p
-            className="text-[13px] font-bold"
-            style={{ color: todayCheckIn ? '#10B981' : '#D4AF37' }}
-          >
-            {todayCheckIn ? 'Checked In' : 'Check In'}
-          </p>
-        </button>
 
         {todayCheckIn ? (
-          <div>
+          <>
+            <div
+              className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5"
+              style={{ background: 'rgba(16,185,129,0.12)', border: '3px solid rgba(16,185,129,0.4)' }}
+            >
+              <CheckCircle size={44} style={{ color: '#10B981' }} strokeWidth={1.5} />
+              <p className="text-[13px] font-bold text-[#10B981]">Checked In</p>
+            </div>
             <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">You're in!</p>
             <p className="text-[12px] text-[#9CA3AF]">
               Checked in at {format(new Date(todayCheckIn.checked_in_at), 'h:mm a')}
             </p>
-          </div>
+          </>
         ) : (
-          <p className="text-[13px] text-[#9CA3AF]">
-            Tap to log today's gym visit
-          </p>
-        )}
-
-        {/* Alternative check-in methods */}
-        {!todayCheckIn && (
           <>
-            <div className="flex items-center gap-3 w-full my-4">
-              <div className="flex-1 h-px bg-white/8" />
-              <span className="text-[12px] text-[#6B7280] font-medium">or</span>
-              <div className="flex-1 h-px bg-white/8" />
-            </div>
-            <div className="flex gap-2 w-full">
-              {/* QR Code button */}
-              {qrPayload && (
-                <button
-                  onClick={() => setShowQR(true)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full transition-all duration-200 active:scale-95"
-                  style={{
-                    border: '1.5px solid rgba(212,175,55,0.4)',
-                    background: 'rgba(212,175,55,0.06)',
-                  }}
-                >
-                  <QrCode size={16} style={{ color: '#D4AF37' }} />
-                  <span className="text-[13px] font-semibold text-[#D4AF37]">Show QR</span>
-                </button>
-              )}
-              {/* GPS button */}
-              <button
-                onClick={handleGPSCheckIn}
-                disabled={checking || gpsStatus === 'locating'}
-                className={`${qrPayload ? 'flex-1' : ''} flex items-center justify-center gap-2 px-4 py-2.5 rounded-full transition-all duration-200 active:scale-95`}
-                style={{
-                  border: '1.5px solid rgba(212,175,55,0.4)',
-                  background: gpsStatus === 'locating' ? 'rgba(212,175,55,0.08)' : 'transparent',
-                  opacity: checking ? 0.5 : 1,
-                }}
-              >
-                {gpsStatus === 'locating' ? (
-                  <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-                ) : (
-                  <Navigation size={16} style={{ color: '#D4AF37' }} />
-                )}
-                <span className="text-[13px] font-semibold text-[#D4AF37]">
-                  {gpsStatus === 'locating' ? 'Locating...' : 'GPS'}
-                </span>
-              </button>
-            </div>
+            {/* QR Code button */}
+            <button
+              onClick={() => setShowQR(true)}
+              className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5 transition-all duration-300 active:scale-95"
+              style={{
+                background: 'rgba(212,175,55,0.1)',
+                border: '3px solid rgba(212,175,55,0.3)',
+              }}
+            >
+              <QrCode size={44} style={{ color: '#D4AF37' }} strokeWidth={1.5} />
+              <p className="text-[13px] font-bold text-[#D4AF37]">Show QR</p>
+            </button>
+            <p className="text-[13px] text-[#9CA3AF]">
+              Show your QR code to check in at the gym
+            </p>
           </>
         )}
-
-        {error && <p className="text-[12px] text-red-400 mt-2">{error}</p>}
 
         {/* Streak */}
         <div

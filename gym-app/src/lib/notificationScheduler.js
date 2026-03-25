@@ -50,7 +50,7 @@ async function wasNotificationSentSince(userId, type, sinceISO) {
   const { data } = await supabase
     .from('notifications')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('type', type)
     .gte('created_at', sinceISO)
     .limit(1);
@@ -62,7 +62,7 @@ async function notificationCountSince(userId, type, sinceISO) {
   const { data } = await supabase
     .from('notifications')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('type', type)
     .gte('created_at', sinceISO);
   return data ? data.length : 0;
@@ -107,7 +107,7 @@ export async function checkStreakProtection(userId, gymId, profile) {
   const { data: yesterdaySessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .gte('created_at', yesterdayStart)
     .lt('created_at', todayStart())
@@ -119,7 +119,7 @@ export async function checkStreakProtection(userId, gymId, profile) {
   const { data: todaySessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .gte('created_at', todayStart())
     .limit(1);
@@ -152,7 +152,7 @@ export async function checkWorkoutReminder(userId, gymId, profile) {
   const { data: todaySessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .gte('created_at', todayStart())
     .limit(1);
@@ -188,7 +188,7 @@ export async function checkWeeklyDigest(userId, gymId) {
   const { data: sessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .gte('created_at', weekStart);
 
@@ -220,7 +220,7 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
   const { data: allSessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId);
 
   const totalSessions = allSessions?.length || 0;
@@ -233,7 +233,7 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
       const { data: existing } = await supabase
         .from('notifications')
         .select('id')
-        .eq('user_id', userId)
+        .eq('profile_id', userId)
         .eq('type', NOTIFICATION_TYPES.MILESTONE)
         .ilike('body', `%${milestone}%`)
         .limit(1);
@@ -258,7 +258,7 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
       const { data: existing } = await supabase
         .from('notifications')
         .select('id')
-        .eq('user_id', userId)
+        .eq('profile_id', userId)
         .eq('type', NOTIFICATION_TYPES.MILESTONE)
         .ilike('body', `%${milestone}%`)
         .limit(1);
@@ -292,7 +292,7 @@ export async function checkReengagement(userId, gymId) {
   const { data: lastSession } = await supabase
     .from('workout_sessions')
     .select('created_at')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -336,19 +336,19 @@ export async function checkFriendActivity(userId, gymId) {
   // Get user's friends
   const { data: friendships } = await supabase
     .from('friendships')
-    .select('friend_id, user_id')
-    .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+    .select('requester_id, addressee_id')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
     .eq('status', 'accepted');
 
   if (!friendships?.length) return;
 
-  const friendIds = friendships.map(f => f.user_id === userId ? f.friend_id : f.user_id);
+  const friendIds = friendships.map(f => f.requester_id === userId ? f.addressee_id : f.requester_id);
 
   // Get friend sessions from today that we haven't notified about
   const { data: friendSessions } = await supabase
     .from('workout_sessions')
-    .select('id, user_id, created_at')
-    .in('user_id', friendIds)
+    .select('id, profile_id, created_at')
+    .in('profile_id', friendIds)
     .eq('gym_id', gymId)
     .gte('created_at', todayStart())
     .order('created_at', { ascending: false })
@@ -361,7 +361,7 @@ export async function checkFriendActivity(userId, gymId) {
     const { data: friendProfile } = await supabase
       .from('profiles')
       .select('full_name')
-      .eq('id', session.user_id)
+      .eq('id', session.profile_id)
       .maybeSingle();
 
     const friendName = friendProfile?.full_name || 'A friend';
@@ -370,7 +370,7 @@ export async function checkFriendActivity(userId, gymId) {
     const { data: existing } = await supabase
       .from('notifications')
       .select('id')
-      .eq('user_id', userId)
+      .eq('profile_id', userId)
       .eq('type', NOTIFICATION_TYPES.FRIEND_ACTIVITY)
       .gte('created_at', todayStart())
       .ilike('title', `%${friendName}%`)
@@ -416,7 +416,7 @@ export async function checkNewMemberCheckin(userId, gymId, profile) {
   const { data: sessions } = await supabase
     .from('workout_sessions')
     .select('id')
-    .eq('user_id', userId)
+    .eq('profile_id', userId)
     .eq('gym_id', gymId)
     .gte('created_at', createdAt.toISOString());
 

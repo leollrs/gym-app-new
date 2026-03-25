@@ -233,7 +233,7 @@ export default function AdminOverview() {
   const [refreshingChurn, setRefreshingChurn] = useState(false);
   const [greetingHour] = useState(() => new Date().getHours());
 
-  useEffect(() => { document.title = 'Admin - Overview | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Overview | TuGymPR'; }, []);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: adminKeys.overview(gymId),

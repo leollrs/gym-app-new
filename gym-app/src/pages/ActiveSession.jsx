@@ -7,6 +7,7 @@ import { computeSuggestion } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotification } from '../lib/workoutNotification';
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
+import { syncWorkoutToWatch, syncWorkoutEnded, onWatchMessage } from '../lib/watchBridge';
 import { useTranslation } from 'react-i18next';
 
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
@@ -91,6 +92,7 @@ const ActiveSession = () => {
 
   // ── Session persistence ─────────────────────────────────────────────────────
   const sessionKey = `gym_session_${id}`;
+  const sessionEndedRef = useRef(false); // true when finished or discarded — prevents unmount re-save
   const [savedSession] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`gym_session_${id}`)) ?? null; }
     catch { return null; }
@@ -164,16 +166,86 @@ const ActiveSession = () => {
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [saveWarning, setSaveWarning] = useState('');
   const [error, setError] = useState(null);
+  const [watchHeartRate, setWatchHeartRate] = useState(null); // { bpm, avgBPM, zone }
+  const watchHRSummary = useRef(null); // { averageBPM, maxBPM, minBPM }
   const restNotificationScheduled = useRef(false);
+  const handleFinishRef = useRef(null);
   const sessionStartTime = useRef(Date.now() - (savedSession?.elapsedTime ?? 0) * 1000);
 
   const touchStartXRef = useRef(0);
 
-  // ── Notification permission + cleanup persistent notif on unmount ───────────
+  // ── Notification permission ─────────────────────────────────────────────────
   useEffect(() => {
     requestNotificationPermission();
-    return () => { cancelWorkoutNotification(); endLiveActivity(); };
   }, []);
+
+  // ── Save draft on unmount (navigating away without finishing) ──────────────
+  useEffect(() => {
+    return () => {
+      // Don't re-save if the session was finished or discarded
+      if (sessionEndedRef.current) return;
+      // Persist the latest state to localStorage so re-entering resumes
+      if (saveRef.current?.loggedSets && Object.keys(saveRef.current.loggedSets).length > 0) {
+        try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
+      }
+      // Also fire a DB draft save
+      if (draftSaveRef.current) {
+        const payload = draftSaveRef.current;
+        supabase.from('session_drafts')
+          .upsert(payload, { onConflict: 'profile_id,routine_id' })
+          .then(() => {})
+          .catch(() => {});
+      }
+    };
+  }, [sessionKey]);
+
+  // ── Apple Watch message handler ────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = onWatchMessage((msg) => {
+      if (!msg?.action) return;
+      switch (msg.action) {
+        case 'complete_set': {
+          const curEx = exercises[currentExerciseIndex];
+          if (!curEx) return;
+          const sets = loggedSets[curEx.id] || [];
+          const idx = sets.findIndex(s => !s.completed);
+          if (idx < 0) return;
+          const weight = msg.actualWeight ? String(msg.actualWeight) : sets[idx].weight;
+          const reps = msg.actualReps ? String(msg.actualReps) : sets[idx].reps;
+          setLoggedSets(prev => {
+            const updated = { ...prev, [curEx.id]: [...prev[curEx.id]] };
+            updated[curEx.id][idx] = { ...updated[curEx.id][idx], weight, reps };
+            return updated;
+          });
+          setTimeout(() => {
+            handleToggleComplete(curEx.id, idx, curEx.name, curEx.restSeconds || 90);
+          }, 50);
+          break;
+        }
+        case 'skip_rest':
+          setRestTimer(0);
+          setIsResting(false);
+          break;
+        case 'end_workout':
+          setShowFinishModal(true);
+          break;
+        case 'save_and_end':
+          // Watch confirmed save — trigger finish directly without modal
+          handleFinishRef.current?.();
+          break;
+        case 'submit_rpe':
+          if (msg.rpe) setSessionRpe(msg.rpe);
+          break;
+        case 'heart_rate_update':
+          setWatchHeartRate({ bpm: msg.bpm, avgBPM: msg.avgBPM, zone: msg.zone });
+          break;
+        case 'heart_rate_summary':
+          watchHRSummary.current = { averageBPM: msg.averageBPM, maxBPM: msg.maxBPM, minBPM: msg.minBPM };
+          break;
+      }
+    });
+    return unsub;
+  }, [exercises, currentExerciseIndex, loggedSets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load routine + prev session + PRs ──────────────────────────────────────
   useEffect(() => {
@@ -381,6 +453,24 @@ const ActiveSession = () => {
         restRemainingSeconds: isResting && restStartedAt.current
           ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
           : 0,
+      });
+      // Sync to Apple Watch — send actual set weight/reps if available
+      const watchSetIdx = curEx ? (loggedSets[curEx.id] || []).findIndex(s => !s.completed) : -1;
+      const watchActiveSet = watchSetIdx >= 0 ? loggedSets[curEx.id][watchSetIdx] : null;
+      const watchRestRemaining = isResting && restStartedAt.current
+        ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
+        : 0;
+      syncWorkoutToWatch({
+        exerciseName: curEx?.name ?? '',
+        setNumber: curExDone + 1,
+        totalSets: ts,
+        suggestedWeight: watchActiveSet?.weight ? Number(watchActiveSet.weight) : (curEx?.suggestedWeight ?? 0),
+        suggestedReps: watchActiveSet?.reps ? Number(watchActiveSet.reps) : (curEx?.suggestedReps ?? 0),
+        restSeconds: curEx?.rest_seconds ?? 90,
+        isResting,
+        elapsedSeconds: now,
+        exerciseCategory: curEx?.category || curEx?.muscle_group || 'unknown',
+        restRemainingSeconds: watchRestRemaining,
       });
     } catch (e) { console.warn('Live Activity update failed:', e); }
   }, [loggedSets, dataLoading, isResting, restTimer, currentExerciseIndex]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -739,6 +829,7 @@ const ActiveSession = () => {
   const handleFinish = async () => {
     setSaving(true);
     setSaveError('');
+    setShowFinishModal(false); // close modal if open
 
     try {
       const payload = {
@@ -774,9 +865,14 @@ const ActiveSession = () => {
       const { data: result, error: rpcError } = await supabase.rpc('complete_workout', { p_payload: payload });
       if (rpcError) throw rpcError;
 
+      sessionEndedRef.current = true;
       localStorage.removeItem(sessionKey);
+      // Also clear DB draft
+      supabase.from('session_drafts').delete()
+        .eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {});
       cancelWorkoutNotification();
       endLiveActivity({ elapsedSeconds: elapsedTime, completedSets, totalSets });
+      syncWorkoutEnded({ duration: elapsedTime, totalVolume, prsHit: sessionPRs.length, setsCompleted: completedSets });
       navigate('/session-summary', {
         replace: true,
         state: {
@@ -787,6 +883,7 @@ const ActiveSession = () => {
           xpEarned: result.xp_earned,
           sessionId: result.session_id,
           streak: result.streak,
+          heartRate: watchHRSummary.current || (watchHeartRate ? { averageBPM: watchHeartRate.avgBPM, maxBPM: watchHeartRate.bpm, minBPM: 0 } : null),
         },
       });
     } catch (err) {
@@ -794,6 +891,7 @@ const ActiveSession = () => {
       setSaving(false);
     }
   };
+  handleFinishRef.current = handleFinish;
 
   // ── Error screen ───────────────────────────────────────────────────────────
   if (error) {
@@ -931,7 +1029,8 @@ const ActiveSession = () => {
         onEndWorkout={() => { setIsPaused(false); setShowFinishModal(true); }}
         onSetCurrentExerciseIndex={setCurrentExerciseIndex}
         onDismissResumedBanner={() => setShowResumedBanner(false)}
-        onDiscardSession={() => { localStorage.removeItem(sessionKey); navigate('/workouts'); }}
+        watchHeartRate={watchHeartRate}
+        onDiscardSession={() => { sessionEndedRef.current = true; localStorage.removeItem(sessionKey); supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
       {/* Rest Timer Overlay */}

@@ -112,7 +112,7 @@ export default function AdminMembers() {
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
 
-  useEffect(() => { document.title = 'Admin - Members | IronForge'; }, []);
+  useEffect(() => { document.title = 'Admin - Members | TuGymPR'; }, []);
 
   const { data: members = [], isLoading, refetch } = useQuery({
     queryKey: adminKeys.members.all(gymId),

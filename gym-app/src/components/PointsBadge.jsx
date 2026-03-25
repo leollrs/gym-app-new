@@ -10,9 +10,10 @@ import { getUserPoints, getRewardTier } from '../lib/rewardsEngine';
 
 export default function PointsBadge({ points: propPoints, tier: propTier }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [pts, setPts] = useState(propPoints ?? null);
-  const [tierInfo, setTierInfo] = useState(propTier ?? null);
+  const { user, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const initial = propPoints ?? ctxLifetimePoints ?? null;
+  const [pts, setPts] = useState(initial);
+  const [tierInfo, setTierInfo] = useState(initial != null ? getRewardTier(initial) : (propTier ?? null));
 
   useEffect(() => {
     if (propPoints !== undefined && propPoints !== null) {
@@ -20,14 +21,19 @@ export default function PointsBadge({ points: propPoints, tier: propTier }) {
       setTierInfo(propTier ?? getRewardTier(propPoints));
       return;
     }
+    if (ctxLifetimePoints != null) {
+      setPts(ctxLifetimePoints);
+      setTierInfo(getRewardTier(ctxLifetimePoints));
+      return;
+    }
     if (!user?.id) return;
 
     getUserPoints(user.id).then((data) => {
-      const total = data?.total_points ?? 0;
+      const total = data?.lifetime_points ?? 0;
       setPts(total);
       setTierInfo(getRewardTier(total));
     });
-  }, [user?.id, propPoints, propTier]);
+  }, [user?.id, propPoints, propTier, ctxLifetimePoints]);
 
   if (pts === null) return null;
 

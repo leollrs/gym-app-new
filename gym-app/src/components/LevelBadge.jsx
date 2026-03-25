@@ -41,8 +41,10 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
 
 // ── Full level card (for dashboard, profile) ─────────────────────────────────
 export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
-  const { level, xpIntoLevel, xpForNext, progress } = getLevel(totalPoints);
-  const tier = getRewardTier(totalPoints);
+  // Level and tier are based on lifetime points (never decrease when spending)
+  const pts = lifetimePoints ?? totalPoints ?? 0;
+  const { level, xpIntoLevel, xpForNext, progress } = getLevel(pts);
+  const tier = getRewardTier(pts);
 
   return (
     <div className={`bg-[#0F172A] rounded-[14px] border border-white/8 p-4 ${className}`}>

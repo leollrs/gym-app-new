@@ -22,13 +22,16 @@ const WorkoutLog = lazy(() => import('../WorkoutLog'));
 
 export default function ProgressOverview() {
   const { t } = useTranslation('pages');
-  const { user } = useAuth();
+  const { user, lifetimePoints: ctxLifetimePoints } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: 0 });
+  const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
   const [weekStats, setWeekStats] = useState({ sessions: 0, volume: 0, prs: 0 });
   const [volumeChart, setVolumeChart] = useState([]);
   const [earnedAchievements, setEarnedAchievements] = useState([]);
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
+
+  // Sync lifetime points from context when it loads
+  useEffect(() => { if (ctxLifetimePoints != null) setPointsData(prev => ({ ...prev, lifetime_points: ctxLifetimePoints })); }, [ctxLifetimePoints]);
 
   useEffect(() => {
     if (!user?.id) return;

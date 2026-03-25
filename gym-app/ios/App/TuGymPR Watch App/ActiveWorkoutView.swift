@@ -3,89 +3,236 @@ import WatchKit
 
 struct ActiveWorkoutView: View {
     @EnvironmentObject var session: WatchSessionManager
-    @ObservedObject var repCounter: RepCountingManager
+
+    // Editable weight & reps
+    @State private var editedWeight: Double = 0
+    @State private var editedReps: Int = 0
+    @State private var hasEditedWeight: Bool = false
+    @State private var hasEditedReps: Bool = false
+
+    // Local elapsed timer
+    @State private var localElapsed: Int = 0
+    @State private var timer: Timer?
+    @State private var showEndConfirmation: Bool = false
+
+    private var currentWeight: Double {
+        hasEditedWeight ? editedWeight : session.suggestedWeight
+    }
+
+    private var currentReps: Int {
+        hasEditedReps ? editedReps : session.suggestedReps
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                // Exercise name
-                Text(session.exerciseName)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+        VStack(spacing: 6) {
+            // Exercise name
+            Text(session.exerciseName)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
 
-                // Set counter
+            // Set counter with PR badge
+            HStack(spacing: 4) {
                 Text("Set \(session.setNumber) of \(session.totalSets)")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.gray)
 
-                // Suggested weight & reps
-                VStack(spacing: 2) {
-                    Text("\(Int(session.suggestedWeight)) lbs")
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-
-                    Text("× \(session.suggestedReps) reps")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.gray)
+                if session.currentSetIsPR {
+                    Text("PR!")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(DS.gold)
+                        .cornerRadius(6)
                 }
-
-                // Live rep counter
-                ZStack {
-                    Circle()
-                        .stroke(DS.cardBg, lineWidth: 6)
-                        .frame(width: 64, height: 64)
-
-                    Circle()
-                        .trim(from: 0, to: repProgress)
-                        .stroke(DS.gold, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .frame(width: 64, height: 64)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 0.3), value: repCounter.repCount)
-
-                    VStack(spacing: 0) {
-                        Text("\(repCounter.repCount)")
-                            .font(.system(size: 24, weight: .black, design: .rounded))
-                            .foregroundColor(DS.gold)
-                        Text("reps")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(DS.mutedText)
-                    }
-                }
-                .padding(.vertical, 4)
-
-                // Done button
-                GoldButton("Done", icon: "checkmark.circle.fill") {
-                    session.completeSet(
-                        actualReps: repCounter.repCount > 0 ? repCounter.repCount : session.suggestedReps,
-                        actualWeight: session.suggestedWeight
-                    )
-                    WKInterfaceDevice.current().play(.success)
-                    repCounter.resetCount()
-                }
-
-                // Elapsed time
-                Text(DS.formatTime(session.elapsedSeconds))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(white: 0.35))
             }
-            .padding(.horizontal, 8)
+
+            // ── Weight editor ──
+            HStack(spacing: 8) {
+                Button {
+                    adjustWeight(-5)
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(DS.gold)
+                        .frame(width: 30, height: 30)
+                        .background(DS.cardBg)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+
+                VStack(spacing: 0) {
+                    Text("\(Int(currentWeight))")
+                        .font(.system(size: 26, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("lbs")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(DS.mutedText)
+                }
+                .frame(minWidth: 55)
+
+                Button {
+                    adjustWeight(5)
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(DS.gold)
+                        .frame(width: 30, height: 30)
+                        .background(DS.cardBg)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // ── Reps editor ──
+            HStack(spacing: 10) {
+                Button {
+                    adjustReps(-1)
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(DS.gold)
+                        .frame(width: 30, height: 30)
+                        .background(DS.cardBg)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+
+                VStack(spacing: 0) {
+                    Text("\(currentReps)")
+                        .font(.system(size: 26, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("reps")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(DS.mutedText)
+                }
+                .frame(minWidth: 55)
+
+                Button {
+                    adjustReps(1)
+                    WKInterfaceDevice.current().play(.click)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(DS.gold)
+                        .frame(width: 30, height: 30)
+                        .background(DS.cardBg)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // ── Done button ──
+            Button {
+                session.completeSet(actualReps: currentReps, actualWeight: currentWeight)
+                WKInterfaceDevice.current().play(.success)
+                hasEditedReps = false
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                    Text("Done")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(DS.gold)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+
+            // Elapsed time
+            Text(DS.formatTime(localElapsed))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(Color(white: 0.3))
+
+            // End workout
+            Button {
+                showEndConfirmation = true
+                WKInterfaceDevice.current().play(.click)
+            } label: {
+                Text("End Workout")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.red.opacity(0.8))
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 6)
+        .padding(.top, 4)
         .background(DS.darkBg)
+        .onAppear {
+            editedWeight = session.suggestedWeight
+            editedReps = session.suggestedReps
+            localElapsed = session.elapsedSeconds
+            startLocalTimer()
+        }
+        .onDisappear {
+            timer?.invalidate()
+        }
         .onChange(of: session.exerciseName) { _ in
-            // New exercise — restart rep counting with correct category
-            repCounter.stopCounting()
-            repCounter.startCounting(for: session.exerciseCategory)
+            editedWeight = session.suggestedWeight
+            editedReps = session.suggestedReps
+            hasEditedWeight = false
+            hasEditedReps = false
+        }
+        .onChange(of: session.suggestedWeight) { newWeight in
+            if !hasEditedWeight {
+                editedWeight = newWeight
+            }
+        }
+        .onChange(of: session.suggestedReps) { newReps in
+            if !hasEditedReps {
+                editedReps = newReps
+            }
         }
         .onChange(of: session.setNumber) { _ in
-            // New set — reset rep count
-            repCounter.resetCount()
+            hasEditedReps = false
+        }
+        .onChange(of: session.elapsedSeconds) { newValue in
+            if abs(localElapsed - newValue) > 3 {
+                localElapsed = newValue
+            }
+        }
+        .sheet(isPresented: $showEndConfirmation) {
+            EndWorkoutConfirmView(
+                elapsedTime: localElapsed,
+                completedSets: session.totalSets > 0 ? session.setNumber - 1 : 0,
+                onSaveAndEnd: {
+                    showEndConfirmation = false
+                    session.saveAndEndWorkout()
+                    WKInterfaceDevice.current().play(.success)
+                },
+                onKeepGoing: {
+                    showEndConfirmation = false
+                    WKInterfaceDevice.current().play(.click)
+                }
+            )
         }
     }
 
-    private var repProgress: Double {
-        guard session.suggestedReps > 0 else { return 0 }
-        return min(Double(repCounter.repCount) / Double(session.suggestedReps), 1.0)
+    // MARK: - Local Timer
+
+    private func startLocalTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            localElapsed += 1
+        }
+    }
+
+    private func adjustWeight(_ delta: Double) {
+        editedWeight = max(0, currentWeight + delta)
+        hasEditedWeight = true
+    }
+
+    private func adjustReps(_ delta: Int) {
+        editedReps = max(1, currentReps + delta)
+        hasEditedReps = true
     }
 }

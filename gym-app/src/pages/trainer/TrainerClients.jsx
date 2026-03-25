@@ -246,7 +246,7 @@ export default function TrainerClients() {
   const [sortBy,   setSortBy]   = useState('last_active');
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => { document.title = 'Trainer - Clients | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Clients | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;

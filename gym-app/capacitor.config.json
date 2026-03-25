@@ -1,6 +1,6 @@
 {
-  "appId": "com.ironforge.app",
-  "appName": "IronForge",
+  "appId": "com.tugympr.app",
+  "appName": "TuGymPR",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
@@ -44,7 +44,13 @@
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_icon_config_sample",
-      "iconColor": "#D4AF37"
+      "iconColor": "#D4AF37",
+      "importance": 5,
+      "visibility": 1,
+      "sound": "default"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
     }
   }
 }

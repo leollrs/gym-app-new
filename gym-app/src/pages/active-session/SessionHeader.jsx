@@ -19,6 +19,7 @@ const SessionHeader = ({
   onSetCurrentExerciseIndex,
   onDismissResumedBanner,
   onDiscardSession,
+  watchHeartRate,
   // unused but accepted for compat
   savedSession,
   sessionKey,
@@ -78,8 +79,16 @@ const SessionHeader = ({
             </div>
           </div>
 
-          {/* Timer + Pause */}
+          {/* HR + Timer + Pause */}
           <div className="flex items-center gap-1.5 z-10">
+            {watchHeartRate?.bpm > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10">
+                <span className="text-[10px]">❤️</span>
+                <span className="text-[12px] font-bold text-red-400 tabular-nums">
+                  {watchHeartRate.bpm}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04]">
               <Timer size={12} className="text-[#6B7280]" />
               <span className="text-[13px] font-bold text-[#E5E7EB] tabular-nums tracking-tight">

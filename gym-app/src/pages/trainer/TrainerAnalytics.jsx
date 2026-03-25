@@ -31,7 +31,7 @@ export default function TrainerAnalytics() {
   const [weights, setWeights] = useState([]);
   const [selectedClient, setSelectedClient] = useState('all');
 
-  useEffect(() => { document.title = 'Trainer - Analytics | IronForge'; }, []);
+  useEffect(() => { document.title = 'Trainer - Analytics | TuGymPR'; }, []);
 
   useEffect(() => {
     if (!profile?.id) return;

@@ -1,0 +1,188 @@
+import { supabase } from './supabase';
+
+let _authContext = null;
+
+/**
+ * Called from AuthContext when user logs in so errors include profile/gym info.
+ */
+export function setErrorTrackerAuth(user, profile, gymName) {
+  _authContext = { user, profile, gymName };
+}
+
+/**
+ * Collect basic device info for error context.
+ */
+function getDeviceInfo() {
+  try {
+    return {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      screenWidth: screen.width,
+      screenHeight: screen.height,
+      language: navigator.language,
+      online: navigator.onLine,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Debounce: skip duplicate error messages within 5 seconds.
+ */
+const _recentErrors = [];
+const DEBOUNCE_WINDOW = 5000;
+const MAX_RECENT = 10;
+
+function isDuplicate(message) {
+  const now = Date.now();
+  while (_recentErrors.length > 0 && now - _recentErrors[0].timestamp > DEBOUNCE_WINDOW) {
+    _recentErrors.shift();
+  }
+  if (_recentErrors.some((e) => e.message === message)) {
+    return true;
+  }
+  _recentErrors.push({ message, timestamp: now });
+  if (_recentErrors.length > MAX_RECENT) {
+    _recentErrors.shift();
+  }
+  return false;
+}
+
+/**
+ * Track an error by inserting into the error_logs table.
+ * Never throws — all failures are silently swallowed.
+ *
+ * Types:
+ * - 'react_crash'        — React ErrorBoundary caught a component crash
+ * - 'js_error'           — Uncaught JS error (window.onerror)
+ * - 'promise_rejection'  — Unhandled promise rejection
+ * - 'api_error'          — Explicit logger.error() call in code
+ * - 'network_error'      — Offline or request timeout
+ * - 'slow_api'           — API call took > 3 seconds
+ * - 'auth_error'         — 401/403 from Supabase (token expired, RLS blocked)
+ * - 'http_error'         — 400/500 level HTTP errors from API
+ * - 'action_failed'      — Specific user action failed (save workout, check-in, etc.)
+ */
+export async function trackError(type, error, extra = {}) {
+  try {
+    const message =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? 'Unknown error');
+    const stack = error instanceof Error ? error.stack : undefined;
+
+    // Don't track errors from the error tracker itself
+    if (message.includes('error_logs')) return;
+
+    if (isDuplicate(`${type}:${message}`)) return;
+
+    const page = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
+
+    await supabase.from('error_logs').insert({
+      type,
+      message,
+      stack: stack || undefined,
+      page,
+      component: extra.componentStack ? 'ErrorBoundary' : extra.component || undefined,
+      device_info: getDeviceInfo(),
+      metadata: Object.keys(extra).length > 0 ? extra : undefined,
+      profile_id: _authContext?.profile?.id || null,
+      gym_id: _authContext?.profile?.gym_id || null,
+    });
+  } catch {
+    // Never throw from the error tracker itself
+  }
+}
+
+// ── Supabase API Interceptor ─────────────────────────────────────────────────
+
+const SLOW_THRESHOLD_MS = 3000;
+
+/**
+ * Wrap the global fetch to monitor all Supabase API calls.
+ * Tracks: network errors, slow calls, 400/401/403/500 responses.
+ */
+export function installFetchInterceptor() {
+  if (typeof window === 'undefined') return;
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) return;
+
+  const originalFetch = window.fetch;
+
+  window.fetch = async function (input, init) {
+    const url = typeof input === 'string' ? input : input?.url || '';
+    const isSupabase = url.includes(supabaseUrl) || url.includes('supabase.co');
+
+    // Non-Supabase requests — pass through
+    if (!isSupabase) {
+      return originalFetch.call(this, input, init);
+    }
+
+    // Don't intercept error_logs inserts (prevent infinite loop)
+    if (url.includes('error_logs')) {
+      return originalFetch.call(this, input, init);
+    }
+
+    const startTime = Date.now();
+    const endpoint = url.replace(supabaseUrl, '').split('?')[0]; // e.g. "/rest/v1/profiles"
+
+    try {
+      const response = await originalFetch.call(this, input, init);
+      const elapsed = Date.now() - startTime;
+
+      // Slow API call
+      if (elapsed > SLOW_THRESHOLD_MS) {
+        trackError('slow_api', `${init?.method || 'GET'} ${endpoint} took ${elapsed}ms`, {
+          endpoint,
+          method: init?.method || 'GET',
+          duration_ms: elapsed,
+          status: response.status,
+        });
+      }
+
+      // Auth errors (401/403)
+      if (response.status === 401 || response.status === 403) {
+        trackError('auth_error', `${response.status} on ${init?.method || 'GET'} ${endpoint}`, {
+          endpoint,
+          method: init?.method || 'GET',
+          status: response.status,
+        });
+      }
+
+      // HTTP errors (400, 500+)
+      if (response.status === 400 || response.status >= 500) {
+        // Try to get error body without consuming the response
+        try {
+          const cloned = response.clone();
+          const body = await cloned.text();
+          const parsed = JSON.parse(body);
+          trackError('http_error', `${response.status} on ${init?.method || 'GET'} ${endpoint}: ${parsed.message || body.slice(0, 200)}`, {
+            endpoint,
+            method: init?.method || 'GET',
+            status: response.status,
+            error_code: parsed.code,
+            error_detail: parsed.details?.slice?.(0, 500) || parsed.detail?.slice?.(0, 500),
+          });
+        } catch {
+          trackError('http_error', `${response.status} on ${init?.method || 'GET'} ${endpoint}`, {
+            endpoint,
+            method: init?.method || 'GET',
+            status: response.status,
+          });
+        }
+      }
+
+      return response;
+    } catch (fetchError) {
+      // Network failure (offline, DNS, timeout)
+      const elapsed = Date.now() - startTime;
+      trackError('network_error', fetchError, {
+        endpoint,
+        method: init?.method || 'GET',
+        duration_ms: elapsed,
+        online: navigator.onLine,
+      });
+      throw fetchError; // Re-throw so the original caller still gets the error
+    }
+  };
+}

@@ -2,7 +2,7 @@ import SwiftUI
 import WatchConnectivity
 
 @main
-struct IronForgeWatchApp: App {
+struct TuGymPRWatchApp: App {
     @StateObject private var connector = WatchSessionManager.shared
 
     var body: some Scene {

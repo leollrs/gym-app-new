@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.ironforge.app"
+    namespace "com.tugympr.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.ironforge.app"
+        applicationId "com.tugympr.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -19,13 +19,13 @@ android {
     signingConfigs {
         release {
             // Configure these in ~/.gradle/gradle.properties or CI environment:
-            // IRONFORGE_RELEASE_STORE_FILE, IRONFORGE_RELEASE_STORE_PASSWORD,
-            // IRONFORGE_RELEASE_KEY_ALIAS, IRONFORGE_RELEASE_KEY_PASSWORD
-            if (project.hasProperty('IRONFORGE_RELEASE_STORE_FILE')) {
-                storeFile file(IRONFORGE_RELEASE_STORE_FILE)
-                storePassword IRONFORGE_RELEASE_STORE_PASSWORD
-                keyAlias IRONFORGE_RELEASE_KEY_ALIAS
-                keyPassword IRONFORGE_RELEASE_KEY_PASSWORD
+            // TUGYMPR_RELEASE_STORE_FILE, TUGYMPR_RELEASE_STORE_PASSWORD,
+            // TUGYMPR_RELEASE_KEY_ALIAS, TUGYMPR_RELEASE_KEY_PASSWORD
+            if (project.hasProperty('TUGYMPR_RELEASE_STORE_FILE')) {
+                storeFile file(TUGYMPR_RELEASE_STORE_FILE)
+                storePassword TUGYMPR_RELEASE_STORE_PASSWORD
+                keyAlias TUGYMPR_RELEASE_KEY_ALIAS
+                keyPassword TUGYMPR_RELEASE_KEY_PASSWORD
             }
         }
     }
@@ -33,7 +33,7 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (project.hasProperty('IRONFORGE_RELEASE_STORE_FILE')) {
+            if (project.hasProperty('TUGYMPR_RELEASE_STORE_FILE')) {
                 signingConfig signingConfigs.release
             }
         }

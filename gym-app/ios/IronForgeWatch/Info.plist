@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>IronForge</string>
+    <string>TuGymPR</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -23,8 +23,8 @@
     <key>WKApplication</key>
     <true/>
     <key>NSHealthShareUsageDescription</key>
-    <string>IronForge reads your heart rate during workouts to track exercise intensity.</string>
+    <string>TuGymPR reads your heart rate during workouts to track exercise intensity.</string>
     <key>NSHealthUpdateUsageDescription</key>
-    <string>IronForge records your strength training workouts to Apple Health.</string>
+    <string>TuGymPR records your strength training workouts to Apple Health.</string>
 </dict>
 </plist>
