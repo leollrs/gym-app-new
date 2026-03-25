@@ -22,9 +22,9 @@ const formatVolume = (lbs) => {
 };
 
 const StatCard = ({ icon: Icon, label, value, accent }) => (
-  <div className="bg-white/5 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
+  <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center gap-2 text-center">
     <Icon size={18} style={{ color: accent || '#D4AF37' }} strokeWidth={2} />
-    <p className="text-[32px] font-black text-white leading-none">{value}</p>
+    <p className="text-[32px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
     <p className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{label}</p>
   </div>
 );
@@ -201,7 +201,7 @@ const SessionSummary = () => {
       />
 
       <div
-        className="relative min-h-screen flex flex-col items-center px-5 py-12 transition-all duration-700"
+        className="relative min-h-screen flex flex-col items-center px-5 py-12 transition-all duration-300"
         style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(20px)' }}
       >
         {/* ── Checkmark ──────────────────────────────────────────── */}
@@ -221,7 +221,7 @@ const SessionSummary = () => {
           {routineName}
         </p>
         <h1
-          className="text-[32px] font-black text-white text-center leading-tight mb-1"
+          className="text-[28px] font-bold text-white text-center leading-tight mb-1"
           style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
         >
           {coachHeadline}
@@ -241,7 +241,7 @@ const SessionSummary = () => {
               key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1, duration: 0.4, ease: 'easeOut' }}
+              transition={{ delay: index * 0.1, duration: 0.3, ease: 'easeOut' }}
             >
               <StatCard icon={stat.icon} label={stat.label} value={stat.value} accent={stat.accent} />
             </motion.div>
@@ -253,7 +253,7 @@ const SessionSummary = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5, duration: 0.5, ease: 'easeOut' }}
+            transition={{ delay: 0.5, duration: 0.3, ease: 'easeOut' }}
             className="w-full max-w-sm md:max-w-lg rounded-2xl p-5 mb-6 bg-gradient-to-r from-[#D4AF37]/10 to-transparent"
             style={{ border: '1px solid rgba(212,175,55,0.25)' }}
           >
@@ -267,7 +267,7 @@ const SessionSummary = () => {
               >
                 <Trophy size={22} className="text-[#D4AF37]" />
               </div>
-              <p className="text-[#D4AF37] font-black text-[16px]">
+              <p className="text-[#D4AF37] font-semibold text-[16px]">
                 {t('sessionSummary.newPRCount', { count: sessionPRs.length })}
               </p>
             </div>
@@ -275,7 +275,7 @@ const SessionSummary = () => {
               {sessionPRs.map((pr, i) => (
                 <div
                   key={`pr-${pr.exercise}-${pr.weight}`}
-                  className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.03]"
+                  className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.04]"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0 mr-3">
                     <Trophy size={12} className="text-[#D4AF37] shrink-0" />
@@ -283,7 +283,7 @@ const SessionSummary = () => {
                       {sanitize(pr.exercise)}
                     </p>
                   </div>
-                  <p className="text-[14px] text-[#D4AF37] font-black flex-shrink-0 tabular-nums">
+                  <p className="text-[14px] text-[#D4AF37] font-black flex-shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {pr.weight} lbs x {pr.reps}
                   </p>
                 </div>
@@ -305,7 +305,7 @@ const SessionSummary = () => {
               +
             </div>
             <div>
-              <p className="text-[18px] font-black text-[#D4AF37]"><AnimatedCounter value={xpEarned} duration={1000} /> {t('sessionSummary.xpEarned')}</p>
+              <p className="text-[18px] font-black text-[#D4AF37]" style={{ fontVariantNumeric: 'tabular-nums' }}><AnimatedCounter value={xpEarned} duration={1000} /> {t('sessionSummary.xpEarned')}</p>
               <p className="text-[11px] text-[#9CA3AF] mt-0.5">{t('sessionSummary.keepTraining')}</p>
             </div>
           </div>
@@ -314,8 +314,7 @@ const SessionSummary = () => {
         {/* ── No PRs encouragement ───────────────────────────────── */}
         {sessionPRs.length === 0 && completedSets > 0 && (
           <div
-            className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 text-center"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 text-center bg-white/[0.04] border border-white/[0.06]"
           >
             <p className="text-[13px] text-[#9CA3AF]">
               {t('sessionSummary.noPRsToday')}
@@ -330,13 +329,13 @@ const SessionSummary = () => {
           </p>
           <button
             onClick={() => navigate('/')}
-            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-black text-[17px] py-4 rounded-2xl transition-colors"
+            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[17px] py-4 rounded-2xl transition-colors duration-200"
           >
             {t('sessionSummary.backToTheGrind')}
           </button>
           <button
             onClick={() => navigate('/workouts')}
-            className="w-full bg-white/5 hover:bg-white/10 text-[#9CA3AF] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors border border-white/8"
+            className="w-full bg-white/[0.04] hover:bg-white/[0.06] text-[#9CA3AF] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors duration-200 border border-white/[0.06]"
           >
             {t('sessionSummary.viewWorkouts')}
           </button>

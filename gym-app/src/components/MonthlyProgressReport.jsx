@@ -28,7 +28,7 @@ import {
 const GOLD = '#D4AF37';
 const GREEN = '#10B981';
 const RED = '#EF4444';
-const CARD = 'bg-[#0F172A] rounded-[14px] border border-white/[0.08]';
+const CARD = 'bg-white/[0.04] rounded-2xl border border-white/[0.06]';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const fmtNum = (n) => {
@@ -75,7 +75,7 @@ const Section = ({ title, icon: Icon, children, index = 0 }) => (
   >
     <div className="flex items-center gap-2 mb-4">
       {Icon && <Icon size={18} style={{ color: GOLD }} />}
-      <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{title}</h3>
+      <h3 className="text-[16px] font-semibold text-[#E5E7EB]">{title}</h3>
     </div>
     {children}
   </motion.div>
@@ -117,7 +117,7 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
               key={dateStr}
               className={`w-full aspect-square rounded-[4px] transition-colors ${
                 isFuture
-                  ? 'bg-white/[0.03]'
+                  ? 'bg-white/[0.04]'
                   : trained
                     ? 'bg-[#D4AF37]/80'
                     : 'bg-white/[0.06]'
@@ -485,23 +485,23 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   if (isModal && !isOpen) return null;
 
   const content = (
-    <div className={`${isModal ? 'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full'}`}>
+    <div className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full'}`}>
       <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-4 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className={`${CARD} p-4 mb-3`}
+          className={`${CARD} p-5 mb-3`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <BarChart3 size={20} style={{ color: GOLD }} />
-              <h2 className="text-[17px] font-bold text-[#E5E7EB]">Monthly Report</h2>
+              <h2 className="text-[20px] font-semibold text-[#E5E7EB]">Monthly Report</h2>
             </div>
             <div className="flex items-center gap-2">
               {isModal && onClose && (
-                <button onClick={onClose} className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors">
+                <button onClick={onClose} className="p-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition-colors">
                   <X size={16} className="text-[#9CA3AF]" />
                 </button>
               )}
@@ -512,7 +512,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           <div className="flex items-center justify-center gap-4 mt-3">
             <button
               onClick={() => setMonth(m => startOfMonth(subMonths(m, 1)))}
-              className="p-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors"
+              className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
             >
               <ChevronLeft size={16} className="text-[#9CA3AF]" />
             </button>
@@ -522,7 +522,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
             <button
               onClick={() => canGoNext && setMonth(m => startOfMonth(addMonths(m, 1)))}
               disabled={!canGoNext}
-              className={`p-1.5 rounded-lg transition-colors ${canGoNext ? 'bg-white/[0.06] hover:bg-white/[0.1]' : 'opacity-30 cursor-not-allowed'}`}
+              className={`p-1.5 rounded-lg transition-colors ${canGoNext ? 'bg-white/[0.04] hover:bg-white/[0.06]' : 'opacity-30 cursor-not-allowed'}`}
             >
               <ChevronRight size={16} className="text-[#9CA3AF]" />
             </button>
@@ -541,7 +541,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         )}
 
         {!loading && data && (
-          <FadeIn><div className="flex flex-col gap-3 pb-8">
+          <FadeIn><div className="flex flex-col gap-6 pb-8">
             {/* ══ 1. Training Summary ════════════════════════════════════════ */}
             <Section title="Training Summary" icon={Dumbbell} index={0}>
               <div className="flex flex-wrap gap-2 mb-4">

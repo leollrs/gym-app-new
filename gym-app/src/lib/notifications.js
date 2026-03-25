@@ -62,6 +62,7 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
 /**
  * Send a notification to a specific user.
  * Low-level helper used by all typed helpers below.
+ * Inserts the in-app notification AND triggers a native push to the user's devices.
  *
  * @param {string} userId
  * @param {string} gymId
@@ -76,6 +77,26 @@ export async function sendNotification(userId, gymId, { title, body, type = NOTI
     type,
   });
   if (error) throw error;
+
+  // Fire native push to this specific user's devices (fire-and-forget)
+  sendPushToUser({ userId, gymId, title, body: body || '', data: { route: actionUrl || '/notifications', type } });
+}
+
+/**
+ * Send a native push notification to a specific user's registered devices
+ * via the send-push-user edge function (which reads tokens server-side).
+ */
+async function sendPushToUser({ userId, gymId, title, body, data = {} }) {
+  try {
+    supabase.functions.invoke('send-push-user', {
+      body: { profile_id: userId, gym_id: gymId, title, body, data },
+    }).then(({ data: res, error: pushErr }) => {
+      if (pushErr) console.warn('[Push] send-push-user error:', pushErr.message);
+      else console.info('[Push] send-push-user result:', res);
+    }).catch(err => console.warn('[Push] send-push-user failed:', err));
+  } catch (e) {
+    console.warn('[Push] sendPushToUser failed:', e?.message || e);
+  }
 }
 
 // ── TYPED NOTIFICATION HELPERS ─────────────────────────────

@@ -82,10 +82,18 @@ export default function Notifications() {
   // Mark a single notification as read
   const markRead = async (id) => {
     const now = new Date().toISOString();
+    // Optimistic update
     setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: now } : n));
     const { error } = await supabase.from('notifications').update({ read_at: now }).eq('id', id);
-    if (error) console.error('[Notif] markRead failed:', error.message, error.code);
-    else console.log('[Notif] markRead success:', id);
+    if (error) {
+      console.error('[Notif] markRead failed:', error.message, error.code);
+      // Revert optimistic update on failure
+      setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: null } : n));
+    } else {
+      console.log('[Notif] markRead success:', id);
+    }
+    // Invalidate the query cache so TanStack Query doesn't overwrite with stale data
+    invalidateNotifications(user.id);
     refreshNotifications();
   };
 
@@ -95,10 +103,18 @@ export default function Notifications() {
     const unread = items.filter(n => !n.read_at).map(n => n.id);
     if (unread.length) {
       const now = new Date().toISOString();
-      setItems(prev => prev.map(n => ({ ...n, read_at: now })));
+      // Optimistic update
+      setItems(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }));
       const { error } = await supabase.from('notifications').update({ read_at: now }).eq('profile_id', user.id).is('read_at', null);
-      if (error) console.error('[Notif] markAllRead failed:', error.message, error.code);
-      else console.log('[Notif] markAllRead success:', unread.length, 'notifications');
+      if (error) {
+        console.error('[Notif] markAllRead failed:', error.message, error.code);
+        // Revert optimistic update on failure
+        setItems(prev => prev.map(n => unread.includes(n.id) ? { ...n, read_at: null } : n));
+      } else {
+        console.log('[Notif] markAllRead success:', unread.length, 'notifications');
+      }
+      // Invalidate the query cache so TanStack Query doesn't overwrite with stale data
+      invalidateNotifications(user.id);
       refreshNotifications();
     }
     setMarking(false);

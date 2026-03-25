@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -74,7 +74,7 @@ const ParticipantList = ({ challengeId, t }) => {
     <div className="mt-4 space-y-2">
       <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
       {names.map((name, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#111827] border border-white/6">
+        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#111827] border border-white/[0.06]">
           <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
             <span className="text-[12px] font-bold text-[#D4AF37]">{name[0]}</span>
           </div>
@@ -126,12 +126,20 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
     setLoading(false);
   }, [challenge.id]);
 
+  // Debounce realtime updates to avoid re-fetching on every single workout INSERT
+  const debounceRef = useRef(null);
   useEffect(() => {
     fetch();
     const ch = supabase.channel(`member-challenge-${challenge.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, fetch)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(fetch, 2000);
+      })
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    return () => {
+      clearTimeout(debounceRef.current);
+      supabase.removeChannel(ch);
+    };
   }, [fetch, challenge.id, gymId]);
 
   const unit = t(`challenges.typeUnits.${TYPE_META[challenge.type]?.unitKey ?? challenge.type}`, TYPE_META[challenge.type]?.unitKey ?? '');
@@ -145,7 +153,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
         <div className="flex items-center justify-between rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-5 py-4 mb-4">
           <div>
             <p className="text-[11px] text-[#D4AF37] font-semibold uppercase tracking-widest">{t('challenges.yourRank')}</p>
-            <p className="text-[24px] font-black text-[#D4AF37] leading-tight mt-0.5">
+            <p className="text-[24px] font-bold text-[#D4AF37] leading-tight mt-0.5 tabular-nums">
               #{myRank + 1}
               {myRank < 3 && <span className="ml-1.5 text-[20px]">{MEDAL[myRank]}</span>}
             </p>
@@ -189,7 +197,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
                 className={`relative flex items-center gap-4 px-4 py-4 rounded-2xl overflow-hidden transition-colors ${
                   isMe
                     ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'
-                    : 'bg-[#111827] border border-white/6'
+                    : 'bg-[#111827] border border-white/[0.06]'
                 }`}
               >
                 {/* Score bar background */}
@@ -202,7 +210,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
                   {i < 3 ? (
                     <span className="text-[22px] leading-none">{MEDAL[i]}</span>
                   ) : (
-                    <span className="text-[16px] font-black text-[#6B7280]">{i + 1}</span>
+                    <span className="text-[16px] font-bold text-[#6B7280] tabular-nums">{i + 1}</span>
                   )}
                 </div>
                 {/* Name */}
@@ -414,7 +422,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const statusStyle = {
     live:     'text-emerald-400 bg-emerald-500/10',
     upcoming: 'text-blue-400 bg-blue-500/10',
-    ended:    'text-[#6B7280] bg-white/6',
+    ended:    'text-[#6B7280] bg-white/[0.06]',
   }[status];
 
   const statusLabel = t(`challenges.tabs.${status}`);
@@ -435,11 +443,11 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   };
 
   return (
-    <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
+    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
       <div
         role="button"
         tabIndex={0}
-        className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer"
+        className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors cursor-pointer"
         onClick={() => setOpen(o => !o)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
       >
@@ -509,7 +517,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
       </div>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-white/6 bg-[#111827]/50">
+        <div className="px-5 pb-5 pt-1 border-t border-white/[0.06] bg-[#111827]/50">
           {challenge.description && (
             <p className="text-[14px] text-[#9CA3AF] leading-relaxed mt-4">{sanitize(challenge.description)}</p>
           )}
@@ -621,14 +629,14 @@ export default function Challenges({ embedded = false }) {
     <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
       {/* Header */}
       {!embedded && (
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
-        <div className="max-w-2xl md:max-w-4xl mx-auto px-4 pt-6 pb-5">
+      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/[0.06]">
+        <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center">
               <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight">{t('challenges.title')}</h1>
+              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('challenges.title')}</h1>
               <p className="text-[13px] text-[#9CA3AF] mt-0.5">{t('challenges.subtitle')}</p>
             </div>
           </div>
@@ -637,7 +645,7 @@ export default function Challenges({ embedded = false }) {
       )}
 
       {/* Tab bar — always visible */}
-      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-2xl md:max-w-4xl mx-auto px-4'}`}>
+      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[680px] md:max-w-4xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
         <UnderlineTabs
           tabs={TABS.map(tabKey => ({
@@ -650,7 +658,7 @@ export default function Challenges({ embedded = false }) {
         />
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-2xl md:max-w-4xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-4xl mx-auto px-4 py-6'}`}>
         {tab === 'live' && user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} t={t} />
         )}

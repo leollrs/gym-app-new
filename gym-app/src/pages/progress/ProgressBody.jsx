@@ -104,7 +104,7 @@ const MeasurementChart = ({ history, metrics }) => {
   const totalDelta = Math.round((last - first) * 10) / 10;
 
   return (
-    <div className="mt-4 pt-4 border-t border-white/[0.04]">
+    <div className="mt-4 pt-4 border-t border-white/[0.06]">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-[0.12em]">Progress Trends</p>
         {totalDelta !== 0 && (
@@ -115,13 +115,13 @@ const MeasurementChart = ({ history, metrics }) => {
       </div>
 
       {/* Metric selector pills */}
-      <div className="flex gap-1.5 mb-4 overflow-x-auto scrollbar-none">
+      <div className="flex gap-1.5 mb-4 overflow-x-auto scroll-smooth scrollbar-none">
         {metrics.map((m, i) => (
           <button key={m.key} onClick={() => setActiveMetric(i)}
             className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex-shrink-0 transition-all"
             style={activeMetric === i
               ? { background: `${m.color}18`, color: m.color, border: `1px solid ${m.color}30` }
-              : { background: 'rgba(17,24,39,0.6)', color: '#4B5563', border: '1px solid rgba(255,255,255,0.04)' }
+              : { background: 'rgba(17,24,39,0.6)', color: '#4B5563', border: '1px solid rgba(255,255,255,0.06)' }
             }>
             {m.label}
           </button>
@@ -307,8 +307,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   if (scanMode && !scanning) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" onClick={() => setScanMode(false)}>
-        <div className="relative w-full max-w-sm mx-4 rounded-[28px] overflow-hidden"
-          style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)' }}
+        <div className="relative w-full max-w-md mx-4 rounded-[28px] overflow-hidden"
+          style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)' }}
           onClick={e => e.stopPropagation()}>
 
           {/* Header */}
@@ -319,7 +319,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                 <X size={18} className="text-[#6B7280]" />
               </button>
             </div>
-            <h3 className="text-[20px] font-black text-white">{currentStep.label}</h3>
+            <h3 className="text-[20px] font-bold text-white">{currentStep.label}</h3>
             <p className="text-[12px] text-[#6B7280] mt-1 leading-relaxed">{currentStep.instruction}</p>
           </div>
 
@@ -378,7 +378,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
             {scanStep === 1 && (
               <button onClick={skipSidePhoto}
                 className="w-full py-3 rounded-[14px] text-[12px] font-semibold text-[#6B7280] active:scale-[0.97] transition-all"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 Skip side photo (less accurate)
               </button>
             )}
@@ -393,11 +393,11 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   // ── Main modal (form + results) ──────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" onClick={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-t-[28px] md:rounded-[28px]"
-        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+      <div className="w-full max-w-md overflow-hidden rounded-t-[28px] md:rounded-[28px]"
+        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
         onClick={e => e.stopPropagation()}>
 
-        <div className="flex items-center justify-between p-5 border-b border-white/[0.04]">
+        <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
           <p className="text-[17px] font-bold text-[#E5E7EB]">
             {existing ? t('progress.body.updateMeasurements') : t('progress.body.addMeasurements')}
           </p>
@@ -495,7 +495,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                     const n = parseFloat(v);
                     dispatch({ type: 'UPDATE_FIELD', key: f.key, value: !isNaN(n) && n < 0 ? '0' : v });
                   }}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                  className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
                 />
               </div>
             ))}
@@ -593,7 +593,7 @@ export default function ProgressBody() {
         .order('logged_at', { ascending: true }),
       supabase
         .from('body_measurements')
-        .select('*')
+        .select('id, measured_at, chest_cm, waist_cm, hips_cm, left_arm_cm, right_arm_cm, left_thigh_cm, right_thigh_cm, body_fat_pct')
         .eq('profile_id', user.id)
         .order('measured_at', { ascending: false })
         .limit(10),
@@ -770,17 +770,17 @@ export default function ProgressBody() {
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className="bg-[#0F172A] rounded-2xl border border-white/8 p-4 flex flex-col items-center gap-1.5 text-center"
+            className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-4 flex flex-col items-center gap-1.5 text-center"
           >
             <Icon size={16} style={{ color }} strokeWidth={2} />
-            <p className="text-[22px] font-black leading-none text-white">{value}</p>
+            <p className="text-[22px] font-black leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">{label}</p>
           </div>
         ))}
       </div>
 
       {/* Weight chart */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-5 mb-5">
+      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('progress.body.weightTrend')}</p>
           <div className="flex gap-1.5">
@@ -792,7 +792,7 @@ export default function ProgressBody() {
                 style={
                   period === opt.days
                     ? { background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }
-                    : { background: '#111827', color: '#6B7280', border: '1px solid rgba(255,255,255,0.08)' }
+                    : { background: '#111827', color: '#6B7280', border: '1px solid rgba(255,255,255,0.06)' }
                 }
               >
                 {opt.label}
@@ -844,7 +844,7 @@ export default function ProgressBody() {
       </div>
 
       {/* Body measurements */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-5 mb-5">
+      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('progress.body.measurements')}</p>
           <button
@@ -887,8 +887,8 @@ export default function ProgressBody() {
                 const deltaColor = delta == null || delta === 0 ? '#4B5563' : deltaGood ? '#10B981' : '#EF4444';
 
                 return (
-                  <div key={f.key} className="rounded-xl p-3 text-center" style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                    <p className="text-[18px] font-black text-white leading-none">
+                  <div key={f.key} className="rounded-xl p-3 text-center" style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p className="text-[18px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {displayVal.toFixed(1)}
                       <span className="text-[10px] font-medium ml-0.5 text-[#4B5563]">{f.unit}</span>
                     </p>
@@ -939,7 +939,7 @@ export default function ProgressBody() {
       </div>
 
       {/* Progress Photos */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-5 mb-5">
+      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-[14px] font-semibold text-[#E5E7EB]">Progress Photos</p>
           <button
@@ -1000,7 +1000,7 @@ export default function ProgressBody() {
           <div className="grid grid-cols-3 gap-2">
             {progressPhotos.map(photo => (
               <div key={photo.id} className="relative group">
-                <div className="aspect-[3/4] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.04)' }}>
+                <div className="aspect-[3/4] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                   <img src={photo.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                 </div>
                 <p className="text-[9px] text-[#4B5563] mt-1 text-center">
@@ -1034,10 +1034,10 @@ export default function ProgressBody() {
       {showWeightHistory && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
           onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })}>
-          <div className="w-full max-w-lg max-h-[75vh] overflow-hidden rounded-[24px]"
-            style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+          <div className="w-full max-w-md max-h-[75vh] overflow-hidden rounded-[24px]"
+            style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
             onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-white/[0.04]">
+            <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
               <div>
                 <p className="text-[17px] font-bold text-[#E5E7EB]">Weight History</p>
                 <p className="text-[11px] text-[#4B5563] mt-0.5">{weightLogs.length} entries</p>
@@ -1066,7 +1066,7 @@ export default function ProgressBody() {
                           {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                         </span>
                       )}
-                      <p className="text-[15px] font-black text-white tabular-nums">
+                      <p className="text-[15px] font-black text-white tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {fmtW(log.weight_lbs)}
                         <span className="text-[10px] font-medium text-[#4B5563] ml-0.5">lbs</span>
                       </p>

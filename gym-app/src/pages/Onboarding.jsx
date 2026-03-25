@@ -83,7 +83,7 @@ const StepIndicator = ({ current }) => (
         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold transition-all duration-300 ${
           i < current ? 'bg-[#D4AF37] text-black' :
           i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
-          'bg-white/5 text-[#4B5563]'
+          'bg-white/[0.04] text-[#4B5563]'
         }`}>
           {i < current ? <Check size={14} /> : i + 1}
         </div>
@@ -103,7 +103,7 @@ const OptionCard = ({ selected, onClick, icon: Icon, label, desc, badge }) => (
     className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
       selected
         ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 shadow-[0_0_0_1px_rgba(212,175,55,0.3)]'
-        : 'bg-[#0F172A] border-white/6 hover:border-white/14'
+        : 'bg-[#0F172A] border-white/[0.06] hover:border-white/14'
     }`}
   >
     <span className="flex-shrink-0">
@@ -338,7 +338,7 @@ const Onboarding = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
             <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
           </div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">{t('title')}</h1>
+          <h1 className="text-[28px] font-bold text-[#E5E7EB]">{t('title')}</h1>
           <p className="text-[13px] text-[#6B7280] mt-1">{t('subtitle')}</p>
         </div>
 
@@ -347,7 +347,7 @@ const Onboarding = () => {
         {/* ── STEP 0: LANGUAGE SELECTION ── */}
         {step === 0 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('langStep.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('langStep.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('langStep.subtitle')}</p>
             <div className="flex flex-col gap-3">
               <button
@@ -356,7 +356,7 @@ const Onboarding = () => {
                 className={`w-full flex items-center gap-4 px-5 py-5 rounded-2xl border transition-all ${
                   data.language === 'en'
                     ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 shadow-[0_0_0_1px_rgba(212,175,55,0.3)]'
-                    : 'bg-[#0F172A] border-white/6 hover:border-white/14'
+                    : 'bg-[#0F172A] border-white/[0.06] hover:border-white/14'
                 }`}
               >
                 <span className="text-3xl">🇺🇸</span>
@@ -371,7 +371,7 @@ const Onboarding = () => {
                 className={`w-full flex items-center gap-4 px-5 py-5 rounded-2xl border transition-all ${
                   data.language === 'es'
                     ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 shadow-[0_0_0_1px_rgba(212,175,55,0.3)]'
-                    : 'bg-[#0F172A] border-white/6 hover:border-white/14'
+                    : 'bg-[#0F172A] border-white/[0.06] hover:border-white/14'
                 }`}
               >
                 <span className="text-3xl">🇵🇷</span>
@@ -387,7 +387,7 @@ const Onboarding = () => {
         {/* ── STEP 1: FITNESS LEVEL ── */}
         {step === 1 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('fitnessLevel.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('fitnessLevel.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-4">{t('fitnessLevel.subtitle')}</p>
             <Hint>{t('fitnessLevel.hint')}</Hint>
             <div className="flex flex-col gap-3">
@@ -423,7 +423,7 @@ const Onboarding = () => {
                     { id: 'ex_dl',  label: t('fitnessLevel.maxes.deadlift', { defaultValue: 'Deadlift' }),        icon: '🔥' },
                     { id: 'ex_ohp', label: t('fitnessLevel.maxes.ohp',      { defaultValue: 'Overhead Press' }),  icon: '🙌' },
                   ].map(lift => (
-                    <div key={lift.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <div key={lift.id} className="bg-[#0F172A] border border-white/[0.06] rounded-xl px-4 py-3 flex items-center gap-3">
                       <span className="text-lg flex-shrink-0">{lift.icon}</span>
                       <div className="flex-1 min-w-0">
                         <label className="block text-[13px] font-semibold text-[#E5E7EB] mb-1">{lift.label}</label>
@@ -436,7 +436,7 @@ const Onboarding = () => {
                             placeholder="—"
                             value={data.known_maxes[lift.id]}
                             onChange={e => setMax(lift.id, e.target.value)}
-                            className="w-full bg-[#0B1220] border border-white/8 rounded-lg px-3 py-2 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors pr-10"
+                            className="w-full bg-[#0B1220] border border-white/[0.06] rounded-lg px-3 py-2 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors pr-10"
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#4B5563] font-medium">lbs</span>
                         </div>
@@ -456,7 +456,7 @@ const Onboarding = () => {
         {/* ── STEP 2: GOAL ── */}
         {step === 2 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('goal.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('goal.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-4">{t('goal.subtitle')}</p>
             <Hint>{t('goal.hint')}</Hint>
             <div className="flex flex-col gap-3">
@@ -477,7 +477,7 @@ const Onboarding = () => {
         {/* ── STEP 3: FREQUENCY + EQUIPMENT ── */}
         {step === 3 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('training.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('training.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-5">{t('training.subtitle')}</p>
 
             {/* Days per week */}
@@ -495,7 +495,7 @@ const Onboarding = () => {
                     className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all ${
                       data.training_days_per_week === n
                         ? 'bg-[#D4AF37] text-black'
-                        : 'bg-[#0F172A] border border-white/6 text-[#9CA3AF] hover:border-white/14'
+                        : 'bg-[#0F172A] border border-white/[0.06] text-[#9CA3AF] hover:border-white/14'
                     }`}
                   >
                     {n}
@@ -528,7 +528,7 @@ const Onboarding = () => {
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
-                          : 'bg-[#0F172A] border-white/8 text-[#6B7280] hover:border-white/16 hover:text-[#9CA3AF]'
+                          : 'bg-[#0F172A] border-white/[0.06] text-[#6B7280] hover:border-white/16 hover:text-[#9CA3AF]'
                       }`}
                     >
                       {t(`training.${eq.key}`)}
@@ -543,7 +543,7 @@ const Onboarding = () => {
         {/* ── STEP 4: LOCK IN YOUR SCHEDULE ── */}
         {step === 4 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('schedule.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('schedule.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-5">{t('schedule.subtitle')}</p>
 
             {/* Day selector */}
@@ -563,7 +563,7 @@ const Onboarding = () => {
                       className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all ${
                         active
                           ? 'bg-[#D4AF37] text-black'
-                          : 'bg-[#0F172A] border border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                          : 'bg-[#0F172A] border border-white/[0.06] text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
                       }`}
                     >
                       {dayShort(idx)}
@@ -598,7 +598,7 @@ const Onboarding = () => {
                       className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-all ${
                         active
                           ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 shadow-[0_0_0_1px_rgba(212,175,55,0.3)]'
-                          : 'bg-[#0F172A] border-white/6 hover:border-white/14'
+                          : 'bg-[#0F172A] border-white/[0.06] hover:border-white/14'
                       }`}
                     >
                       <tp.icon size={20} className={active ? 'text-[#D4AF37]' : 'text-[#9CA3AF]'} />
@@ -628,7 +628,7 @@ const Onboarding = () => {
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
                     data.has_workout_buddy === true
                       ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
-                      : 'bg-[#0F172A] border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                      : 'bg-[#0F172A] border-white/[0.06] text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
                   }`}
                 >
                   {t('common:yes')}
@@ -642,7 +642,7 @@ const Onboarding = () => {
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
                     data.has_workout_buddy === false
                       ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
-                      : 'bg-[#0F172A] border-white/6 text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
+                      : 'bg-[#0F172A] border-white/[0.06] text-[#6B7280] hover:border-white/14 hover:text-[#9CA3AF]'
                   }`}
                 >
                   {t('common:no')}
@@ -654,11 +654,11 @@ const Onboarding = () => {
                   placeholder={t('schedule.partnerPlaceholder')}
                   value={data.workout_buddy_username}
                   onChange={e => set('workout_buddy_username', e.target.value)}
-                  className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                  className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
                 />
               )}
               {data.has_workout_buddy === false && (
-                <div className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 text-center">
+                <div className="bg-[#0F172A] border border-white/[0.06] rounded-xl px-4 py-3 text-center">
                   <p className="text-[13px] text-[#9CA3AF]">{t('schedule.findPartner')}</p>
                 </div>
               )}
@@ -669,7 +669,7 @@ const Onboarding = () => {
         {/* ── STEP 5: BODY STATS + INJURIES ── */}
         {step === 5 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">
               {t('bodyStats.title')} <span className="text-[#4B5563] font-normal text-[15px]">({t('common:optional')})</span>
             </h2>
             <p className="text-[13px] text-[#6B7280] mb-5">{t('bodyStats.subtitle')}</p>
@@ -688,7 +688,7 @@ const Onboarding = () => {
                     className={`flex-1 py-3 rounded-xl text-[14px] font-semibold border transition-all ${
                       data.sex === opt.value
                         ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
-                        : 'bg-[#0F172A] border-white/8 text-[#6B7280]'
+                        : 'bg-[#0F172A] border-white/[0.06] text-[#6B7280]'
                     }`}
                   >
                     {opt.label}
@@ -711,7 +711,7 @@ const Onboarding = () => {
                 placeholder="25"
                 value={data.age}
                 onChange={e => set('age', e.target.value)}
-                className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
               />
             </div>
 
@@ -730,7 +730,7 @@ const Onboarding = () => {
                     placeholder="5"
                     value={data.height_feet}
                     onChange={e => set('height_feet', e.target.value)}
-                    className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                    className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#4B5563]">ft</span>
                 </div>
@@ -743,7 +743,7 @@ const Onboarding = () => {
                     placeholder="10"
                     value={data.height_inches}
                     onChange={e => set('height_inches', e.target.value)}
-                    className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                    className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#4B5563]">in</span>
                 </div>
@@ -765,7 +765,7 @@ const Onboarding = () => {
                 placeholder={t('bodyStats.weightPlaceholder')}
                 value={data.initial_weight_lbs}
                 onChange={e => set('initial_weight_lbs', e.target.value)}
-                className="w-full bg-[#0B1220] border border-white/8 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
               />
             </div>
 
@@ -786,7 +786,7 @@ const Onboarding = () => {
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-red-500/15 border-red-500/40 text-red-400'
-                          : 'bg-[#0F172A] border-white/8 text-[#6B7280] hover:border-white/16 hover:text-[#9CA3AF]'
+                          : 'bg-[#0F172A] border-white/[0.06] text-[#6B7280] hover:border-white/16 hover:text-[#9CA3AF]'
                       }`}
                     >
                       {t(`bodyStats.${inj.key}`)}
@@ -815,13 +815,13 @@ const Onboarding = () => {
         {/* ── STEP 6: HEALTH INTEGRATION ── */}
         {step === 6 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('health.title', { defaultValue: 'Connect Your Health Data' })}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('health.title', { defaultValue: 'Connect Your Health Data' })}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('health.subtitle', { defaultValue: 'Sync steps, heart rate, and more to get a complete picture of your fitness.' })}</p>
 
             <Hint>{t('health.hint', { defaultValue: 'Linking your health data helps us track recovery, calories burned, and overall activity — even outside the gym.' })}</Hint>
 
             {/* Platform illustration */}
-            <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-6 mb-6 text-center">
+            <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-6 mb-6 text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 mb-4">
                 <Heart size={28} className="text-[#D4AF37]" />
               </div>
@@ -897,7 +897,7 @@ const Onboarding = () => {
         {/* ── STEP 7: FIND YOUR GYM SQUAD (final step) ── */}
         {step === 7 && (
           <div className="animate-fade-in">
-            <h2 className="text-[18px] font-bold text-[#E5E7EB] mb-1">{t('social.title')}</h2>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('social.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('social.subtitle')}</p>
 
             <Hint>{t('social.hint')}</Hint>
@@ -909,7 +909,7 @@ const Onboarding = () => {
               </p>
               <div className="flex flex-col gap-2.5">
                 {/* Mock activity card 1 */}
-                <div className="bg-[#0F172A] rounded-2xl border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] px-4 py-3.5 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-[13px]">A</span>
                   </div>
@@ -928,7 +928,7 @@ const Onboarding = () => {
                 </div>
 
                 {/* Mock activity card 2 */}
-                <div className="bg-[#0F172A] rounded-2xl border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] px-4 py-3.5 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-[13px]">J</span>
                   </div>
@@ -947,7 +947,7 @@ const Onboarding = () => {
                 </div>
 
                 {/* Mock activity card 3 */}
-                <div className="bg-[#0F172A] rounded-2xl border border-white/8 px-4 py-3.5 flex items-start gap-3">
+                <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] px-4 py-3.5 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-[13px]">M</span>
                   </div>
@@ -989,7 +989,7 @@ const Onboarding = () => {
             <button
               type="button"
               onClick={() => setStep(s => s - 1)}
-              className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/10 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/20 transition-all text-[14px] font-semibold"
+              className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
             >
               <ChevronLeft size={17} /> {t('common:back')}
             </button>

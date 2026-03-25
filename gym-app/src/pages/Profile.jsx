@@ -104,8 +104,8 @@ const MUSCLE_COLORS = {
 
 // ── Hero stat block ───────────────────────────────────────────────────────────
 const HeroStat = ({ label, value, sub }) => (
-  <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
-    <p className="text-[32px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap">
+  <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/[0.06] last:border-r-0">
+    <p className="text-[32px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
       {value}
       {sub && <span className="text-[12px] font-semibold text-[#6B7280] normal-case">{sub}</span>}
     </p>
@@ -166,9 +166,9 @@ const Profile = () => {
     const load = async () => {
       setLoading(true);
 
-      // 1. Gym info
+      // 1. Gym info (select only needed columns)
       const { data: gym } = await supabase
-        .from('gyms').select('*').eq('id', profile.gym_id).single();
+        .from('gyms').select('id, name, slug, is_active').eq('id', profile.gym_id).single();
       setGymName(gym?.name ?? '');
       setGymInfo(gym ?? null);
 
@@ -183,7 +183,7 @@ const Profile = () => {
         .eq('profile_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false })
-        .limit(500);
+        .limit(50);
 
       const allSessions = sessionData ?? [];
       setSessions(allSessions);
@@ -194,7 +194,8 @@ const Profile = () => {
         .from('personal_records')
         .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, muscle_group)')
         .eq('profile_id', user.id)
-        .order('estimated_1rm', { ascending: false });
+        .order('estimated_1rm', { ascending: false })
+        .limit(50);
       setPrs(prData ?? []);
 
       // 4. Muscle balance (this month)
@@ -399,7 +400,7 @@ const Profile = () => {
       <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8">
 
       {/* ── Profile header card ──────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[#0F172A] border border-white/8 mb-6 overflow-hidden">
+      <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] mb-6 overflow-hidden">
 
         {/* Identity row */}
         <div className="flex items-start justify-between p-6 pb-4">
@@ -471,7 +472,7 @@ const Profile = () => {
                   <button
                     type="button"
                     onClick={() => setEditingIdentity(false)}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold border border-white/10 text-[#9CA3AF] hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-[12px] font-semibold border border-white/10 text-[#9CA3AF] hover:bg-white/[0.06] transition-colors duration-200"
                   >
                     <X size={12} /> {t('profile.cancel')}
                   </button>
@@ -492,7 +493,7 @@ const Profile = () => {
                       });
                       setEditingIdentity(true);
                     }}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-[#6B7280] hover:text-[#D4AF37]"
+                    className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors duration-200 text-[#6B7280] hover:text-[#D4AF37]"
                     title="Edit name & username"
                   >
                     <Edit2 size={13} />
@@ -552,13 +553,13 @@ const Profile = () => {
         </div>
 
         {/* Hero stats */}
-        <div className="border-t border-white/8">
+        <div className="border-t border-white/[0.06]">
           <div className="grid grid-cols-4 gap-0 w-full">
             <HeroStat label={t('profile.workouts')} value={loading ? '—' : sessions.length} />
             <HeroStat label={t('profile.streak')}   value={loading ? '—' : streak} sub={t('profile.days')} />
             <HeroStat label={t('profile.volume')}   value={loading ? '—' : volumeStr} sub="lbs" />
-            <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/8 last:border-r-0">
-              <p className="text-[32px] font-black leading-none text-[#D4AF37]">{loading ? '—' : prs.length}</p>
+            <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-white/[0.06] last:border-r-0">
+              <p className="text-[32px] font-black leading-none text-[#D4AF37]" style={{ fontVariantNumeric: 'tabular-nums' }}>{loading ? '—' : prs.length}</p>
               <p className="text-[11px] font-medium mt-1.5 text-[#6B7280] uppercase tracking-wider">{t('profile.records')}</p>
             </div>
           </div>
@@ -566,7 +567,7 @@ const Profile = () => {
       </div>
 
       {/* ── Quick-access cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-6 stagger-fade-in">
+      <div className="grid grid-cols-3 gap-4 mb-6 stagger-fade-in">
         {[
           { to: '/checkin',    icon: QrCode,           label: t('profile.checkIn'),  color: '#3B82F6' },
           { to: '/nutrition',  icon: UtensilsCrossed,  label: t('dashboard.nutrition'), color: '#10B981' },
@@ -576,7 +577,7 @@ const Profile = () => {
             key={item.label}
             type="button"
             onClick={() => item.action === 'gym' ? setShowGymInfo(true) : navigate(item.to)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all active:scale-95"
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200 active:scale-[0.98] transition-transform duration-150"
           >
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -616,9 +617,9 @@ const Profile = () => {
         <div className="flex flex-col gap-8 animate-fade-in stagger-fade-in">
           {/* Summary bar */}
           {!loading && (
-            <div className="rounded-2xl bg-[#0F172A] border border-white/8 px-5 py-4 flex items-center justify-between">
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] px-5 py-4 flex items-center justify-between">
               <div>
-                <p className="text-[22px] font-black text-[#D4AF37] leading-none">
+                <p className="text-[22px] font-black text-[#D4AF37] leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {Object.keys(earnedAchievements).length}
                   <span className="text-[14px] font-semibold text-[#6B7280] ml-1">
                     / {ACHIEVEMENT_DEFS.length}
@@ -649,7 +650,7 @@ const Profile = () => {
           {loading ? (
             <div className="flex flex-col gap-4">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-24 rounded-2xl bg-[#0F172A] border border-white/8 animate-pulse" />
+                <div key={i} className="h-24 rounded-2xl bg-white/[0.04] border border-white/[0.06] animate-pulse" />
               ))}
             </div>
           ) : (
@@ -804,7 +805,7 @@ const Profile = () => {
                       className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
                         goalsDraft.fitness_level === l.value
                           ? 'bg-amber-900/30 border-[#D4AF37]/50'
-                          : 'bg-[#0F172A] border-white/8'
+                          : 'bg-[#0F172A] border-white/[0.06]'
                       }`}
                     >
                       <l.icon size={22} className="text-[#D4AF37] flex-shrink-0" />
@@ -828,7 +829,7 @@ const Profile = () => {
                       className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
                         goalsDraft.primary_goal === g.value
                           ? 'bg-amber-900/30 border-[#D4AF37]/50'
-                          : 'bg-[#0F172A] border-white/8'
+                          : 'bg-[#0F172A] border-white/[0.06]'
                       }`}
                     >
                       <g.icon size={22} className="text-[#D4AF37] flex-shrink-0" />
@@ -852,7 +853,7 @@ const Profile = () => {
                       className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all border ${
                         goalsDraft.training_days_per_week === n
                           ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
-                          : 'bg-[#111827] border-white/8 text-[#6B7280]'
+                          : 'bg-[#111827] border-white/[0.06] text-[#6B7280]'
                       }`}
                     >
                       {n}
@@ -878,7 +879,7 @@ const Profile = () => {
                         className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                           active
                             ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
-                            : 'bg-[#111827] border-white/8 text-[#6B7280]'
+                            : 'bg-[#111827] border-white/[0.06] text-[#6B7280]'
                         }`}
                       >
                         {eq.label}
@@ -905,7 +906,7 @@ const Profile = () => {
                         className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                           active
                             ? 'bg-red-900/30 border-red-700 text-red-400'
-                            : 'bg-[#111827] border-white/8 text-[#6B7280]'
+                            : 'bg-[#111827] border-white/[0.06] text-[#6B7280]'
                         }`}
                       >
                         {inj.label}
@@ -927,13 +928,13 @@ const Profile = () => {
               {loading ? (
                 <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
                   {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="h-20 rounded-2xl bg-[#0F172A] border border-white/8 animate-pulse" />
+                    <div key={i} className="h-20 rounded-2xl bg-[#0F172A] border border-white/[0.06] animate-pulse" />
                   ))}
                 </div>
               ) : (
                 <>
                   {/* Fitness Level */}
-                  <div className="rounded-2xl bg-[#0F172A] border border-white/8 p-5">
+                  <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-5">
                     <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{t('profile.fitnessLevel')}</p>
                     {(() => {
                       const l = FITNESS_LEVELS.find(x => x.value === onboarding?.fitness_level);
@@ -950,7 +951,7 @@ const Profile = () => {
                   </div>
 
                   {/* Primary Goal */}
-                  <div className="rounded-2xl bg-[#0F172A] border border-white/8 p-5">
+                  <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-5">
                     <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{t('profile.primaryGoal')}</p>
                     {(() => {
                       const g = GOALS.find(x => x.value === onboarding?.primary_goal);
@@ -967,7 +968,7 @@ const Profile = () => {
                   </div>
 
                   {/* Training Frequency */}
-                  <div className="rounded-2xl bg-[#0F172A] border border-white/8 p-5">
+                  <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-5">
                     <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('profile.trainingFrequency')}</p>
                     <p className="font-semibold text-[15px] text-[#E5E7EB]">
                       {onboarding?.training_days_per_week
@@ -977,7 +978,7 @@ const Profile = () => {
                   </div>
 
                   {/* Equipment */}
-                  <div className="rounded-2xl bg-[#0F172A] border border-white/8 p-5">
+                  <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-5">
                     <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{t('profile.availableEquipment')}</p>
                     {onboarding?.available_equipment?.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -994,7 +995,7 @@ const Profile = () => {
                   </div>
 
                   {/* Injuries */}
-                  <div className="rounded-2xl bg-[#0F172A] border border-white/8 p-5">
+                  <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-5">
                     <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{t('profile.injuriesLimitations')}</p>
                     {(() => {
                       const areas = onboarding?.injuries_notes
@@ -1024,7 +1025,7 @@ const Profile = () => {
                       setGoalsDraft({ ...onboarding, injury_areas });
                       setEditingGoals(true);
                     }}
-                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-white/8 font-semibold text-[14px] text-[#9CA3AF] bg-[#0F172A] hover:bg-[#111827] transition-colors"
+                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-white/[0.06] font-semibold text-[14px] text-[#9CA3AF] bg-[#0F172A] hover:bg-[#111827] transition-colors"
                   >
                     <Edit2 size={15} /> {t('profile.editGoalsSetup')}
                   </button>

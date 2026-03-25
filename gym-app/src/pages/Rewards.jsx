@@ -106,7 +106,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+        className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60 px-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -116,7 +116,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="redeem-reward-title"
-          className="bg-[#0F172A] rounded-[18px] border border-white/10 p-6 max-w-sm w-full shadow-2xl"
+          className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 max-w-sm w-full shadow-2xl"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
@@ -135,7 +135,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
             <p className="text-[13px] text-[#9CA3AF] mt-1">{reward.description}</p>
             <div className="flex items-center justify-center gap-1.5 mt-4">
               <Coins size={16} className="text-[#D4AF37]" />
-              <span className="text-[20px] font-black text-[#D4AF37]">{reward.cost.toLocaleString()}</span>
+              <span className="text-[20px] font-bold text-[#D4AF37] tabular-nums">{reward.cost.toLocaleString()}</span>
               <span className="text-[13px] text-[#9CA3AF]">pts</span>
             </div>
             {!canAfford && (
@@ -148,14 +148,14 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
           <div className="flex gap-3 mt-5">
             <button
               onClick={onClose}
-              className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-[#9CA3AF] bg-white/5 hover:bg-white/10 transition-colors"
+              className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
             >
               {t('rewards.cancel')}
             </button>
             <button
               onClick={handleConfirm}
               disabled={!canAfford || redeeming}
-              className="flex-1 py-3 rounded-xl text-[14px] font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed bg-[#D4AF37] text-black hover:bg-[#E6C766]"
+              className="flex-1 py-3.5 rounded-xl text-[14px] font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed bg-[#D4AF37] text-black hover:bg-[#E6C766]"
             >
               {redeeming ? t('rewards.redeeming') : t('rewards.confirm')}
             </button>
@@ -182,7 +182,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 backdrop-blur-xl bg-black/60" />
       <div
         className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
         onClick={e => e.stopPropagation()}
@@ -213,7 +213,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         </div>
 
         {/* Info */}
-        <div className="bg-[#0F172A] border-t border-white/8 p-5">
+        <div className="bg-[#0F172A] border-t border-white/[0.06] p-5">
           <div className="flex items-center justify-center gap-2 mb-1">
             <RewardIcon name={reward.icon} size={20} className="text-[#D4AF37]" />
             <p className="text-[16px] font-bold text-[#E5E7EB]">{reward.name}</p>
@@ -260,7 +260,7 @@ const HistoryTab = ({ history, loading, t }) => {
         return (
           <div
             key={entry.id}
-            className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all"
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200"
           >
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -285,7 +285,7 @@ const HistoryTab = ({ history, loading, t }) => {
       {!showAll && history.length > 5 && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
           Show all {history.length} entries
         </button>
@@ -293,7 +293,7 @@ const HistoryTab = ({ history, loading, t }) => {
       {showAll && history.length > 5 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
           Show less
         </button>
@@ -311,7 +311,7 @@ const RewardsTab = ({ points, onRedeem, t }) => (
       return (
         <div
           key={reward.id}
-          className="bg-[#0F172A] rounded-[14px] border border-white/8 p-4 flex flex-col items-center text-center hover:border-white/20 hover:bg-white/[0.03] transition-all"
+          className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-4 flex flex-col items-center text-center hover:bg-white/[0.06] transition-colors duration-200"
         >
           <RewardIcon name={reward.icon} size={28} className="text-[#D4AF37] mb-2" />
           <p className="text-[13px] font-semibold text-[#E5E7EB] leading-tight">{reward.name}</p>
@@ -326,7 +326,7 @@ const RewardsTab = ({ points, onRedeem, t }) => (
             className={`w-full mt-3 py-2.5 rounded-xl text-[12px] font-bold transition-all active:scale-95 ${
               canAfford
                 ? 'bg-[#D4AF37] text-black hover:bg-[#E6C766]'
-                : 'bg-white/5 text-[#6B7280] cursor-not-allowed'
+                : 'bg-white/[0.04] text-[#6B7280] cursor-not-allowed'
             }`}
           >
             {canAfford ? t('rewards.redeem') : t('rewards.needMore', { count: (reward.cost - points).toLocaleString() })}
@@ -352,10 +352,10 @@ const StampCircle = ({ slot, emoji, total }) => {
         slot.isFree
           ? slot.filled
             ? `${size} bg-[#D4AF37]/20 border-2 border-[#D4AF37] shadow-[0_0_16px_rgba(212,175,55,0.35)]`
-            : `${size} bg-white/[0.02] border-2 border-dashed border-white/10`
+            : `${size} bg-white/[0.04] border-2 border-dashed border-white/[0.06]`
           : slot.filled
             ? `${size} bg-[#D4AF37]/12 border-[1.5px] border-[#D4AF37]/50 shadow-[0_0_10px_rgba(212,175,55,0.15)]`
-            : `${size} bg-white/[0.02] border-[1.5px] border-white/[0.06]`
+            : `${size} bg-white/[0.04] border-[1.5px] border-white/[0.06]`
       }`}
     >
       {slot.isFree ? (
@@ -425,7 +425,7 @@ const PurchasesList = ({ purchases, t }) => {
 
   if (purchases.length === 0) {
     return (
-      <div className="text-center py-14 px-6 rounded-[14px] bg-[#0F172A] border border-white/8">
+      <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
         <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
           <ShoppingBag size={28} className="text-[#6B7280]" />
         </div>
@@ -442,7 +442,7 @@ const PurchasesList = ({ purchases, t }) => {
       {visible.map((purchase) => (
         <div
           key={purchase.id}
-          className="flex items-center gap-3 px-4 py-3.5 rounded-[14px] bg-[#0F172A] border border-white/8 hover:border-white/20 hover:bg-white/[0.03] transition-all"
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200"
         >
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#D4AF37]/10">
             <span className="text-[16px]">
@@ -484,7 +484,7 @@ const PurchasesList = ({ purchases, t }) => {
       {!showAll && purchases.length > 5 && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
           Show all {purchases.length} purchases
         </button>
@@ -492,7 +492,7 @@ const PurchasesList = ({ purchases, t }) => {
       {showAll && purchases.length > 5 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
           Show less
         </button>
@@ -577,7 +577,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
           </h3>
 
           {punchCards.length === 0 ? (
-            <div className="text-center py-14 px-6 rounded-[14px] bg-[#0F172A] border border-white/8">
+            <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
               <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
                 <Gift size={28} className="text-[#6B7280]" />
               </div>
@@ -624,7 +624,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                           </div>
                         </div>
                         <div className="flex items-baseline gap-0.5 flex-shrink-0 pt-0.5">
-                          <span className="text-[22px] font-black text-[#D4AF37] tracking-tight leading-none">
+                          <span className="text-[22px] font-bold text-[#D4AF37] tracking-tight leading-none tabular-nums">
                             {card.current_punches}
                           </span>
                           <span className="text-[13px] font-medium text-white/20">/{card.punch_card_target}</span>
@@ -870,25 +870,25 @@ export default function Rewards() {
       )}
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
-        <div className="max-w-2xl md:max-w-4xl mx-auto px-4 pt-6 pb-5">
+      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/[0.06]">
+        <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           {/* Title row */}
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center">
               <Coins size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight">{t('rewards.title')}</h1>
+              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('rewards.title')}</h1>
               <p className="text-[13px] text-[#9CA3AF] mt-0.5">{t('rewards.subtitle')}</p>
             </div>
           </div>
 
           {/* Points hero card */}
-          <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5 mb-5">
+          <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-5 mb-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-widest">{t('rewards.yourPoints')}</p>
-                <p className="text-[36px] font-black text-[#D4AF37] leading-tight mt-1">
+                <p className="text-[36px] font-bold text-[#D4AF37] leading-tight mt-1 tabular-nums">
                   <AnimatedPoints value={pointsData.total_points} />
                 </p>
               </div>
@@ -911,7 +911,7 @@ export default function Rewards() {
                     {t('rewards.ptsToGo', { count: tier.pointsToNext.toLocaleString() })}
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-2 rounded-full bg-white/[0.04] overflow-hidden">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ backgroundColor: tier.color }}
@@ -944,7 +944,7 @@ export default function Rewards() {
       </div>
 
       {/* ── Tab Content ─────────────────────────────────────────── */}
-      <div className="max-w-2xl md:max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 py-6">
         {tab === 'history' && (
           <HistoryTab history={history} loading={loading} t={t} />
         )}

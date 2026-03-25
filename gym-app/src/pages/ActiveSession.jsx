@@ -78,7 +78,7 @@ const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
         <p className="font-bold text-[15px] leading-tight text-white">{t('activeSession.newPersonalRecord')}</p>
         <p className="text-[12px] text-white/90 mt-0.5">{exercise} — {weight} lbs × {reps}</p>
       </div>
-      <button onClick={onDismiss} className="text-white/70 hover:text-white text-[20px] leading-none ml-1">×</button>
+      <button onClick={onDismiss} className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200">×</button>
     </div>
   </div>
 );
@@ -1067,7 +1067,7 @@ const ActiveSession = () => {
         {allSetsComplete ? (
           <button
             onClick={handleNext}
-            className="w-full font-black text-[17px] py-4.5 rounded-2xl transition-all active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]"
+            className="w-full font-bold text-[17px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]"
           >
             {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
           </button>
@@ -1075,7 +1075,7 @@ const ActiveSession = () => {
           <button
             onClick={handleCompleteSet}
             disabled={!canComplete}
-            className={`w-full font-black text-[17px] py-4.5 rounded-2xl transition-all active:scale-[0.98] ${
+            className={`w-full font-bold text-[17px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] ${
               canComplete
                 ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
                 : 'bg-white/[0.06] text-[#4B5563] cursor-not-allowed'

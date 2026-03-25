@@ -24,32 +24,32 @@ export default function MemberSettings() {
   return (
     <div className="min-h-screen bg-[#05070B] text-[#E5E7EB] pb-32 overscroll-none overflow-y-auto" style={{ overscrollBehavior: 'none' }}>
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-[#05070B]/90 backdrop-blur-2xl border-b border-white/6">
+      <div className="sticky top-0 z-30 bg-[#05070B]/90 backdrop-blur-2xl border-b border-white/[0.06]">
         <div className="flex items-center gap-3 px-4 py-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/[0.06] border border-white/10"
+            className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.06]"
           >
             <ArrowLeft size={18} className="text-[#9CA3AF]" />
           </button>
-          <h1 className="text-[18px] font-bold">{t('settings.title')}</h1>
+          <h1 className="text-[28px] font-bold">{t('settings.title')}</h1>
         </div>
       </div>
 
-      <div className="px-4 pt-5 max-w-lg mx-auto space-y-4">
+      <div className="px-4 pt-5 max-w-[680px] md:max-w-4xl mx-auto space-y-4">
         {/* General */}
         <div>
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settings.general')}</h3>
-          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden divide-y divide-white/[0.06]">
             {[
-              { label: t('settings.notificationPreferences'), icon: Bell, to: '/notifications' },
+              { label: t('settings.notificationPreferences'), icon: Bell, to: '/notification-settings' },
             ].map(item => (
               <button
                 key={item.to}
                 type="button"
                 onClick={() => navigate(item.to)}
-                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
               >
                 <div className="flex items-center gap-3">
                   <item.icon size={16} className="text-[#6B7280]" />
@@ -64,7 +64,7 @@ export default function MemberSettings() {
         {/* Language */}
         <div>
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settings.language')}</h3>
-          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden divide-y divide-white/[0.06]">
             {LANGUAGES.map(lang => (
               <button
                 key={lang.code}
@@ -75,7 +75,7 @@ export default function MemberSettings() {
                     await supabase.from('profiles').update({ preferred_language: lang.code }).eq('id', user.id);
                   }
                 }}
-                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-[18px]">{lang.flag}</span>
@@ -92,11 +92,11 @@ export default function MemberSettings() {
         {/* Integrations */}
         <div>
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settings.integrations')}</h3>
-          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden">
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
             <button
               type="button"
               onClick={() => navigate('/health-sync')}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
             >
               <div className="flex items-center gap-3">
                 <Heart size={16} className="text-[#D4AF37]" />
@@ -110,7 +110,7 @@ export default function MemberSettings() {
         {/* Privacy */}
         <div>
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">Privacy</h3>
-          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden">
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
             <button
               type="button"
               onClick={async () => {
@@ -120,7 +120,7 @@ export default function MemberSettings() {
                   await supabase.from('profiles').update({ leaderboard_visible: newVal }).eq('id', user.id);
                 }
               }}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
             >
               <div className="flex items-center gap-3">
                 {leaderboardVisible ? <Eye size={16} className="text-[#6B7280]" /> : <EyeOff size={16} className="text-[#6B7280]" />}
@@ -139,12 +139,12 @@ export default function MemberSettings() {
         {/* Legal */}
         <div>
           <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settings.legal')}</h3>
-          <div className="rounded-2xl bg-[#0F172A] border border-white/8 overflow-hidden divide-y divide-white/6">
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden divide-y divide-white/[0.06]">
             <a
               href="https://tugympr.com/privacy"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
             >
               <div className="flex items-center gap-3">
                 <Shield size={16} className="text-[#6B7280]" />
@@ -156,7 +156,7 @@ export default function MemberSettings() {
               href="https://tugympr.com/terms"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.03] transition-all"
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
             >
               <div className="flex items-center gap-3">
                 <FileText size={16} className="text-[#6B7280]" />
@@ -182,8 +182,8 @@ export default function MemberSettings() {
 
       {/* Delete confirmation modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-[400px] rounded-2xl bg-[#0F172A] border border-white/10 p-6">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-xl bg-black/60 px-4">
+          <div className="w-full max-w-[400px] rounded-2xl bg-[#0F172A] border border-white/[0.06] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
                 <AlertTriangle size={20} className="text-red-400" />
@@ -201,13 +201,13 @@ export default function MemberSettings() {
               value={deleteText}
               onChange={e => setDeleteText(e.target.value)}
               placeholder={t('settings.typeDelete')}
-              className="w-full px-4 py-3 rounded-xl bg-[#0A0D14] border border-white/10 text-[#E5E7EB] text-[14px] mb-4 focus:outline-none focus:border-red-500/50"
+              className="w-full px-4 py-3 rounded-xl bg-[#0A0D14] border border-white/[0.06] text-[#E5E7EB] text-[14px] mb-4 focus:outline-none focus:border-red-500/50"
             />
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => { setShowDeleteConfirm(false); setDeleteText(''); }}
-                className="flex-1 py-3 rounded-xl bg-white/[0.06] border border-white/10 text-[#9CA3AF] text-[14px] font-semibold"
+                className="flex-1 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[#9CA3AF] text-[14px] font-semibold"
               >
                 {t('settings.cancel')}
               </button>
@@ -218,7 +218,7 @@ export default function MemberSettings() {
                   setDeleting(true);
                   await deleteAccount();
                 }}
-                className="flex-1 py-3 rounded-xl bg-red-600 text-white text-[14px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 py-3.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {deleting ? t('settings.deleting') : t('settings.deleteForever')}
               </button>

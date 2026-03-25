@@ -65,24 +65,24 @@ export default function CheckIn() {
   }, {});
 
   return (
-    <div className="mx-auto w-full max-w-[600px] md:max-w-3xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0F172A] border border-white/6"
+          className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.06]"
         >
           <ArrowLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[20px] font-bold text-[#E5E7EB]">Check In</h1>
+          <h1 className="text-[28px] font-bold text-[#E5E7EB]">Check In</h1>
           <p className="text-[12px] text-[#9CA3AF]">Scan your QR code at the gym</p>
         </div>
       </div>
 
       {/* ── QR Check-in ──────────────────────────────────────────────────── */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-6 mb-5 flex flex-col items-center text-center">
+      <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-5 mb-5 flex flex-col items-center text-center">
 
         {todayCheckIn ? (
           <>
@@ -123,7 +123,7 @@ export default function CheckIn() {
           className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-full"
           style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.15)' }}
         >
-          <span className="text-[22px] font-black text-[#D4AF37]">{streak}</span>
+          <span className="text-[22px] font-black text-[#D4AF37] tabular-nums">{streak}</span>
           <span className="text-[13px] font-semibold text-[#9CA3AF]">
             day{streak !== 1 ? 's' : ''} streak
           </span>
@@ -134,25 +134,25 @@ export default function CheckIn() {
       {loading ? (
         <div className="space-y-3">
           {[1,2,3,4,5].map(i => (
-            <div key={i} className="h-16 rounded-2xl bg-white/[0.03] animate-pulse" />
+            <div key={i} className="h-16 rounded-2xl bg-white/[0.04] animate-pulse" />
           ))}
         </div>
       ) : checkins.length === 0 ? (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/8 py-12 text-center">
+        <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] py-12 text-center">
           <MapPin size={28} style={{ color: '#4B5563', margin: '0 auto 12px' }} strokeWidth={1.5} />
           <p className="text-[13px] text-[#9CA3AF]">No check-ins yet</p>
         </div>
       ) : (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden">
-          <p className="text-[13px] font-semibold px-5 pt-4 pb-2 text-[#9CA3AF]">History</p>
-          <div className="divide-y divide-white/4">
+        <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
+          <p className="text-[14px] font-semibold px-5 pt-4 pb-2 text-[#9CA3AF]">History</p>
+          <div className="divide-y divide-white/[0.06]">
             {Object.entries(grouped).map(([label, items]) => (
               <div key={label}>
                 <p className="text-[11px] font-bold uppercase tracking-widest px-5 py-2 text-[#6B7280]">
                   {label}
                 </p>
                 {items.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/[0.03] transition-all">
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/[0.06] transition-colors duration-200">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: `${METHOD_COLORS[c.method] ?? '#9CA3AF'}18` }}

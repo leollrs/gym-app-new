@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
-  Dumbbell, Pencil, Trophy, Play, Flame, QrCode,
+  Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2,
 } from 'lucide-react';
 import { programTemplates } from '../data/programTemplates';
 import { isSameDay, startOfWeek } from 'date-fns';
@@ -87,7 +87,7 @@ function dashReducer(state, action) {
 
 /* ── Skeleton ────────────────────────────────────────────── */
 const PulseBlock = ({ className }) => (
-  <div className={`rounded-2xl bg-white/[0.03] animate-pulse ${className}`} />
+  <div className={`rounded-2xl bg-white/[0.04] animate-pulse ${className}`} />
 );
 
 const DashboardSkeleton = () => (
@@ -113,6 +113,7 @@ const Dashboard = () => {
   } = state;
 
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [todaysSessions, setTodaysSessions] = useState([]);
   const [activeSession] = useState(() => readActiveSession());
   const [liveChallenge, setLiveChallenge] = useState(null);
   const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
@@ -182,6 +183,11 @@ const Dashboard = () => {
       const allSessions = sessionsRes.data || [];
       const fetchedRoutines = routinesRes.data || [];
       const streak = computeStreakFromSessions(allSessions);
+
+      const todaySessionsFiltered = allSessions.filter(s => {
+        const d = new Date(s.completed_at);
+        return d.toDateString() === new Date().toDateString();
+      });
 
       const today = new Date();
 
@@ -267,6 +273,7 @@ const Dashboard = () => {
       };
 
       if (cancelled) return;
+      setTodaysSessions(todaySessionsFiltered);
       const cached = getCached(`dash:${user.id}`);
       if (!cached?.data || JSON.stringify(cached.data) !== JSON.stringify(payload)) {
         dispatch({ type: 'SET_ALL', payload });
@@ -427,7 +434,7 @@ const Dashboard = () => {
   /* ── Render ────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="mx-auto w-full max-w-[480px] px-5 pt-6 pb-28 space-y-0">
+      <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-5 pt-6 pb-28 space-y-0">
 
         {/* ════════════════════════════════════════════════════
             HEADER — My Plan + Icons
@@ -444,8 +451,7 @@ const Dashboard = () => {
 
           <div className="flex items-center gap-2" data-tour="tour-quick-buttons">
             <Link to="/nutrition"
-              className="flex items-center gap-1.5 px-3 h-[34px] rounded-[12px] active:scale-[0.95] transition-all"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+              className="flex items-center gap-1.5 px-3 h-[34px] rounded-2xl bg-white/[0.04] border border-white/[0.06] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
               aria-label="Nutrition">
               <Apple size={14} className="text-[#10B981]" />
               <span className="text-[10px] font-bold text-[#9CA3AF]">{t('dashboard.nutrition')}</span>
@@ -453,8 +459,7 @@ const Dashboard = () => {
             <button
               type="button"
               onClick={() => setShowQR(true)}
-              className="flex items-center gap-1.5 px-3 h-[34px] rounded-[12px] active:scale-[0.95] transition-all"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+              className="flex items-center gap-1.5 px-3 h-[34px] rounded-2xl bg-white/[0.04] border border-white/[0.06] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
               aria-label="QR Code"
             >
               <QrCode size={14} className="text-[#D4AF37]" />
@@ -497,7 +502,7 @@ const Dashboard = () => {
                     <p className="text-[11px] font-semibold text-[#4B5563] uppercase tracking-[0.12em]">
                       {isToday ? t('dashboard.today') : selectedDayName}
                     </p>
-                    <h1 className="text-[26px] font-black text-[#E5E7EB] tracking-tight leading-tight mt-0.5">
+                    <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight leading-tight mt-0.5">
                       {workoutType}
                     </h1>
                   </div>
@@ -507,7 +512,7 @@ const Dashboard = () => {
                       <button
                         type="button"
                         onClick={() => handleAssignDay(selectedDate.getDay())}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4B5563] hover:text-[#6B7280] transition-colors"
+                        className="w-11 h-11 rounded-lg flex items-center justify-center text-[#4B5563] hover:text-[#6B7280] hover:bg-white/[0.06] transition-colors duration-200"
                         aria-label="Change workout"
                       >
                         <ChevronDown size={14} />
@@ -515,7 +520,7 @@ const Dashboard = () => {
                       <button
                         type="button"
                         onClick={() => navigate(`/workouts/${selectedRoutine.id}/edit?from=/`)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4B5563] hover:text-[#6B7280] transition-colors"
+                        className="w-11 h-11 rounded-lg flex items-center justify-center text-[#4B5563] hover:text-[#6B7280] hover:bg-white/[0.06] transition-colors duration-200"
                         aria-label="Edit workout"
                       >
                         <Pencil size={14} />
@@ -531,16 +536,70 @@ const Dashboard = () => {
               {selectedRoutine && (
                 <section className="mb-5">
                   <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-[#4B5563] flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-2.5 py-1.5">
+                    <span className="text-[11px] text-[#4B5563] flex items-center gap-1.5 bg-white/[0.04] rounded-lg px-2.5 py-1.5">
                       <Dumbbell size={11} className="text-[#3B3F4A]" />
                       {liftCount} {t('dashboard.exercises')}
                     </span>
-                    <span className="text-[11px] text-[#4B5563] bg-white/[0.03] rounded-lg px-2.5 py-1.5">
+                    <span className="text-[11px] text-[#4B5563] bg-white/[0.04] rounded-lg px-2.5 py-1.5">
                       {estimatedMin} {t('dashboard.min')}
                     </span>
-                    <span className="text-[11px] text-[#4B5563] bg-white/[0.03] rounded-lg px-2.5 py-1.5">
+                    <span className="text-[11px] text-[#4B5563] bg-white/[0.04] rounded-lg px-2.5 py-1.5">
                       ~{estimatedCal} {t('dashboard.cal')}
                     </span>
+                  </div>
+                </section>
+              )}
+
+              {/* ════════════════════════════════════════════════
+                  2c. WORKOUT COMPLETED TODAY — Banner
+                 ════════════════════════════════════════════════ */}
+              {isToday && todaysSessions.length > 0 && !activeSession && (
+                <section className="mb-5">
+                  <div className="rounded-2xl bg-gradient-to-br from-[#10B981]/10 to-[#10B981]/[0.02] border border-[#10B981]/20 p-5">
+                    {/* Completed header */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#10B981]/15 flex items-center justify-center">
+                        <CheckCircle2 size={20} className="text-[#10B981]" />
+                      </div>
+                      <div>
+                        <p className="text-[15px] font-bold text-[#10B981]">Workout Completed</p>
+                        <p className="text-[11px] text-[#6B7280] mt-0.5">Great job today! You crushed it.</p>
+                      </div>
+                    </div>
+
+                    {/* Today's session summary */}
+                    {todaysSessions.map(session => (
+                      <Link
+                        key={session.id}
+                        to="/session-summary"
+                        state={{
+                          routineName: session.name,
+                          elapsedTime: session.duration_seconds,
+                          totalVolume: parseFloat(session.total_volume_lbs) || 0,
+                          sessionId: session.id,
+                          completedAt: session.completed_at,
+                        }}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors mb-2"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{session.name}</p>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#6B7280]">
+                            <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
+                            <span className="text-white/[0.06]">&middot;</span>
+                            <span>{parseFloat(session.total_volume_lbs) >= 1000 ? `${(parseFloat(session.total_volume_lbs) / 1000).toFixed(1)}k` : Math.round(parseFloat(session.total_volume_lbs) || 0)} lbs</span>
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="text-[#4B5563]" />
+                      </Link>
+                    ))}
+
+                    {/* Do another workout button */}
+                    <button
+                      onClick={() => navigate('/workouts')}
+                      className="w-full mt-2 py-3 rounded-xl text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+                    >
+                      Do Another Workout
+                    </button>
                   </div>
                 </section>
               )}
@@ -559,7 +618,7 @@ const Dashboard = () => {
                     activeElapsedTime={activeSession?.elapsedTime}
                   />
                 ) : hasRoutines ? (
-                  <div className="w-full rounded-2xl bg-white/[0.02] p-10 text-center">
+                  <div className="w-full rounded-2xl bg-white/[0.04] border border-white/[0.06] p-5 text-center">
                     <p className="text-[32px] mb-3">😴</p>
                     <p className="font-bold text-[#6B7280] text-[16px]">{t('dashboard.restDay')}</p>
                     <p className="text-[12px] text-[#3B3F4A] mt-1.5 mb-4">
@@ -568,14 +627,14 @@ const Dashboard = () => {
                     <button
                       type="button"
                       onClick={() => handleAssignDay(selectedDate.getDay())}
-                      className="text-[11px] font-medium text-[#4B5563] hover:text-[#6B7280] transition-colors"
+                      className="text-[11px] font-medium text-[#4B5563] hover:text-[#6B7280] transition-colors duration-200"
                     >
                       {t('dashboard.assignWorkoutInstead')}
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-white/[0.02] p-10 text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-white/[0.03] flex items-center justify-center mx-auto mb-4">
+                  <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-5 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center mx-auto mb-4">
                       <Dumbbell size={24} className="text-[#2A2F3A]" />
                     </div>
                     <p className="font-bold text-[#9CA3AF] text-[15px]">{t('dashboard.noRoutinesYet')}</p>
@@ -602,7 +661,7 @@ const Dashboard = () => {
                   {/* Level / XP */}
                   <Link
                     to="/rewards"
-                    className="flex-1 rounded-2xl bg-white/[0.03] px-4 py-3.5 active:scale-[0.98] transition-all"
+                    className="flex-1 rounded-2xl bg-white/[0.04] border border-white/[0.06] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[13px] font-bold text-[#E5E7EB]">
@@ -618,7 +677,7 @@ const Dashboard = () => {
                         {tier.name}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-700 ease-out"
                         style={{ width: `${xpProgress}%`, backgroundColor: tier.color }}
@@ -632,7 +691,7 @@ const Dashboard = () => {
                   {/* Challenge of the Day */}
                   <Link
                     to="/community?tab=challenges"
-                    className="flex-1 rounded-2xl bg-white/[0.03] px-4 py-3.5 active:scale-[0.98] transition-all"
+                    className="flex-1 rounded-2xl bg-white/[0.04] border border-white/[0.06] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
                   >
                     <div className="flex items-center gap-1.5 mb-2">
                       <Flame size={11} className="text-orange-400/70" />
@@ -711,7 +770,7 @@ const Dashboard = () => {
                 <div className="w-8 h-[3px] rounded-full bg-white/[0.08]" />
                 <button
                   onClick={() => setShowPlanInfo(false)}
-                  className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[#6B7280]"
+                  className="absolute right-4 top-3 w-11 h-11 rounded-full bg-white/[0.04] hover:bg-white/[0.06] flex items-center justify-center text-[#6B7280] transition-colors duration-200"
                 >
                   <span className="text-[16px]">✕</span>
                 </button>
@@ -725,7 +784,7 @@ const Dashboard = () => {
                     {/* Program info */}
                     <div className="mb-5">
                       <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em]">{t('dashboard.currentProgram')}</p>
-                      <h2 className="text-[24px] font-black text-[#E5E7EB] tracking-tight mt-1">{programName}</h2>
+                      <h2 className="text-[20px] font-semibold text-[#E5E7EB] tracking-tight mt-1">{programName}</h2>
                     </div>
 
                     {/* Progress bar */}
@@ -746,8 +805,8 @@ const Dashboard = () => {
                           <button
                             onClick={() => canPrev && setPlanWeek(w => w - 1)}
                             disabled={!canPrev}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                              canPrev ? 'bg-white/[0.04] text-[#E5E7EB]' : 'text-[#1F2937]'
+                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 ${
+                              canPrev ? 'bg-white/[0.04] hover:bg-white/[0.06] text-[#E5E7EB]' : 'text-[#1F2937]'
                             }`}
                           >
                             <ChevronLeft size={16} />
@@ -758,14 +817,14 @@ const Dashboard = () => {
                           <button
                             onClick={() => canNext && setPlanWeek(w => w + 1)}
                             disabled={!canNext}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                              canNext ? 'bg-white/[0.04] text-[#E5E7EB]' : 'text-[#1F2937]'
+                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 ${
+                              canNext ? 'bg-white/[0.04] hover:bg-white/[0.06] text-[#E5E7EB]' : 'text-[#1F2937]'
                             }`}
                           >
                             <ChevronRight size={16} />
                           </button>
                         </div>
-                        <div className="h-[2px] rounded-full bg-white/[0.03]">
+                        <div className="h-[2px] rounded-full bg-white/[0.04]">
                           <div
                             className="h-full rounded-full bg-[#10B981]/50 transition-all duration-300"
                             style={{ width: `${(planWeek / weekKeys.length) * 100}%` }}
@@ -786,7 +845,7 @@ const Dashboard = () => {
                               className={`w-full flex items-center justify-between py-3 px-3.5 rounded-xl text-left transition-colors ${
                                 day.isRest
                                   ? ''
-                                  : isExpanded ? 'bg-white/[0.04]' : 'bg-white/[0.02] hover:bg-white/[0.03]'
+                                  : isExpanded ? 'bg-white/[0.06]' : 'bg-white/[0.04] hover:bg-white/[0.06]'
                               }`}
                             >
                               <div className="flex items-center gap-3">
@@ -808,7 +867,7 @@ const Dashboard = () => {
 
                             {/* Expanded exercises */}
                             {isExpanded && !day.isRest && (
-                              <div className="mx-3.5 mb-1 px-3.5 py-2.5 rounded-lg bg-white/[0.02] border border-white/[0.03]">
+                              <div className="mx-3.5 mb-1 px-3.5 py-2.5 rounded-lg bg-white/[0.04] border border-white/[0.06]">
                                 <div className="space-y-1.5">
                                   {day.exercises.map((ex, ei) => (
                                     <div key={ei} className="flex items-center justify-between">

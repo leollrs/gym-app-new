@@ -1,11 +1,12 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Trophy, Zap, Activity, BarChart3,
+  Trophy, Zap, Activity, BarChart3, ChevronDown, ChevronRight, Clock, Dumbbell, Calendar,
 } from 'lucide-react';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import Skeleton from '../../components/Skeleton';
+import EmptyState from '../../components/EmptyState';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -17,8 +18,7 @@ import { LevelCard } from '../../components/LevelBadge';
 import { ACHIEVEMENT_DEFS } from '../../lib/achievements';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import ChartTooltip from '../../components/ChartTooltip';
-
-const WorkoutLog = lazy(() => import('../WorkoutLog'));
+import { sanitize } from '../../lib/sanitize';
 
 export default function ProgressOverview() {
   const { t } = useTranslation('pages');
@@ -161,7 +161,7 @@ export default function ProgressOverview() {
     : `${Math.round(weekStats.volume)}`;
 
   return (
-    <div className="flex flex-col gap-5 stagger-fade-in">
+    <div className="flex flex-col gap-6 stagger-fade-in">
       {/* Monthly Report button (right-aligned) + Level / XP */}
       <div className="flex justify-end -mb-1">
         <button
@@ -185,10 +185,10 @@ export default function ProgressOverview() {
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className="bg-[#0F172A] rounded-2xl border border-white/8 p-3 flex flex-col items-center gap-1 text-center"
+            className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-3 flex flex-col items-center gap-1 text-center"
           >
             <Icon size={14} style={{ color }} strokeWidth={2} />
-            <p className="text-[28px] font-black leading-none text-white">{value}</p>
+            <p className="text-[28px] font-bold leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
             <p className="text-[9px] font-semibold uppercase tracking-wider text-[#6B7280]">{label}</p>
           </div>
         ))}
@@ -196,8 +196,8 @@ export default function ProgressOverview() {
 
       {/* Weekly volume chart */}
       {volumeChart.length >= 2 && (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-4">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">{t('progress.overview.weeklyVolume')}</p>
+        <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5">
+          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">{t('progress.overview.weeklyVolume')}</p>
           <ResponsiveContainer width="100%" height={150}>
             <AreaChart data={volumeChart} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
@@ -234,11 +234,9 @@ export default function ProgressOverview() {
         </div>
       )}
 
-      {/* Workout History */}
+      {/* Workout History — Monthly Timeline */}
       <div className="mt-6">
-        <Suspense fallback={<Skeleton variant="list-item" count={3} />}>
-          <WorkoutLog embedded />
-        </Suspense>
+        <MonthlyTimeline userId={user?.id} />
       </div>
 
       {showMonthlyReport && createPortal(
@@ -248,6 +246,322 @@ export default function ProgressOverview() {
         />,
         document.body
       )}
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const formatDuration = (seconds) => {
+  if (!seconds) return '—';
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
+// ── Compact Session Row ──────────────────────────────────────────────────
+function SessionRow({ session }) {
+  const [expanded, setExpanded] = useState(false);
+  const exercises = session.session_exercises ?? [];
+  const allSets = exercises.flatMap(e => e.session_sets ?? []).filter(s => s.is_completed);
+  const prCount = allSets.filter(s => s.is_pr).length;
+  const vol = parseFloat(session.total_volume_lbs) || 0;
+  const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
+
+  return (
+    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+      <button
+        className="w-full text-left px-4 py-3.5 flex items-start gap-3"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className="flex-shrink-0 w-9 text-center pt-0.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">
+            {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
+          </p>
+          <p className="text-[22px] font-bold leading-none text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {new Date(session.completed_at).getDate()}
+          </p>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-[15px] leading-tight truncate text-[#E5E7EB]">
+            {sanitize(session.name)}
+          </p>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
+            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+              <Clock size={10} /> {formatDuration(session.duration_seconds)}
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+              <Zap size={10} /> {volStr} lbs
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+              <Dumbbell size={10} /> {exercises.length}
+            </span>
+            {prCount > 0 && (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-[#D4AF37]">
+                <Trophy size={10} /> {prCount} PR{prCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          size={16}
+          className="flex-shrink-0 mt-1 transition-transform duration-200 text-[#9CA3AF]"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        />
+      </button>
+      {expanded && (
+        <div className="px-4 pb-3 border-t border-white/[0.06]">
+          <div className="pt-2.5 flex flex-col gap-2.5">
+            {exercises
+              .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+              .map(ex => {
+                const completedSets = (ex.session_sets ?? []).filter(s => s.is_completed);
+                const hasPR = completedSets.some(s => s.is_pr);
+                return (
+                  <div key={ex.id}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-semibold text-[13px] text-[#E5E7EB]">{sanitize(ex.snapshot_name)}</p>
+                      {hasPR && <Trophy size={12} className="text-[#D4AF37]" />}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {completedSets
+                        .sort((a, b) => a.set_number - b.set_number)
+                        .map(set => (
+                          <div
+                            key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
+                            className="rounded-lg px-2 py-0.5 text-[11px] font-semibold"
+                            style={
+                              set.is_pr
+                                ? { background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }
+                                : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.06)' }
+                            }
+                          >
+                            {set.weight_lbs} × {set.reps}{set.is_pr && ' PR'}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Month Block ──────────────────────────────────────────────────────────
+function MonthBlock({ monthLabel, sessions, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? sessions : sessions.slice(0, 5);
+  const hasMore = sessions.length > 5;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full text-left py-2 group"
+      >
+        <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
+          <ChevronDown size={14} className="text-[#6B7280]" />
+        </div>
+        <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#9CA3AF] group-hover:text-[#E5E7EB] transition-colors">
+          {monthLabel}
+        </p>
+        <span className="text-[11px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+        </span>
+      </button>
+      {open && (
+        <div className="ml-1 pl-4 border-l border-white/[0.06]">
+          <div className="flex flex-col gap-2.5 pt-1 pb-3">
+            {visible.map(s => <SessionRow key={s.id} session={s} />)}
+          </div>
+          {hasMore && !showAll && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="text-[12px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors pb-3 pl-1"
+            >
+              Show {sessions.length - 5} more session{sessions.length - 5 !== 1 ? 's' : ''}
+            </button>
+          )}
+          {hasMore && showAll && (
+            <button
+              onClick={() => setShowAll(false)}
+              className="text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors pb-3 pl-1"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Year Block (for past years) ──────────────────────────────────────────
+function YearBlock({ year, monthsData }) {
+  const [open, setOpen] = useState(false);
+  const totalSessions = Object.values(monthsData).reduce((sum, arr) => sum + arr.length, 0);
+
+  // Sort months descending (Dec → Jan)
+  const sortedMonths = Object.keys(monthsData).sort((a, b) => b - a);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full text-left py-2.5 group"
+      >
+        <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
+          <ChevronDown size={16} className="text-[#6B7280]" />
+        </div>
+        <Calendar size={14} className="text-[#D4AF37]" />
+        <p className="text-[14px] font-bold text-[#E5E7EB] group-hover:text-white transition-colors">
+          {year}
+        </p>
+        <span className="text-[12px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {totalSessions} session{totalSessions !== 1 ? 's' : ''}
+        </span>
+      </button>
+      {open && (
+        <div className="ml-2 pl-4 border-l border-white/[0.06] flex flex-col gap-1 pt-1 pb-2">
+          {sortedMonths.map(monthIdx => (
+            <MonthBlock
+              key={monthIdx}
+              monthLabel={MONTH_NAMES[monthIdx]}
+              sessions={monthsData[monthIdx]}
+              defaultOpen={false}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Monthly Timeline ─────────────────────────────────────────────────────
+function MonthlyTimeline({ userId }) {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .select(`
+          id, name, completed_at, duration_seconds, total_volume_lbs,
+          session_exercises(
+            id, snapshot_name, position,
+            session_sets(set_number, weight_lbs, reps, is_completed, is_pr)
+          )
+        `)
+        .eq('profile_id', userId)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+
+      if (!cancelled) {
+        if (error) console.error('MonthlyTimeline: load error', error);
+        setSessions(data ?? []);
+        setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  // Group sessions: { year: { monthIndex: [sessions] } }
+  const { currentYearMonths, pastYears, currentYear } = useMemo(() => {
+    const now = new Date();
+    const cy = now.getFullYear();
+    const cm = now.getMonth();
+    const years = {};
+
+    for (const s of sessions) {
+      const d = new Date(s.completed_at);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      if (!years[y]) years[y] = {};
+      if (!years[y][m]) years[y][m] = [];
+      years[y][m].push(s);
+    }
+
+    // Current year: show all months from January to current month
+    const currentYearData = years[cy] || {};
+    const monthsArr = [];
+    for (let m = cm; m >= 0; m--) {
+      monthsArr.push({ monthIdx: m, sessions: currentYearData[m] || [] });
+    }
+
+    // Past years sorted descending
+    const pastYearsArr = Object.keys(years)
+      .map(Number)
+      .filter(y => y < cy)
+      .sort((a, b) => b - a)
+      .map(y => ({ year: y, monthsData: years[y] }));
+
+    return { currentYearMonths: monthsArr, pastYears: pastYearsArr, currentYear: cy };
+  }, [sessions]);
+
+  if (loading) {
+    return <Skeleton variant="list-item" count={3} />;
+  }
+
+  if (sessions.length === 0) {
+    return (
+      <EmptyState
+        icon={Dumbbell}
+        title="No workouts yet"
+        description="Complete your first session to see your history"
+      />
+    );
+  }
+
+  const currentMonth = new Date().getMonth();
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6B7280] mb-2">
+        {currentYear} Workout History
+      </p>
+
+      {/* Current year months */}
+      {currentYearMonths.map(({ monthIdx, sessions: monthSessions }) => {
+        const isActive = monthIdx === currentMonth;
+        if (monthSessions.length === 0) {
+          // Empty month — show as disabled row
+          return (
+            <div key={monthIdx} className="flex items-center gap-2 py-2 opacity-40">
+              <ChevronRight size={14} className="text-[#4B5563]" />
+              <p className="text-[12px] font-semibold text-[#4B5563] uppercase tracking-[0.12em]">
+                {MONTH_NAMES[monthIdx]}
+              </p>
+              <span className="text-[11px] text-[#4B5563]">—</span>
+            </div>
+          );
+        }
+        return (
+          <MonthBlock
+            key={monthIdx}
+            monthLabel={MONTH_NAMES[monthIdx]}
+            sessions={monthSessions}
+            defaultOpen={isActive}
+          />
+        );
+      })}
+
+      {/* Past years (compressed) */}
+      {pastYears.map(({ year, monthsData }) => (
+        <YearBlock key={year} year={year} monthsData={monthsData} />
+      ))}
     </div>
   );
 }

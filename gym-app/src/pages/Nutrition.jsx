@@ -158,7 +158,7 @@ const MacroBar = ({ label, value, max, color, t }) => {
           <span className="text-[12px] font-bold text-[#E5E7EB] uppercase tracking-wider">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-black tabular-nums" style={{ color }}>{Math.round(value)}</span>
+          <span className="text-[13px] font-black tabular-nums" style={{ color, fontVariantNumeric: 'tabular-nums' }}>{Math.round(value)}</span>
           <span className="text-[11px] text-[#4B5563]">/ {max}g</span>
         </div>
       </div>
@@ -215,7 +215,7 @@ const MacroRing = ({ value, max, color, trackColor, size = 72, strokeWidth = 5, 
           )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`font-black text-white tabular-nums leading-none ${hero ? 'text-[28px]' : 'text-[15px]'}`}>
+          <span className={`font-black text-white tabular-nums leading-none ${hero ? 'text-[28px]' : 'text-[15px]'}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(value)}
           </span>
           <span className={`uppercase tracking-wider font-semibold ${hero ? 'text-[9px] text-[#4B5563] mt-1' : 'text-[7px] text-[#374151] mt-0.5'}`}>
@@ -240,7 +240,7 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md' }) => {
   return (
     <button
       onClick={() => onOpen(recipe)}
-      className={`relative flex-shrink-0 rounded-[18px] overflow-hidden bg-[#0F172A] border border-white/[0.05] text-left
+      className={`relative flex-shrink-0 rounded-[18px] overflow-hidden bg-[#0F172A] border border-white/[0.06] text-left
         ${isLg ? 'w-[220px]' : 'w-[168px]'}`}
     >
       <div className={`relative overflow-hidden ${isLg ? 'h-[140px]' : 'h-[110px]'}`}>
@@ -293,7 +293,7 @@ const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen }) => {
         </div>
         <span className="text-[11px] text-[#4B5563]">{items.length} recipes</span>
       </div>
-      <div className="flex gap-3 overflow-x-auto px-5 pb-1 scrollbar-none">
+      <div className="flex gap-3 overflow-x-auto scroll-smooth px-5 pb-1 scrollbar-none">
         {items.map(r => (
           <RecipeCard key={r.id} recipe={r} saved={savedIds.has(r.id)} onSave={onSave} onOpen={onOpen} />
         ))}
@@ -316,9 +316,8 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
     <div className="fixed inset-0 z-[70] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full flex flex-col overflow-hidden"
+        className="relative w-full max-w-md flex flex-col overflow-hidden"
         style={{
-          maxWidth: 460,
           maxHeight: '88vh',
           background: '#0E1420',
           borderRadius: 24,
@@ -362,8 +361,8 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
             <div className="grid grid-cols-4 gap-2 mb-5">
               {macros.map(m => (
                 <div key={m.label} className="flex flex-col items-center py-3 px-1 rounded-2xl"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span className="text-[17px] font-bold tabular-nums text-white leading-none mb-1">{m.val}</span>
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[17px] font-bold tabular-nums text-white leading-none mb-1" style={{ fontVariantNumeric: 'tabular-nums' }}>{m.val}</span>
                   <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)' }}>{m.label}</span>
                 </div>
               ))}
@@ -427,7 +426,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
 
         {/* ── Sticky CTA ── */}
         <div className="flex-shrink-0 px-5 py-4"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.05)', background: '#0E1420' }}>
+          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: '#0E1420' }}>
           <button
             onClick={() => onAddToGrocery(recipe)}
             className="w-full flex items-center justify-center gap-2 font-semibold text-[14px] transition-colors"
@@ -486,7 +485,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-lg flex flex-col rounded-t-[28px] bg-[#0A0F1A] overflow-hidden"
+      <div className="relative w-full max-w-md flex flex-col rounded-t-[28px] bg-[#0A0F1A] overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)', height: '85vh' }}>
         <div className="px-5 pt-5 pb-3 shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -547,7 +546,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = 
           <div className="space-y-1">
             {displayList.map(food => food && (
               <button key={food.id} onClick={() => onSelect(food)}
-                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left hover:bg-white/[0.03] transition-colors">
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left hover:bg-white/[0.04] transition-colors">
                 {(getFoodImage(food.name, food.brand) || food.image_url) && <img src={getFoodImage(food.name, food.brand) || food.image_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-[#1E293B]" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{foodName(food)}</p>
@@ -590,7 +589,7 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
-      <div className="relative w-full max-w-sm rounded-[24px] bg-[#0A0F1A] overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-md rounded-[24px] bg-[#0A0F1A] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="relative">
           {(getFoodImage(food.name, food.brand) || food.image_url) ? (
             <div className="relative aspect-square overflow-hidden rounded-t-[24px]">
@@ -718,7 +717,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
-      <div className="relative w-full max-w-sm max-h-[90vh] rounded-[24px] bg-[#0A0F1A] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-md max-h-[90vh] rounded-[24px] bg-[#0A0F1A] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10">
           <X size={15} className="text-white/60" />
         </button>
@@ -968,8 +967,8 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" />
-      <div className="relative w-full max-w-sm max-h-[85vh] rounded-[28px] overflow-y-auto"
-        style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.04)' }}
+      <div className="relative w-full max-w-md max-h-[85vh] rounded-[28px] overflow-y-auto"
+        style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Close button */}
@@ -1110,7 +1109,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-t-[28px] bg-[#0A0F1A] px-5 pt-6 pb-10"
+      <div className="relative w-full max-w-md rounded-t-[28px] bg-[#0A0F1A] px-5 pt-6 pb-10"
         style={{ paddingBottom: 'max(40px, env(safe-area-inset-bottom))' }}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-[18px] font-bold text-white">{t('nutrition.nutritionTargets')}</h3>
@@ -1126,7 +1125,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
                 <label className="block text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5">{f.label}</label>
                 <div className="relative">
                   <input type="number" value={draft[f.key] || ''} onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
-                    className="w-full bg-white/[0.04] border border-white/[0.07] rounded-xl px-4 py-3 text-[15px] text-white outline-none focus:border-[#D4AF37]/40 transition-colors pr-14" />
+                    className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl px-4 py-3 text-[15px] text-white outline-none focus:border-[#D4AF37]/40 transition-colors pr-14" />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[#4B5563]">{f.unit}</span>
                 </div>
               </div>
@@ -1158,17 +1157,17 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-6">
         <div>
-          <h1 className="text-[26px] font-black text-white tracking-tight leading-none">{t('nutrition.title')}</h1>
+          <h1 className="text-[28px] font-bold text-white tracking-tight leading-none">{t('nutrition.title')}</h1>
           <p className="text-[12px] text-[#4B5563] mt-1 font-medium">{format(new Date(), 'EEEE, MMM d')}</p>
         </div>
-        <button onClick={openEdit} className="w-10 h-10 rounded-[14px] bg-white/[0.03] border border-white/[0.06] flex items-center justify-center active:scale-90 transition-all">
+        <button onClick={openEdit} className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center active:scale-90 transition-all">
           <Edit2 size={15} className="text-[#6B7280]" />
         </button>
       </div>
 
       {/* ── Calorie Ring + Macro Rings ── */}
       <div className="mx-5 mb-7 rounded-[20px] overflow-hidden"
-        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
         {/* Calorie ring hero */}
         <div className="flex flex-col items-center pt-8 pb-5">
           <MacroRing
@@ -1242,7 +1241,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                         className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[16px] text-left transition-all active:scale-[0.975]"
                         style={{
                           background: 'linear-gradient(180deg, rgba(17,24,39,0.95) 0%, rgba(13,19,32,0.95) 100%)',
-                          border: '1px solid rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.06)',
                           boxShadow: '0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03)',
                         }}>
                         {/* Color accent edge */}
@@ -1292,7 +1291,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
             className="rounded-[16px] p-4 flex flex-col items-center gap-2.5 active:scale-[0.94] transition-all"
             style={{
               background: 'linear-gradient(180deg, rgba(17,24,39,0.7) 0%, rgba(13,19,32,0.7) 100%)',
-              border: '1px solid rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.06)',
               boxShadow: '0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)',
             }}>
             <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
@@ -1345,11 +1344,11 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
     <div className="pb-28" >
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-5">
-        <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
+        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
           <ChevronLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[20px] font-black text-white">{t('nutrition.cookWithWhatYouHave')}</h1>
+          <h1 className="text-[20px] font-bold text-white">{t('nutrition.cookWithWhatYouHave')}</h1>
           <p className="text-[11px] text-[#4B5563] mt-0.5">{t('nutrition.selectIngredients')}</p>
         </div>
       </div>
@@ -1357,7 +1356,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
       {/* Selected ingredients pills */}
       {selectedIngredients.length > 0 && (
         <div className="px-5 mb-4">
-          <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+          <div className="flex gap-2 overflow-x-auto scroll-smooth scrollbar-none pb-1">
             {selectedIngredients.map(id => {
               const item = allIngredients.find(i => i.id === id);
               return item ? (
@@ -1384,7 +1383,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
 
       {/* Category tabs */}
       {!ingredientQuery && (
-        <div className="flex gap-2 overflow-x-auto px-5 mb-4 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto scroll-smooth px-5 mb-4 scrollbar-none">
           {Object.keys(INGREDIENT_CATEGORIES || {}).map(cat => (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2 rounded-full text-[12px] font-semibold flex-shrink-0 transition-all ${
@@ -1421,7 +1420,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
       {selectedIngredients.length > 0 && (
         <>
           <div className="px-5 mb-4">
-            <div className="flex gap-2 overflow-x-auto scrollbar-none">
+            <div className="flex gap-2 overflow-x-auto scroll-smooth scrollbar-none">
               {DISCOVER_FILTERS.map(f => (
                 <button key={f.id} onClick={() => setActiveFilter(f.id)}
                   className={`px-3.5 py-1.5 rounded-full text-[11px] font-semibold flex-shrink-0 transition-all ${
@@ -1450,7 +1449,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
             {matchedRecipes.length} recipe{matchedRecipes.length !== 1 ? 's' : ''} found
           </p>
           {matchedRecipes.length === 0 ? (
-            <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.05] p-6 text-center">
+            <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-6 text-center">
               <p className="text-[14px] font-semibold text-[#6B7280] mb-1">No matches yet</p>
               <p className="text-[12px] text-[#4B5563]">Try adding more ingredients or changing the filter.</p>
             </div>
@@ -1461,7 +1460,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
                 const almostThere = recipe.missing <= 2;
                 return (
                   <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
-                    className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
+                    className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.06] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
                     <div className="relative w-[72px] h-[72px] rounded-[12px] overflow-hidden flex-shrink-0 bg-[#1E293B]">
                       <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover" loading="lazy" />
                     </div>
@@ -1494,7 +1493,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
 
       {selectedIngredients.length === 0 && (
         <div className="px-5 mt-2">
-          <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.05] p-5 text-center">
+          <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-5 text-center">
             <p className="text-[30px] mb-2">🥘</p>
             <p className="text-[14px] font-semibold text-[#6B7280]">Pick your ingredients above</p>
             <p className="text-[12px] text-[#4B5563] mt-1">We'll show you recipes you can make right now.</p>
@@ -1517,7 +1516,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
           {WEEKLY_COLLECTIONS.map(col => {
             const colRecipes = RECIPES.filter(r => col.recipeIds.includes(r.id));
             return (
-              <div key={col.id} className="rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden">
+              <div key={col.id} className="rounded-[18px] bg-[#0F172A] border border-white/[0.06] overflow-hidden">
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 pr-3">
@@ -1528,7 +1527,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
                       <span className="text-[11px] font-black" style={{ color: col.accent }}>{col.recipeIds.length}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                  <div className="flex gap-2 overflow-x-auto scroll-smooth scrollbar-none">
                     {colRecipes.slice(0, 4).map(r => (
                       <button key={r.id} onClick={() => onOpenRecipe(r)}
                         className="relative w-[64px] h-[52px] rounded-xl overflow-hidden flex-shrink-0 bg-[#1E293B]">
@@ -1554,17 +1553,17 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
   return (
     <div className="pb-28" >
       <div className="flex items-center gap-3 px-5 pt-4 pb-5">
-        <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
+        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
           <ChevronLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[20px] font-black text-white">Saved Recipes</h1>
+          <h1 className="text-[20px] font-bold text-white">Saved Recipes</h1>
           <p className="text-[11px] text-[#4B5563] mt-0.5">{savedRecipes.length} saved</p>
         </div>
       </div>
 
       {savedRecipes.length === 0 ? (
-        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.05] p-8 text-center">
+        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
           <Bookmark size={28} className="text-[#374151] mx-auto mb-3" />
           <p className="text-[15px] font-bold text-[#6B7280] mb-1">No saved recipes yet</p>
           <p className="text-[12px] text-[#4B5563] mb-4">Tap the bookmark icon on any recipe to save it here.</p>
@@ -1588,7 +1587,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
               return (
                 <div style={style} className="pb-3">
                   <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
-                    className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.05] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
+                    className="w-full flex items-center gap-4 rounded-[18px] bg-[#0F172A] border border-white/[0.06] overflow-hidden p-3 text-left active:scale-[0.98] transition-all">
                     <div className="relative w-[72px] h-[72px] rounded-[12px] overflow-hidden flex-shrink-0 bg-[#1E293B]">
                       <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover" loading="lazy" />
                     </div>
@@ -1636,24 +1635,24 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
     <div className="pb-28" >
       <div className="flex items-center justify-between px-5 pt-4 pb-5">
         <div className="flex items-center gap-3">
-          <button onClick={() => setView('home')} className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center">
+          <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
             <ChevronLeft size={18} className="text-[#9CA3AF]" />
           </button>
           <div>
-            <h1 className="text-[20px] font-black text-white">Grocery List</h1>
+            <h1 className="text-[20px] font-bold text-white">Grocery List</h1>
             <p className="text-[11px] text-[#4B5563] mt-0.5">{checkedCount}/{groceryList.length} checked</p>
           </div>
         </div>
         {checkedCount > 0 && (
           <button onClick={onClearChecked}
-            className="text-[11px] font-semibold text-[#4B5563] hover:text-[#6B7280] transition-colors px-3 py-1.5 rounded-lg bg-white/[0.03]">
+            className="text-[11px] font-semibold text-[#4B5563] hover:text-[#6B7280] transition-colors px-3 py-1.5 rounded-lg bg-white/[0.04]">
             Clear checked
           </button>
         )}
       </div>
 
       {groceryList.length === 0 ? (
-        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.05] p-8 text-center">
+        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
           <ShoppingCart size={28} className="text-[#374151] mx-auto mb-3" />
           <p className="text-[15px] font-bold text-[#6B7280] mb-1">Your grocery list is empty</p>
           <p className="text-[12px] text-[#4B5563] mb-4">Open a recipe and tap "Add to Grocery List" to get started.</p>
@@ -2071,13 +2070,13 @@ export default function Nutrition() {
       <div className="min-h-screen bg-[#05070B] px-5 pt-6 pb-28">
         <div className="mx-auto max-w-[480px] space-y-4">
           {/* Calorie card skeleton */}
-          <div className="rounded-2xl bg-white/[0.03] p-5 space-y-3">
+          <div className="rounded-2xl bg-white/[0.04] p-5 space-y-3">
             <div className="h-5 w-24 rounded bg-white/[0.06] animate-pulse" />
             <div className="h-10 w-40 rounded bg-white/[0.06] animate-pulse" />
             <div className="h-2 rounded-full bg-white/[0.06] animate-pulse" />
           </div>
           {/* Macro bars skeleton */}
-          <div className="rounded-2xl bg-white/[0.03] p-5 space-y-4">
+          <div className="rounded-2xl bg-white/[0.04] p-5 space-y-4">
             {[1,2,3].map(i => (
               <div key={i} className="space-y-2">
                 <div className="flex justify-between">
@@ -2089,7 +2088,7 @@ export default function Nutrition() {
             ))}
           </div>
           {/* Meals skeleton */}
-          <div className="rounded-2xl bg-white/[0.03] p-5 space-y-3">
+          <div className="rounded-2xl bg-white/[0.04] p-5 space-y-3">
             <div className="h-4 w-28 rounded bg-white/[0.06] animate-pulse" />
             {[1,2].map(i => (
               <div key={i} className="h-14 rounded-xl bg-white/[0.06] animate-pulse" />

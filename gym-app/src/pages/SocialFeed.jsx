@@ -116,7 +116,7 @@ const FeedContent = ({ type, data, t }) => {
 const Avatar = React.memo(({ src, name, size = 44 }) => {
   const initial = (name ?? '?')[0].toUpperCase();
   return src ? (
-    <img src={src} alt={name} loading="lazy" className="rounded-full object-cover flex-shrink-0 border-2 border-white/10"
+    <img src={src} alt={name} loading="lazy" className="rounded-full object-cover flex-shrink-0 border-2 border-white/[0.06]"
       style={{ width: size, height: size }} />
   ) : (
     <div
@@ -170,7 +170,7 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
 const CommentRow = ({ comment }) => (
   <div className="flex gap-3 py-2">
     <Avatar src={comment.profiles?.avatar_url} name={comment.profiles?.full_name ?? '?'} size={32} />
-    <div className="flex-1 rounded-2xl px-4 py-2.5 bg-[#111827] border border-white/6">
+    <div className="flex-1 rounded-2xl px-4 py-2.5 bg-[#111827] border border-white/[0.06]">
       <span className="font-semibold text-[13px] text-[#E5E7EB]">
         {comment.profiles?.full_name ?? 'Member'}{' '}
       </span>
@@ -220,13 +220,13 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   };
 
   return (
-    <div className="rounded-2xl overflow-hidden bg-[#0F172A] border border-white/8 transition-all hover:border-white/20 hover:bg-white/[0.03]">
+    <div className="rounded-2xl overflow-hidden bg-white/[0.04] border border-white/[0.06] transition-colors duration-200 hover:bg-white/[0.06]">
 
       {/* Header */}
       <div className="flex items-center gap-4 p-5 pb-4">
         <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug text-[#E5E7EB]">
+          <p className="font-semibold text-[15px] leading-snug text-[#E5E7EB] truncate max-w-[140px]">
             {item.profiles?.full_name ?? 'Gym Member'}
           </p>
           <p className="text-[12px] text-[#9CA3AF] mt-0.5">
@@ -241,7 +241,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       </div>
 
       {/* Action bar */}
-      <div className="flex items-center gap-6 px-5 py-3 border-t border-white/8">
+      <div className="flex items-center gap-6 px-5 py-3 border-t border-white/[0.06]">
         <ReactionPicker
           feedItemId={item.id}
           currentUserId={currentUserId}
@@ -270,7 +270,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 
       {/* Comments section */}
       {showComments && (
-        <div className="px-5 pb-5 pt-1 border-t border-white/8 bg-[#111827]/50">
+        <div className="px-5 pb-5 pt-1 border-t border-white/[0.06] bg-[#111827]/50">
           <div className="pt-3 flex flex-col">
             {comments === null ? (
               <p className="text-[13px] py-3 text-center text-[#9CA3AF]">{t('social.loading')}</p>
@@ -287,13 +287,13 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
               onChange={e => setCommentText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmitComment()}
               placeholder={t('social.writeComment')}
-              className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 bg-[#111827] border border-white/6 text-[#E5E7EB] placeholder-[#4B5563]"
+              className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 bg-[#111827] border border-white/[0.06] text-[#E5E7EB] placeholder-[#4B5563]"
             />
             <button
               type="button"
               onClick={handleSubmitComment}
               disabled={!commentText.trim() || submitting}
-              className="w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold"
+              className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold"
             >
               <Send size={16} />
             </button>
@@ -364,28 +364,31 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
       });
   }, [incoming]);
 
-  // Search gym members — same gym only; single query using .or()
+  // Search gym members — debounced 300ms to reduce egress
   useEffect(() => {
     if (!gymId || !searchQuery.trim()) {
       setSearchResults([]);
       return;
     }
-    const raw = searchQuery.trim();
-    const pattern = `%${raw.replace(/'/g, "''")}%`;
     setSearching(true);
-    supabase
-      .from('profiles')
-      .select('id, full_name, username, avatar_url')
-      .eq('gym_id', gymId)
-      .neq('id', userId)
-      .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
-      .limit(20)
-      .then(({ data, error }) => {
-        setSearching(false);
-        if (error) return;
-        setSearchResults(data ?? []);
-      })
-      .catch(() => setSearching(false));
+    const timer = setTimeout(() => {
+      const raw = searchQuery.trim();
+      const pattern = `%${raw.replace(/'/g, "''")}%`;
+      supabase
+        .from('profiles')
+        .select('id, full_name, username, avatar_url')
+        .eq('gym_id', gymId)
+        .neq('id', userId)
+        .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
+        .limit(20)
+        .then(({ data, error }) => {
+          setSearching(false);
+          if (error) return;
+          setSearchResults(data ?? []);
+        })
+        .catch(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [gymId, userId, searchQuery]);
 
   const handleAccept = async (friendshipId) => {
@@ -411,11 +414,11 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
   const incomingWithRequester = incoming.map((f) => ({ ...f, requester: requesters[f.requester_id] }));
 
   return (
-    <div className="rounded-2xl overflow-hidden mb-6 bg-[#0F172A] border border-white/8">
+    <div className="rounded-2xl overflow-hidden mb-6 bg-white/[0.04] border border-white/[0.06]">
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4">
-        <p className="font-bold text-[17px] text-[#E5E7EB]">
+        <p className="font-semibold text-[20px] text-[#E5E7EB]">
           {t('social.friendsButton')}
           {accepted.length > 0 && (
             <span className="font-normal ml-1.5 text-[#6B7280]">· {accepted.length}</span>
@@ -424,7 +427,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-xl hover:bg-white/8 text-[#6B7280] transition-colors"
+          className="w-11 h-11 rounded-xl hover:bg-white/[0.06] text-[#6B7280] transition-colors duration-200 flex items-center justify-center"
         >
           <X size={18} />
         </button>
@@ -449,7 +452,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('social.searchPlaceholder')}
               aria-label={t('social.addFriends')}
-              className="w-full rounded-xl border border-white/6 bg-[#111827] pl-11 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37]/40"
+              className="w-full rounded-xl border border-white/[0.06] bg-[#111827] pl-11 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37]/40"
             />
           </div>
           {searching && (
@@ -466,7 +469,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
                   const status = getFriendStatus(friendships, userId, p.id);
                   const isAdding = addingId === p.id;
                   return (
-                    <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/5 transition-colors">
+                    <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
                       <Avatar src={p.avatar_url} name={p.full_name} size={40} />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
@@ -537,7 +540,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
                 const otherId = f.requester_id === userId ? f.addressee_id : f.requester_id;
                 const p = profiles[otherId];
                 return (
-                  <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/5 transition-colors">
+                  <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
                     <Avatar src={p?.avatar_url} name={p?.full_name ?? '?'} size={44} />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
@@ -567,7 +570,7 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting, t }) => {
   if (!p) return null;
 
   return (
-    <div className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/5 transition-colors">
+    <div className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
       <Avatar src={p.avatar_url} name={p.full_name} size={40} />
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
@@ -673,7 +676,8 @@ const SocialFeed = ({ embedded = false }) => {
       const { data: fships } = await supabase
         .from('friendships')
         .select('id, requester_id, addressee_id, status')
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .limit(500);
       const resolved = fships ?? [];
       setFriendships(resolved);
       await loadFeed(resolved);
@@ -767,7 +771,7 @@ const SocialFeed = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
-      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-3xl mx-auto px-4 pt-6 pb-8'}`}>
+      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (
@@ -777,8 +781,8 @@ const SocialFeed = ({ embedded = false }) => {
               <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[22px] font-bold text-[#E5E7EB] tracking-tight">{t('social.title')}</h1>
-              <p className="text-[13px] text-[#9CA3AF] mt-0.5">{t('social.subtitle')}</p>
+              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('social.title')}</h1>
+              <p className="text-[14px] text-[#9CA3AF] mt-0.5">{t('social.subtitle')}</p>
             </div>
           </div>
           <button
@@ -787,7 +791,7 @@ const SocialFeed = ({ embedded = false }) => {
             className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold active:scale-95 transition-all ${
               showFriends
                 ? 'bg-[#D4AF37] text-black'
-                : 'bg-[#111827] border border-white/8 text-[#E5E7EB] hover:bg-[#0F172A]'
+                : 'bg-[#111827] border border-white/[0.06] text-[#E5E7EB] hover:bg-[#0F172A]'
             }`}
           >
             <Users size={16} />

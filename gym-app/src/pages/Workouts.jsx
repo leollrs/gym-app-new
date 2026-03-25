@@ -144,7 +144,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
   }, [routineId]);
 
   return (
-    <div className="mx-4 mb-2 px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.03]">
+    <div className="mx-4 mb-2 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
       {!loaded ? (
         <div className="space-y-2">
           {[1, 2, 3].map(i => <div key={i} className="h-4 bg-white/[0.03] rounded animate-pulse" />)}
@@ -167,6 +167,12 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
         </div>
       )}
       <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-white/[0.04]">
+        <Link
+          to={`/session/${routineId}`}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+        >
+          <Play size={11} fill="white" /> Start
+        </Link>
         <button
           onClick={onEdit}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
@@ -205,6 +211,8 @@ const Workouts = () => {
   const [showAllRoutines, setShowAllRoutines] = useState(false);
   const [showAllMyPrograms, setShowAllMyPrograms] = useState(false);
   const [showAllGymPrograms, setShowAllGymPrograms] = useState(false);
+  const [selectedMyProgram, setSelectedMyProgram] = useState(null);
+  const [myProgWeek, setMyProgWeek] = useState('1');
 
   // Gym programs
   const [gymPrograms, setGymPrograms]       = useState([]);
@@ -453,11 +461,11 @@ const Workouts = () => {
 
   return (
     <>
-    <div className="mx-auto w-full max-w-[600px] md:max-w-4xl px-4 pt-4 pb-28 md:pb-12" data-tour="tour-workouts-page">
+    <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-4 pt-4 pb-28 md:pb-12" data-tour="tour-workouts-page">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-[28px] font-black text-[#E5E7EB] tracking-tight">{t('workouts.title')}</h1>
+        <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('workouts.title')}</h1>
         <div className="flex items-center gap-2">
           <Link
             to="/exercises"
@@ -486,7 +494,7 @@ const Workouts = () => {
             {/* Title & progress */}
             <div className="flex items-start justify-between mb-5">
               <div>
-                <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight leading-tight">
+                <h2 className="text-[20px] font-semibold text-[#E5E7EB] tracking-tight leading-tight">
                   Week {Math.min(currentWeekNum, 6)} of 6
                 </h2>
                 <p className="text-[13px] text-[#6B7280] mt-1">Routine {isWeekA ? 'A' : 'B'} this week</p>
@@ -513,9 +521,9 @@ const Workouts = () => {
                   <Link
                     key={routine.id}
                     to={`/session/${routine.id}`}
-                    className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] transition-colors group"
+                    className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200 group"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                    <div className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
                       <Dumbbell size={15} className="text-[#9CA3AF]" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -526,8 +534,8 @@ const Workouts = () => {
                   </Link>
                 ))}
                 {generatedProgram?.cardio_days?.daysPerWeek > 0 && (
-                  <div className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl bg-white/[0.03]">
-                    <div className="w-9 h-9 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                  <div className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl bg-white/[0.04]">
+                    <div className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
                       <Heart size={15} className="text-[#9CA3AF]" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -559,10 +567,10 @@ const Workouts = () => {
           <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-[0.15em] mb-3">
             {programExpired ? 'Program ended — what\'s next?' : 'Get started'}
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => setShowGenerator(true)}
-              className="text-left rounded-2xl bg-gradient-to-br from-[#10B981]/10 to-[#10B981]/[0.02] p-5 active:scale-[0.97] transition-transform"
+              className="text-left rounded-2xl bg-gradient-to-br from-[#10B981]/10 to-[#10B981]/[0.02] p-5 active:scale-[0.98] transition-transform duration-150"
             >
               <div className="w-10 h-10 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mb-4">
                 <Zap size={18} className="text-[#10B981]" />
@@ -575,7 +583,7 @@ const Workouts = () => {
                 const el = document.getElementById('discover-programs');
                 el?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="text-left rounded-2xl bg-white/[0.02] p-5 active:scale-[0.97] transition-transform"
+              className="text-left rounded-2xl bg-white/[0.04] p-5 active:scale-[0.98] transition-transform duration-150"
             >
               <div className="w-10 h-10 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4">
                 <BookOpen size={18} className="text-[#6B7280]" />
@@ -604,7 +612,7 @@ const Workouts = () => {
         {loading ? (
           <Skeleton variant="list-item" count={3} />
         ) : routines.length === 0 ? (
-          <div className="rounded-2xl bg-white/[0.02] py-12 text-center">
+          <div className="rounded-2xl bg-white/[0.04] py-12 text-center">
             <Dumbbell size={28} className="mx-auto mb-3 text-[#2A2F3A]" />
             <p className="text-[14px] text-[#6B7280]">{t('workouts.noRoutinesYet')}</p>
             <button
@@ -627,8 +635,8 @@ const Workouts = () => {
                       <button
                         type="button"
                         onClick={() => setExpandedRoutineId(isExpanded ? null : routine.id)}
-                        className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors text-left ${
-                          isExpanded ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'
+                        className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left ${
+                          isExpanded ? 'bg-white/[0.04]' : 'hover:bg-white/[0.06]'
                         }`}
                       >
                         <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
@@ -656,7 +664,7 @@ const Workouts = () => {
               {!showAllRoutines && hiddenCount > 0 && (
                 <button
                   onClick={() => setShowAllRoutines(true)}
-                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.03] transition-colors"
+                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
                 >
                   {t('workouts.showAllRoutines', { count: routines.length })}
                 </button>
@@ -664,7 +672,7 @@ const Workouts = () => {
               {showAllRoutines && routines.length > 3 && (
                 <button
                   onClick={() => setShowAllRoutines(false)}
-                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.03] transition-colors"
+                  className="w-full mt-2 py-3 rounded-2xl text-[12px] font-medium text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
                 >
                   {t('workouts.showLess')}
                 </button>
@@ -708,7 +716,7 @@ const Workouts = () => {
         )}
 
         {allPrograms.length === 0 ? (
-          <div className="rounded-2xl bg-white/[0.02] py-12 text-center">
+          <div className="rounded-2xl bg-white/[0.04] py-12 text-center">
             <Zap size={28} className="mx-auto mb-3 text-[#2A2F3A]" />
             <p className="text-[14px] text-[#6B7280]">No programs yet</p>
             <p className="text-[11px] text-[#4B5563] mt-1 mb-4">Create one tailored to your goals</p>
@@ -729,7 +737,7 @@ const Workouts = () => {
               const progress = Math.round((daysElapsed / 42) * 100);
 
               return (
-                <div key={prog.id} className="rounded-2xl bg-white/[0.02] hover:bg-white/[0.03] transition-colors p-4">
+                <button key={prog.id} onClick={() => { setSelectedMyProgram(prog); setMyProgWeek('1'); }} className="w-full text-left rounded-2xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200 p-5 group">
                   <div className="flex items-center justify-between mb-2.5">
                     <div className="flex items-center gap-2.5">
                       <p className="text-[15px] font-bold text-[#E5E7EB]">
@@ -742,6 +750,7 @@ const Workouts = () => {
                         <span className="text-[9px] font-medium text-[#4B5563] bg-white/[0.04] px-2 py-0.5 rounded-full">Completed</span>
                       )}
                     </div>
+                    <ChevronRight size={16} className="text-[#2A2F3A] group-hover:text-[#6B7280] transition-colors flex-shrink-0" />
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-[#4B5563] mb-3">
                     <span className="flex items-center gap-1"><Calendar size={10} /> 6 weeks</span>
@@ -754,13 +763,13 @@ const Workouts = () => {
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                </div>
+                </button>
               );
             })}
             {!showAllMyPrograms && allPrograms.length > 3 && (
               <button
                 onClick={() => setShowAllMyPrograms(true)}
-                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
               >
                 Show all {allPrograms.length} programs
               </button>
@@ -768,7 +777,7 @@ const Workouts = () => {
             {showAllMyPrograms && allPrograms.length > 3 && (
               <button
                 onClick={() => setShowAllMyPrograms(false)}
-                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
               >
                 Show less
               </button>
@@ -787,7 +796,7 @@ const Workouts = () => {
                   <button
                     key={prog.id}
                     onClick={() => setSelectedProgram(prog)}
-                    className="w-full text-left flex items-center gap-3.5 px-4 py-3.5 rounded-2xl hover:bg-white/[0.02] transition-colors group"
+                    className="w-full text-left flex items-center gap-3.5 px-4 py-3.5 rounded-2xl hover:bg-white/[0.06] transition-colors duration-200 group"
                   >
                     <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
                       <Dumbbell size={16} className={enrolled ? 'text-[#10B981]' : 'text-[#4B5563]'} />
@@ -810,7 +819,7 @@ const Workouts = () => {
               {!showAllGymPrograms && gymPrograms.length > 3 && (
                 <button
                   onClick={() => setShowAllGymPrograms(true)}
-                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
                 >
                   Show all {gymPrograms.length} gym programs
                 </button>
@@ -818,7 +827,7 @@ const Workouts = () => {
               {showAllGymPrograms && gymPrograms.length > 3 && (
                 <button
                   onClick={() => setShowAllGymPrograms(false)}
-                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                  className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
                 >
                   Show less
                 </button>
@@ -837,7 +846,7 @@ const Workouts = () => {
 
         <div className="mb-6">
           <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-[0.15em] mb-1">Discover</p>
-          <h2 className="text-[22px] font-black text-[#E5E7EB] tracking-tight">Programs</h2>
+          <h2 className="text-[20px] font-semibold text-[#E5E7EB] tracking-tight">Programs</h2>
         </div>
 
         {/* Category filter chips */}
@@ -858,14 +867,14 @@ const Workouts = () => {
         </div>
 
         {/* Program cards grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {programTemplates
             .filter(p => programCategoryFilter === 'All' || p.category === programCategoryFilter)
             .map(tmpl => (
               <button
                 key={tmpl.id}
                 onClick={() => { setSelectedTemplate(tmpl); setTemplateWeek('1'); }}
-                className="relative text-left rounded-[18px] overflow-hidden active:scale-[0.97] transition-transform group"
+                className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150 group"
                 style={{ aspectRatio: '3 / 4' }}
               >
                 {/* Background image */}
@@ -899,7 +908,7 @@ const Workouts = () => {
 
                 {/* Content at bottom */}
                 <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
-                  <p className="text-[14px] font-black text-white leading-tight">{tmpl.name}</p>
+                  <p className="text-[14px] font-bold text-white leading-tight">{tmpl.name}</p>
                   <div className="flex items-center gap-1.5 mt-1.5">
                     <span className="text-[10px] font-medium text-white/40">{tmpl.durationWeeks}wk</span>
                     <span className="text-[10px] text-white/15">·</span>
@@ -912,6 +921,135 @@ const Workouts = () => {
       </section>
 
     </div>
+
+    {/* ── My Program Detail Modal ───────────────────────── */}
+    {selectedMyProgram && (() => {
+      const prog = selectedMyProgram;
+      const isActive = new Date(prog.expires_at) > new Date();
+      const weekNum = isActive ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6) : 6;
+      const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), 42);
+      const progress = Math.round((daysElapsed / 42) * 100);
+      const tmplWeeks = prog.template_weeks || null;
+      const tmpl = prog.template_id ? programTemplates.find(t => t.id === prog.template_id) : null;
+      const weekKeys = tmplWeeks ? Object.keys(tmplWeeks).sort((a, b) => Number(a) - Number(b)) : [];
+      const weekIdx = weekKeys.indexOf(myProgWeek);
+      const currentWeekDays = tmplWeeks ? (tmplWeeks[myProgWeek] || []) : [];
+      const canPrev = weekIdx > 0;
+      const canNext = weekIdx < weekKeys.length - 1;
+      const programRoutines = isActive ? routines.filter(r => r.name.startsWith('Auto:')) : [];
+      const progName = prog.split_type ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Custom';
+
+      return (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSelectedMyProgram(null)} />
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] bg-[#0A0F1A] overflow-hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="relative flex justify-center pt-4 pb-3 shrink-0">
+              <div className="w-8 h-[3px] rounded-full bg-white/[0.08]" />
+              <button onClick={() => setSelectedMyProgram(null)} className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
+              {/* Header */}
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'text-[#10B981] bg-[#10B981]/10' : 'text-[#4B5563] bg-white/[0.04]'}`}>
+                    {isActive ? 'Active' : 'Completed'}
+                  </span>
+                </div>
+                <h2 className="text-[24px] font-bold text-[#E5E7EB] tracking-tight leading-tight">{progName} Program</h2>
+                {tmpl?.description && <p className="text-[13px] text-[#4B5563] mt-2 leading-relaxed line-clamp-2">{tmpl.description}</p>}
+              </div>
+
+              {/* Progress */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[12px] font-semibold text-[#9CA3AF]">{isActive ? `Week ${weekNum} of 6` : 'Program Finished'}</span>
+                  <span className="text-[11px] text-[#4B5563]" style={{ fontVariantNumeric: 'tabular-nums' }}>{progress}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/[0.04]">
+                  <div className={`h-full rounded-full transition-all ${isActive ? 'bg-[#10B981]' : 'bg-[#4B5563]'}`} style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+
+              {/* This week's routines (if active) */}
+              {isActive && programRoutines.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">This Week's Routines</p>
+                  <div className="space-y-2">
+                    {programRoutines.map(r => (
+                      <Link key={r.id} to={`/session/${r.id}`} onClick={() => setSelectedMyProgram(null)} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors group">
+                        <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center"><Dumbbell size={14} className="text-[#9CA3AF]" /></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name.replace('Auto: ', '')}</p>
+                          <p className="text-[10px] text-[#4B5563] mt-0.5">{r.exerciseCount} exercises</p>
+                        </div>
+                        <ChevronRight size={14} className="text-[#2A2F3A] group-hover:text-[#6B7280] transition-colors" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Week-by-week breakdown (if template_weeks exists) */}
+              {weekKeys.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Program Overview</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <button onClick={() => canPrev && setMyProgWeek(weekKeys[weekIdx - 1])} disabled={!canPrev} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${canPrev ? 'bg-white/[0.04] text-[#E5E7EB] hover:bg-white/[0.08]' : 'text-[#1F2937]'}`}>
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-[14px] font-semibold text-[#E5E7EB]">Week {myProgWeek} <span className="text-[#4B5563]">of {weekKeys.length}</span></span>
+                    <button onClick={() => canNext && setMyProgWeek(weekKeys[weekIdx + 1])} disabled={!canNext} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${canNext ? 'bg-white/[0.04] text-[#E5E7EB] hover:bg-white/[0.08]' : 'text-[#1F2937]'}`}>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {currentWeekDays.length === 0 ? (
+                      <div className="rounded-xl bg-white/[0.02] py-6 text-center"><p className="text-[12px] text-[#4B5563]">Rest week</p></div>
+                    ) : currentWeekDays.map((day, di) => (
+                      <div key={di} className="rounded-xl bg-white/[0.04] p-4">
+                        <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1.5">{day.name || `Day ${di + 1}`}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(day.exercises || []).map((ex, i) => {
+                            const exId = typeof ex === 'string' ? ex : ex?.id;
+                            return <span key={i} className="text-[11px] bg-white/[0.04] text-[#9CA3AF] px-2.5 py-1 rounded-lg">{exerciseNameMap[exId] ?? exId}</span>;
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Completed state */}
+              {!isActive && (
+                <div className="mt-6 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle2 size={28} className="text-[#10B981]" />
+                  </div>
+                  <p className="text-[16px] font-bold text-[#E5E7EB]">Program Completed</p>
+                  <p className="text-[12px] text-[#6B7280] mt-1">All workout history and progress has been saved</p>
+                </div>
+              )}
+            </div>
+
+            {/* CTA */}
+            <div className="shrink-0 px-6 pt-4 pb-5 bg-gradient-to-t from-[#0A0F1A] via-[#0A0F1A] to-transparent">
+              {isActive && programRoutines.length > 0 ? (
+                <Link to={`/session/${programRoutines[0].id}`} onClick={() => setSelectedMyProgram(null)} className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-bold text-[15px] text-white bg-[#10B981] hover:bg-[#0EA572] active:scale-[0.98] transition-all">
+                  <Play size={16} fill="white" /> Start Workout
+                </Link>
+              ) : !isActive ? (
+                <button onClick={() => { setSelectedMyProgram(null); const el = document.getElementById('discover-programs'); el?.scrollIntoView({ behavior: 'smooth' }); }} className="w-full py-4 rounded-2xl font-bold text-[15px] text-[#E5E7EB] bg-white/[0.06] hover:bg-white/[0.1] transition-colors">
+                  Browse New Programs
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
 
     {/* ── Modals ─────────────────────────────────────────── */}
     {selectedProgram && (
@@ -957,7 +1095,7 @@ const Workouts = () => {
                 <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-[0.15em]">
                   {selectedTemplate.level} · {selectedTemplate.category}
                 </span>
-                <h2 className="text-[26px] font-black text-[#E5E7EB] tracking-tight leading-tight mt-2">
+                <h2 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight leading-tight mt-2">
                   {selectedTemplate.name}
                 </h2>
                 <p className="text-[13px] text-[#4B5563] mt-2 leading-relaxed line-clamp-2">
@@ -994,7 +1132,7 @@ const Workouts = () => {
                     <ChevronLeft size={16} />
                   </button>
                   <div className="text-center">
-                    <span className="text-[16px] font-black text-[#E5E7EB]">Week {templateWeek}</span>
+                    <span className="text-[16px] font-semibold text-[#E5E7EB]">Week {templateWeek}</span>
                     <span className="text-[14px] text-[#4B5563] ml-1.5">of {weekKeys.length}</span>
                   </div>
                   <button
@@ -1028,14 +1166,14 @@ const Workouts = () => {
 
                   if (currentWeekDays.length === 0) {
                     return (
-                      <div className="rounded-2xl bg-white/[0.02] py-8 text-center">
+                      <div className="rounded-2xl bg-white/[0.04] py-8 text-center">
                         <p className="text-[13px] text-[#4B5563]">Rest week</p>
                       </div>
                     );
                   }
 
                   return fullWeek.map((day, di) => (
-                    <div key={di} className={`rounded-2xl p-4 ${day.isRest ? 'bg-white/[0.01]' : 'bg-white/[0.02]'}`}>
+                    <div key={di} className={`rounded-2xl p-5 ${day.isRest ? 'bg-white/[0.02]' : 'bg-white/[0.04]'}`}>
                       <div className="flex items-center gap-2.5 mb-1">
                         <h4 className={`text-[14px] font-semibold ${day.isRest ? 'text-[#4B5563]' : 'text-[#E5E7EB]'}`}>
                           {day.isRest ? day.dayLabel : day.name}
@@ -1110,6 +1248,269 @@ const Workouts = () => {
         }}
       />
     )}
+
+    {/* ── My Program Detail Modal ──────────────────────── */}
+    {selectedMyProgram && (() => {
+      const prog = selectedMyProgram;
+      const isActive = new Date(prog.expires_at) > new Date();
+      const weekNum = isActive
+        ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6) : 6;
+      const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), 42);
+      const progress = Math.round((daysElapsed / 42) * 100);
+      const programName = prog.split_type ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Custom';
+
+      // Resolve template data for week breakdown
+      const template = prog.template_id ? programTemplates.find(t => t.id === prog.template_id) : null;
+      const weeks = prog.template_weeks || template?.weeks || null;
+      const weekKeys = weeks ? Object.keys(weeks).sort((a, b) => Number(a) - Number(b)) : [];
+      const weekIdx = weekKeys.indexOf(myProgramWeek);
+      const currentWeekDays = weeks ? (weeks[myProgramWeek] || []) : [];
+      const canPrevWeek = weekIdx > 0;
+      const canNextWeek = weekIdx < weekKeys.length - 1;
+
+      // This program's Auto: routines
+      const programRoutines = routines.filter(r => r.name.startsWith('Auto:'));
+
+      return (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSelectedMyProgram(null)} />
+          <div
+            className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] bg-[#0A0F1A] overflow-hidden"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            {/* Handle + Close */}
+            <div className="relative flex justify-center pt-4 pb-3 shrink-0">
+              <div className="w-8 h-[3px] rounded-full bg-white/[0.08]" />
+              <button
+                onClick={() => setSelectedMyProgram(null)}
+                className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
+              {/* Header */}
+              <div className="mb-5">
+                <div className="flex items-center gap-2.5 mb-2">
+                  {isActive ? (
+                    <span className="text-[10px] font-bold text-[#10B981] bg-[#10B981]/10 px-2.5 py-0.5 rounded-full">Active</span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#4B5563] bg-white/[0.04] px-2.5 py-0.5 rounded-full">Completed</span>
+                  )}
+                  {isActive && (
+                    <span className="text-[10px] font-medium text-[#6B7280]">Week {weekNum} of 6</span>
+                  )}
+                </div>
+                <h2 className="text-[24px] font-bold text-[#E5E7EB] tracking-tight leading-tight">
+                  {programName} Program
+                </h2>
+                {template && (
+                  <p className="text-[13px] text-[#4B5563] mt-1.5 leading-relaxed line-clamp-2">{template.description}</p>
+                )}
+              </div>
+
+              {/* Progress bar */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-[#6B7280]">Progress</span>
+                  <span className="text-[11px] font-medium text-[#9CA3AF]">{progress}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/[0.04]">
+                  <div
+                    className={`h-full rounded-full transition-all ${isActive ? 'bg-[#10B981]' : 'bg-[#4B5563]'}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Meta pills */}
+              <div className="flex items-center gap-2 mb-6">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03]">
+                  <Calendar size={11} className="text-[#4B5563]" />
+                  <span className="text-[11px] font-medium text-[#6B7280]">6 weeks</span>
+                </div>
+                {prog.routines_a_count > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03]">
+                    <Activity size={11} className="text-[#4B5563]" />
+                    <span className="text-[11px] font-medium text-[#6B7280]">{prog.routines_a_count} days/week</span>
+                  </div>
+                )}
+                {template && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03]">
+                    <Target size={11} className="text-[#4B5563]" />
+                    <span className="text-[11px] font-medium text-[#6B7280]">{template.goal}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Week-by-week breakdown (if template_weeks available) */}
+              {weekKeys.length > 0 && (
+                <>
+                  {/* Week navigator */}
+                  <div className="mb-5">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <button
+                        onClick={() => canPrevWeek && setMyProgWeek(weekKeys[weekIdx - 1])}
+                        disabled={!canPrevWeek}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                          canPrevWeek ? 'bg-white/[0.04] text-[#E5E7EB] hover:bg-white/[0.08]' : 'text-[#1F2937]'
+                        }`}
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <div className="text-center">
+                        <span className="text-[16px] font-semibold text-[#E5E7EB]">Week {myProgramWeek}</span>
+                        <span className="text-[14px] text-[#4B5563] ml-1.5">of {weekKeys.length}</span>
+                        {isActive && Number(myProgramWeek) === weekNum && (
+                          <span className="ml-2 text-[9px] font-bold text-[#10B981] bg-[#10B981]/10 px-1.5 py-0.5 rounded-full">Current</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => canNextWeek && setMyProgWeek(weekKeys[weekIdx + 1])}
+                        disabled={!canNextWeek}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                          canNextWeek ? 'bg-white/[0.04] text-[#E5E7EB] hover:bg-white/[0.08]' : 'text-[#1F2937]'
+                        }`}
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                    <div className="h-[2px] rounded-full bg-white/[0.03]">
+                      <div
+                        className="h-full rounded-full bg-[#10B981]/60 transition-all duration-300"
+                        style={{ width: `${((weekIdx + 1) / weekKeys.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Day cards */}
+                  <div className="space-y-3">
+                    {(() => {
+                      const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                      const fullWeek = DAY_LABELS.map((dayLabel, i) => {
+                        const workoutDay = currentWeekDays[i];
+                        if (workoutDay) return { ...workoutDay, dayLabel, isRest: false };
+                        return { dayLabel, isRest: true, name: dayLabel, exercises: [] };
+                      });
+
+                      if (currentWeekDays.length === 0) {
+                        return (
+                          <div className="rounded-2xl bg-white/[0.04] py-8 text-center">
+                            <p className="text-[13px] text-[#4B5563]">Rest week</p>
+                          </div>
+                        );
+                      }
+
+                      return fullWeek.map((day, di) => (
+                        <div key={di} className={`rounded-2xl p-5 ${day.isRest ? 'bg-white/[0.02]' : 'bg-white/[0.04]'}`}>
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <h4 className={`text-[14px] font-semibold ${day.isRest ? 'text-[#4B5563]' : 'text-[#E5E7EB]'}`}>
+                              {day.isRest ? day.dayLabel : day.name}
+                            </h4>
+                            {!day.isRest && (
+                              <span className="text-[10px] font-medium text-[#4B5563] bg-white/[0.03] px-2 py-0.5 rounded-full">
+                                {day.exercises.length}
+                              </span>
+                            )}
+                          </div>
+                          {day.isRest ? (
+                            <p className="text-[11px] text-[#3B3F4A]">Rest Day</p>
+                          ) : (
+                            <div className="space-y-1 mt-2">
+                              {day.exercises.map((ex, ei) => (
+                                <p key={ei} className="text-[12px] text-[#6B7280]">
+                                  {exerciseNameMap[typeof ex === 'string' ? ex : ex.id] || (typeof ex === 'string' ? ex : ex.id)}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </>
+              )}
+
+              {/* This week's routines (when no week breakdown available, or as a quick-start section) */}
+              {isActive && programRoutines.length > 0 && (
+                <div className={weekKeys.length > 0 ? 'mt-6' : ''}>
+                  <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-[0.15em] mb-3">Your Routines</p>
+                  <div className="space-y-2">
+                    {programRoutines.map(routine => (
+                      <Link
+                        key={routine.id}
+                        to={`/session/${routine.id}`}
+                        onClick={() => setSelectedMyProgram(null)}
+                        className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200 group"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                          <Dumbbell size={15} className="text-[#9CA3AF]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{routine.name.replace('Auto: ', '')}</p>
+                          <p className="text-[11px] text-[#4B5563] mt-0.5">{routine.exerciseCount} exercises</p>
+                        </div>
+                        <ChevronRight size={16} className="text-[#2A2F3A] group-hover:text-[#6B7280] transition-colors flex-shrink-0" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Completed state */}
+              {!isActive && (
+                <div className="mt-6 rounded-2xl bg-white/[0.02] p-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle2 size={28} className="text-[#10B981]" />
+                  </div>
+                  <p className="text-[16px] font-bold text-[#E5E7EB] mb-1">Program Completed</p>
+                  <p className="text-[12px] text-[#4B5563] mb-4">Great work finishing this program!</p>
+                  <button
+                    onClick={() => {
+                      setSelectedMyProgram(null);
+                      const el = document.getElementById('discover-programs');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="px-4 py-2.5 rounded-xl text-[12px] font-semibold bg-white/[0.06] text-[#E5E7EB] hover:bg-white/[0.1] transition-colors"
+                  >
+                    Browse New Programs
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CTA */}
+            {isActive && (
+              <div className="shrink-0 px-6 pt-4 pb-5 bg-gradient-to-t from-[#0A0F1A] via-[#0A0F1A] to-transparent">
+                {programRoutines.length > 0 ? (
+                  <Link
+                    to={`/session/${programRoutines[0].id}`}
+                    onClick={() => setSelectedMyProgram(null)}
+                    className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-bold text-[15px] text-white bg-[#10B981] hover:bg-[#0EA572] active:scale-[0.98] transition-all"
+                  >
+                    <Play size={16} fill="white" />
+                    Start Today's Workout
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSelectedMyProgram(null);
+                      const el = document.getElementById('discover-programs');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="w-full py-4 rounded-2xl font-bold text-[15px] text-[#E5E7EB] bg-white/[0.06] hover:bg-white/[0.1] active:scale-[0.98] transition-all"
+                  >
+                    Browse Programs
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    })()}
 
     {/* ── Switch Program Confirmation Dialog ────────────── */}
     {switchStep && (

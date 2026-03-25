@@ -39,14 +39,14 @@ const SessionHeader = ({
           <div className="flex flex-col items-center gap-3 w-48">
             <button
               onClick={onResume}
-              className="w-full py-4 rounded-2xl bg-[#D4AF37] text-black font-bold text-[16px] flex items-center justify-center gap-2 active:scale-[0.97]"
+              className="w-full py-4 rounded-2xl bg-[#D4AF37] text-black font-bold text-[16px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform duration-200"
             >
               <Play size={18} fill="black" strokeWidth={0} />
               {t('activeSession.resume')}
             </button>
             <button
               onClick={onEndWorkout}
-              className="w-full py-3 rounded-2xl border border-white/[0.1] text-[#9CA3AF] font-semibold text-[14px] active:scale-[0.97]"
+              className="w-full py-3 rounded-2xl border border-white/[0.06] text-[#9CA3AF] font-semibold text-[14px] active:scale-[0.97] transition-colors duration-200"
             >
               {t('activeSession.endWorkout')}
             </button>
@@ -60,7 +60,7 @@ const SessionHeader = ({
           {/* Back */}
           <button
             onClick={onNavigateBack}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors z-10"
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors duration-200 z-10"
             aria-label="Back"
           >
             <ChevronLeft size={22} />
@@ -97,7 +97,7 @@ const SessionHeader = ({
             </div>
             <button
               onClick={onPause}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors duration-200"
               aria-label="Pause"
             >
               <Pause size={18} />
@@ -108,7 +108,7 @@ const SessionHeader = ({
         {/* Progress bar */}
         <div className="h-[3px] bg-white/[0.04]">
           <div
-            className="h-full bg-[#D4AF37] transition-all duration-500 ease-out"
+            className="h-full bg-[#D4AF37] transition-all duration-300 ease-out"
             style={{ width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%' }}
           />
         </div>
@@ -142,7 +142,7 @@ const SessionHeader = ({
                 ? 'w-6 h-2 bg-[#D4AF37]'
                 : i < currentExerciseIndex
                 ? 'w-2 h-2 bg-[#D4AF37]/40'
-                : 'w-2 h-2 bg-white/[0.1]'
+                : 'w-2 h-2 bg-white/[0.10]'
             }`}
             aria-label={`Exercise ${i + 1}`}
           />

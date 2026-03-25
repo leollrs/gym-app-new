@@ -39,7 +39,7 @@ const SessionCard = ({ session }) => {
     : `${Math.round(volumeK)} lbs`;
 
   return (
-    <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
+    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
 
       {/* Main row */}
       <button
@@ -51,7 +51,7 @@ const SessionCard = ({ session }) => {
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#D4AF37]">
             {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
           </p>
-          <p className="text-[24px] font-black leading-none text-[#E5E7EB]">
+          <p className="text-[24px] font-black leading-none text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
@@ -89,7 +89,7 @@ const SessionCard = ({ session }) => {
 
       {/* Expanded exercise list */}
       {expanded && (
-        <div className="px-5 pb-4 border-t border-white/8">
+        <div className="px-5 pb-4 border-t border-white/[0.06]">
           <div className="pt-3 flex flex-col gap-3">
             {exercises
               .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
@@ -201,12 +201,12 @@ const WorkoutLog = ({ embedded = false }) => {
       <div className="flex items-center gap-3 mb-8">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 bg-[#111827] text-[#9CA3AF]"
+          className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 bg-[#111827] text-[#9CA3AF]"
         >
           <ChevronLeft size={20} strokeWidth={2.5} />
         </button>
         <div>
-          <h1 className="font-black text-[24px] leading-tight text-[#E5E7EB]" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+          <h1 className="font-bold text-[28px] leading-tight text-[#E5E7EB]" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
             Workout Log
           </h1>
           {!loading && (
@@ -256,7 +256,7 @@ const WorkoutLog = ({ embedded = false }) => {
               </span>
             </button>
             {!isCollapsed && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
                 {grouped[month].map(session => (
                   <SessionCard key={session.id} session={session} />
                 ))}
@@ -270,7 +270,7 @@ const WorkoutLog = ({ embedded = false }) => {
       {!loading && visibleCount < sessions.length && (
         <button
           onClick={() => setVisibleCount(prev => prev + 20)}
-          className="w-full py-3 mt-4 rounded-2xl bg-white/5 text-[#9CA3AF] text-[13px] font-semibold hover:bg-white/[0.08] transition-colors"
+          className="w-full py-3 mt-4 rounded-2xl bg-white/[0.04] text-[#9CA3AF] text-[13px] font-semibold hover:bg-white/[0.06] transition-colors duration-200"
         >
           Load more ({sessions.length - visibleCount} remaining)
         </button>

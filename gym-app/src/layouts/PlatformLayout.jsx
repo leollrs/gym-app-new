@@ -40,8 +40,8 @@ const MOBILE_MORE_NAV = ALL_NAV.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to)
 const linkClass = (active) =>
   `flex items-center gap-2.5 pl-3 pr-3 py-2 rounded-lg text-[13px] font-medium transition-all relative ${
     active
-      ? 'bg-white/[0.03] text-[#D4AF37] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-[#D4AF37]'
-      : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.02]'
+      ? 'bg-white/[0.04] text-[#D4AF37] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-[#D4AF37]'
+      : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.06]'
   }`;
 
 export default function PlatformLayout({ children }) {
@@ -86,7 +86,7 @@ export default function PlatformLayout({ children }) {
       </a>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-[240px] flex-shrink-0 border-r border-white/6 min-h-screen sticky top-0 h-screen">
+      <aside className="hidden md:flex flex-col w-[240px] flex-shrink-0 border-r border-white/[0.06] min-h-screen sticky top-0 h-screen">
         <div className="px-4 pt-5 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
@@ -99,7 +99,7 @@ export default function PlatformLayout({ children }) {
               <p className="text-[11px] text-[#D4AF37] leading-tight">Super Admin</p>
             </div>
           </div>
-          <div className="mt-4 border-b border-white/6" />
+          <div className="mt-4 border-b border-white/[0.06]" />
         </div>
 
         <nav aria-label="Platform sidebar navigation" className="flex-1 px-3 pb-3 overflow-y-auto">
@@ -125,7 +125,7 @@ export default function PlatformLayout({ children }) {
           ))}
         </nav>
 
-        <div className="px-3 py-3 border-t border-white/6">
+        <div className="px-3 py-3 border-t border-white/[0.06]">
           <div className="flex items-center gap-2.5 px-3 py-1.5 mb-1">
             <div className="w-6 h-6 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
               <span className="text-[10px] font-bold text-[#D4AF37]">
@@ -136,7 +136,7 @@ export default function PlatformLayout({ children }) {
           </div>
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#EF4444] hover:bg-red-500/5 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#EF4444] hover:bg-red-500/5 transition-colors duration-200"
           >
             <LogOut size={14} />
             Sign out
@@ -147,14 +147,14 @@ export default function PlatformLayout({ children }) {
       {/* Main content */}
       <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <header
-          className="md:hidden flex items-center justify-between px-4 border-b border-white/6 bg-[#05070B]/95 backdrop-blur-xl flex-shrink-0"
+          className="md:hidden flex items-center justify-between px-4 border-b border-white/[0.06] bg-[#05070B]/95 backdrop-blur-xl flex-shrink-0"
           style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: '12px', height: 'calc(52px + env(safe-area-inset-top))' }}
         >
           <div className="flex items-center gap-2">
             <Shield size={16} className="text-[#D4AF37]" />
             <p className="text-[15px] font-bold text-[#E5E7EB]">Platform</p>
           </div>
-          <button onClick={handleSignOut} aria-label="Sign out" className="text-[#6B7280] hover:text-[#EF4444] transition-colors">
+          <button onClick={handleSignOut} aria-label="Sign out" className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] transition-colors duration-200">
             <LogOut size={18} />
           </button>
         </header>
@@ -177,12 +177,12 @@ export default function PlatformLayout({ children }) {
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="bg-[#0F172A] border-t border-white/8 rounded-t-2xl px-4 pt-3 pb-4">
+        <div className="bg-[#0F172A] border-t border-white/[0.06] rounded-t-2xl px-4 pt-3 pb-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[13px] font-semibold text-[#9CA3AF]">More Pages</p>
             <button
               onClick={() => setMoreMenuOpen(false)}
-              className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors"
+              className="w-11 h-11 flex items-center justify-center rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors duration-200"
               aria-label="Close menu"
             >
               <X size={18} />
@@ -212,7 +212,7 @@ export default function PlatformLayout({ children }) {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav aria-label="Platform mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
+      <nav aria-label="Platform mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/[0.06] bg-[#05070B]/95 backdrop-blur-2xl transition-colors duration-200"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
           <NavLink

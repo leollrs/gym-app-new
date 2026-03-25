@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Scale, Plus, TrendingUp, TrendingDown, Minus, X, Check, Camera, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -78,11 +78,11 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
         role="dialog"
         aria-modal="true"
         aria-labelledby="measurements-title"
-        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg overflow-hidden"
+        className="bg-[#0F172A] border border-white/[0.06] rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-5 border-b border-white/6">
-          <p id="measurements-title" className="text-[16px] font-bold text-[#E5E7EB]">
+        <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
+          <p id="measurements-title" className="text-[16px] font-semibold text-[#E5E7EB]">
             {existing ? 'Update Measurements' : 'Add Measurements'}
           </p>
           <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
@@ -103,7 +103,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
                   const n = parseFloat(v);
                   setForm(p => ({ ...p, [f.key]: (!isNaN(n) && n < 0) ? '0' : v }));
                 }}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
               />
             </div>
           ))}
@@ -142,7 +142,8 @@ export default function BodyMetrics() {
   const [latestMeasurements, setLatestMeasurements] = useState(null);
   const [showMeasurements,   setShowMeasurements]   = useState(false);
 
-  // Progress photos state
+  // Progress photos state (with signed URL cache to avoid re-signing on period change)
+  const signedUrlCache = useRef({}); // { storage_path: { url, expiresAt } }
   const [photos,          setPhotos]          = useState([]);
   const [showPhotoUpload, setShowPhotoUpload] = useState(false);
   const [uploadAngle,     setUploadAngle]     = useState('front');
@@ -176,7 +177,7 @@ export default function BodyMetrics() {
         .order('logged_at', { ascending: true }),
       supabase
         .from('body_measurements')
-        .select('*')
+        .select('id, measured_at, chest_cm, waist_cm, hips_cm, left_arm_cm, right_arm_cm, left_thigh_cm, right_thigh_cm, body_fat_pct')
         .eq('profile_id', user.id)
         .order('measured_at', { ascending: false })
         .limit(1)
@@ -203,12 +204,20 @@ export default function BodyMetrics() {
       weight: parseFloat(l.weight_lbs),
     })));
     setLatestMeasurements(meas ?? null);
+    const now = Date.now();
     const photosWithUrls = await Promise.all(
       (photoData ?? []).map(async (p) => {
+        // Reuse cached signed URL if it hasn't expired (with 5-min buffer)
+        const cached = signedUrlCache.current[p.storage_path];
+        if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+          return { ...p, url: cached.url };
+        }
         const { data } = await supabase.storage
           .from('progress-photos')
           .createSignedUrl(p.storage_path, 3600); // 1-hour expiry
-        return { ...p, url: data?.signedUrl ?? '' };
+        const url = data?.signedUrl ?? '';
+        if (url) signedUrlCache.current[p.storage_path] = { url, expiresAt: now + 3600 * 1000 };
+        return { ...p, url };
       })
     );
     setPhotos(photosWithUrls);
@@ -361,19 +370,19 @@ export default function BodyMetrics() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-[720px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
+          className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
         >
           <ArrowLeft size={18} style={{ color: 'var(--text-secondary)' }} />
         </button>
         <div className="flex-1">
-          <h1 className="text-[20px] font-bold" style={{ color: 'var(--text-primary)' }}>Body Metrics</h1>
+          <h1 className="text-[28px] font-bold" style={{ color: 'var(--text-primary)' }}>Body Metrics</h1>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Weight & measurements over time</p>
         </div>
       </div>
@@ -422,7 +431,7 @@ export default function BodyMetrics() {
           {/* Edit Personal Info Modal */}
           {editingPersonal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setEditingPersonal(false)}>
-              <div className="bg-[#0F172A] rounded-[20px] w-full max-w-sm p-6 border border-white/[0.06]" onClick={e => e.stopPropagation()}>
+              <div className="bg-[#0F172A] rounded-[20px] w-full max-w-md p-6 border border-white/[0.06]" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-[16px] font-bold text-[#E5E7EB]">Personal Info</h3>
                   <button onClick={() => setEditingPersonal(false)}><X size={18} className="text-[#6B7280]" /></button>
@@ -523,7 +532,7 @@ export default function BodyMetrics() {
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
               >
                 <Icon size={16} style={{ color }} strokeWidth={2} />
-                <p className="text-[22px] font-black leading-none text-white">{value}</p>
+                <p className="text-[22px] font-black leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                   {label}
                 </p>
@@ -612,7 +621,7 @@ export default function BodyMetrics() {
                   setWeightInput((!isNaN(n) && n < 0) ? '0' : v);
                 }}
                 onKeyDown={e => e.key === 'Enter' && handleLogWeight()}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 pr-12"
+                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 pr-12"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium" style={{ color: 'var(--text-muted)' }}>
                 lbs
@@ -668,7 +677,7 @@ export default function BodyMetrics() {
                       className="rounded-xl p-3 text-center"
                       style={{ background: '#111827' }}
                     >
-                      <p className="text-[18px] font-black text-white leading-none">
+                      <p className="text-[18px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {parseFloat(latestMeasurements[f.key]).toFixed(1)}
                         <span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--text-muted)' }}>
                           {f.unit}
@@ -698,12 +707,12 @@ export default function BodyMetrics() {
               <p className="text-[14px] font-semibold px-5 pt-4 pb-3" style={{ color: 'var(--text-primary)' }}>
                 History
               </p>
-              <div className="divide-y divide-white/4">
+              <div className="divide-y divide-white/[0.06]">
                 {weightLogs.map((log, i) => {
                   const prev = weightLogs[i + 1];
                   const diff = prev ? parseFloat(log.weight_lbs) - parseFloat(prev.weight_lbs) : null;
                   return (
-                    <div key={log.id} className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.03] transition-all">
+                    <div key={log.id} className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.06] transition-all">
                       <div>
                         <p className="text-[13px] font-semibold text-[#E5E7EB]">
                           {format(parseISO(log.logged_at), 'EEE, MMM d')}
@@ -721,7 +730,7 @@ export default function BodyMetrics() {
                             {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                           </span>
                         )}
-                        <p className="text-[15px] font-bold text-white">
+                        <p className="text-[15px] font-bold text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
                           {fmtW(log.weight_lbs)} <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>lbs</span>
                         </p>
                       </div>
@@ -760,7 +769,7 @@ export default function BodyMetrics() {
                       className="flex-1 py-2 rounded-xl text-[12px] font-bold capitalize transition-all border"
                       style={uploadAngle === angle
                         ? { background: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.5)', color: '#D4AF37' }
-                        : { background: 'transparent', borderColor: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}
+                        : { background: 'transparent', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}
                     >
                       {angle}
                     </button>
@@ -806,7 +815,7 @@ export default function BodyMetrics() {
               });
               const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
               return (
-                <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                   {dates.map(day => {
                     const isOpen = expandedDate === day;
                     const angleCount = Object.keys(byDate[day]).length;

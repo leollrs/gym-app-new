@@ -26,7 +26,7 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
 
   return (
     <div
-      className={`${sizes[size]} rounded-full flex items-center justify-center font-black flex-shrink-0`}
+      className={`${sizes[size]} rounded-full flex items-center justify-center font-black flex-shrink-0 tabular-nums`}
       style={{
         backgroundColor: `${tier.color}20`,
         color: tier.color,
@@ -47,10 +47,10 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
   const tier = getRewardTier(pts);
 
   return (
-    <div className={`bg-[#0F172A] rounded-[14px] border border-white/8 p-4 ${className}`}>
+    <div className={`bg-white/[0.04] rounded-2xl border border-white/[0.06] p-5 ${className}`}>
       <div className="flex items-center gap-3 mb-3">
         <div
-          className="w-11 h-11 rounded-full flex items-center justify-center font-black text-[18px]"
+          className="w-11 h-11 rounded-full flex items-center justify-center font-black text-[18px] tabular-nums"
           style={{
             backgroundColor: `${tier.color}15`,
             color: tier.color,
@@ -89,7 +89,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
             Level {level + 1}
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-700 ease-out"
             style={{ width: `${progress}%`, backgroundColor: tier.color }}

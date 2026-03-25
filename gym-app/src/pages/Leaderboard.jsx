@@ -41,14 +41,14 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency }) => 
   const color = rank === 1 ? GOLD : rank <= 3 ? MEDAL[rank - 1] : null;
 
   return (
-    <div className={`flex items-center gap-2.5 py-2 ${rank > 1 ? 'border-t border-white/[0.04]' : ''}`}>
+    <div className={`flex items-center gap-2.5 py-2 ${rank > 1 ? 'border-t border-white/[0.06]' : ''}`}>
       <div className="w-6 flex items-center justify-center flex-shrink-0">
         {rank <= 3 ? (
-          <div className="w-5.5 h-5.5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background: `${color}18`, color }}>
+          <div className="w-5.5 h-5.5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background: `${color}18`, color, fontVariantNumeric: 'tabular-nums' }}>
             {rank}
           </div>
         ) : (
-          <span className="text-[11px] font-bold text-[#3F3F46]">{rank}</span>
+          <span className="text-[11px] font-bold text-[#3F3F46]" style={{ fontVariantNumeric: 'tabular-nums' }}>{rank}</span>
         )}
       </div>
       <div className="w-7 h-7 rounded-full bg-white/[0.06] flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -61,7 +61,7 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency }) => 
       <p className={`flex-1 text-[12px] font-medium truncate ${isMe ? 'text-[#E5E7EB]' : 'text-[#C4C4C4]'}`}>
         {isMe ? 'You' : entry.name}
       </p>
-      <span className={`text-[12px] font-bold flex-shrink-0 ${rank === 1 ? '' : 'text-[#9CA3AF]'}`} style={rank === 1 ? { color: ACCENT } : undefined}>
+      <span className={`text-[12px] font-bold flex-shrink-0 ${rank === 1 ? '' : 'text-[#9CA3AF]'}`} style={{ fontVariantNumeric: 'tabular-nums', ...(rank === 1 ? { color: ACCENT } : {}) }}>
         {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : entry.score?.toLocaleString()}
         {unit && !isImproved && !isConsistency && <span className="text-[10px] font-normal text-[#4B5563] ml-0.5">{unit}</span>}
       </span>
@@ -71,15 +71,15 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency }) => 
 
 // ── Category preview card ───────────────────────────────────
 const CategoryCard = ({ icon: Icon, iconColor, title, subtitle, entries, loading, userId, unit, isImproved, isConsistency, myEntry, onExpand }) => (
-  <div className="rounded-2xl bg-[#0F172A]/60 border border-white/[0.05] overflow-hidden">
+  <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
     {/* Header */}
-    <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
+    <div className="flex items-center justify-between px-5 pt-4 pb-2">
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${iconColor}12` }}>
           <Icon size={15} style={{ color: iconColor }} />
         </div>
         <div>
-          <p className="text-[13px] font-bold text-[#E5E7EB]">{title}</p>
+          <p className="text-[16px] font-semibold text-[#E5E7EB]">{title}</p>
           <p className="text-[10px] text-[#4B5563] mt-0.5">{subtitle}</p>
         </div>
       </div>
@@ -89,9 +89,9 @@ const CategoryCard = ({ icon: Icon, iconColor, title, subtitle, entries, loading
     </div>
 
     {/* Content */}
-    <div className="px-4 pb-3">
+    <div className="px-5 pb-4">
       {loading ? (
-        <div className="space-y-2 py-2">{[1,2,3].map(i => <div key={i} className="h-8 rounded-lg bg-white/[0.03] animate-pulse" />)}</div>
+        <div className="space-y-2 py-2">{[1,2,3].map(i => <div key={i} className="h-8 rounded-lg bg-white/[0.04] animate-pulse" />)}</div>
       ) : !entries || entries.length === 0 ? (
         <p className="text-[11px] text-[#4B5563] py-4 text-center">No activity yet this week</p>
       ) : (
@@ -135,7 +135,7 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
             </div>
             <h2 className="text-[17px] font-bold text-[#E5E7EB]">{title}</h2>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center">
+          <button onClick={onClose} className="w-11 h-11 rounded-xl bg-white/[0.06] flex items-center justify-center transition-colors duration-200 hover:bg-white/[0.08]">
             <X size={16} className="text-[#9CA3AF]" />
           </button>
         </div>
@@ -160,7 +160,7 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div className="px-4 pt-3 pb-28">
           {loading ? (
-            <div className="space-y-2">{[1,2,3,4,5,6,7,8].map(i => <div key={i} className="h-[52px] rounded-xl bg-white/[0.03] animate-pulse" />)}</div>
+            <div className="space-y-2">{[1,2,3,4,5,6,7,8].map(i => <div key={i} className="h-[52px] rounded-xl bg-white/[0.04] animate-pulse" />)}</div>
           ) : !entries || entries.length === 0 ? (
             <div className="text-center py-20">
               <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
@@ -179,17 +179,17 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
                     key={entry.id}
                     className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all ${
                       isFirst ? 'bg-gradient-to-r from-[#D4AF37]/[0.08] to-transparent border border-[#D4AF37]/12'
-                      : isMe ? 'bg-white/[0.04] border border-white/8'
+                      : isMe ? 'bg-white/[0.04] border border-white/[0.06]'
                       : ''
                     }`}
                   >
                     <div className="w-7 flex items-center justify-center flex-shrink-0">
                       {rank <= 3 ? (
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: `${medalColor}18`, color: medalColor }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: `${medalColor}18`, color: medalColor, fontVariantNumeric: 'tabular-nums' }}>
                           {rank}
                         </div>
                       ) : (
-                        <span className="text-[12px] font-bold text-[#3F3F46]">{rank}</span>
+                        <span className="text-[12px] font-bold text-[#3F3F46]" style={{ fontVariantNumeric: 'tabular-nums' }}>{rank}</span>
                       )}
                     </div>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${isFirst ? 'ring-1 ring-[#D4AF37]/25' : 'bg-white/[0.06]'}`}>
@@ -210,7 +210,7 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
                         <p className="text-[10px] text-[#4B5563]">{Math.round(entry.previous_value).toLocaleString()} → {Math.round(entry.current_value).toLocaleString()}</p>
                       )}
                     </div>
-                    <span className={`text-[13px] font-bold flex-shrink-0 ${isFirst ? '' : 'text-[#9CA3AF]'}`} style={isFirst ? { color: ACCENT } : undefined}>
+                    <span className={`text-[13px] font-bold flex-shrink-0 ${isFirst ? '' : 'text-[#9CA3AF]'}`} style={{ fontVariantNumeric: 'tabular-nums', ...(isFirst ? { color: ACCENT } : {}) }}>
                       {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : entry.score?.toLocaleString()}
                       {unit && !isImproved && !isConsistency && <span className="text-[10px] font-normal text-[#4B5563] ml-1">{unit}</span>}
                     </span>
@@ -300,21 +300,21 @@ const Leaderboard = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'} animate-fade-in`}>
-      <div className={embedded ? '' : 'mx-auto w-full max-w-[700px] px-5 md:px-8'}>
+      <div className={embedded ? '' : 'mx-auto w-full max-w-[680px] md:max-w-4xl px-5 md:px-8'}>
 
         {/* Title */}
         {!embedded && (
           <div className="pt-6 pb-5">
-            <h1 className="text-[24px] font-black text-[#E5E7EB] tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+            <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">
               Leaderboard
             </h1>
-            <p className="text-[12px] text-[#4B5563] mt-1">This week at your gym</p>
+            <p className="text-[14px] text-[#4B5563] mt-1">This week at your gym</p>
           </div>
         )}
 
         {/* ── Your Position Hero ── */}
         {myVolume && (
-          <div className="rounded-2xl bg-gradient-to-br from-[#0F172A] to-[#0F172A]/60 border border-white/[0.06] p-4 mb-4" style={{ boxShadow: '0 0 30px rgba(0,0,0,0.2)' }}>
+          <div className="rounded-2xl bg-gradient-to-br from-[#0F172A] to-[#0F172A]/60 border border-white/[0.06] p-5 mb-4" style={{ boxShadow: '0 0 30px rgba(0,0,0,0.2)' }}>
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 ring-2 ring-[#10B981]/20">
                 {profile?.avatar_url ? (
@@ -326,14 +326,14 @@ const Leaderboard = ({ embedded = false }) => {
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] text-[#6B7280] font-medium uppercase tracking-wider">Your Rank</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-[28px] font-black leading-none" style={{ color: ACCENT }}>#{myVolume.rank}</span>
+                  <span className="text-[28px] font-black leading-none" style={{ color: ACCENT, fontVariantNumeric: 'tabular-nums' }}>#{myVolume.rank}</span>
                   {myPct != null && (
                     <span className="text-[12px] font-semibold text-[#4B5563]">Top {Math.max(100 - myPct + 1, 1)}%</span>
                   )}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-[18px] font-bold text-[#E5E7EB]">{myVolume.entry.score?.toLocaleString()}</p>
+                <p className="text-[18px] font-bold text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>{myVolume.entry.score?.toLocaleString()}</p>
                 <p className="text-[10px] text-[#4B5563] mt-0.5">lbs this week</p>
               </div>
             </div>
@@ -341,7 +341,7 @@ const Leaderboard = ({ embedded = false }) => {
         )}
 
         {/* ── Category Cards ── */}
-        <div className="space-y-3">
+        <div className="space-y-6">
           <CategoryCard
             icon={BarChart2} iconColor="#3B82F6" title="Volume" subtitle="Total weight lifted"
             entries={volume.data} loading={volume.isLoading} userId={uid} unit="lbs"
@@ -382,14 +382,14 @@ const Leaderboard = ({ embedded = false }) => {
         {/* ── Highlights Feed ── */}
         {milestones.data && milestones.data.length > 0 && (
           <div className="mt-6">
-            <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider mb-3 px-1">Recent Highlights</p>
-            <div className="rounded-2xl bg-[#0F172A]/60 border border-white/[0.05] overflow-hidden">
-              <div className="px-3.5 py-2">
+            <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wider mb-3 px-1">Recent Highlights</p>
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+              <div className="px-5 py-2">
                 {milestones.data.slice(0, 5).map(entry => {
                   const cfg = MILESTONE_CFG[entry.type] ?? { icon: Sparkles, color: ACCENT, label: () => 'Milestone!' };
                   const MIcon = cfg.icon;
                   return (
-                    <div key={entry.id} className="flex items-center gap-3 py-2.5 border-b border-white/[0.03] last:border-0">
+                    <div key={entry.id} className="flex items-center gap-3 py-2.5 border-b border-white/[0.06] last:border-0">
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${cfg.color}10` }}>
                         <MIcon size={14} style={{ color: cfg.color }} />
                       </div>
