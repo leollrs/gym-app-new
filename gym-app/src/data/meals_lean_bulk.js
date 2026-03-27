@@ -2,7 +2,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r101',
     title: 'Chicken & Rice with Black Beans',
-    image: '/meals/chicken_and_rice_with_black_beans.png',
+    image: '/meals/chicken_and_rice_with_black_beans.jpg',
     calories: 620, protein: 50, carbs: 62, fat: 12, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'black_beans', 'olive_oil', 'garlic'],
@@ -11,7 +11,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r102',
     title: 'Salmon & Quinoa Power Bowl',
-    image: '/meals/salmon_and_quinoa_power_bowl.png',
+    image: '/meals/salmon_and_quinoa_power_bowl.jpg',
     calories: 660, protein: 48, carbs: 55, fat: 18, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'quinoa', 'spinach', 'avocado', 'lemon', 'olive_oil'],
@@ -20,7 +20,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r103',
     title: 'Turkey Meatball Pasta',
-    image: '/meals/turkey_meatball_pasta.png',
+    image: '/meals/turkey_meatball_pasta.jpg',
     calories: 680, protein: 52, carbs: 72, fat: 14, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'pasta', 'tomato_sauce', 'parmesan', 'garlic', 'onion'],
@@ -29,7 +29,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r104',
     title: 'Beef & Broccoli Stir-Fry with Rice',
-    image: '/meals/beef_and_broccoli_stir_fry_with_rice.png',
+    image: '/meals/beef_and_broccoli_stir_fry_with_rice.jpg',
     calories: 640, protein: 46, carbs: 60, fat: 16, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['lean_beef', 'broccoli', 'rice', 'soy_sauce', 'ginger', 'garlic', 'sesame_oil'],
@@ -38,7 +38,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r105',
     title: 'Chicken Shawarma Bowl',
-    image: '/meals/chicken_shawarma_bowl.png',
+    image: '/meals/chicken_shawarma_bowl.jpg',
     calories: 610, protein: 50, carbs: 55, fat: 14, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thigh', 'rice', 'cucumber', 'tomato', 'tzatziki', 'cumin', 'turmeric', 'paprika'],
@@ -47,7 +47,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r106',
     title: 'Korean Beef Bulgogi with Steamed Rice',
-    image: '/meals/korean_beef_bulgogi_with_steamed_rice.png',
+    image: '/meals/korean_beef_bulgogi_with_steamed_rice.jpg',
     calories: 650, protein: 48, carbs: 62, fat: 15, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['sirloin_beef', 'rice', 'soy_sauce', 'sesame_oil', 'garlic', 'ginger', 'green_onion', 'brown_sugar'],
@@ -56,7 +56,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r107',
     title: 'Chicken Tikka Masala with Basmati',
-    image: '/meals/chicken_tikka_masala_with_basmati.png',
+    image: '/meals/chicken_tikka_masala_with_basmati.jpg',
     calories: 670, protein: 52, carbs: 65, fat: 15, prepTime: 40,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'basmati_rice', 'tomato_sauce', 'greek_yogurt', 'garam_masala', 'cumin', 'ginger', 'garlic'],
@@ -65,7 +65,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r108',
     title: 'Greek Chicken Souvlaki Bowl',
-    image: '/meals/greek_chicken_souvlaki_bowl.png',
+    image: '/meals/greek_chicken_souvlaki_bowl.jpg',
     calories: 600, protein: 50, carbs: 52, fat: 13, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'tomato', 'cucumber', 'red_onion', 'feta_cheese', 'oregano', 'lemon'],
@@ -74,7 +74,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r109',
     title: 'Tuna & Sweet Potato Power Bowl',
-    image: '/meals/tuna_and_sweet_potato_power_bowl.png',
+    image: '/meals/tuna_and_sweet_potato_power_bowl.jpg',
     calories: 590, protein: 44, carbs: 60, fat: 10, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['tuna_steak', 'sweet_potato', 'spinach', 'olive_oil', 'lemon', 'garlic'],
@@ -83,7 +83,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r110',
     title: 'Turkey & Avocado Whole Wheat Wrap',
-    image: '/meals/turkey_and_avocado_whole_wheat_wrap.png',
+    image: '/meals/turkey_and_avocado_whole_wheat_wrap.jpg',
     calories: 580, protein: 42, carbs: 56, fat: 16, prepTime: 10,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['turkey_breast', 'whole_wheat_wrap', 'avocado', 'lettuce', 'tomato', 'mustard'],
@@ -92,7 +92,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r111',
     title: 'Teriyaki Chicken with Brown Rice',
-    image: '/meals/teriyaki_chicken_with_brown_rice.png',
+    image: '/meals/teriyaki_chicken_with_brown_rice.jpg',
     calories: 630, protein: 50, carbs: 68, fat: 10, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'brown_rice', 'soy_sauce', 'honey', 'ginger', 'garlic', 'sesame_seeds'],
@@ -101,7 +101,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r112',
     title: 'Lean Ground Beef Taco Bowl',
-    image: '/meals/lean_ground_beef_taco_bowl.png',
+    image: '/meals/lean_ground_beef_taco_bowl.jpg',
     calories: 640, protein: 48, carbs: 58, fat: 16, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['lean_ground_beef', 'rice', 'black_beans', 'salsa', 'greek_yogurt', 'taco_seasoning', 'corn'],
@@ -110,7 +110,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r113',
     title: 'Salmon Teriyaki Rice Bowl',
-    image: '/meals/salmon_teriyaki_rice_bowl.png',
+    image: '/meals/salmon_teriyaki_rice_bowl.jpg',
     calories: 660, protein: 48, carbs: 60, fat: 18, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'rice', 'teriyaki_sauce', 'edamame', 'cucumber', 'sesame_seeds'],
@@ -119,7 +119,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r114',
     title: 'Chicken Pesto Pasta',
-    image: '/meals/chicken_pesto_pasta.png',
+    image: '/meals/chicken_pesto_pasta.jpg',
     calories: 690, protein: 52, carbs: 70, fat: 17, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'pasta', 'pesto', 'cherry_tomatoes', 'parmesan', 'olive_oil'],
@@ -128,7 +128,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r115',
     title: 'Lentil & Chicken Soup',
-    image: '/meals/lentil_and_chicken_soup.png',
+    image: '/meals/lentil_and_chicken_soup.jpg',
     calories: 560, protein: 44, carbs: 58, fat: 10, prepTime: 40,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'lentils', 'carrots', 'celery', 'onion', 'garlic', 'chicken_broth', 'cumin'],
@@ -137,7 +137,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r116',
     title: 'Shrimp Fried Rice',
-    image: '/meals/shrimp_fried_rice.png',
+    image: '/meals/shrimp_fried_rice.jpg',
     calories: 600, protein: 42, carbs: 65, fat: 12, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['shrimp', 'cooked_rice', 'eggs', 'peas', 'carrots', 'soy_sauce', 'sesame_oil', 'green_onion'],
@@ -146,7 +146,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r117',
     title: 'Baked Cod with Roasted Potatoes & Asparagus',
-    image: '/meals/baked_cod_with_roasted_potatoes_and_asparagus.png',
+    image: '/meals/baked_cod_with_roasted_potatoes_and_asparagus.jpg',
     calories: 570, protein: 46, carbs: 52, fat: 11, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['cod_fillet', 'baby_potatoes', 'asparagus', 'olive_oil', 'lemon', 'garlic', 'paprika'],
@@ -155,7 +155,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r118',
     title: 'Chicken & Sweet Potato Hash',
-    image: '/meals/chicken_and_sweet_potato_hash.png',
+    image: '/meals/chicken_and_sweet_potato_hash.jpg',
     calories: 610, protein: 50, carbs: 55, fat: 13, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'sweet_potato', 'bell_pepper', 'onion', 'olive_oil', 'paprika', 'cumin'],
@@ -164,7 +164,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r119',
     title: 'Beef & Vegetable Stew with Crusty Bread',
-    image: '/meals/beef_and_vegetable_stew_with_crusty_bread.png',
+    image: '/meals/beef_and_vegetable_stew_with_crusty_bread.jpg',
     calories: 680, protein: 46, carbs: 62, fat: 18, prepTime: 50,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['lean_beef', 'potatoes', 'carrots', 'celery', 'tomato_paste', 'beef_broth', 'thyme', 'whole_wheat_bread'],
@@ -173,7 +173,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r120',
     title: 'Ground Turkey Stuffed Bell Peppers',
-    image: '/meals/ground_turkey_stuffed_bell_peppers.png',
+    image: '/meals/ground_turkey_stuffed_bell_peppers.jpg',
     calories: 590, protein: 48, carbs: 50, fat: 13, prepTime: 40,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'bell_peppers', 'rice', 'tomato_sauce', 'onion', 'garlic', 'mozzarella'],
@@ -182,7 +182,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r121',
     title: 'Thai Basil Chicken with Jasmine Rice',
-    image: '/meals/thai_basil_chicken_with_jasmine_rice.png',
+    image: '/meals/thai_basil_chicken_with_jasmine_rice.jpg',
     calories: 620, protein: 50, carbs: 60, fat: 13, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_chicken', 'jasmine_rice', 'thai_basil', 'fish_sauce', 'oyster_sauce', 'chili', 'garlic'],
@@ -191,7 +191,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r122',
     title: 'Seared Tuna Niçoise Salad',
-    image: '/meals/seared_tuna_ni_oise_salad.png',
+    image: '/meals/seared_tuna_ni_oise_salad.jpg',
     calories: 560, protein: 50, carbs: 44, fat: 14, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['tuna_steak', 'eggs', 'baby_potatoes', 'green_beans', 'olives', 'dijon_mustard', 'olive_oil', 'lemon'],
@@ -200,7 +200,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r123',
     title: 'Chicken & Chickpea Curry',
-    image: '/meals/chicken_and_chickpea_curry.png',
+    image: '/meals/chicken_and_chickpea_curry.jpg',
     calories: 650, protein: 50, carbs: 62, fat: 14, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'chickpeas', 'basmati_rice', 'coconut_milk', 'curry_powder', 'onion', 'garlic', 'ginger'],
@@ -209,7 +209,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r124',
     title: 'Lean Beef & Mushroom Stir-Fry',
-    image: '/meals/lean_beef_and_mushroom_stir_fry.png',
+    image: '/meals/lean_beef_and_mushroom_stir_fry.jpg',
     calories: 630, protein: 48, carbs: 56, fat: 16, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['sirloin_beef', 'mushrooms', 'rice', 'soy_sauce', 'oyster_sauce', 'garlic', 'ginger', 'green_onion'],
@@ -218,7 +218,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r125',
     title: 'Egg White & Oat Protein Pancakes',
-    image: '/meals/egg_white_and_oat_protein_pancakes.png',
+    image: '/meals/egg_white_and_oat_protein_pancakes.jpg',
     calories: 550, protein: 40, carbs: 60, fat: 10, prepTime: 15,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'oats', 'banana', 'protein_powder', 'almond_milk', 'vanilla', 'honey'],
@@ -227,7 +227,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r126',
     title: 'Moroccan Chicken Tagine with Couscous',
-    image: '/meals/moroccan_chicken_tagine_with_couscous.png',
+    image: '/meals/moroccan_chicken_tagine_with_couscous.jpg',
     calories: 650, protein: 52, carbs: 66, fat: 13, prepTime: 45,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'couscous', 'chickpeas', 'tomatoes', 'ras_el_hanout', 'onion', 'cinnamon', 'lemon'],
@@ -236,7 +236,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r127',
     title: 'Chicken Caesar Grain Bowl',
-    image: '/meals/chicken_caesar_grain_bowl.png',
+    image: '/meals/chicken_caesar_grain_bowl.jpg',
     calories: 620, protein: 52, carbs: 58, fat: 14, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'farro', 'romaine', 'parmesan', 'caesar_dressing', 'croutons', 'lemon'],
@@ -245,7 +245,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r128',
     title: 'Pulled Chicken & Brown Rice Bowl',
-    image: '/meals/pulled_chicken_and_brown_rice_bowl.png',
+    image: '/meals/pulled_chicken_and_brown_rice_bowl.jpg',
     calories: 600, protein: 52, carbs: 60, fat: 10, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'brown_rice', 'black_beans', 'salsa', 'lime', 'cumin', 'chili_powder'],
@@ -254,7 +254,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r129',
     title: 'Salmon & Lentil Bowl',
-    image: '/meals/salmon_and_lentil_bowl.png',
+    image: '/meals/salmon_and_lentil_bowl.jpg',
     calories: 640, protein: 50, carbs: 52, fat: 18, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'green_lentils', 'kale', 'lemon', 'olive_oil', 'garlic', 'dijon_mustard'],
@@ -263,7 +263,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r130',
     title: 'Turkey & Quinoa Stuffed Zucchini',
-    image: '/meals/turkey_and_quinoa_stuffed_zucchini.png',
+    image: '/meals/turkey_and_quinoa_stuffed_zucchini.jpg',
     calories: 570, protein: 46, carbs: 50, fat: 13, prepTime: 40,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'zucchini', 'quinoa', 'tomato', 'onion', 'garlic', 'italian_seasoning', 'mozzarella'],
@@ -272,7 +272,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r131',
     title: 'Chicken Fajita Bowl',
-    image: '/meals/chicken_fajita_bowl.png',
+    image: '/meals/chicken_fajita_bowl.jpg',
     calories: 630, protein: 50, carbs: 62, fat: 14, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'bell_peppers', 'onion', 'black_beans', 'cumin', 'lime', 'salsa'],
@@ -281,7 +281,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r132',
     title: 'Baked Turkey Meatloaf with Mashed Potato',
-    image: '/meals/baked_turkey_meatloaf_with_mashed_potato.png',
+    image: '/meals/baked_turkey_meatloaf_with_mashed_potato.jpg',
     calories: 700, protein: 54, carbs: 62, fat: 18, prepTime: 50,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'potatoes', 'egg', 'breadcrumbs', 'ketchup', 'onion', 'garlic', 'milk'],
@@ -290,7 +290,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r133',
     title: 'Shrimp & Avocado Protein Wrap',
-    image: '/meals/shrimp_and_avocado_protein_wrap.png',
+    image: '/meals/shrimp_and_avocado_protein_wrap.jpg',
     calories: 570, protein: 44, carbs: 52, fat: 16, prepTime: 15,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['shrimp', 'whole_wheat_wrap', 'avocado', 'lettuce', 'tomato', 'lime', 'cilantro', 'greek_yogurt'],
@@ -299,7 +299,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r134',
     title: 'Chicken & Brown Rice Meal Prep Bowl',
-    image: '/meals/chicken_and_brown_rice_meal_prep_bowl.png',
+    image: '/meals/chicken_and_brown_rice_meal_prep_bowl.jpg',
     calories: 610, protein: 54, carbs: 60, fat: 11, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'brown_rice', 'broccoli', 'olive_oil', 'garlic', 'lemon', 'salt', 'pepper'],
@@ -308,7 +308,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r135',
     title: 'Pork Tenderloin with Roasted Veggies',
-    image: '/meals/pork_tenderloin_with_roasted_veggies.png',
+    image: '/meals/pork_tenderloin_with_roasted_veggies.jpg',
     calories: 620, protein: 50, carbs: 48, fat: 16, prepTime: 40,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['pork_tenderloin', 'sweet_potato', 'brussels_sprouts', 'olive_oil', 'rosemary', 'garlic', 'dijon_mustard'],
@@ -317,7 +317,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r136',
     title: 'Tuna Pasta Salad with Chickpeas',
-    image: '/meals/tuna_pasta_salad_with_chickpeas.png',
+    image: '/meals/tuna_pasta_salad_with_chickpeas.jpg',
     calories: 600, protein: 46, carbs: 70, fat: 11, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'pasta', 'chickpeas', 'cherry_tomatoes', 'cucumber', 'olive_oil', 'lemon', 'parsley'],
@@ -326,7 +326,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r137',
     title: 'Spiced Lamb & Couscous Bowl',
-    image: '/meals/spiced_lamb_and_couscous_bowl.png',
+    image: '/meals/spiced_lamb_and_couscous_bowl.jpg',
     calories: 700, protein: 50, carbs: 64, fat: 20, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_lamb', 'couscous', 'cucumber', 'tomato', 'mint', 'cumin', 'coriander', 'lemon', 'tzatziki'],
@@ -335,7 +335,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r138',
     title: 'Chicken & Black Bean Enchilada Bowl',
-    image: '/meals/chicken_and_black_bean_enchilada_bowl.png',
+    image: '/meals/chicken_and_black_bean_enchilada_bowl.jpg',
     calories: 640, protein: 52, carbs: 60, fat: 14, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'black_beans', 'enchilada_sauce', 'corn', 'cheddar_cheese', 'cilantro', 'lime'],
@@ -344,7 +344,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r139',
     title: 'Japanese Chicken Donburi',
-    image: '/meals/japanese_chicken_donburi.png',
+    image: '/meals/japanese_chicken_donburi.jpg',
     calories: 620, protein: 48, carbs: 65, fat: 12, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thigh', 'rice', 'eggs', 'onion', 'soy_sauce', 'mirin', 'dashi', 'green_onion'],
@@ -353,7 +353,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r140',
     title: 'Beef & Bean Chili',
-    image: '/meals/beef_and_bean_chili.png',
+    image: '/meals/beef_and_bean_chili.jpg',
     calories: 660, protein: 52, carbs: 58, fat: 16, prepTime: 45,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['lean_ground_beef', 'kidney_beans', 'black_beans', 'tomatoes', 'onion', 'garlic', 'chili_powder', 'cumin'],
@@ -362,7 +362,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r141',
     title: 'Grilled Chicken with Tabbouleh',
-    image: '/meals/grilled_chicken_with_tabbouleh.png',
+    image: '/meals/grilled_chicken_with_tabbouleh.jpg',
     calories: 590, protein: 52, carbs: 52, fat: 12, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'bulgur_wheat', 'parsley', 'tomato', 'cucumber', 'lemon', 'olive_oil', 'mint'],
@@ -371,7 +371,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r142',
     title: 'Smoked Salmon & Cream Cheese Bagel Plate',
-    image: '/meals/smoked_salmon_and_cream_cheese_bagel_plate.png',
+    image: '/meals/smoked_salmon_and_cream_cheese_bagel_plate.jpg',
     calories: 580, protein: 42, carbs: 62, fat: 16, prepTime: 10,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['smoked_salmon', 'whole_grain_bagel', 'cream_cheese', 'capers', 'red_onion', 'cucumber', 'lemon'],
@@ -380,7 +380,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r143',
     title: 'Vietnamese Pho-Style Chicken Noodle Soup',
-    image: '/meals/vietnamese_pho_style_chicken_noodle_soup.png',
+    image: '/meals/vietnamese_pho_style_chicken_noodle_soup.jpg',
     calories: 580, protein: 48, carbs: 60, fat: 10, prepTime: 35,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'rice_noodles', 'chicken_broth', 'bean_sprouts', 'basil', 'lime', 'star_anise', 'ginger'],
@@ -389,7 +389,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r144',
     title: 'High-Protein Chicken Burrito Bowl',
-    image: '/meals/high_protein_chicken_burrito_bowl.png',
+    image: '/meals/high_protein_chicken_burrito_bowl.jpg',
     calories: 700, protein: 55, carbs: 68, fat: 15, prepTime: 25,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'black_beans', 'corn', 'guacamole', 'salsa', 'cheddar_cheese', 'lime'],
@@ -398,7 +398,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r145',
     title: 'Soba Noodle Bowl with Edamame & Tofu',
-    image: '/meals/soba_noodle_bowl_with_edamame_and_tofu.png',
+    image: '/meals/soba_noodle_bowl_with_edamame_and_tofu.jpg',
     calories: 560, protein: 40, carbs: 66, fat: 12, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['soba_noodles', 'firm_tofu', 'edamame', 'soy_sauce', 'sesame_oil', 'ginger', 'cucumber', 'sesame_seeds'],
@@ -407,7 +407,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r146',
     title: 'Chicken & Spinach Stuffed Sweet Potato',
-    image: '/meals/chicken_and_spinach_stuffed_sweet_potato.png',
+    image: '/meals/chicken_and_spinach_stuffed_sweet_potato.jpg',
     calories: 600, protein: 48, carbs: 60, fat: 12, prepTime: 50,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'sweet_potato', 'spinach', 'greek_yogurt', 'garlic', 'lemon', 'paprika'],
@@ -416,7 +416,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r147',
     title: 'Turkey & Hummus Protein Wrap',
-    image: '/meals/turkey_and_hummus_protein_wrap.png',
+    image: '/meals/turkey_and_hummus_protein_wrap.jpg',
     calories: 570, protein: 46, carbs: 54, fat: 14, prepTime: 10,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['turkey_breast', 'whole_wheat_wrap', 'hummus', 'roasted_red_pepper', 'spinach', 'cucumber', 'feta_cheese'],
@@ -425,7 +425,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r148',
     title: 'Chicken & Egg Fried Rice',
-    image: '/meals/chicken_and_egg_fried_rice.png',
+    image: '/meals/chicken_and_egg_fried_rice.jpg',
     calories: 650, protein: 52, carbs: 68, fat: 14, prepTime: 20,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'cooked_rice', 'eggs', 'peas', 'carrots', 'soy_sauce', 'sesame_oil', 'garlic'],
@@ -434,7 +434,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r149',
     title: 'Grilled Salmon with Asparagus & Wild Rice',
-    image: '/meals/grilled_salmon_with_asparagus_and_wild_rice.png',
+    image: '/meals/grilled_salmon_with_asparagus_and_wild_rice.jpg',
     calories: 660, protein: 50, carbs: 54, fat: 20, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'wild_rice', 'asparagus', 'lemon', 'olive_oil', 'garlic', 'dill'],
@@ -443,7 +443,7 @@ export const MEALS_LEAN_BULK = [
   {
     id: 'r150',
     title: 'Beef Kofta with Hummus & Pita',
-    image: '/meals/beef_kofta_with_hummus_and_pita.png',
+    image: '/meals/beef_kofta_with_hummus_and_pita.jpg',
     calories: 680, protein: 50, carbs: 58, fat: 20, prepTime: 30,
     tag: 'Lean Bulk', category: 'lean_bulk', difficulty: 'Medium', serves: 1,
     ingredients: ['lean_ground_beef', 'whole_wheat_pita', 'hummus', 'parsley', 'onion', 'cumin', 'coriander', 'tomato', 'cucumber'],

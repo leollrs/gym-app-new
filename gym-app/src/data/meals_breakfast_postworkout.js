@@ -3,7 +3,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r251',
     title: 'Classic Scrambled Eggs & Toast',
-    image: '/meals/classic_scrambled_eggs_and_toast.png',
+    image: '/meals/classic_scrambled_eggs_and_toast.jpg',
     calories: 380, protein: 22, carbs: 32, fat: 14, prepTime: 10,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'whole_grain_bread', 'butter', 'salt', 'pepper'],
@@ -12,7 +12,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r252',
     title: 'Avocado Toast with Poached Eggs',
-    image: '/meals/avocado_toast_with_poached_eggs.png',
+    image: '/meals/avocado_toast_with_poached_eggs.jpg',
     calories: 420, protein: 18, carbs: 36, fat: 22, prepTime: 15,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 1,
     ingredients: ['sourdough_bread', 'avocado', 'eggs', 'lemon_juice', 'chili_flakes', 'salt'],
@@ -21,7 +21,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r253',
     title: 'Overnight Oats with PB & Banana',
-    image: '/meals/overnight_oats_with_pb_and_banana.png',
+    image: '/meals/overnight_oats_with_pb_and_banana.jpg',
     calories: 440, protein: 16, carbs: 58, fat: 14, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'almond_milk', 'peanut_butter', 'banana', 'chia_seeds', 'honey'],
@@ -30,7 +30,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r254',
     title: 'Greek Yogurt Parfait',
-    image: '/meals/greek_yogurt_parfait.png',
+    image: '/meals/greek_yogurt_parfait.jpg',
     calories: 340, protein: 24, carbs: 42, fat: 6, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'granola', 'mixed_berries', 'honey', 'chia_seeds'],
@@ -39,7 +39,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r255',
     title: 'Protein Pancakes',
-    image: '/meals/protein_pancakes.png',
+    image: '/meals/protein_pancakes.jpg',
     calories: 460, protein: 34, carbs: 48, fat: 10, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['protein_powder', 'oat_flour', 'eggs', 'almond_milk', 'baking_powder', 'vanilla_extract', 'maple_syrup'],
@@ -48,7 +48,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r256',
     title: 'French Toast',
-    image: '/meals/french_toast.png',
+    image: '/meals/french_toast.jpg',
     calories: 410, protein: 18, carbs: 50, fat: 14, prepTime: 15,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['brioche_bread', 'eggs', 'milk', 'cinnamon', 'vanilla_extract', 'maple_syrup', 'butter'],
@@ -57,7 +57,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r257',
     title: 'Smoked Salmon Bagel',
-    image: '/meals/smoked_salmon_bagel.png',
+    image: '/meals/smoked_salmon_bagel.jpg',
     calories: 480, protein: 28, carbs: 48, fat: 16, prepTime: 10,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['bagel', 'cream_cheese', 'smoked_salmon', 'red_onion', 'capers', 'dill', 'lemon'],
@@ -66,7 +66,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r258',
     title: 'Breakfast Burrito',
-    image: '/meals/breakfast_burrito.png',
+    image: '/meals/breakfast_burrito.jpg',
     calories: 520, protein: 30, carbs: 44, fat: 22, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 1,
     ingredients: ['flour_tortilla', 'eggs', 'black_beans', 'cheddar_cheese', 'salsa', 'avocado', 'bell_pepper', 'onion'],
@@ -75,7 +75,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r259',
     title: 'Veggie Frittata',
-    image: '/meals/veggie_frittata.png',
+    image: '/meals/veggie_frittata.jpg',
     calories: 360, protein: 26, carbs: 14, fat: 22, prepTime: 25,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['eggs', 'spinach', 'cherry_tomatoes', 'feta_cheese', 'onion', 'olive_oil', 'salt', 'pepper'],
@@ -84,7 +84,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r260',
     title: 'Banana Oat Pancakes',
-    image: '/meals/banana_oat_pancakes.png',
+    image: '/meals/banana_oat_pancakes.jpg',
     calories: 390, protein: 14, carbs: 58, fat: 10, prepTime: 15,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['ripe_banana', 'rolled_oats', 'eggs', 'baking_powder', 'cinnamon', 'vanilla_extract'],
@@ -93,7 +93,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r261',
     title: 'Chia Seed Pudding',
-    image: '/meals/chia_seed_pudding.png',
+    image: '/meals/chia_seed_pudding.jpg',
     calories: 310, protein: 12, carbs: 36, fat: 14, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['chia_seeds', 'coconut_milk', 'honey', 'vanilla_extract', 'mixed_berries', 'granola'],
@@ -102,7 +102,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r262',
     title: 'Acai Bowl',
-    image: '/meals/acai_bowl.png',
+    image: '/meals/acai_bowl.jpg',
     calories: 420, protein: 12, carbs: 62, fat: 14, prepTime: 10,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['acai_puree', 'frozen_banana', 'almond_milk', 'granola', 'fresh_berries', 'coconut_flakes', 'honey'],
@@ -111,7 +111,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r263',
     title: 'Waffle with Protein Topping',
-    image: '/meals/waffle_with_protein_topping.png',
+    image: '/meals/waffle_with_protein_topping.jpg',
     calories: 500, protein: 30, carbs: 54, fat: 16, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['waffle_mix', 'protein_powder', 'eggs', 'almond_milk', 'greek_yogurt', 'berries', 'maple_syrup'],
@@ -120,7 +120,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r264',
     title: 'Ham & Cheese Omelette',
-    image: '/meals/ham_and_cheese_omelette.png',
+    image: '/meals/ham_and_cheese_omelette.jpg',
     calories: 400, protein: 30, carbs: 6, fat: 28, prepTime: 12,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'ham', 'cheddar_cheese', 'butter', 'chives', 'salt', 'pepper'],
@@ -129,7 +129,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r265',
     title: 'Steel-Cut Oats with Walnuts',
-    image: '/meals/steel_cut_oats_with_walnuts.png',
+    image: '/meals/steel_cut_oats_with_walnuts.jpg',
     calories: 380, protein: 14, carbs: 52, fat: 14, prepTime: 30,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['steel_cut_oats', 'water', 'walnuts', 'honey', 'cinnamon', 'banana', 'almond_milk'],
@@ -138,7 +138,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r266',
     title: 'High-Protein Oatmeal',
-    image: '/meals/high_protein_oatmeal.png',
+    image: '/meals/high_protein_oatmeal.jpg',
     calories: 430, protein: 28, carbs: 50, fat: 10, prepTime: 10,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'protein_powder', 'almond_milk', 'peanut_butter', 'banana', 'chia_seeds'],
@@ -147,7 +147,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r267',
     title: 'Shakshuka',
-    image: '/meals/shakshuka.png',
+    image: '/meals/shakshuka.jpg',
     calories: 350, protein: 22, carbs: 28, fat: 16, prepTime: 25,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['eggs', 'crushed_tomatoes', 'bell_pepper', 'onion', 'garlic', 'cumin', 'paprika', 'olive_oil', 'feta_cheese', 'pita_bread'],
@@ -156,7 +156,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r268',
     title: 'Blueberry Protein Muffins',
-    image: '/meals/blueberry_protein_muffins.png',
+    image: '/meals/blueberry_protein_muffins.jpg',
     calories: 290, protein: 18, carbs: 32, fat: 8, prepTime: 30,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 6,
     ingredients: ['oat_flour', 'protein_powder', 'blueberries', 'eggs', 'greek_yogurt', 'honey', 'baking_powder', 'vanilla_extract'],
@@ -165,7 +165,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r269',
     title: 'Green Protein Smoothie',
-    image: '/meals/green_protein_smoothie.png',
+    image: '/meals/green_protein_smoothie.jpg',
     calories: 320, protein: 26, carbs: 38, fat: 6, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['spinach', 'banana', 'protein_powder', 'almond_milk', 'almond_butter', 'chia_seeds', 'ice'],
@@ -174,7 +174,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r270',
     title: 'Full Breakfast Skillet',
-    image: '/meals/full_breakfast_skillet.png',
+    image: '/meals/full_breakfast_skillet.jpg',
     calories: 580, protein: 34, carbs: 30, fat: 34, prepTime: 25,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['eggs', 'turkey_sausage', 'potatoes', 'bell_pepper', 'onion', 'cheddar_cheese', 'olive_oil', 'salt', 'pepper', 'paprika'],
@@ -183,7 +183,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r271',
     title: 'Quinoa Breakfast Bowl',
-    image: '/meals/quinoa_breakfast_bowl.png',
+    image: '/meals/quinoa_breakfast_bowl.jpg',
     calories: 390, protein: 18, carbs: 54, fat: 10, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['quinoa', 'almond_milk', 'berries', 'honey', 'almonds', 'cinnamon', 'vanilla_extract'],
@@ -192,7 +192,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r272',
     title: 'Sweet Potato Hash',
-    image: '/meals/sweet_potato_hash.png',
+    image: '/meals/sweet_potato_hash.jpg',
     calories: 410, protein: 20, carbs: 48, fat: 14, prepTime: 25,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['sweet_potato', 'eggs', 'onion', 'bell_pepper', 'olive_oil', 'garlic', 'cumin', 'paprika', 'salt', 'pepper'],
@@ -201,7 +201,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r273',
     title: 'Spinach & Mushroom Crepes',
-    image: '/meals/spinach_and_mushroom_crepes.png',
+    image: '/meals/spinach_and_mushroom_crepes.jpg',
     calories: 360, protein: 20, carbs: 38, fat: 14, prepTime: 30,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['flour', 'eggs', 'milk', 'butter', 'spinach', 'mushrooms', 'ricotta_cheese', 'garlic', 'salt', 'pepper'],
@@ -210,7 +210,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r274',
     title: 'Protein Waffles',
-    image: '/meals/protein_waffles.png',
+    image: '/meals/protein_waffles.jpg',
     calories: 480, protein: 36, carbs: 44, fat: 14, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['protein_powder', 'oat_flour', 'eggs', 'almond_milk', 'baking_powder', 'vanilla_extract', 'greek_yogurt', 'berries'],
@@ -219,7 +219,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r275',
     title: 'Eggs Benedict',
-    image: '/meals/eggs_benedict.png',
+    image: '/meals/eggs_benedict.jpg',
     calories: 540, protein: 28, carbs: 32, fat: 30, prepTime: 25,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Hard', serves: 2,
     ingredients: ['english_muffin', 'eggs', 'canadian_bacon', 'butter', 'egg_yolks', 'lemon_juice', 'cayenne'],
@@ -228,7 +228,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r276',
     title: 'Granola & Milk Bowl',
-    image: '/meals/granola_and_milk_bowl.png',
+    image: '/meals/granola_and_milk_bowl.jpg',
     calories: 340, protein: 12, carbs: 52, fat: 10, prepTime: 3,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['granola', 'whole_milk', 'fresh_berries', 'banana', 'honey'],
@@ -237,7 +237,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r277',
     title: 'Bircher Muesli',
-    image: '/meals/bircher_muesli.png',
+    image: '/meals/bircher_muesli.jpg',
     calories: 370, protein: 14, carbs: 54, fat: 10, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'apple', 'yogurt', 'lemon_juice', 'honey', 'mixed_nuts', 'raisins'],
@@ -246,7 +246,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r278',
     title: 'Almond Flour Pancakes',
-    image: '/meals/almond_flour_pancakes.png',
+    image: '/meals/almond_flour_pancakes.jpg',
     calories: 380, protein: 18, carbs: 24, fat: 22, prepTime: 15,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 2,
     ingredients: ['almond_flour', 'eggs', 'almond_milk', 'baking_powder', 'vanilla_extract', 'maple_syrup', 'berries'],
@@ -255,7 +255,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r279',
     title: 'Smashed Avo on Sourdough',
-    image: '/meals/smashed_avo_on_sourdough.png',
+    image: '/meals/smashed_avo_on_sourdough.jpg',
     calories: 400, protein: 10, carbs: 42, fat: 22, prepTime: 8,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['sourdough_bread', 'avocado', 'lemon_juice', 'olive_oil', 'chili_flakes', 'sea_salt', 'everything_bagel_seasoning'],
@@ -264,7 +264,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r280',
     title: 'Peanut Butter Banana Toast',
-    image: '/meals/peanut_butter_banana_toast.png',
+    image: '/meals/peanut_butter_banana_toast.jpg',
     calories: 420, protein: 16, carbs: 52, fat: 16, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_grain_bread', 'peanut_butter', 'banana', 'honey', 'chia_seeds', 'cinnamon'],
@@ -273,7 +273,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r281',
     title: 'Eggs en Cocotte',
-    image: '/meals/eggs_en_cocotte.png',
+    image: '/meals/eggs_en_cocotte.jpg',
     calories: 340, protein: 22, carbs: 8, fat: 24, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['eggs', 'heavy_cream', 'gruyere_cheese', 'fresh_thyme', 'butter', 'salt', 'pepper', 'crusty_bread'],
@@ -282,7 +282,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r282',
     title: 'Skyr & Berries Bowl',
-    image: '/meals/skyr_and_berries_bowl.png',
+    image: '/meals/skyr_and_berries_bowl.jpg',
     calories: 280, protein: 26, carbs: 34, fat: 4, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['skyr', 'mixed_berries', 'honey', 'granola', 'flaxseeds'],
@@ -291,7 +291,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r283',
     title: 'Chocolate Protein Oats',
-    image: '/meals/chocolate_protein_oats.png',
+    image: '/meals/chocolate_protein_oats.jpg',
     calories: 440, protein: 32, carbs: 50, fat: 10, prepTime: 10,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'chocolate_protein_powder', 'almond_milk', 'cocoa_powder', 'banana', 'almond_butter', 'dark_chocolate_chips'],
@@ -300,7 +300,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r284',
     title: 'Turkey Sausage Egg Biscuit',
-    image: '/meals/turkey_sausage_egg_biscuit.png',
+    image: '/meals/turkey_sausage_egg_biscuit.jpg',
     calories: 490, protein: 32, carbs: 42, fat: 18, prepTime: 20,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Medium', serves: 2,
     ingredients: ['whole_wheat_biscuits', 'turkey_sausage_patty', 'eggs', 'cheddar_cheese', 'hot_sauce', 'butter'],
@@ -309,7 +309,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r285',
     title: 'Coconut Yogurt Parfait',
-    image: '/meals/coconut_yogurt_parfait.png',
+    image: '/meals/coconut_yogurt_parfait.jpg',
     calories: 360, protein: 10, carbs: 48, fat: 14, prepTime: 5,
     tag: 'Breakfast', category: 'breakfast', difficulty: 'Easy', serves: 1,
     ingredients: ['coconut_yogurt', 'granola', 'mango', 'pineapple', 'coconut_flakes', 'passion_fruit', 'honey'],
@@ -320,7 +320,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r286',
     title: 'Whey Shake & Banana',
-    image: '/meals/whey_shake_and_banana.png',
+    image: '/meals/whey_shake_and_banana.jpg',
     calories: 380, protein: 32, carbs: 44, fat: 4, prepTime: 2,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['protein_powder', 'banana', 'almond_milk'],
@@ -329,7 +329,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r287',
     title: 'Chocolate Milk Recovery',
-    image: '/meals/chocolate_milk_recovery.png',
+    image: '/meals/chocolate_milk_recovery.jpg',
     calories: 300, protein: 16, carbs: 42, fat: 6, prepTime: 2,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_milk', 'cocoa_powder', 'honey', 'vanilla_extract', 'salt'],
@@ -338,7 +338,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r288',
     title: 'Rice Cakes with Honey',
-    image: '/meals/rice_cakes_with_honey.png',
+    image: '/meals/rice_cakes_with_honey.jpg',
     calories: 260, protein: 8, carbs: 50, fat: 2, prepTime: 3,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['rice_cakes', 'honey', 'peanut_butter', 'banana'],
@@ -347,7 +347,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r289',
     title: 'Post-Workout Recovery Smoothie',
-    image: '/meals/post_workout_recovery_smoothie.png',
+    image: '/meals/post_workout_recovery_smoothie.jpg',
     calories: 420, protein: 30, carbs: 52, fat: 8, prepTime: 5,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['protein_powder', 'frozen_banana', 'frozen_mango', 'orange_juice', 'greek_yogurt', 'ginger'],
@@ -356,7 +356,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r290',
     title: 'White Rice & Chicken',
-    image: '/meals/white_rice_and_chicken.png',
+    image: '/meals/white_rice_and_chicken.jpg',
     calories: 480, protein: 42, carbs: 52, fat: 8, prepTime: 20,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['white_rice', 'chicken_breast', 'soy_sauce', 'garlic', 'ginger', 'sesame_oil', 'green_onions'],
@@ -365,7 +365,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r291',
     title: 'Egg White & Oatmeal Bowl',
-    image: '/meals/egg_white_and_oatmeal_bowl.png',
+    image: '/meals/egg_white_and_oatmeal_bowl.jpg',
     calories: 370, protein: 28, carbs: 48, fat: 6, prepTime: 10,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'egg_whites', 'almond_milk', 'honey', 'cinnamon', 'berries'],
@@ -374,7 +374,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r292',
     title: 'Tuna Rice Cake Stack',
-    image: '/meals/tuna_rice_cake_stack.png',
+    image: '/meals/tuna_rice_cake_stack.jpg',
     calories: 290, protein: 30, carbs: 28, fat: 4, prepTime: 5,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['rice_cakes', 'canned_tuna', 'dijon_mustard', 'lemon_juice', 'cucumber', 'salt', 'pepper'],
@@ -383,7 +383,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r293',
     title: 'Recovery Shake with Creatine',
-    image: '/meals/recovery_shake_with_creatine.png',
+    image: '/meals/recovery_shake_with_creatine.jpg',
     calories: 350, protein: 34, carbs: 38, fat: 4, prepTime: 3,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['whey_protein', 'creatine_monohydrate', 'dextrose', 'water', 'banana'],
@@ -392,7 +392,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r294',
     title: 'Grilled Chicken & Jasmine Rice',
-    image: '/meals/grilled_chicken_and_jasmine_rice.png',
+    image: '/meals/grilled_chicken_and_jasmine_rice.jpg',
     calories: 500, protein: 44, carbs: 54, fat: 8, prepTime: 25,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'jasmine_rice', 'olive_oil', 'garlic_powder', 'paprika', 'salt', 'pepper', 'lemon'],
@@ -401,7 +401,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r295',
     title: 'Cottage Cheese Recovery Bowl',
-    image: '/meals/cottage_cheese_recovery_bowl.png',
+    image: '/meals/cottage_cheese_recovery_bowl.jpg',
     calories: 310, protein: 28, carbs: 36, fat: 6, prepTime: 5,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['cottage_cheese', 'pineapple', 'honey', 'granola', 'flaxseeds'],
@@ -410,7 +410,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r296',
     title: 'Banana & PB Protein Toast',
-    image: '/meals/banana_and_pb_protein_toast.png',
+    image: '/meals/banana_and_pb_protein_toast.jpg',
     calories: 430, protein: 26, carbs: 48, fat: 14, prepTime: 5,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_grain_bread', 'peanut_butter', 'banana', 'protein_powder', 'honey'],
@@ -419,7 +419,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r297',
     title: 'Greek Yogurt & Granola Post-Workout',
-    image: '/meals/greek_yogurt_and_granola_post_workout.png',
+    image: '/meals/greek_yogurt_and_granola_post_workout.jpg',
     calories: 380, protein: 26, carbs: 48, fat: 8, prepTime: 5,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'granola', 'banana', 'honey', 'protein_powder'],
@@ -428,7 +428,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r298',
     title: 'Sweet Potato & Turkey Bowl',
-    image: '/meals/sweet_potato_and_turkey_bowl.png',
+    image: '/meals/sweet_potato_and_turkey_bowl.jpg',
     calories: 460, protein: 36, carbs: 50, fat: 8, prepTime: 30,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Medium', serves: 1,
     ingredients: ['sweet_potato', 'ground_turkey', 'olive_oil', 'garlic', 'cumin', 'paprika', 'salt', 'pepper', 'spinach'],
@@ -437,7 +437,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r299',
     title: 'Cherry Juice & Protein Shot',
-    image: '/meals/cherry_juice_and_protein_shot.png',
+    image: '/meals/cherry_juice_and_protein_shot.jpg',
     calories: 290, protein: 26, carbs: 36, fat: 3, prepTime: 3,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['tart_cherry_juice', 'whey_protein', 'water', 'ice'],
@@ -446,7 +446,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r300',
     title: 'Protein Rice Pudding',
-    image: '/meals/protein_rice_pudding.png',
+    image: '/meals/protein_rice_pudding.jpg',
     calories: 420, protein: 30, carbs: 56, fat: 6, prepTime: 15,
     tag: 'Post-Workout', category: 'post_workout', difficulty: 'Easy', serves: 1,
     ingredients: ['white_rice', 'almond_milk', 'vanilla_protein_powder', 'cinnamon', 'honey', 'banana'],

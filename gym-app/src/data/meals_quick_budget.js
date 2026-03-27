@@ -3,7 +3,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r201',
     title: 'Canned Tuna Rice Cake Stack',
-    image: '/meals/canned_tuna_rice_cake_stack.png',
+    image: '/meals/canned_tuna_rice_cake_stack.jpg',
     calories: 280, protein: 30, carbs: 24, fat: 6, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'rice_cakes', 'avocado', 'lemon'],
@@ -12,7 +12,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r202',
     title: 'Microwave Egg Cup',
-    image: '/meals/microwave_egg_cup.png',
+    image: '/meals/microwave_egg_cup.jpg',
     calories: 260, protein: 22, carbs: 6, fat: 16, prepTime: 4,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'spinach', 'cheddar_cheese', 'salt', 'pepper'],
@@ -21,7 +21,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r203',
     title: 'Protein Shake & Banana',
-    image: '/meals/protein_shake_and_banana.png',
+    image: '/meals/protein_shake_and_banana.jpg',
     calories: 350, protein: 35, carbs: 45, fat: 4, prepTime: 3,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['protein_powder', 'milk', 'banana', 'ice'],
@@ -30,7 +30,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r204',
     title: 'Canned Tuna & Crackers',
-    image: '/meals/canned_tuna_and_crackers.png',
+    image: '/meals/canned_tuna_and_crackers.jpg',
     calories: 290, protein: 28, carbs: 22, fat: 8, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'whole_grain_crackers', 'mustard', 'celery'],
@@ -39,7 +39,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r205',
     title: 'Rotisserie Chicken Salad',
-    image: '/meals/rotisserie_chicken_salad.png',
+    image: '/meals/rotisserie_chicken_salad.jpg',
     calories: 380, protein: 42, carbs: 12, fat: 18, prepTime: 7,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['rotisserie_chicken', 'mixed_greens', 'cherry_tomatoes', 'olive_oil', 'lemon'],
@@ -48,7 +48,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r206',
     title: 'Greek Yogurt Power Bowl',
-    image: '/meals/greek_yogurt_power_bowl.png',
+    image: '/meals/greek_yogurt_power_bowl.jpg',
     calories: 320, protein: 28, carbs: 38, fat: 6, prepTime: 4,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'granola', 'berries', 'honey'],
@@ -57,7 +57,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r207',
     title: 'Overnight Oats',
-    image: '/meals/overnight_oats.png',
+    image: '/meals/overnight_oats.jpg',
     calories: 380, protein: 18, carbs: 58, fat: 8, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'milk', 'chia_seeds', 'banana', 'peanut_butter'],
@@ -66,7 +66,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r208',
     title: 'Hard-Boiled Eggs & Veggies',
-    image: '/meals/hard_boiled_eggs_and_veggies.png',
+    image: '/meals/hard_boiled_eggs_and_veggies.jpg',
     calories: 260, protein: 20, carbs: 14, fat: 14, prepTime: 2,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['hard_boiled_eggs', 'carrots', 'cucumber', 'hummus'],
@@ -75,7 +75,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r209',
     title: 'Deli Turkey Wrap',
-    image: '/meals/deli_turkey_wrap.png',
+    image: '/meals/deli_turkey_wrap.jpg',
     calories: 340, protein: 32, carbs: 30, fat: 10, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['deli_turkey', 'whole_wheat_tortilla', 'lettuce', 'tomato', 'mustard'],
@@ -84,7 +84,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r210',
     title: 'Cottage Cheese Berry Bowl',
-    image: '/meals/cottage_cheese_berry_bowl.png',
+    image: '/meals/cottage_cheese_berry_bowl.jpg',
     calories: 270, protein: 28, carbs: 28, fat: 5, prepTime: 3,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['cottage_cheese', 'strawberries', 'blueberries', 'honey'],
@@ -93,7 +93,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r211',
     title: 'Frozen Edamame Snack Bowl',
-    image: '/meals/frozen_edamame_snack_bowl.png',
+    image: '/meals/frozen_edamame_snack_bowl.jpg',
     calories: 250, protein: 22, carbs: 20, fat: 8, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['frozen_edamame', 'sea_salt', 'sesame_oil'],
@@ -102,7 +102,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r212',
     title: 'Rice Cakes with Peanut Butter',
-    image: '/meals/rice_cakes_with_peanut_butter.png',
+    image: '/meals/rice_cakes_with_peanut_butter.jpg',
     calories: 300, protein: 14, carbs: 38, fat: 12, prepTime: 3,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['rice_cakes', 'peanut_butter', 'banana', 'honey'],
@@ -111,7 +111,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r213',
     title: 'Protein Bar & Fruit Combo',
-    image: '/meals/protein_bar_and_fruit_combo.png',
+    image: '/meals/protein_bar_and_fruit_combo.jpg',
     calories: 380, protein: 25, carbs: 48, fat: 10, prepTime: 1,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['protein_bar', 'apple', 'almonds'],
@@ -120,7 +120,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r214',
     title: 'Sardine Toasts',
-    image: '/meals/sardine_toasts.png',
+    image: '/meals/sardine_toasts.jpg',
     calories: 310, protein: 26, carbs: 24, fat: 12, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_sardines', 'whole_grain_bread', 'lemon', 'parsley', 'hot_sauce'],
@@ -129,7 +129,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r215',
     title: 'Classic Avocado Toast',
-    image: '/meals/classic_avocado_toast.png',
+    image: '/meals/classic_avocado_toast.jpg',
     calories: 360, protein: 14, carbs: 36, fat: 20, prepTime: 7,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_grain_bread', 'avocado', 'eggs', 'salt', 'red_pepper_flakes'],
@@ -138,7 +138,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r216',
     title: 'Cheese & Turkey Roll-Ups',
-    image: '/meals/cheese_and_turkey_roll_ups.png',
+    image: '/meals/cheese_and_turkey_roll_ups.jpg',
     calories: 280, protein: 30, carbs: 4, fat: 16, prepTime: 4,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['deli_turkey', 'cheddar_cheese', 'mustard', 'pickles'],
@@ -147,7 +147,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r217',
     title: 'Canned Salmon Patty',
-    image: '/meals/canned_salmon_patty.png',
+    image: '/meals/canned_salmon_patty.jpg',
     calories: 340, protein: 38, carbs: 10, fat: 16, prepTime: 10,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_salmon', 'egg', 'breadcrumbs', 'garlic', 'olive_oil'],
@@ -156,7 +156,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r218',
     title: 'Instant Miso Soup with Egg',
-    image: '/meals/instant_miso_soup_with_egg.png',
+    image: '/meals/instant_miso_soup_with_egg.jpg',
     calories: 260, protein: 18, carbs: 22, fat: 10, prepTime: 6,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['miso_paste', 'hot_water', 'egg', 'tofu', 'green_onion'],
@@ -165,7 +165,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r219',
     title: 'Trail Mix Energy Bowl',
-    image: '/meals/trail_mix_energy_bowl.png',
+    image: '/meals/trail_mix_energy_bowl.jpg',
     calories: 420, protein: 14, carbs: 46, fat: 22, prepTime: 2,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['mixed_nuts', 'dried_cranberries', 'dark_chocolate_chips', 'pumpkin_seeds'],
@@ -174,7 +174,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r220',
     title: 'Smoked Salmon Crackers',
-    image: '/meals/smoked_salmon_crackers.png',
+    image: '/meals/smoked_salmon_crackers.jpg',
     calories: 310, protein: 26, carbs: 22, fat: 12, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['smoked_salmon', 'whole_grain_crackers', 'cream_cheese', 'capers', 'dill'],
@@ -183,7 +183,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r221',
     title: 'Quick Black Bean Bowl',
-    image: '/meals/quick_black_bean_bowl.png',
+    image: '/meals/quick_black_bean_bowl.jpg',
     calories: 390, protein: 20, carbs: 58, fat: 8, prepTime: 8,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_black_beans', 'microwaveable_rice', 'salsa', 'lime', 'cilantro'],
@@ -192,7 +192,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r222',
     title: 'Celery with Almond Butter',
-    image: '/meals/celery_with_almond_butter.png',
+    image: '/meals/celery_with_almond_butter.jpg',
     calories: 260, protein: 10, carbs: 18, fat: 18, prepTime: 3,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['celery', 'almond_butter', 'raisins', 'honey'],
@@ -201,7 +201,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r223',
     title: 'String Cheese & Jerky Pack',
-    image: '/meals/string_cheese_and_jerky_pack.png',
+    image: '/meals/string_cheese_and_jerky_pack.jpg',
     calories: 280, protein: 32, carbs: 6, fat: 14, prepTime: 1,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['string_cheese', 'beef_jerky', 'apple'],
@@ -210,7 +210,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r224',
     title: 'Pre-Made Salad Bag Boost',
-    image: '/meals/pre_made_salad_bag_boost.png',
+    image: '/meals/pre_made_salad_bag_boost.jpg',
     calories: 330, protein: 28, carbs: 20, fat: 14, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['bagged_salad_mix', 'canned_chicken', 'cherry_tomatoes', 'olive_oil', 'balsamic_vinegar'],
@@ -219,7 +219,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r225',
     title: 'Quick Shrimp Cocktail',
-    image: '/meals/quick_shrimp_cocktail.png',
+    image: '/meals/quick_shrimp_cocktail.jpg',
     calories: 250, protein: 34, carbs: 16, fat: 4, prepTime: 5,
     tag: 'Quick', category: 'quick_meals', difficulty: 'Easy', serves: 1,
     ingredients: ['pre_cooked_shrimp', 'cocktail_sauce', 'lemon', 'lettuce'],
@@ -230,7 +230,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r226',
     title: 'Rice & Beans with Ground Turkey',
-    image: '/meals/rice_and_beans_with_ground_turkey.png',
+    image: '/meals/rice_and_beans_with_ground_turkey.jpg',
     calories: 480, protein: 38, carbs: 52, fat: 10, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['rice', 'black_beans', 'ground_turkey', 'garlic', 'olive_oil'],
@@ -239,7 +239,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r227',
     title: 'Egg Fried Rice',
-    image: '/meals/egg_fried_rice.png',
+    image: '/meals/egg_fried_rice.jpg',
     calories: 430, protein: 20, carbs: 58, fat: 12, prepTime: 15,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['cooked_rice', 'eggs', 'soy_sauce', 'green_onion', 'sesame_oil', 'frozen_peas'],
@@ -248,7 +248,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r228',
     title: 'Budget Lentil Soup',
-    image: '/meals/budget_lentil_soup.png',
+    image: '/meals/budget_lentil_soup.jpg',
     calories: 380, protein: 24, carbs: 56, fat: 6, prepTime: 25,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['red_lentils', 'onion', 'carrots', 'garlic', 'cumin', 'vegetable_broth'],
@@ -257,7 +257,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r229',
     title: 'Chicken Thigh & Rice',
-    image: '/meals/chicken_thigh_and_rice.png',
+    image: '/meals/chicken_thigh_and_rice.jpg',
     calories: 520, protein: 44, carbs: 48, fat: 16, prepTime: 30,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_thighs', 'rice', 'garlic', 'paprika', 'olive_oil', 'salt'],
@@ -266,7 +266,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r230',
     title: 'Oatmeal with Eggs',
-    image: '/meals/oatmeal_with_eggs.png',
+    image: '/meals/oatmeal_with_eggs.jpg',
     calories: 420, protein: 26, carbs: 50, fat: 12, prepTime: 12,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'eggs', 'milk', 'banana', 'salt'],
@@ -275,7 +275,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r231',
     title: 'Sardine Pasta',
-    image: '/meals/sardine_pasta.png',
+    image: '/meals/sardine_pasta.jpg',
     calories: 500, protein: 34, carbs: 58, fat: 14, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['pasta', 'canned_sardines', 'garlic', 'olive_oil', 'parsley', 'lemon'],
@@ -284,7 +284,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r232',
     title: 'Tuna Pasta Salad',
-    image: '/meals/tuna_pasta_salad.png',
+    image: '/meals/tuna_pasta_salad.jpg',
     calories: 460, protein: 36, carbs: 52, fat: 10, prepTime: 15,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['pasta', 'canned_tuna', 'mayonnaise', 'celery', 'pickle', 'mustard'],
@@ -293,7 +293,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r233',
     title: 'Bean Quesadillas',
-    image: '/meals/bean_quesadillas.png',
+    image: '/meals/bean_quesadillas.jpg',
     calories: 480, protein: 24, carbs: 60, fat: 16, prepTime: 12,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['flour_tortillas', 'canned_beans', 'cheddar_cheese', 'salsa', 'cumin'],
@@ -302,7 +302,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r234',
     title: 'Scrambled Eggs on Toast',
-    image: '/meals/scrambled_eggs_on_toast.png',
+    image: '/meals/scrambled_eggs_on_toast.jpg',
     calories: 380, protein: 24, carbs: 32, fat: 16, prepTime: 10,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'whole_grain_bread', 'butter', 'salt', 'pepper', 'chives'],
@@ -311,7 +311,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r235',
     title: 'Baked Potato with Cottage Cheese',
-    image: '/meals/baked_potato_with_cottage_cheese.png',
+    image: '/meals/baked_potato_with_cottage_cheese.jpg',
     calories: 420, protein: 28, carbs: 58, fat: 6, prepTime: 10,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['russet_potato', 'cottage_cheese', 'chives', 'salt', 'pepper'],
@@ -320,7 +320,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r236',
     title: 'Budget Turkey Meatloaf',
-    image: '/meals/budget_turkey_meatloaf.png',
+    image: '/meals/budget_turkey_meatloaf.jpg',
     calories: 460, protein: 42, carbs: 28, fat: 18, prepTime: 35,
     tag: 'Budget', category: 'budget', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'breadcrumbs', 'egg', 'onion', 'ketchup', 'garlic'],
@@ -329,7 +329,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r237',
     title: 'Peanut Butter Oatmeal',
-    image: '/meals/peanut_butter_oatmeal.png',
+    image: '/meals/peanut_butter_oatmeal.jpg',
     calories: 430, protein: 18, carbs: 56, fat: 16, prepTime: 8,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'peanut_butter', 'banana', 'milk', 'honey'],
@@ -338,7 +338,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r238',
     title: 'Canned Mackerel & Rice',
-    image: '/meals/canned_mackerel_and_rice.png',
+    image: '/meals/canned_mackerel_and_rice.jpg',
     calories: 500, protein: 38, carbs: 48, fat: 16, prepTime: 15,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_mackerel', 'rice', 'soy_sauce', 'green_onion', 'sesame_oil'],
@@ -347,7 +347,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r239',
     title: 'Ground Beef & Cabbage Stir-Fry',
-    image: '/meals/ground_beef_and_cabbage_stir_fry.png',
+    image: '/meals/ground_beef_and_cabbage_stir_fry.jpg',
     calories: 480, protein: 36, carbs: 22, fat: 28, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_beef', 'cabbage', 'garlic', 'soy_sauce', 'ginger', 'sesame_oil'],
@@ -356,7 +356,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r240',
     title: 'Chicken Drumsticks & Roasted Veg',
-    image: '/meals/chicken_drumsticks_and_roasted_veg.png',
+    image: '/meals/chicken_drumsticks_and_roasted_veg.jpg',
     calories: 520, protein: 46, carbs: 24, fat: 26, prepTime: 35,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_drumsticks', 'potatoes', 'carrots', 'garlic', 'olive_oil', 'paprika'],
@@ -365,7 +365,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r241',
     title: 'Homemade Chicken Soup',
-    image: '/meals/homemade_chicken_soup.png',
+    image: '/meals/homemade_chicken_soup.jpg',
     calories: 380, protein: 34, carbs: 32, fat: 10, prepTime: 30,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'carrots', 'celery', 'onion', 'chicken_broth', 'noodles'],
@@ -374,7 +374,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r242',
     title: 'Sweet Potato & Chickpea Bowl',
-    image: '/meals/sweet_potato_and_chickpea_bowl.png',
+    image: '/meals/sweet_potato_and_chickpea_bowl.jpg',
     calories: 460, protein: 18, carbs: 72, fat: 12, prepTime: 25,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['sweet_potato', 'canned_chickpeas', 'olive_oil', 'cumin', 'paprika', 'spinach'],
@@ -383,7 +383,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r243',
     title: 'Budget Beef Taco Bowl',
-    image: '/meals/budget_beef_taco_bowl.png',
+    image: '/meals/budget_beef_taco_bowl.jpg',
     calories: 540, protein: 38, carbs: 52, fat: 20, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_beef', 'rice', 'canned_corn', 'salsa', 'taco_seasoning', 'cheddar_cheese'],
@@ -392,7 +392,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r244',
     title: 'Brown Rice & Tuna Bowl',
-    image: '/meals/brown_rice_and_tuna_bowl.png',
+    image: '/meals/brown_rice_and_tuna_bowl.jpg',
     calories: 440, protein: 36, carbs: 50, fat: 8, prepTime: 15,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['brown_rice', 'canned_tuna', 'soy_sauce', 'avocado', 'cucumber', 'sesame_seeds'],
@@ -401,7 +401,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r245',
     title: 'Veggie Egg Frittata',
-    image: '/meals/veggie_egg_frittata.png',
+    image: '/meals/veggie_egg_frittata.jpg',
     calories: 360, protein: 26, carbs: 14, fat: 22, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Medium', serves: 1,
     ingredients: ['eggs', 'onion', 'bell_pepper', 'spinach', 'olive_oil', 'salt', 'pepper'],
@@ -410,7 +410,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r246',
     title: 'Lentil & Veggie Stew',
-    image: '/meals/lentil_and_veggie_stew.png',
+    image: '/meals/lentil_and_veggie_stew.jpg',
     calories: 400, protein: 22, carbs: 60, fat: 8, prepTime: 30,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['green_lentils', 'zucchini', 'tomatoes', 'onion', 'garlic', 'vegetable_broth', 'cumin'],
@@ -419,7 +419,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r247',
     title: 'Budget Bean Burrito',
-    image: '/meals/budget_bean_burrito.png',
+    image: '/meals/budget_bean_burrito.jpg',
     calories: 480, protein: 22, carbs: 68, fat: 12, prepTime: 12,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['flour_tortilla', 'canned_pinto_beans', 'rice', 'cheddar_cheese', 'salsa', 'sour_cream'],
@@ -428,7 +428,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r248',
     title: 'Ground Pork & Rice Bowl',
-    image: '/meals/ground_pork_and_rice_bowl.png',
+    image: '/meals/ground_pork_and_rice_bowl.jpg',
     calories: 560, protein: 36, carbs: 50, fat: 22, prepTime: 20,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_pork', 'rice', 'garlic', 'ginger', 'soy_sauce', 'green_onion', 'sesame_oil'],
@@ -437,7 +437,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r249',
     title: 'Budget Chicken Curry',
-    image: '/meals/budget_chicken_curry.png',
+    image: '/meals/budget_chicken_curry.jpg',
     calories: 540, protein: 40, carbs: 50, fat: 18, prepTime: 30,
     tag: 'Budget', category: 'budget', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thighs', 'canned_tomatoes', 'onion', 'garlic', 'curry_powder', 'rice', 'coconut_milk'],
@@ -446,7 +446,7 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r250',
     title: 'Black Bean Soup',
-    image: '/meals/black_bean_soup.png',
+    image: '/meals/black_bean_soup.jpg',
     calories: 380, protein: 20, carbs: 58, fat: 8, prepTime: 25,
     tag: 'Budget', category: 'budget', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_black_beans', 'onion', 'garlic', 'cumin', 'vegetable_broth', 'lime', 'cilantro'],

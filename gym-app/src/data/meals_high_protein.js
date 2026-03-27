@@ -2,7 +2,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r1',
     title: 'Grilled Chicken & Sweet Potato',
-    image: '/meals/grilled_chicken_and_sweet_potato.png',
+    image: '/meals/grilled_chicken_and_sweet_potato.jpg',
     calories: 520, protein: 48, carbs: 38, fat: 14, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'sweet_potato', 'olive_oil', 'garlic', 'paprika'],
@@ -11,7 +11,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r2',
     title: 'Salmon & Quinoa Power Bowl',
-    image: '/meals/salmon_and_quinoa_power_bowl.png',
+    image: '/meals/salmon_and_quinoa_power_bowl.jpg',
     calories: 580, protein: 46, carbs: 42, fat: 18, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'quinoa', 'spinach', 'lemon', 'olive_oil', 'capers'],
@@ -20,7 +20,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r3',
     title: 'Beef & Broccoli Stir-Fry',
-    image: '/meals/beef_and_broccoli_stir_fry.png',
+    image: '/meals/beef_and_broccoli_stir_fry.jpg',
     calories: 510, protein: 42, carbs: 28, fat: 22, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['lean_beef_strips', 'broccoli', 'soy_sauce', 'garlic', 'ginger', 'sesame_oil'],
@@ -29,7 +29,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r4',
     title: 'Turkey & Egg White Scramble',
-    image: '/meals/turkey_and_egg_white_scramble.png',
+    image: '/meals/turkey_and_egg_white_scramble.jpg',
     calories: 380, protein: 46, carbs: 12, fat: 14, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_turkey', 'egg_whites', 'bell_pepper', 'onion', 'spinach', 'olive_oil'],
@@ -38,7 +38,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r5',
     title: 'Shrimp Taco Bowl',
-    image: '/meals/shrimp_taco_bowl.png',
+    image: '/meals/shrimp_taco_bowl.jpg',
     calories: 430, protein: 38, carbs: 40, fat: 10, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['large_shrimp', 'cauliflower_rice', 'black_beans', 'avocado', 'lime', 'cumin', 'chili_powder'],
@@ -47,7 +47,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r6',
     title: 'Greek Yogurt Chicken Salad Wrap',
-    image: '/meals/greek_yogurt_chicken_salad_wrap.png',
+    image: '/meals/greek_yogurt_chicken_salad_wrap.jpg',
     calories: 460, protein: 42, carbs: 36, fat: 12, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'greek_yogurt', 'celery', 'dijon_mustard', 'whole_wheat_wrap', 'lettuce'],
@@ -56,7 +56,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r7',
     title: 'Tuna Nicoise Salad',
-    image: '/meals/tuna_nicoise_salad.png',
+    image: '/meals/tuna_nicoise_salad.jpg',
     calories: 420, protein: 40, carbs: 22, fat: 18, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'hard_boiled_eggs', 'green_beans', 'cherry_tomatoes', 'olives', 'olive_oil', 'lemon'],
@@ -65,7 +65,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r8',
     title: 'Baked Lemon Herb Chicken Breast',
-    image: '/meals/baked_lemon_herb_chicken_breast.png',
+    image: '/meals/baked_lemon_herb_chicken_breast.jpg',
     calories: 390, protein: 50, carbs: 8, fat: 16, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'lemon', 'rosemary', 'thyme', 'garlic', 'olive_oil'],
@@ -74,7 +74,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r9',
     title: 'Lean Beef & Rice Bowl',
-    image: '/meals/lean_beef_and_rice_bowl.png',
+    image: '/meals/lean_beef_and_rice_bowl.jpg',
     calories: 555, protein: 44, carbs: 48, fat: 16, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['lean_ground_beef', 'brown_rice', 'onion', 'garlic', 'soy_sauce', 'green_onion'],
@@ -83,7 +83,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r10',
     title: 'Tofu Veggie Stir-Fry',
-    image: '/meals/tofu_veggie_stir_fry.png',
+    image: '/meals/tofu_veggie_stir_fry.jpg',
     calories: 380, protein: 26, carbs: 32, fat: 16, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['firm_tofu', 'snap_peas', 'bell_pepper', 'broccoli', 'soy_sauce', 'sesame_oil', 'garlic', 'ginger'],
@@ -92,7 +92,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r11',
     title: 'Egg White Omelette with Turkey & Cheese',
-    image: '/meals/egg_white_omelette_with_turkey_and_cheese.png',
+    image: '/meals/egg_white_omelette_with_turkey_and_cheese.jpg',
     calories: 350, protein: 42, carbs: 6, fat: 16, prepTime: 12,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'turkey_slices', 'low_fat_cheese', 'spinach', 'cherry_tomatoes', 'olive_oil'],
@@ -101,7 +101,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r12',
     title: 'Spicy Shrimp & Pasta',
-    image: '/meals/spicy_shrimp_and_pasta.png',
+    image: '/meals/spicy_shrimp_and_pasta.jpg',
     calories: 530, protein: 38, carbs: 54, fat: 14, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['large_shrimp', 'whole_wheat_pasta', 'cherry_tomatoes', 'garlic', 'red_pepper_flakes', 'olive_oil', 'parsley'],
@@ -110,7 +110,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r13',
     title: 'Chicken Caesar Salad',
-    image: '/meals/chicken_caesar_salad.png',
+    image: '/meals/chicken_caesar_salad.jpg',
     calories: 480, protein: 46, carbs: 18, fat: 24, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['grilled_chicken_breast', 'romaine_lettuce', 'parmesan', 'caesar_dressing', 'whole_grain_croutons', 'lemon'],
@@ -119,7 +119,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r14',
     title: 'Cottage Cheese & Berry Protein Bowl',
-    image: '/meals/cottage_cheese_and_berry_protein_bowl.png',
+    image: '/meals/cottage_cheese_and_berry_protein_bowl.jpg',
     calories: 330, protein: 36, carbs: 28, fat: 8, prepTime: 5,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['low_fat_cottage_cheese', 'mixed_berries', 'honey', 'chia_seeds', 'granola', 'vanilla_extract'],
@@ -128,7 +128,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r15',
     title: 'Teriyaki Turkey Meatballs & Rice',
-    image: '/meals/teriyaki_turkey_meatballs_and_rice.png',
+    image: '/meals/teriyaki_turkey_meatballs_and_rice.jpg',
     calories: 540, protein: 42, carbs: 50, fat: 14, prepTime: 35,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'brown_rice', 'soy_sauce', 'honey', 'garlic', 'ginger', 'sesame_seeds', 'green_onion'],
@@ -137,7 +137,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r16',
     title: 'Blackened Salmon Wrap',
-    image: '/meals/blackened_salmon_wrap.png',
+    image: '/meals/blackened_salmon_wrap.jpg',
     calories: 510, protein: 40, carbs: 38, fat: 20, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'whole_wheat_wrap', 'avocado', 'coleslaw_mix', 'lime', 'cajun_seasoning', 'greek_yogurt'],
@@ -146,7 +146,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r17',
     title: 'High-Protein Egg Fried Rice',
-    image: '/meals/high_protein_egg_fried_rice.png',
+    image: '/meals/high_protein_egg_fried_rice.jpg',
     calories: 490, protein: 36, carbs: 46, fat: 16, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['cooked_brown_rice', 'whole_eggs', 'chicken_breast', 'peas', 'carrots', 'soy_sauce', 'sesame_oil', 'garlic'],
@@ -155,7 +155,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r18',
     title: 'Tuna & Avocado Salad',
-    image: '/meals/tuna_and_avocado_salad.png',
+    image: '/meals/tuna_and_avocado_salad.jpg',
     calories: 400, protein: 38, carbs: 14, fat: 22, prepTime: 10,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'avocado', 'cherry_tomatoes', 'cucumber', 'lemon', 'olive_oil', 'red_onion'],
@@ -164,7 +164,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r19',
     title: 'Chicken & Black Bean Burrito Bowl',
-    image: '/meals/chicken_and_black_bean_burrito_bowl.png',
+    image: '/meals/chicken_and_black_bean_burrito_bowl.jpg',
     calories: 570, protein: 48, carbs: 50, fat: 12, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'black_beans', 'brown_rice', 'salsa', 'greek_yogurt', 'lime', 'cilantro', 'cumin'],
@@ -173,7 +173,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r20',
     title: 'Beef & Spinach Stuffed Peppers',
-    image: '/meals/beef_and_spinach_stuffed_peppers.png',
+    image: '/meals/beef_and_spinach_stuffed_peppers.jpg',
     calories: 480, protein: 40, carbs: 30, fat: 18, prepTime: 45,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['lean_ground_beef', 'bell_peppers', 'spinach', 'brown_rice', 'tomato_sauce', 'mozzarella', 'garlic', 'oregano'],
@@ -182,7 +182,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r21',
     title: 'Protein-Packed Greek Salad with Chicken',
-    image: '/meals/protein_packed_greek_salad_with_chicken.png',
+    image: '/meals/protein_packed_greek_salad_with_chicken.jpg',
     calories: 440, protein: 42, carbs: 16, fat: 22, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['grilled_chicken_breast', 'cucumber', 'cherry_tomatoes', 'feta_cheese', 'kalamata_olives', 'red_onion', 'olive_oil', 'lemon'],
@@ -191,7 +191,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r22',
     title: 'Shrimp & Avocado Rice Bowl',
-    image: '/meals/shrimp_and_avocado_rice_bowl.png',
+    image: '/meals/shrimp_and_avocado_rice_bowl.jpg',
     calories: 490, protein: 36, carbs: 44, fat: 16, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['large_shrimp', 'brown_rice', 'avocado', 'cucumber', 'soy_sauce', 'sriracha', 'sesame_seeds', 'lime'],
@@ -200,7 +200,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r23',
     title: 'Turkey Lettuce Wraps',
-    image: '/meals/turkey_lettuce_wraps.png',
+    image: '/meals/turkey_lettuce_wraps.jpg',
     calories: 360, protein: 38, carbs: 18, fat: 14, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_turkey', 'butter_lettuce', 'water_chestnuts', 'garlic', 'ginger', 'hoisin_sauce', 'soy_sauce', 'green_onion'],
@@ -209,7 +209,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r24',
     title: 'Baked Cod & Roasted Vegetables',
-    image: '/meals/baked_cod_and_roasted_vegetables.png',
+    image: '/meals/baked_cod_and_roasted_vegetables.jpg',
     calories: 370, protein: 40, carbs: 24, fat: 10, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['cod_fillet', 'zucchini', 'cherry_tomatoes', 'bell_pepper', 'olive_oil', 'lemon', 'thyme', 'garlic'],
@@ -218,7 +218,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r25',
     title: 'Chicken & Quinoa Stuffed Peppers',
-    image: '/meals/chicken_and_quinoa_stuffed_peppers.png',
+    image: '/meals/chicken_and_quinoa_stuffed_peppers.jpg',
     calories: 530, protein: 46, carbs: 42, fat: 12, prepTime: 40,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'bell_peppers', 'quinoa', 'corn', 'black_beans', 'cumin', 'chili_powder', 'cheddar'],
@@ -227,7 +227,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r26',
     title: 'Greek Yogurt Protein Smoothie',
-    image: '/meals/greek_yogurt_protein_smoothie.png',
+    image: '/meals/greek_yogurt_protein_smoothie.jpg',
     calories: 320, protein: 36, carbs: 34, fat: 4, prepTime: 5,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'banana', 'protein_powder', 'almond_milk', 'peanut_butter', 'frozen_berries'],
@@ -236,7 +236,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r27',
     title: 'Seared Tuna Steak with Edamame',
-    image: '/meals/seared_tuna_steak_with_edamame.png',
+    image: '/meals/seared_tuna_steak_with_edamame.jpg',
     calories: 430, protein: 52, carbs: 18, fat: 14, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['tuna_steak', 'edamame', 'soy_sauce', 'sesame_oil', 'ginger', 'sesame_seeds', 'lemon'],
@@ -245,7 +245,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r28',
     title: 'Chicken Tikka Masala (Lightened)',
-    image: '/meals/chicken_tikka_masala_lightened.png',
+    image: '/meals/chicken_tikka_masala_lightened.jpg',
     calories: 560, protein: 50, carbs: 44, fat: 16, prepTime: 35,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'canned_tomatoes', 'greek_yogurt', 'garam_masala', 'cumin', 'turmeric', 'garlic', 'brown_rice'],
@@ -254,7 +254,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r29',
     title: 'Egg & Cottage Cheese Breakfast Bowl',
-    image: '/meals/egg_and_cottage_cheese_breakfast_bowl.png',
+    image: '/meals/egg_and_cottage_cheese_breakfast_bowl.jpg',
     calories: 360, protein: 38, carbs: 16, fat: 16, prepTime: 10,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_eggs', 'cottage_cheese', 'cherry_tomatoes', 'spinach', 'olive_oil', 'everything_bagel_seasoning'],
@@ -263,7 +263,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r30',
     title: 'Beef Taco Salad',
-    image: '/meals/beef_taco_salad.png',
+    image: '/meals/beef_taco_salad.jpg',
     calories: 510, protein: 40, carbs: 32, fat: 22, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['lean_ground_beef', 'romaine_lettuce', 'black_beans', 'corn', 'salsa', 'greek_yogurt', 'lime', 'cumin', 'chili_powder'],
@@ -272,7 +272,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r31',
     title: 'Grilled Chicken & Vegetable Skewers',
-    image: '/meals/grilled_chicken_and_vegetable_skewers.png',
+    image: '/meals/grilled_chicken_and_vegetable_skewers.jpg',
     calories: 410, protein: 44, carbs: 20, fat: 14, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'zucchini', 'bell_pepper', 'red_onion', 'cherry_tomatoes', 'olive_oil', 'oregano', 'lemon'],
@@ -281,7 +281,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r32',
     title: 'Spicy Tofu & Edamame Bowl',
-    image: '/meals/spicy_tofu_and_edamame_bowl.png',
+    image: '/meals/spicy_tofu_and_edamame_bowl.jpg',
     calories: 420, protein: 36, carbs: 34, fat: 18, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['extra_firm_tofu', 'edamame', 'brown_rice', 'sriracha', 'soy_sauce', 'sesame_oil', 'garlic', 'ginger'],
@@ -290,7 +290,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r33',
     title: 'Turkey Bolognese over Zucchini Noodles',
-    image: '/meals/turkey_bolognese_over_zucchini_noodles.png',
+    image: '/meals/turkey_bolognese_over_zucchini_noodles.jpg',
     calories: 430, protein: 40, carbs: 22, fat: 18, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'zucchini', 'canned_tomatoes', 'onion', 'garlic', 'basil', 'parmesan', 'olive_oil'],
@@ -299,7 +299,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r34',
     title: 'Salmon & Asparagus Sheet Pan',
-    image: '/meals/salmon_and_asparagus_sheet_pan.png',
+    image: '/meals/salmon_and_asparagus_sheet_pan.jpg',
     calories: 490, protein: 44, carbs: 18, fat: 24, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'asparagus', 'lemon', 'garlic', 'olive_oil', 'dijon_mustard', 'dill'],
@@ -308,7 +308,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r35',
     title: 'Chicken Protein Pasta',
-    image: '/meals/chicken_protein_pasta.png',
+    image: '/meals/chicken_protein_pasta.jpg',
     calories: 600, protein: 52, carbs: 55, fat: 14, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'high_protein_pasta', 'cherry_tomatoes', 'spinach', 'garlic', 'olive_oil', 'parmesan'],
@@ -317,7 +317,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r36',
     title: 'Shrimp Ceviche Lettuce Cups',
-    image: '/meals/shrimp_ceviche_lettuce_cups.png',
+    image: '/meals/shrimp_ceviche_lettuce_cups.jpg',
     calories: 310, protein: 36, carbs: 16, fat: 8, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['cooked_shrimp', 'lime_juice', 'avocado', 'cucumber', 'red_onion', 'cilantro', 'jalapeno', 'butter_lettuce'],
@@ -326,7 +326,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r37',
     title: 'High-Protein Overnight Oats',
-    image: '/meals/high_protein_overnight_oats.png',
+    image: '/meals/high_protein_overnight_oats.jpg',
     calories: 420, protein: 36, carbs: 46, fat: 10, prepTime: 5,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'greek_yogurt', 'protein_powder', 'almond_milk', 'chia_seeds', 'banana', 'peanut_butter'],
@@ -335,7 +335,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r38',
     title: 'Lean Beef Stir-Fry with Snow Peas',
-    image: '/meals/lean_beef_stir_fry_with_snow_peas.png',
+    image: '/meals/lean_beef_stir_fry_with_snow_peas.jpg',
     calories: 460, protein: 42, carbs: 24, fat: 20, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['sirloin_steak', 'snow_peas', 'red_bell_pepper', 'garlic', 'oyster_sauce', 'soy_sauce', 'sesame_oil', 'cornstarch'],
@@ -344,7 +344,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r39',
     title: 'Chicken Tortilla Soup',
-    image: '/meals/chicken_tortilla_soup.png',
+    image: '/meals/chicken_tortilla_soup.jpg',
     calories: 450, protein: 44, carbs: 38, fat: 10, prepTime: 35,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'black_beans', 'corn', 'canned_tomatoes', 'chicken_broth', 'cumin', 'chili_powder', 'cilantro', 'tortilla_strips'],
@@ -353,7 +353,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r40',
     title: 'Smoked Salmon & Cottage Cheese Toast',
-    image: '/meals/smoked_salmon_and_cottage_cheese_toast.png',
+    image: '/meals/smoked_salmon_and_cottage_cheese_toast.jpg',
     calories: 380, protein: 38, carbs: 28, fat: 12, prepTime: 5,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['smoked_salmon', 'low_fat_cottage_cheese', 'whole_grain_bread', 'capers', 'red_onion', 'dill', 'lemon'],
@@ -362,7 +362,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r41',
     title: 'Turkey & Veggie Stuffed Zucchini Boats',
-    image: '/meals/turkey_and_veggie_stuffed_zucchini_boats.png',
+    image: '/meals/turkey_and_veggie_stuffed_zucchini_boats.jpg',
     calories: 420, protein: 38, carbs: 24, fat: 16, prepTime: 40,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'zucchini', 'tomato_sauce', 'bell_pepper', 'onion', 'garlic', 'mozzarella', 'Italian_seasoning'],
@@ -371,7 +371,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r42',
     title: 'Spicy Tuna Poke Bowl',
-    image: '/meals/spicy_tuna_poke_bowl.png',
+    image: '/meals/spicy_tuna_poke_bowl.jpg',
     calories: 520, protein: 44, carbs: 46, fat: 14, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['sushi_grade_tuna', 'brown_rice', 'avocado', 'cucumber', 'soy_sauce', 'sriracha', 'sesame_oil', 'sesame_seeds', 'mango'],
@@ -380,7 +380,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r43',
     title: 'Grilled Beef & Kimchi Rice Bowl',
-    image: '/meals/grilled_beef_and_kimchi_rice_bowl.png',
+    image: '/meals/grilled_beef_and_kimchi_rice_bowl.jpg',
     calories: 570, protein: 44, carbs: 48, fat: 18, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['sirloin_steak', 'brown_rice', 'kimchi', 'fried_egg', 'soy_sauce', 'garlic', 'sesame_oil', 'green_onion'],
@@ -389,7 +389,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r44',
     title: 'Egg White & Spinach Frittata',
-    image: '/meals/egg_white_and_spinach_frittata.png',
+    image: '/meals/egg_white_and_spinach_frittata.jpg',
     calories: 310, protein: 38, carbs: 10, fat: 12, prepTime: 20,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'whole_eggs', 'spinach', 'mushrooms', 'onion', 'feta_cheese', 'olive_oil', 'garlic'],
@@ -398,7 +398,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r45',
     title: 'Chicken & Lentil Soup',
-    image: '/meals/chicken_and_lentil_soup.png',
+    image: '/meals/chicken_and_lentil_soup.jpg',
     calories: 480, protein: 46, carbs: 44, fat: 10, prepTime: 40,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'red_lentils', 'chicken_broth', 'carrot', 'celery', 'onion', 'cumin', 'turmeric', 'lemon'],
@@ -407,7 +407,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r46',
     title: 'Pan-Seared Salmon & Lentil Salad',
-    image: '/meals/pan_seared_salmon_and_lentil_salad.png',
+    image: '/meals/pan_seared_salmon_and_lentil_salad.jpg',
     calories: 530, protein: 46, carbs: 36, fat: 20, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'green_lentils', 'arugula', 'cherry_tomatoes', 'lemon', 'dijon_mustard', 'olive_oil', 'capers'],
@@ -416,7 +416,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r47',
     title: 'BBQ Chicken Sweet Potato Bowl',
-    image: '/meals/bbq_chicken_sweet_potato_bowl.png',
+    image: '/meals/bbq_chicken_sweet_potato_bowl.jpg',
     calories: 545, protein: 46, carbs: 52, fat: 12, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'sweet_potato', 'bbq_sauce', 'corn', 'red_onion', 'cilantro', 'lime', 'olive_oil'],
@@ -425,7 +425,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r48',
     title: 'Cottage Cheese Pancakes',
-    image: '/meals/cottage_cheese_pancakes.png',
+    image: '/meals/cottage_cheese_pancakes.jpg',
     calories: 370, protein: 36, carbs: 30, fat: 12, prepTime: 15,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Easy', serves: 1,
     ingredients: ['low_fat_cottage_cheese', 'whole_eggs', 'oat_flour', 'vanilla_extract', 'baking_powder', 'fresh_berries', 'maple_syrup'],
@@ -434,7 +434,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r49',
     title: 'Miso-Glazed Salmon',
-    image: '/meals/miso_glazed_salmon.png',
+    image: '/meals/miso_glazed_salmon.jpg',
     calories: 470, protein: 44, carbs: 26, fat: 20, prepTime: 25,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'white_miso', 'mirin', 'soy_sauce', 'honey', 'ginger', 'sesame_seeds', 'bok_choy'],
@@ -443,7 +443,7 @@ export const MEALS_HIGH_PROTEIN = [
   {
     id: 'r50',
     title: 'Chicken & Feta Stuffed Portobello Mushrooms',
-    image: '/meals/chicken_and_feta_stuffed_portobello_mushrooms.png',
+    image: '/meals/chicken_and_feta_stuffed_portobello_mushrooms.jpg',
     calories: 400, protein: 42, carbs: 16, fat: 18, prepTime: 30,
     tag: 'High Protein', category: 'high_protein', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'portobello_mushrooms', 'feta_cheese', 'spinach', 'sun_dried_tomatoes', 'garlic', 'olive_oil', 'oregano'],

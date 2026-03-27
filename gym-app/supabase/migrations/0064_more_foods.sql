@@ -566,459 +566,459 @@ INSERT INTO food_items (name, brand, serving_size, serving_unit, calories, prote
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- KFC
-UPDATE food_items SET image_url = '/foods/kfc_original_chicken_breast.png' WHERE name = 'KFC Original Recipe Chicken Breast';
-UPDATE food_items SET image_url = '/foods/kfc_extra_crispy_breast.png' WHERE name = 'KFC Extra Crispy Chicken Breast';
-UPDATE food_items SET image_url = '/foods/kfc_spicy_chicken_sandwich.png' WHERE name = 'KFC Spicy Chicken Sandwich';
-UPDATE food_items SET image_url = '/foods/kfc_famous_bowl.png' WHERE name = 'KFC Famous Bowl';
-UPDATE food_items SET image_url = '/foods/kfc_mac_cheese.png' WHERE name = 'KFC Mac & Cheese';
-UPDATE food_items SET image_url = '/foods/kfc_mashed_potatoes_gravy.png' WHERE name = 'KFC Mashed Potatoes with Gravy';
-UPDATE food_items SET image_url = '/foods/kfc_coleslaw.png' WHERE name = 'KFC Coleslaw';
-UPDATE food_items SET image_url = '/foods/kfc_biscuit.png' WHERE name = 'KFC Biscuit';
-UPDATE food_items SET image_url = '/foods/kfc_chicken_pot_pie.png' WHERE name = 'KFC Chicken Pot Pie';
-UPDATE food_items SET image_url = '/foods/kfc_popcorn_nuggets.png' WHERE name = 'KFC Popcorn Nuggets';
+UPDATE food_items SET image_url = '/foods/kfc_original_chicken_breast.jpg' WHERE name = 'KFC Original Recipe Chicken Breast';
+UPDATE food_items SET image_url = '/foods/kfc_extra_crispy_breast.jpg' WHERE name = 'KFC Extra Crispy Chicken Breast';
+UPDATE food_items SET image_url = '/foods/kfc_spicy_chicken_sandwich.jpg' WHERE name = 'KFC Spicy Chicken Sandwich';
+UPDATE food_items SET image_url = '/foods/kfc_famous_bowl.jpg' WHERE name = 'KFC Famous Bowl';
+UPDATE food_items SET image_url = '/foods/kfc_mac_cheese.jpg' WHERE name = 'KFC Mac & Cheese';
+UPDATE food_items SET image_url = '/foods/kfc_mashed_potatoes_gravy.jpg' WHERE name = 'KFC Mashed Potatoes with Gravy';
+UPDATE food_items SET image_url = '/foods/kfc_coleslaw.jpg' WHERE name = 'KFC Coleslaw';
+UPDATE food_items SET image_url = '/foods/kfc_biscuit.jpg' WHERE name = 'KFC Biscuit';
+UPDATE food_items SET image_url = '/foods/kfc_chicken_pot_pie.jpg' WHERE name = 'KFC Chicken Pot Pie';
+UPDATE food_items SET image_url = '/foods/kfc_popcorn_nuggets.jpg' WHERE name = 'KFC Popcorn Nuggets';
 
 -- Shake Shack
-UPDATE food_items SET image_url = '/foods/shake_shack_shackburger.png' WHERE name = 'ShackBurger';
-UPDATE food_items SET image_url = '/foods/shake_shack_smokestack.png' WHERE name = 'SmokeShack';
-UPDATE food_items SET image_url = '/foods/shake_shack_chick_n_shack.png' WHERE name = 'Chick''n Shack';
-UPDATE food_items SET image_url = '/foods/shake_shack_cheese_fries.png' WHERE name = 'Cheese Fries' AND brand = 'Shake Shack';
-UPDATE food_items SET image_url = '/foods/shake_shack_crinkle_fries.png' WHERE name = 'Crinkle Cut Fries' AND brand = 'Shake Shack';
-UPDATE food_items SET image_url = '/foods/shake_shack_frozen_custard.png' WHERE name = 'Frozen Custard (Vanilla)';
-UPDATE food_items SET image_url = '/foods/shake_shack_shack_stack.png' WHERE name = 'Shack Stack';
+UPDATE food_items SET image_url = '/foods/shake_shack_shackburger.jpg' WHERE name = 'ShackBurger';
+UPDATE food_items SET image_url = '/foods/shake_shack_smokestack.jpg' WHERE name = 'SmokeShack';
+UPDATE food_items SET image_url = '/foods/shake_shack_chick_n_shack.jpg' WHERE name = 'Chick''n Shack';
+UPDATE food_items SET image_url = '/foods/shake_shack_cheese_fries.jpg' WHERE name = 'Cheese Fries' AND brand = 'Shake Shack';
+UPDATE food_items SET image_url = '/foods/shake_shack_crinkle_fries.jpg' WHERE name = 'Crinkle Cut Fries' AND brand = 'Shake Shack';
+UPDATE food_items SET image_url = '/foods/shake_shack_frozen_custard.jpg' WHERE name = 'Frozen Custard (Vanilla)';
+UPDATE food_items SET image_url = '/foods/shake_shack_shack_stack.jpg' WHERE name = 'Shack Stack';
 
 -- Wingstop
-UPDATE food_items SET image_url = '/foods/wingstop_bone_in_wings.png' WHERE name = 'Bone-In Wings (6 pc)';
-UPDATE food_items SET image_url = '/foods/wingstop_boneless_wings.png' WHERE name = 'Boneless Wings (6 pc)';
-UPDATE food_items SET image_url = '/foods/wingstop_seasoned_fries.png' WHERE name = 'Seasoned Fries' AND brand = 'Wingstop';
-UPDATE food_items SET image_url = '/foods/wingstop_lemon_pepper_wings.png' WHERE name = 'Lemon Pepper Wings (6 pc)';
-UPDATE food_items SET image_url = '/foods/wingstop_mango_habanero_wings.png' WHERE name = 'Mango Habanero Wings (6 pc)';
-UPDATE food_items SET image_url = '/foods/wingstop_garlic_parmesan_wings.png' WHERE name = 'Garlic Parmesan Wings (6 pc)';
+UPDATE food_items SET image_url = '/foods/wingstop_bone_in_wings.jpg' WHERE name = 'Bone-In Wings (6 pc)';
+UPDATE food_items SET image_url = '/foods/wingstop_boneless_wings.jpg' WHERE name = 'Boneless Wings (6 pc)';
+UPDATE food_items SET image_url = '/foods/wingstop_seasoned_fries.jpg' WHERE name = 'Seasoned Fries' AND brand = 'Wingstop';
+UPDATE food_items SET image_url = '/foods/wingstop_lemon_pepper_wings.jpg' WHERE name = 'Lemon Pepper Wings (6 pc)';
+UPDATE food_items SET image_url = '/foods/wingstop_mango_habanero_wings.jpg' WHERE name = 'Mango Habanero Wings (6 pc)';
+UPDATE food_items SET image_url = '/foods/wingstop_garlic_parmesan_wings.jpg' WHERE name = 'Garlic Parmesan Wings (6 pc)';
 
 -- Jack in the Box
-UPDATE food_items SET image_url = '/foods/jbox_jumbo_jack.png' WHERE name = 'Jumbo Jack';
-UPDATE food_items SET image_url = '/foods/jbox_sourdough_jack.png' WHERE name = 'Sourdough Jack';
-UPDATE food_items SET image_url = '/foods/jbox_ultimate_cheeseburger.png' WHERE name = 'Ultimate Cheeseburger';
-UPDATE food_items SET image_url = '/foods/jbox_spicy_crispy_chicken.png' WHERE name = 'Spicy Crispy Chicken Sandwich' AND brand = 'Jack in the Box';
-UPDATE food_items SET image_url = '/foods/jbox_egg_rolls.png' WHERE name = 'Egg Rolls (3 pc)';
-UPDATE food_items SET image_url = '/foods/jbox_tacos.png' WHERE name = 'Tacos (2 pc)';
-UPDATE food_items SET image_url = '/foods/jbox_loaded_curly_fries.png' WHERE name = 'Loaded Curly Fries';
+UPDATE food_items SET image_url = '/foods/jbox_jumbo_jack.jpg' WHERE name = 'Jumbo Jack';
+UPDATE food_items SET image_url = '/foods/jbox_sourdough_jack.jpg' WHERE name = 'Sourdough Jack';
+UPDATE food_items SET image_url = '/foods/jbox_ultimate_cheeseburger.jpg' WHERE name = 'Ultimate Cheeseburger';
+UPDATE food_items SET image_url = '/foods/jbox_spicy_crispy_chicken.jpg' WHERE name = 'Spicy Crispy Chicken Sandwich' AND brand = 'Jack in the Box';
+UPDATE food_items SET image_url = '/foods/jbox_egg_rolls.jpg' WHERE name = 'Egg Rolls (3 pc)';
+UPDATE food_items SET image_url = '/foods/jbox_tacos.jpg' WHERE name = 'Tacos (2 pc)';
+UPDATE food_items SET image_url = '/foods/jbox_loaded_curly_fries.jpg' WHERE name = 'Loaded Curly Fries';
 
 -- Panera Bread
-UPDATE food_items SET image_url = '/foods/panera_broccoli_cheddar_bread_bowl.png' WHERE name = 'Broccoli Cheddar Soup (Bread Bowl)';
-UPDATE food_items SET image_url = '/foods/panera_broccoli_cheddar_cup.png' WHERE name = 'Broccoli Cheddar Soup (Cup)';
-UPDATE food_items SET image_url = '/foods/panera_chicken_noodle_soup.png' WHERE name = 'Chicken Noodle Soup' AND brand = 'Panera Bread';
-UPDATE food_items SET image_url = '/foods/panera_turkey_sourdough.png' WHERE name = 'Turkey Sandwich on Sourdough';
-UPDATE food_items SET image_url = '/foods/panera_chicken_caesar_salad.png' WHERE name = 'Chicken Caesar Salad' AND brand = 'Panera Bread';
-UPDATE food_items SET image_url = '/foods/panera_greek_salad.png' WHERE name = 'Greek Salad' AND brand = 'Panera Bread';
-UPDATE food_items SET image_url = '/foods/panera_cinnamon_crunch_bagel.png' WHERE name = 'Cinnamon Crunch Bagel';
-UPDATE food_items SET image_url = '/foods/panera_chocolate_chip_cookie.png' WHERE name = 'Chocolate Chip Cookie' AND brand = 'Panera Bread';
-UPDATE food_items SET image_url = '/foods/panera_bacon_egg_cheese.png' WHERE name = 'Bacon Egg & Cheese on Brioche';
+UPDATE food_items SET image_url = '/foods/panera_broccoli_cheddar_bread_bowl.jpg' WHERE name = 'Broccoli Cheddar Soup (Bread Bowl)';
+UPDATE food_items SET image_url = '/foods/panera_broccoli_cheddar_cup.jpg' WHERE name = 'Broccoli Cheddar Soup (Cup)';
+UPDATE food_items SET image_url = '/foods/panera_chicken_noodle_soup.jpg' WHERE name = 'Chicken Noodle Soup' AND brand = 'Panera Bread';
+UPDATE food_items SET image_url = '/foods/panera_turkey_sourdough.jpg' WHERE name = 'Turkey Sandwich on Sourdough';
+UPDATE food_items SET image_url = '/foods/panera_chicken_caesar_salad.jpg' WHERE name = 'Chicken Caesar Salad' AND brand = 'Panera Bread';
+UPDATE food_items SET image_url = '/foods/panera_greek_salad.jpg' WHERE name = 'Greek Salad' AND brand = 'Panera Bread';
+UPDATE food_items SET image_url = '/foods/panera_cinnamon_crunch_bagel.jpg' WHERE name = 'Cinnamon Crunch Bagel';
+UPDATE food_items SET image_url = '/foods/panera_chocolate_chip_cookie.jpg' WHERE name = 'Chocolate Chip Cookie' AND brand = 'Panera Bread';
+UPDATE food_items SET image_url = '/foods/panera_bacon_egg_cheese.jpg' WHERE name = 'Bacon Egg & Cheese on Brioche';
 
 -- Raising Cane's
-UPDATE food_items SET image_url = '/foods/canes_box_combo.png' WHERE name = 'Box Combo';
-UPDATE food_items SET image_url = '/foods/canes_3_finger_combo.png' WHERE name = '3 Finger Combo';
-UPDATE food_items SET image_url = '/foods/canes_caniac_combo.png' WHERE name = 'Caniac Combo';
-UPDATE food_items SET image_url = '/foods/canes_crinkle_fries.png' WHERE name = 'Crinkle Fries' AND brand = 'Raising Cane''s';
-UPDATE food_items SET image_url = '/foods/canes_texas_toast.png' WHERE name = 'Texas Toast' AND brand = 'Raising Cane''s';
+UPDATE food_items SET image_url = '/foods/canes_box_combo.jpg' WHERE name = 'Box Combo';
+UPDATE food_items SET image_url = '/foods/canes_3_finger_combo.jpg' WHERE name = '3 Finger Combo';
+UPDATE food_items SET image_url = '/foods/canes_caniac_combo.jpg' WHERE name = 'Caniac Combo';
+UPDATE food_items SET image_url = '/foods/canes_crinkle_fries.jpg' WHERE name = 'Crinkle Fries' AND brand = 'Raising Cane''s';
+UPDATE food_items SET image_url = '/foods/canes_texas_toast.jpg' WHERE name = 'Texas Toast' AND brand = 'Raising Cane''s';
 
 -- Dairy Queen
-UPDATE food_items SET image_url = '/foods/dq_oreo_blizzard.png' WHERE name = 'Oreo Blizzard (Medium)';
-UPDATE food_items SET image_url = '/foods/dq_dilly_bar.png' WHERE name = 'Dilly Bar';
-UPDATE food_items SET image_url = '/foods/dq_chicken_strip_basket.png' WHERE name = 'Chicken Strip Basket (4 pc)';
-UPDATE food_items SET image_url = '/foods/dq_double_cheeseburger.png' WHERE name = 'Double Cheeseburger' AND brand = 'Dairy Queen';
-UPDATE food_items SET image_url = '/foods/dq_soft_serve_cone.png' WHERE name = 'Soft Serve Cone (Medium)';
-UPDATE food_items SET image_url = '/foods/dq_pb_cookie_dough_blizzard.png' WHERE name = 'Peanut Butter Cookie Dough Blizzard (Medium)';
+UPDATE food_items SET image_url = '/foods/dq_oreo_blizzard.jpg' WHERE name = 'Oreo Blizzard (Medium)';
+UPDATE food_items SET image_url = '/foods/dq_dilly_bar.jpg' WHERE name = 'Dilly Bar';
+UPDATE food_items SET image_url = '/foods/dq_chicken_strip_basket.jpg' WHERE name = 'Chicken Strip Basket (4 pc)';
+UPDATE food_items SET image_url = '/foods/dq_double_cheeseburger.jpg' WHERE name = 'Double Cheeseburger' AND brand = 'Dairy Queen';
+UPDATE food_items SET image_url = '/foods/dq_soft_serve_cone.jpg' WHERE name = 'Soft Serve Cone (Medium)';
+UPDATE food_items SET image_url = '/foods/dq_pb_cookie_dough_blizzard.jpg' WHERE name = 'Peanut Butter Cookie Dough Blizzard (Medium)';
 
 -- Jersey Mike's
-UPDATE food_items SET image_url = '/foods/jersey_mikes_original_italian.png' WHERE name = 'Original Italian Sub (Regular)';
-UPDATE food_items SET image_url = '/foods/jersey_mikes_turkey_provolone.png' WHERE name = 'Turkey & Provolone Sub (Regular)';
-UPDATE food_items SET image_url = '/foods/jersey_mikes_club_sub.png' WHERE name = 'Club Sub (Regular)';
-UPDATE food_items SET image_url = '/foods/jersey_mikes_philly.png' WHERE name = 'Philly Cheesesteak Sub (Regular)';
-UPDATE food_items SET image_url = '/foods/jersey_mikes_blt.png' WHERE name = 'BLT Sub (Regular)';
+UPDATE food_items SET image_url = '/foods/jersey_mikes_original_italian.jpg' WHERE name = 'Original Italian Sub (Regular)';
+UPDATE food_items SET image_url = '/foods/jersey_mikes_turkey_provolone.jpg' WHERE name = 'Turkey & Provolone Sub (Regular)';
+UPDATE food_items SET image_url = '/foods/jersey_mikes_club_sub.jpg' WHERE name = 'Club Sub (Regular)';
+UPDATE food_items SET image_url = '/foods/jersey_mikes_philly.jpg' WHERE name = 'Philly Cheesesteak Sub (Regular)';
+UPDATE food_items SET image_url = '/foods/jersey_mikes_blt.jpg' WHERE name = 'BLT Sub (Regular)';
 
 -- Jimmy John's
-UPDATE food_items SET image_url = '/foods/jj_turkey_tom.png' WHERE name = 'Turkey Tom';
-UPDATE food_items SET image_url = '/foods/jj_vito.png' WHERE name = 'The Vito';
-UPDATE food_items SET image_url = '/foods/jj_pepe.png' WHERE name = 'The Pepe';
-UPDATE food_items SET image_url = '/foods/jj_slim_tuna.png' WHERE name = 'Slim 5 Tuna Salad';
-UPDATE food_items SET image_url = '/foods/jj_beach_club.png' WHERE name = 'Beach Club';
+UPDATE food_items SET image_url = '/foods/jj_turkey_tom.jpg' WHERE name = 'Turkey Tom';
+UPDATE food_items SET image_url = '/foods/jj_vito.jpg' WHERE name = 'The Vito';
+UPDATE food_items SET image_url = '/foods/jj_pepe.jpg' WHERE name = 'The Pepe';
+UPDATE food_items SET image_url = '/foods/jj_slim_tuna.jpg' WHERE name = 'Slim 5 Tuna Salad';
+UPDATE food_items SET image_url = '/foods/jj_beach_club.jpg' WHERE name = 'Beach Club';
 
 -- Sonic
-UPDATE food_items SET image_url = '/foods/sonic_cheeseburger.png' WHERE name = 'Sonic Cheeseburger';
-UPDATE food_items SET image_url = '/foods/sonic_footlong_coney.png' WHERE name = 'Footlong Chili Cheese Coney';
-UPDATE food_items SET image_url = '/foods/sonic_tots.png' WHERE name = 'Tater Tots (Medium)';
-UPDATE food_items SET image_url = '/foods/sonic_corn_dog.png' WHERE name = 'Corn Dog' AND brand = 'Sonic';
-UPDATE food_items SET image_url = '/foods/sonic_cherry_limeade.png' WHERE name = 'Cherry Limeade (Medium)';
+UPDATE food_items SET image_url = '/foods/sonic_cheeseburger.jpg' WHERE name = 'Sonic Cheeseburger';
+UPDATE food_items SET image_url = '/foods/sonic_footlong_coney.jpg' WHERE name = 'Footlong Chili Cheese Coney';
+UPDATE food_items SET image_url = '/foods/sonic_tots.jpg' WHERE name = 'Tater Tots (Medium)';
+UPDATE food_items SET image_url = '/foods/sonic_corn_dog.jpg' WHERE name = 'Corn Dog' AND brand = 'Sonic';
+UPDATE food_items SET image_url = '/foods/sonic_cherry_limeade.jpg' WHERE name = 'Cherry Limeade (Medium)';
 
 -- Whataburger
-UPDATE food_items SET image_url = '/foods/whataburger_original.png' WHERE name = 'Whataburger' AND brand = 'Whataburger';
-UPDATE food_items SET image_url = '/foods/whataburger_double.png' WHERE name = 'Double Meat Whataburger';
-UPDATE food_items SET image_url = '/foods/whataburger_spicy_chicken.png' WHERE name = 'Spicy Chicken Sandwich' AND brand = 'Whataburger';
-UPDATE food_items SET image_url = '/foods/whataburger_onion_rings.png' WHERE name = 'Onion Rings (Medium)' AND brand = 'Whataburger';
-UPDATE food_items SET image_url = '/foods/whataburger_apple_pie.png' WHERE name = 'Apple Pie' AND brand = 'Whataburger';
-UPDATE food_items SET image_url = '/foods/whataburger_chocolate_shake.png' WHERE name = 'Chocolate Shake (Medium)' AND brand = 'Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_original.jpg' WHERE name = 'Whataburger' AND brand = 'Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_double.jpg' WHERE name = 'Double Meat Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_spicy_chicken.jpg' WHERE name = 'Spicy Chicken Sandwich' AND brand = 'Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_onion_rings.jpg' WHERE name = 'Onion Rings (Medium)' AND brand = 'Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_apple_pie.jpg' WHERE name = 'Apple Pie' AND brand = 'Whataburger';
+UPDATE food_items SET image_url = '/foods/whataburger_chocolate_shake.jpg' WHERE name = 'Chocolate Shake (Medium)' AND brand = 'Whataburger';
 
 -- Zaxby's
-UPDATE food_items SET image_url = '/foods/zaxbys_signature_sandwich.png' WHERE name = 'Signature Sandwich';
-UPDATE food_items SET image_url = '/foods/zaxbys_fingerz_plate.png' WHERE name = 'Chicken Fingerz Plate';
-UPDATE food_items SET image_url = '/foods/zaxbys_wings_and_things.png' WHERE name = 'Wings & Things';
-UPDATE food_items SET image_url = '/foods/zaxbys_crinkle_fries.png' WHERE name = 'Zaxby''s Crinkle Fries';
-UPDATE food_items SET image_url = '/foods/zaxbys_zalads_house.png' WHERE name = 'House Zalad with Grilled Chicken';
+UPDATE food_items SET image_url = '/foods/zaxbys_signature_sandwich.jpg' WHERE name = 'Signature Sandwich';
+UPDATE food_items SET image_url = '/foods/zaxbys_fingerz_plate.jpg' WHERE name = 'Chicken Fingerz Plate';
+UPDATE food_items SET image_url = '/foods/zaxbys_wings_and_things.jpg' WHERE name = 'Wings & Things';
+UPDATE food_items SET image_url = '/foods/zaxbys_crinkle_fries.jpg' WHERE name = 'Zaxby''s Crinkle Fries';
+UPDATE food_items SET image_url = '/foods/zaxbys_zalads_house.jpg' WHERE name = 'House Zalad with Grilled Chicken';
 
 -- Culver's
-UPDATE food_items SET image_url = '/foods/culvers_butterburger.png' WHERE name = 'ButterBurger (Single)';
-UPDATE food_items SET image_url = '/foods/culvers_double_butterburger.png' WHERE name = 'Double ButterBurger with Cheese';
-UPDATE food_items SET image_url = '/foods/culvers_cheese_curds.png' WHERE name = 'Wisconsin Cheese Curds';
-UPDATE food_items SET image_url = '/foods/culvers_frozen_custard.png' WHERE name = 'Vanilla Fresh Frozen Custard';
-UPDATE food_items SET image_url = '/foods/culvers_fish_sandwich.png' WHERE name = 'North Atlantic Cod Fish Sandwich';
+UPDATE food_items SET image_url = '/foods/culvers_butterburger.jpg' WHERE name = 'ButterBurger (Single)';
+UPDATE food_items SET image_url = '/foods/culvers_double_butterburger.jpg' WHERE name = 'Double ButterBurger with Cheese';
+UPDATE food_items SET image_url = '/foods/culvers_cheese_curds.jpg' WHERE name = 'Wisconsin Cheese Curds';
+UPDATE food_items SET image_url = '/foods/culvers_frozen_custard.jpg' WHERE name = 'Vanilla Fresh Frozen Custard';
+UPDATE food_items SET image_url = '/foods/culvers_fish_sandwich.jpg' WHERE name = 'North Atlantic Cod Fish Sandwich';
 
 -- IHOP
-UPDATE food_items SET image_url = '/foods/ihop_buttermilk_pancakes.png' WHERE name = 'Original Buttermilk Pancakes (3)';
-UPDATE food_items SET image_url = '/foods/ihop_cheesecake_pancakes.png' WHERE name = 'New York Cheesecake Pancakes';
-UPDATE food_items SET image_url = '/foods/ihop_stuffed_french_toast.png' WHERE name = 'Stuffed French Toast';
-UPDATE food_items SET image_url = '/foods/ihop_bacon_omelette.png' WHERE name = 'Bacon Omelette';
-UPDATE food_items SET image_url = '/foods/ihop_belgian_waffle.png' WHERE name = 'Belgian Waffle' AND brand = 'IHOP';
-UPDATE food_items SET image_url = '/foods/ihop_harvest_grain_pancakes.png' WHERE name ILIKE '%Harvest Grain%Nut%';
-UPDATE food_items SET image_url = '/foods/ihop_big_steak_omelette.png' WHERE name = 'Big Steak Omelette';
-UPDATE food_items SET image_url = '/foods/ihop_chicken_waffles.png' WHERE name = 'Chicken & Waffles' AND brand = 'IHOP';
+UPDATE food_items SET image_url = '/foods/ihop_buttermilk_pancakes.jpg' WHERE name = 'Original Buttermilk Pancakes (3)';
+UPDATE food_items SET image_url = '/foods/ihop_cheesecake_pancakes.jpg' WHERE name = 'New York Cheesecake Pancakes';
+UPDATE food_items SET image_url = '/foods/ihop_stuffed_french_toast.jpg' WHERE name = 'Stuffed French Toast';
+UPDATE food_items SET image_url = '/foods/ihop_bacon_omelette.jpg' WHERE name = 'Bacon Omelette';
+UPDATE food_items SET image_url = '/foods/ihop_belgian_waffle.jpg' WHERE name = 'Belgian Waffle' AND brand = 'IHOP';
+UPDATE food_items SET image_url = '/foods/ihop_harvest_grain_pancakes.jpg' WHERE name ILIKE '%Harvest Grain%Nut%';
+UPDATE food_items SET image_url = '/foods/ihop_big_steak_omelette.jpg' WHERE name = 'Big Steak Omelette';
+UPDATE food_items SET image_url = '/foods/ihop_chicken_waffles.jpg' WHERE name = 'Chicken & Waffles' AND brand = 'IHOP';
 
 -- Denny's
-UPDATE food_items SET image_url = '/foods/dennys_grand_slam.png' WHERE name = 'Grand Slam';
-UPDATE food_items SET image_url = '/foods/dennys_moons_over_hammy.png' WHERE name = 'Moons Over My Hammy';
-UPDATE food_items SET image_url = '/foods/dennys_pancakes.png' WHERE name = 'Pancakes (4)';
-UPDATE food_items SET image_url = '/foods/dennys_country_fried_steak.png' WHERE name = 'Country Fried Steak' AND brand = 'Denny''s';
-UPDATE food_items SET image_url = '/foods/dennys_scrambler.png' WHERE name = 'Scrambler';
-UPDATE food_items SET image_url = '/foods/dennys_avocado_toast.png' WHERE name = 'Avocado Toast' AND brand = 'Denny''s';
+UPDATE food_items SET image_url = '/foods/dennys_grand_slam.jpg' WHERE name = 'Grand Slam';
+UPDATE food_items SET image_url = '/foods/dennys_moons_over_hammy.jpg' WHERE name = 'Moons Over My Hammy';
+UPDATE food_items SET image_url = '/foods/dennys_pancakes.jpg' WHERE name = 'Pancakes (4)';
+UPDATE food_items SET image_url = '/foods/dennys_country_fried_steak.jpg' WHERE name = 'Country Fried Steak' AND brand = 'Denny''s';
+UPDATE food_items SET image_url = '/foods/dennys_scrambler.jpg' WHERE name = 'Scrambler';
+UPDATE food_items SET image_url = '/foods/dennys_avocado_toast.jpg' WHERE name = 'Avocado Toast' AND brand = 'Denny''s';
 
 -- Texas Roadhouse
-UPDATE food_items SET image_url = '/foods/txrh_sirloin_6oz.png' WHERE name = '6 oz Sirloin';
-UPDATE food_items SET image_url = '/foods/txrh_ribs_half_rack.png' WHERE name = 'Baby Back Ribs (Half Rack)';
-UPDATE food_items SET image_url = '/foods/txrh_rolls.png' WHERE name = 'Fresh-Baked Dinner Rolls (2)';
-UPDATE food_items SET image_url = '/foods/txrh_green_beans.png' WHERE name = 'Fresh Seasoned Green Beans';
-UPDATE food_items SET image_url = '/foods/txrh_loaded_sweet_potato.png' WHERE name = 'Loaded Sweet Potato' AND brand = 'Texas Roadhouse';
-UPDATE food_items SET image_url = '/foods/txrh_grilled_salmon.png' WHERE name = 'Grilled Salmon' AND brand = 'Texas Roadhouse';
+UPDATE food_items SET image_url = '/foods/txrh_sirloin_6oz.jpg' WHERE name = '6 oz Sirloin';
+UPDATE food_items SET image_url = '/foods/txrh_ribs_half_rack.jpg' WHERE name = 'Baby Back Ribs (Half Rack)';
+UPDATE food_items SET image_url = '/foods/txrh_rolls.jpg' WHERE name = 'Fresh-Baked Dinner Rolls (2)';
+UPDATE food_items SET image_url = '/foods/txrh_green_beans.jpg' WHERE name = 'Fresh Seasoned Green Beans';
+UPDATE food_items SET image_url = '/foods/txrh_loaded_sweet_potato.jpg' WHERE name = 'Loaded Sweet Potato' AND brand = 'Texas Roadhouse';
+UPDATE food_items SET image_url = '/foods/txrh_grilled_salmon.jpg' WHERE name = 'Grilled Salmon' AND brand = 'Texas Roadhouse';
 
 -- Red Lobster
-UPDATE food_items SET image_url = '/foods/red_lobster_cheddar_bay_biscuit.png' WHERE name = 'Cheddar Bay Biscuit';
-UPDATE food_items SET image_url = '/foods/red_lobster_lobster_tail.png' WHERE name = 'Lobster Tail (8 oz)';
-UPDATE food_items SET image_url = '/foods/red_lobster_shrimp_scampi.png' WHERE name = 'Shrimp Scampi' AND brand = 'Red Lobster';
-UPDATE food_items SET image_url = '/foods/red_lobster_admiral_feast.png' WHERE name = 'Admiral''s Feast';
-UPDATE food_items SET image_url = '/foods/red_lobster_clam_chowder.png' WHERE name = 'New England Clam Chowder' AND brand = 'Red Lobster';
+UPDATE food_items SET image_url = '/foods/red_lobster_cheddar_bay_biscuit.jpg' WHERE name = 'Cheddar Bay Biscuit';
+UPDATE food_items SET image_url = '/foods/red_lobster_lobster_tail.jpg' WHERE name = 'Lobster Tail (8 oz)';
+UPDATE food_items SET image_url = '/foods/red_lobster_shrimp_scampi.jpg' WHERE name = 'Shrimp Scampi' AND brand = 'Red Lobster';
+UPDATE food_items SET image_url = '/foods/red_lobster_admiral_feast.jpg' WHERE name = 'Admiral''s Feast';
+UPDATE food_items SET image_url = '/foods/red_lobster_clam_chowder.jpg' WHERE name = 'New England Clam Chowder' AND brand = 'Red Lobster';
 
 -- Outback
-UPDATE food_items SET image_url = '/foods/outback_6oz_sirloin.png' WHERE name = '6 oz Outback Special Sirloin';
-UPDATE food_items SET image_url = '/foods/outback_blooming_onion.png' WHERE name = 'Bloomin'' Onion';
-UPDATE food_items SET image_url = '/foods/outback_grilled_salmon.png' WHERE name = 'Grilled Salmon' AND brand = 'Outback Steakhouse';
-UPDATE food_items SET image_url = '/foods/outback_victorias_filet.png' WHERE name = 'Victoria''s Filet (6 oz)';
+UPDATE food_items SET image_url = '/foods/outback_6oz_sirloin.jpg' WHERE name = '6 oz Outback Special Sirloin';
+UPDATE food_items SET image_url = '/foods/outback_blooming_onion.jpg' WHERE name = 'Bloomin'' Onion';
+UPDATE food_items SET image_url = '/foods/outback_grilled_salmon.jpg' WHERE name = 'Grilled Salmon' AND brand = 'Outback Steakhouse';
+UPDATE food_items SET image_url = '/foods/outback_victorias_filet.jpg' WHERE name = 'Victoria''s Filet (6 oz)';
 
 -- Little Caesars
-UPDATE food_items SET image_url = '/foods/little_caesars_pepperoni_slice.png' WHERE name = 'Hot-N-Ready Pepperoni Pizza Slice';
-UPDATE food_items SET image_url = '/foods/little_caesars_cheese_slice.png' WHERE name = 'Hot-N-Ready Cheese Pizza Slice';
-UPDATE food_items SET image_url = '/foods/little_caesars_crazy_bread.png' WHERE name = 'Crazy Bread';
-UPDATE food_items SET image_url = '/foods/little_caesars_deep_dish.png' WHERE name = 'Deep Deep Dish Pepperoni Pizza Slice';
+UPDATE food_items SET image_url = '/foods/little_caesars_pepperoni_slice.jpg' WHERE name = 'Hot-N-Ready Pepperoni Pizza Slice';
+UPDATE food_items SET image_url = '/foods/little_caesars_cheese_slice.jpg' WHERE name = 'Hot-N-Ready Cheese Pizza Slice';
+UPDATE food_items SET image_url = '/foods/little_caesars_crazy_bread.jpg' WHERE name = 'Crazy Bread';
+UPDATE food_items SET image_url = '/foods/little_caesars_deep_dish.jpg' WHERE name = 'Deep Deep Dish Pepperoni Pizza Slice';
 
 -- Checkers
-UPDATE food_items SET image_url = '/foods/checkers_big_buford.png' WHERE name = 'Big Buford Double Cheeseburger';
-UPDATE food_items SET image_url = '/foods/checkers_seasoned_fries.png' WHERE name = 'Seasoned Fries (Medium)' AND brand = 'Checkers';
+UPDATE food_items SET image_url = '/foods/checkers_big_buford.jpg' WHERE name = 'Big Buford Double Cheeseburger';
+UPDATE food_items SET image_url = '/foods/checkers_seasoned_fries.jpg' WHERE name = 'Seasoned Fries (Medium)' AND brand = 'Checkers';
 
 -- Casual Dining
-UPDATE food_items SET image_url = '/foods/red_robin_gourmet_cheeseburger.png' WHERE name = 'Gourmet Cheeseburger';
-UPDATE food_items SET image_url = '/foods/red_robin_steak_fries.png' WHERE name = 'Steak Fries' AND brand = 'Red Robin';
-UPDATE food_items SET image_url = '/foods/cracker_barrel_chicken_fried_chicken.png' WHERE name = 'Chicken Fried Chicken';
-UPDATE food_items SET image_url = '/foods/cracker_barrel_biscuit.png' WHERE name = 'Buttermilk Biscuit' AND brand = 'Cracker Barrel';
-UPDATE food_items SET image_url = '/foods/olive_garden_zuppa_toscana.png' WHERE name = 'Zuppa Toscana Soup';
-UPDATE food_items SET image_url = '/foods/olive_garden_tiramisu.png' WHERE name = 'Tiramisu' AND brand = 'Olive Garden';
-UPDATE food_items SET image_url = '/foods/waffle_house_waffle.png' WHERE name = 'Classic Waffle';
-UPDATE food_items SET image_url = '/foods/cook_out_double_cheeseburger.png' WHERE name = 'Double Cheeseburger' AND brand = 'Cook Out';
+UPDATE food_items SET image_url = '/foods/red_robin_gourmet_cheeseburger.jpg' WHERE name = 'Gourmet Cheeseburger';
+UPDATE food_items SET image_url = '/foods/red_robin_steak_fries.jpg' WHERE name = 'Steak Fries' AND brand = 'Red Robin';
+UPDATE food_items SET image_url = '/foods/cracker_barrel_chicken_fried_chicken.jpg' WHERE name = 'Chicken Fried Chicken';
+UPDATE food_items SET image_url = '/foods/cracker_barrel_biscuit.jpg' WHERE name = 'Buttermilk Biscuit' AND brand = 'Cracker Barrel';
+UPDATE food_items SET image_url = '/foods/olive_garden_zuppa_toscana.jpg' WHERE name = 'Zuppa Toscana Soup';
+UPDATE food_items SET image_url = '/foods/olive_garden_tiramisu.jpg' WHERE name = 'Tiramisu' AND brand = 'Olive Garden';
+UPDATE food_items SET image_url = '/foods/waffle_house_waffle.jpg' WHERE name = 'Classic Waffle';
+UPDATE food_items SET image_url = '/foods/cook_out_double_cheeseburger.jpg' WHERE name = 'Double Cheeseburger' AND brand = 'Cook Out';
 
 -- Korean
-UPDATE food_items SET image_url = '/foods/korean_bulgogi.png' WHERE name = 'Korean Beef Bulgogi';
-UPDATE food_items SET image_url = '/foods/korean_galbi.png' WHERE name = 'Korean Galbi (Short Ribs)';
-UPDATE food_items SET image_url = '/foods/korean_samgyeopsal.png' WHERE name = 'Korean Samgyeopsal (Pork Belly)';
-UPDATE food_items SET image_url = '/foods/tteokbokki.png' WHERE name = 'Tteokbokki';
-UPDATE food_items SET image_url = '/foods/japchae.png' WHERE name = 'Japchae';
-UPDATE food_items SET image_url = '/foods/korean_fried_chicken.png' WHERE name = 'Korean Fried Chicken (4 pc)';
-UPDATE food_items SET image_url = '/foods/kimchi_bowl.png' WHERE name = 'Kimchi';
-UPDATE food_items SET image_url = '/foods/korean_bibim_noodles.png' WHERE name = 'Korean Bibim Cold Noodles';
-UPDATE food_items SET image_url = '/foods/sundubu_jjigae.png' WHERE name = 'Sundubu Jjigae (Soft Tofu Stew)';
-UPDATE food_items SET image_url = '/foods/doenjang_jjigae.png' WHERE name = 'Doenjang Jjigae';
+UPDATE food_items SET image_url = '/foods/korean_bulgogi.jpg' WHERE name = 'Korean Beef Bulgogi';
+UPDATE food_items SET image_url = '/foods/korean_galbi.jpg' WHERE name = 'Korean Galbi (Short Ribs)';
+UPDATE food_items SET image_url = '/foods/korean_samgyeopsal.jpg' WHERE name = 'Korean Samgyeopsal (Pork Belly)';
+UPDATE food_items SET image_url = '/foods/tteokbokki.jpg' WHERE name = 'Tteokbokki';
+UPDATE food_items SET image_url = '/foods/japchae.jpg' WHERE name = 'Japchae';
+UPDATE food_items SET image_url = '/foods/korean_fried_chicken.jpg' WHERE name = 'Korean Fried Chicken (4 pc)';
+UPDATE food_items SET image_url = '/foods/kimchi_bowl.jpg' WHERE name = 'Kimchi';
+UPDATE food_items SET image_url = '/foods/korean_bibim_noodles.jpg' WHERE name = 'Korean Bibim Cold Noodles';
+UPDATE food_items SET image_url = '/foods/sundubu_jjigae.jpg' WHERE name = 'Sundubu Jjigae (Soft Tofu Stew)';
+UPDATE food_items SET image_url = '/foods/doenjang_jjigae.jpg' WHERE name = 'Doenjang Jjigae';
 
 -- Filipino
-UPDATE food_items SET image_url = '/foods/chicken_adobo_filipino.png' WHERE name = 'Chicken Adobo (Filipino)';
-UPDATE food_items SET image_url = '/foods/pork_sinigang.png' WHERE name = 'Pork Sinigang';
-UPDATE food_items SET image_url = '/foods/kare_kare.png' WHERE name = 'Kare-Kare';
-UPDATE food_items SET image_url = '/foods/lechon_kawali.png' WHERE name = 'Lechon Kawali (Crispy Pork Belly)';
-UPDATE food_items SET image_url = '/foods/pancit_bihon.png' WHERE name = 'Pancit Bihon';
-UPDATE food_items SET image_url = '/foods/lumpia_shanghai.png' WHERE name = 'Lumpia Shanghai (6 pc)';
-UPDATE food_items SET image_url = '/foods/sinangag_garlic_rice.png' WHERE name = 'Sinangag (Filipino Garlic Rice)';
-UPDATE food_items SET image_url = '/foods/halo_halo.png' WHERE name = 'Halo-Halo';
+UPDATE food_items SET image_url = '/foods/chicken_adobo_filipino.jpg' WHERE name = 'Chicken Adobo (Filipino)';
+UPDATE food_items SET image_url = '/foods/pork_sinigang.jpg' WHERE name = 'Pork Sinigang';
+UPDATE food_items SET image_url = '/foods/kare_kare.jpg' WHERE name = 'Kare-Kare';
+UPDATE food_items SET image_url = '/foods/lechon_kawali.jpg' WHERE name = 'Lechon Kawali (Crispy Pork Belly)';
+UPDATE food_items SET image_url = '/foods/pancit_bihon.jpg' WHERE name = 'Pancit Bihon';
+UPDATE food_items SET image_url = '/foods/lumpia_shanghai.jpg' WHERE name = 'Lumpia Shanghai (6 pc)';
+UPDATE food_items SET image_url = '/foods/sinangag_garlic_rice.jpg' WHERE name = 'Sinangag (Filipino Garlic Rice)';
+UPDATE food_items SET image_url = '/foods/halo_halo.jpg' WHERE name = 'Halo-Halo';
 
 -- Brazilian
-UPDATE food_items SET image_url = '/foods/acai_bowl_brazilian.png' WHERE name = 'Açaí Bowl' AND brand IS NULL;
-UPDATE food_items SET image_url = '/foods/pao_de_queijo.png' WHERE name = 'Pão de Queijo (3 pc)';
-UPDATE food_items SET image_url = '/foods/coxinha.png' WHERE name = 'Coxinha';
-UPDATE food_items SET image_url = '/foods/churrasco_picanha.png' WHERE name = 'Churrasco Picanha';
-UPDATE food_items SET image_url = '/foods/feijoada.png' WHERE name = 'Feijoada';
-UPDATE food_items SET image_url = '/foods/farofa.png' WHERE name = 'Farofa';
-UPDATE food_items SET image_url = '/foods/brigadeiro.png' WHERE name = 'Brigadeiro (2 pc)';
+UPDATE food_items SET image_url = '/foods/acai_bowl_brazilian.jpg' WHERE name = 'Açaí Bowl' AND brand IS NULL;
+UPDATE food_items SET image_url = '/foods/pao_de_queijo.jpg' WHERE name = 'Pão de Queijo (3 pc)';
+UPDATE food_items SET image_url = '/foods/coxinha.jpg' WHERE name = 'Coxinha';
+UPDATE food_items SET image_url = '/foods/churrasco_picanha.jpg' WHERE name = 'Churrasco Picanha';
+UPDATE food_items SET image_url = '/foods/feijoada.jpg' WHERE name = 'Feijoada';
+UPDATE food_items SET image_url = '/foods/farofa.jpg' WHERE name = 'Farofa';
+UPDATE food_items SET image_url = '/foods/brigadeiro.jpg' WHERE name = 'Brigadeiro (2 pc)';
 
 -- Mexican Home
-UPDATE food_items SET image_url = '/foods/birria_tacos.png' WHERE name = 'Birria Tacos (3)';
-UPDATE food_items SET image_url = '/foods/enchiladas_rojas.png' WHERE name = 'Enchiladas Rojas (3)';
-UPDATE food_items SET image_url = '/foods/pozole_rojo.png' WHERE name = 'Pozole Rojo';
-UPDATE food_items SET image_url = '/foods/chilaquiles_rojos.png' WHERE name = 'Chilaquiles Rojos';
-UPDATE food_items SET image_url = '/foods/elote_street_corn.png' WHERE name = 'Elote (Mexican Street Corn)';
-UPDATE food_items SET image_url = '/foods/carne_asada_plate.png' WHERE name = 'Carne Asada Plate';
-UPDATE food_items SET image_url = '/foods/tamale_pork_red.png' WHERE name = 'Tamale (Pork, Red Chile)';
-UPDATE food_items SET image_url = '/foods/menudo_bowl.png' WHERE name = 'Menudo';
+UPDATE food_items SET image_url = '/foods/birria_tacos.jpg' WHERE name = 'Birria Tacos (3)';
+UPDATE food_items SET image_url = '/foods/enchiladas_rojas.jpg' WHERE name = 'Enchiladas Rojas (3)';
+UPDATE food_items SET image_url = '/foods/pozole_rojo.jpg' WHERE name = 'Pozole Rojo';
+UPDATE food_items SET image_url = '/foods/chilaquiles_rojos.jpg' WHERE name = 'Chilaquiles Rojos';
+UPDATE food_items SET image_url = '/foods/elote_street_corn.jpg' WHERE name = 'Elote (Mexican Street Corn)';
+UPDATE food_items SET image_url = '/foods/carne_asada_plate.jpg' WHERE name = 'Carne Asada Plate';
+UPDATE food_items SET image_url = '/foods/tamale_pork_red.jpg' WHERE name = 'Tamale (Pork, Red Chile)';
+UPDATE food_items SET image_url = '/foods/menudo_bowl.jpg' WHERE name = 'Menudo';
 
 -- Ethiopian
-UPDATE food_items SET image_url = '/foods/injera_ethiopian.png' WHERE name = 'Injera';
-UPDATE food_items SET image_url = '/foods/doro_wat.png' WHERE name = 'Doro Wat';
-UPDATE food_items SET image_url = '/foods/ethiopian_tibs.png' WHERE name = 'Ethiopian Tibs';
-UPDATE food_items SET image_url = '/foods/misir_red_lentils.png' WHERE name = 'Misir (Red Lentil Stew)';
-UPDATE food_items SET image_url = '/foods/ethiopian_combo_platter.png' WHERE name = 'Ethiopian Combination Platter';
+UPDATE food_items SET image_url = '/foods/injera_ethiopian.jpg' WHERE name = 'Injera';
+UPDATE food_items SET image_url = '/foods/doro_wat.jpg' WHERE name = 'Doro Wat';
+UPDATE food_items SET image_url = '/foods/ethiopian_tibs.jpg' WHERE name = 'Ethiopian Tibs';
+UPDATE food_items SET image_url = '/foods/misir_red_lentils.jpg' WHERE name = 'Misir (Red Lentil Stew)';
+UPDATE food_items SET image_url = '/foods/ethiopian_combo_platter.jpg' WHERE name = 'Ethiopian Combination Platter';
 
 -- Peruvian
-UPDATE food_items SET image_url = '/foods/ceviche_peruano.png' WHERE name = 'Ceviche Peruano';
-UPDATE food_items SET image_url = '/foods/lomo_saltado.png' WHERE name = 'Lomo Saltado';
-UPDATE food_items SET image_url = '/foods/aji_de_gallina.png' WHERE name = 'Ají de Gallina';
-UPDATE food_items SET image_url = '/foods/causa_limena.png' WHERE name = 'Causa Limeña';
-UPDATE food_items SET image_url = '/foods/anticuchos.png' WHERE name = 'Anticuchos (Beef Heart Skewers, 3)';
+UPDATE food_items SET image_url = '/foods/ceviche_peruano.jpg' WHERE name = 'Ceviche Peruano';
+UPDATE food_items SET image_url = '/foods/lomo_saltado.jpg' WHERE name = 'Lomo Saltado';
+UPDATE food_items SET image_url = '/foods/aji_de_gallina.jpg' WHERE name = 'Ají de Gallina';
+UPDATE food_items SET image_url = '/foods/causa_limena.jpg' WHERE name = 'Causa Limeña';
+UPDATE food_items SET image_url = '/foods/anticuchos.jpg' WHERE name = 'Anticuchos (Beef Heart Skewers, 3)';
 
 -- Colombian
-UPDATE food_items SET image_url = '/foods/bandeja_paisa.png' WHERE name = 'Bandeja Paisa';
-UPDATE food_items SET image_url = '/foods/arepa_colombiana.png' WHERE name = 'Arepa Colombiana';
-UPDATE food_items SET image_url = '/foods/sancocho_colombiano.png' WHERE name = 'Sancocho Colombiano';
-UPDATE food_items SET image_url = '/foods/changua.png' WHERE name = 'Changua (Colombian Milk Soup)';
-UPDATE food_items SET image_url = '/foods/ajiaco_colombiano.png' WHERE name = 'Ajiaco Colombiano';
-UPDATE food_items SET image_url = '/foods/sobrebarriga.png' WHERE name = 'Sobrebarriga';
+UPDATE food_items SET image_url = '/foods/bandeja_paisa.jpg' WHERE name = 'Bandeja Paisa';
+UPDATE food_items SET image_url = '/foods/arepa_colombiana.jpg' WHERE name = 'Arepa Colombiana';
+UPDATE food_items SET image_url = '/foods/sancocho_colombiano.jpg' WHERE name = 'Sancocho Colombiano';
+UPDATE food_items SET image_url = '/foods/changua.jpg' WHERE name = 'Changua (Colombian Milk Soup)';
+UPDATE food_items SET image_url = '/foods/ajiaco_colombiano.jpg' WHERE name = 'Ajiaco Colombiano';
+UPDATE food_items SET image_url = '/foods/sobrebarriga.jpg' WHERE name = 'Sobrebarriga';
 
 -- Venezuelan
-UPDATE food_items SET image_url = '/foods/pabellon_criollo.png' WHERE name = 'Pabellón Criollo';
-UPDATE food_items SET image_url = '/foods/cachapas.png' WHERE name = 'Cachapas';
-UPDATE food_items SET image_url = '/foods/hallacas_venezuelan.png' WHERE name = 'Hallacas';
-UPDATE food_items SET image_url = '/foods/caraotas_negras.png' WHERE name = 'Caraotas Negras';
-UPDATE food_items SET image_url = '/foods/tequenos.png' WHERE name = 'Tequeños (4 pc)';
+UPDATE food_items SET image_url = '/foods/pabellon_criollo.jpg' WHERE name = 'Pabellón Criollo';
+UPDATE food_items SET image_url = '/foods/cachapas.jpg' WHERE name = 'Cachapas';
+UPDATE food_items SET image_url = '/foods/hallacas_venezuelan.jpg' WHERE name = 'Hallacas';
+UPDATE food_items SET image_url = '/foods/caraotas_negras.jpg' WHERE name = 'Caraotas Negras';
+UPDATE food_items SET image_url = '/foods/tequenos.jpg' WHERE name = 'Tequeños (4 pc)';
 
 -- Turkish / Greek
-UPDATE food_items SET image_url = '/foods/doner_kebab.png' WHERE name = 'Döner Kebab';
-UPDATE food_items SET image_url = '/foods/lahmacun.png' WHERE name = 'Lahmacun';
-UPDATE food_items SET image_url = '/foods/menemen_turkish.png' WHERE name = 'Menemen (Turkish Egg Dish)';
-UPDATE food_items SET image_url = '/foods/spanakopita.png' WHERE name = 'Spanakopita';
-UPDATE food_items SET image_url = '/foods/moussaka_greek.png' WHERE name = 'Moussaka';
-UPDATE food_items SET image_url = '/foods/baklava.png' WHERE name = 'Baklava (2 pieces)';
+UPDATE food_items SET image_url = '/foods/doner_kebab.jpg' WHERE name = 'Döner Kebab';
+UPDATE food_items SET image_url = '/foods/lahmacun.jpg' WHERE name = 'Lahmacun';
+UPDATE food_items SET image_url = '/foods/menemen_turkish.jpg' WHERE name = 'Menemen (Turkish Egg Dish)';
+UPDATE food_items SET image_url = '/foods/spanakopita.jpg' WHERE name = 'Spanakopita';
+UPDATE food_items SET image_url = '/foods/moussaka_greek.jpg' WHERE name = 'Moussaka';
+UPDATE food_items SET image_url = '/foods/baklava.jpg' WHERE name = 'Baklava (2 pieces)';
 
 -- Thai Extra
-UPDATE food_items SET image_url = '/foods/massaman_curry.png' WHERE name = 'Massaman Curry';
-UPDATE food_items SET image_url = '/foods/som_tam.png' WHERE name = 'Som Tam (Green Papaya Salad)';
-UPDATE food_items SET image_url = '/foods/khao_man_gai.png' WHERE name = 'Khao Man Gai';
-UPDATE food_items SET image_url = '/foods/mango_sticky_rice.png' WHERE name = 'Mango Sticky Rice';
-UPDATE food_items SET image_url = '/foods/tom_kha_gai.png' WHERE name = 'Tom Kha Gai';
+UPDATE food_items SET image_url = '/foods/massaman_curry.jpg' WHERE name = 'Massaman Curry';
+UPDATE food_items SET image_url = '/foods/som_tam.jpg' WHERE name = 'Som Tam (Green Papaya Salad)';
+UPDATE food_items SET image_url = '/foods/khao_man_gai.jpg' WHERE name = 'Khao Man Gai';
+UPDATE food_items SET image_url = '/foods/mango_sticky_rice.jpg' WHERE name = 'Mango Sticky Rice';
+UPDATE food_items SET image_url = '/foods/tom_kha_gai.jpg' WHERE name = 'Tom Kha Gai';
 
 -- Vietnamese Extra
-UPDATE food_items SET image_url = '/foods/bun_bo_hue.png' WHERE name = 'Bún Bò Huế';
-UPDATE food_items SET image_url = '/foods/banh_mi_sandwich.png' WHERE name = 'Bánh Mì Sandwich';
-UPDATE food_items SET image_url = '/foods/com_tam.png' WHERE name = 'Cơm Tấm (Broken Rice with Grilled Pork)';
-UPDATE food_items SET image_url = '/foods/bun_cha.png' WHERE name = 'Bún Chả';
-UPDATE food_items SET image_url = '/foods/che_ba_mau.png' WHERE name = 'Chè Ba Màu';
+UPDATE food_items SET image_url = '/foods/bun_bo_hue.jpg' WHERE name = 'Bún Bò Huế';
+UPDATE food_items SET image_url = '/foods/banh_mi_sandwich.jpg' WHERE name = 'Bánh Mì Sandwich';
+UPDATE food_items SET image_url = '/foods/com_tam.jpg' WHERE name = 'Cơm Tấm (Broken Rice with Grilled Pork)';
+UPDATE food_items SET image_url = '/foods/bun_cha.jpg' WHERE name = 'Bún Chả';
+UPDATE food_items SET image_url = '/foods/che_ba_mau.jpg' WHERE name = 'Chè Ba Màu';
 
 -- Indian Extra
-UPDATE food_items SET image_url = '/foods/chicken_biryani.png' WHERE name = 'Chicken Biryani';
-UPDATE food_items SET image_url = '/foods/dal_makhani.png' WHERE name = 'Dal Makhani';
-UPDATE food_items SET image_url = '/foods/chana_masala.png' WHERE name = 'Chana Masala';
-UPDATE food_items SET image_url = '/foods/palak_paneer.png' WHERE name = 'Palak Paneer';
-UPDATE food_items SET image_url = '/foods/garlic_naan.png' WHERE name = 'Garlic Naan';
-UPDATE food_items SET image_url = '/foods/samosa_chaat.png' WHERE name = 'Samosa Chaat';
+UPDATE food_items SET image_url = '/foods/chicken_biryani.jpg' WHERE name = 'Chicken Biryani';
+UPDATE food_items SET image_url = '/foods/dal_makhani.jpg' WHERE name = 'Dal Makhani';
+UPDATE food_items SET image_url = '/foods/chana_masala.jpg' WHERE name = 'Chana Masala';
+UPDATE food_items SET image_url = '/foods/palak_paneer.jpg' WHERE name = 'Palak Paneer';
+UPDATE food_items SET image_url = '/foods/garlic_naan.jpg' WHERE name = 'Garlic Naan';
+UPDATE food_items SET image_url = '/foods/samosa_chaat.jpg' WHERE name = 'Samosa Chaat';
 
 -- Japanese Extra
-UPDATE food_items SET image_url = '/foods/tonkatsu.png' WHERE name = 'Tonkatsu (Breaded Pork Cutlet)';
-UPDATE food_items SET image_url = '/foods/oyakodon.png' WHERE name = 'Oyakodon';
-UPDATE food_items SET image_url = '/foods/takoyaki.png' WHERE name = 'Takoyaki (6 pc)';
-UPDATE food_items SET image_url = '/foods/mochi_ice_cream.png' WHERE name = 'Mochi Ice Cream (3 pc)';
+UPDATE food_items SET image_url = '/foods/tonkatsu.jpg' WHERE name = 'Tonkatsu (Breaded Pork Cutlet)';
+UPDATE food_items SET image_url = '/foods/oyakodon.jpg' WHERE name = 'Oyakodon';
+UPDATE food_items SET image_url = '/foods/takoyaki.jpg' WHERE name = 'Takoyaki (6 pc)';
+UPDATE food_items SET image_url = '/foods/mochi_ice_cream.jpg' WHERE name = 'Mochi Ice Cream (3 pc)';
 
 -- Supplements
-UPDATE food_items SET image_url = '/foods/pre_workout_powder.png' WHERE name = 'Pre-Workout Powder';
-UPDATE food_items SET image_url = '/foods/fish_oil_softgel.png' WHERE name = 'Fish Oil Softgel';
-UPDATE food_items SET image_url = '/foods/collagen_peptides.png' WHERE name = 'Collagen Peptides';
-UPDATE food_items SET image_url = '/foods/vitamin_d3_supplement.png' WHERE name = 'Vitamin D3 (2000 IU)';
-UPDATE food_items SET image_url = '/foods/glutamine_powder.png' WHERE name = 'L-Glutamine Powder';
-UPDATE food_items SET image_url = '/foods/zma_supplement.png' WHERE name = 'ZMA Supplement';
-UPDATE food_items SET image_url = '/foods/magnesium_glycinate.png' WHERE name = 'Magnesium Glycinate';
-UPDATE food_items SET image_url = '/foods/electrolyte_powder.png' WHERE name = 'Electrolyte Powder';
-UPDATE food_items SET image_url = '/foods/omega3_supplement.png' WHERE name = 'Omega-3 Fish Oil (1000mg)';
-UPDATE food_items SET image_url = '/foods/ashwagandha.png' WHERE name = 'Ashwagandha (600mg)';
+UPDATE food_items SET image_url = '/foods/pre_workout_powder.jpg' WHERE name = 'Pre-Workout Powder';
+UPDATE food_items SET image_url = '/foods/fish_oil_softgel.jpg' WHERE name = 'Fish Oil Softgel';
+UPDATE food_items SET image_url = '/foods/collagen_peptides.jpg' WHERE name = 'Collagen Peptides';
+UPDATE food_items SET image_url = '/foods/vitamin_d3_supplement.jpg' WHERE name = 'Vitamin D3 (2000 IU)';
+UPDATE food_items SET image_url = '/foods/glutamine_powder.jpg' WHERE name = 'L-Glutamine Powder';
+UPDATE food_items SET image_url = '/foods/zma_supplement.jpg' WHERE name = 'ZMA Supplement';
+UPDATE food_items SET image_url = '/foods/magnesium_glycinate.jpg' WHERE name = 'Magnesium Glycinate';
+UPDATE food_items SET image_url = '/foods/electrolyte_powder.jpg' WHERE name = 'Electrolyte Powder';
+UPDATE food_items SET image_url = '/foods/omega3_supplement.jpg' WHERE name = 'Omega-3 Fish Oil (1000mg)';
+UPDATE food_items SET image_url = '/foods/ashwagandha.jpg' WHERE name = 'Ashwagandha (600mg)';
 
 -- Breakfast Extras
-UPDATE food_items SET image_url = '/foods/eggs_benedict.png' WHERE name = 'Eggs Benedict';
-UPDATE food_items SET image_url = '/foods/acai_bowl.png' WHERE name = 'Açaí Bowl' AND brand IS NULL AND serving_unit = 'bowl';
-UPDATE food_items SET image_url = '/foods/smoothie_bowl_berry.png' WHERE name = 'Berry Smoothie Bowl';
-UPDATE food_items SET image_url = '/foods/quiche_lorraine_slice.png' WHERE name = 'Quiche Lorraine (1 slice)';
-UPDATE food_items SET image_url = '/foods/crepes_plain.png' WHERE name = 'Crepes Plain (2)';
-UPDATE food_items SET image_url = '/foods/granola_bowl_milk.png' WHERE name = 'Granola Bowl with Milk';
-UPDATE food_items SET image_url = '/foods/biscuits_and_gravy.png' WHERE name = 'Biscuits and Gravy';
-UPDATE food_items SET image_url = '/foods/bagel_lox_cream_cheese.png' WHERE name = 'Bagel with Lox & Cream Cheese';
-UPDATE food_items SET image_url = '/foods/shakshuka.png' WHERE name = 'Shakshuka';
-UPDATE food_items SET image_url = '/foods/breakfast_quesadilla.png' WHERE name = 'Breakfast Quesadilla';
+UPDATE food_items SET image_url = '/foods/eggs_benedict.jpg' WHERE name = 'Eggs Benedict';
+UPDATE food_items SET image_url = '/foods/acai_bowl.jpg' WHERE name = 'Açaí Bowl' AND brand IS NULL AND serving_unit = 'bowl';
+UPDATE food_items SET image_url = '/foods/smoothie_bowl_berry.jpg' WHERE name = 'Berry Smoothie Bowl';
+UPDATE food_items SET image_url = '/foods/quiche_lorraine_slice.jpg' WHERE name = 'Quiche Lorraine (1 slice)';
+UPDATE food_items SET image_url = '/foods/crepes_plain.jpg' WHERE name = 'Crepes Plain (2)';
+UPDATE food_items SET image_url = '/foods/granola_bowl_milk.jpg' WHERE name = 'Granola Bowl with Milk';
+UPDATE food_items SET image_url = '/foods/biscuits_and_gravy.jpg' WHERE name = 'Biscuits and Gravy';
+UPDATE food_items SET image_url = '/foods/bagel_lox_cream_cheese.jpg' WHERE name = 'Bagel with Lox & Cream Cheese';
+UPDATE food_items SET image_url = '/foods/shakshuka.jpg' WHERE name = 'Shakshuka';
+UPDATE food_items SET image_url = '/foods/breakfast_quesadilla.jpg' WHERE name = 'Breakfast Quesadilla';
 
 -- More Proteins
-UPDATE food_items SET image_url = '/foods/duck_breast_roasted.png' WHERE name = 'Duck Breast (roasted)';
-UPDATE food_items SET image_url = '/foods/goat_meat_stewed.png' WHERE name = 'Goat Meat (stewed)';
-UPDATE food_items SET image_url = '/foods/rabbit_roasted.png' WHERE name = 'Rabbit (roasted)';
-UPDATE food_items SET image_url = '/foods/swordfish_steak_grilled.png' WHERE name = 'Swordfish Steak (grilled)';
-UPDATE food_items SET image_url = '/foods/rainbow_trout_baked.png' WHERE name = 'Rainbow Trout (baked)';
-UPDATE food_items SET image_url = '/foods/atlantic_mackerel_baked.png' WHERE name = 'Atlantic Mackerel (baked)';
-UPDATE food_items SET image_url = '/foods/pan_seared_scallops.png' WHERE name = 'Pan-Seared Scallops';
-UPDATE food_items SET image_url = '/foods/raw_oysters_6.png' WHERE name = 'Raw Oysters (6)';
-UPDATE food_items SET image_url = '/foods/steamed_clams.png' WHERE name = 'Steamed Clams';
-UPDATE food_items SET image_url = '/foods/mussels_steamed.png' WHERE name = 'Steamed Mussels';
+UPDATE food_items SET image_url = '/foods/duck_breast_roasted.jpg' WHERE name = 'Duck Breast (roasted)';
+UPDATE food_items SET image_url = '/foods/goat_meat_stewed.jpg' WHERE name = 'Goat Meat (stewed)';
+UPDATE food_items SET image_url = '/foods/rabbit_roasted.jpg' WHERE name = 'Rabbit (roasted)';
+UPDATE food_items SET image_url = '/foods/swordfish_steak_grilled.jpg' WHERE name = 'Swordfish Steak (grilled)';
+UPDATE food_items SET image_url = '/foods/rainbow_trout_baked.jpg' WHERE name = 'Rainbow Trout (baked)';
+UPDATE food_items SET image_url = '/foods/atlantic_mackerel_baked.jpg' WHERE name = 'Atlantic Mackerel (baked)';
+UPDATE food_items SET image_url = '/foods/pan_seared_scallops.jpg' WHERE name = 'Pan-Seared Scallops';
+UPDATE food_items SET image_url = '/foods/raw_oysters_6.jpg' WHERE name = 'Raw Oysters (6)';
+UPDATE food_items SET image_url = '/foods/steamed_clams.jpg' WHERE name = 'Steamed Clams';
+UPDATE food_items SET image_url = '/foods/mussels_steamed.jpg' WHERE name = 'Steamed Mussels';
 
 -- Drinks
-UPDATE food_items SET image_url = '/foods/sprite_can.png' WHERE name = 'Sprite (12 oz can)';
-UPDATE food_items SET image_url = '/foods/sweet_tea.png' WHERE name = 'Sweet Iced Tea (16 oz)';
-UPDATE food_items SET image_url = '/foods/unsweetened_iced_tea.png' WHERE name = 'Unsweetened Iced Tea (16 oz)';
-UPDATE food_items SET image_url = '/foods/prime_hydration.png' WHERE name = 'Prime Hydration Drink';
-UPDATE food_items SET image_url = '/foods/coconut_water_vitacoco.png' WHERE name = 'Coconut Water' AND brand = 'Vita Coco';
-UPDATE food_items SET image_url = '/foods/chocolate_milk.png' WHERE name = 'Chocolate Milk (8 oz)';
-UPDATE food_items SET image_url = '/foods/heineken_bottle.png' WHERE name = 'Heineken Beer (12 oz)';
-UPDATE food_items SET image_url = '/foods/corona_bottle.png' WHERE name = 'Corona Beer (12 oz)';
-UPDATE food_items SET image_url = '/foods/red_wine_glass.png' WHERE name = 'Red Wine (5 oz glass)';
-UPDATE food_items SET image_url = '/foods/white_wine_glass.png' WHERE name = 'White Wine (5 oz glass)';
-UPDATE food_items SET image_url = '/foods/tequila_shot.png' WHERE name = 'Tequila Shot (1.5 oz)';
-UPDATE food_items SET image_url = '/foods/vodka_shot.png' WHERE name = 'Vodka Shot (1.5 oz)';
-UPDATE food_items SET image_url = '/foods/rum_and_coke.png' WHERE name = 'Rum and Coke';
-UPDATE food_items SET image_url = '/foods/white_claw_hard_seltzer.png' WHERE name = 'White Claw Hard Seltzer';
+UPDATE food_items SET image_url = '/foods/sprite_can.jpg' WHERE name = 'Sprite (12 oz can)';
+UPDATE food_items SET image_url = '/foods/sweet_tea.jpg' WHERE name = 'Sweet Iced Tea (16 oz)';
+UPDATE food_items SET image_url = '/foods/unsweetened_iced_tea.jpg' WHERE name = 'Unsweetened Iced Tea (16 oz)';
+UPDATE food_items SET image_url = '/foods/prime_hydration.jpg' WHERE name = 'Prime Hydration Drink';
+UPDATE food_items SET image_url = '/foods/coconut_water_vitacoco.jpg' WHERE name = 'Coconut Water' AND brand = 'Vita Coco';
+UPDATE food_items SET image_url = '/foods/chocolate_milk.jpg' WHERE name = 'Chocolate Milk (8 oz)';
+UPDATE food_items SET image_url = '/foods/heineken_bottle.jpg' WHERE name = 'Heineken Beer (12 oz)';
+UPDATE food_items SET image_url = '/foods/corona_bottle.jpg' WHERE name = 'Corona Beer (12 oz)';
+UPDATE food_items SET image_url = '/foods/red_wine_glass.jpg' WHERE name = 'Red Wine (5 oz glass)';
+UPDATE food_items SET image_url = '/foods/white_wine_glass.jpg' WHERE name = 'White Wine (5 oz glass)';
+UPDATE food_items SET image_url = '/foods/tequila_shot.jpg' WHERE name = 'Tequila Shot (1.5 oz)';
+UPDATE food_items SET image_url = '/foods/vodka_shot.jpg' WHERE name = 'Vodka Shot (1.5 oz)';
+UPDATE food_items SET image_url = '/foods/rum_and_coke.jpg' WHERE name = 'Rum and Coke';
+UPDATE food_items SET image_url = '/foods/white_claw_hard_seltzer.jpg' WHERE name = 'White Claw Hard Seltzer';
 
 -- Snacks
-UPDATE food_items SET image_url = '/foods/quest_protein_chips.png' WHERE name = 'Protein Chips (Ranch)';
-UPDATE food_items SET image_url = '/foods/popcorners_white_cheddar.png' WHERE name = 'PopCorners White Cheddar';
-UPDATE food_items SET image_url = '/foods/nature_valley_crunchy.png' WHERE name = 'Nature Valley Crunchy Bar';
-UPDATE food_items SET image_url = '/foods/nutri_grain_bar.png' WHERE name = 'Nutri-Grain Strawberry Bar';
-UPDATE food_items SET image_url = '/foods/pirates_booty.png' WHERE name = 'Pirate''s Booty White Cheddar';
-UPDATE food_items SET image_url = '/foods/gummy_bears.png' WHERE name = 'Gummy Bears';
-UPDATE food_items SET image_url = '/foods/sour_patch_kids.png' WHERE name = 'Sour Patch Kids';
-UPDATE food_items SET image_url = '/foods/swedish_fish.png' WHERE name = 'Swedish Fish';
-UPDATE food_items SET image_url = '/foods/starburst_original.png' WHERE name = 'Starburst Original';
-UPDATE food_items SET image_url = '/foods/haribo_goldbears.png' WHERE name = 'Haribo Gold-Bears';
-UPDATE food_items SET image_url = '/foods/hi_chew_strawberry.png' WHERE name = 'Hi-Chew Strawberry';
-UPDATE food_items SET image_url = '/foods/takis_fuego.png' WHERE name = 'Takis Fuego';
+UPDATE food_items SET image_url = '/foods/quest_protein_chips.jpg' WHERE name = 'Protein Chips (Ranch)';
+UPDATE food_items SET image_url = '/foods/popcorners_white_cheddar.jpg' WHERE name = 'PopCorners White Cheddar';
+UPDATE food_items SET image_url = '/foods/nature_valley_crunchy.jpg' WHERE name = 'Nature Valley Crunchy Bar';
+UPDATE food_items SET image_url = '/foods/nutri_grain_bar.jpg' WHERE name = 'Nutri-Grain Strawberry Bar';
+UPDATE food_items SET image_url = '/foods/pirates_booty.jpg' WHERE name = 'Pirate''s Booty White Cheddar';
+UPDATE food_items SET image_url = '/foods/gummy_bears.jpg' WHERE name = 'Gummy Bears';
+UPDATE food_items SET image_url = '/foods/sour_patch_kids.jpg' WHERE name = 'Sour Patch Kids';
+UPDATE food_items SET image_url = '/foods/swedish_fish.jpg' WHERE name = 'Swedish Fish';
+UPDATE food_items SET image_url = '/foods/starburst_original.jpg' WHERE name = 'Starburst Original';
+UPDATE food_items SET image_url = '/foods/haribo_goldbears.jpg' WHERE name = 'Haribo Gold-Bears';
+UPDATE food_items SET image_url = '/foods/hi_chew_strawberry.jpg' WHERE name = 'Hi-Chew Strawberry';
+UPDATE food_items SET image_url = '/foods/takis_fuego.jpg' WHERE name = 'Takis Fuego';
 
 -- Vegetables
-UPDATE food_items SET image_url = '/foods/bok_choy_cooked.png' WHERE name = 'Bok Choy (cooked)';
-UPDATE food_items SET image_url = '/foods/arugula_raw.png' WHERE name = 'Arugula (raw)';
-UPDATE food_items SET image_url = '/foods/butternut_squash_roasted.png' WHERE name = 'Butternut Squash (roasted)';
-UPDATE food_items SET image_url = '/foods/acorn_squash_roasted.png' WHERE name = 'Acorn Squash (roasted)';
-UPDATE food_items SET image_url = '/foods/nopales_grilled.png' WHERE name = 'Nopales / Cactus Paddles (grilled)';
-UPDATE food_items SET image_url = '/foods/jicama_raw.png' WHERE name = 'Jicama (raw)';
-UPDATE food_items SET image_url = '/foods/swiss_chard_cooked.png' WHERE name = 'Swiss Chard (cooked)';
-UPDATE food_items SET image_url = '/foods/watercress_raw.png' WHERE name = 'Watercress (raw)';
-UPDATE food_items SET image_url = '/foods/turnip_cooked.png' WHERE name = 'Turnip (cooked)';
-UPDATE food_items SET image_url = '/foods/parsnip_roasted.png' WHERE name = 'Parsnip (roasted)';
-UPDATE food_items SET image_url = '/foods/leek_cooked.png' WHERE name = 'Leek (cooked)';
-UPDATE food_items SET image_url = '/foods/fennel_raw.png' WHERE name = 'Fennel (raw)';
+UPDATE food_items SET image_url = '/foods/bok_choy_cooked.jpg' WHERE name = 'Bok Choy (cooked)';
+UPDATE food_items SET image_url = '/foods/arugula_raw.jpg' WHERE name = 'Arugula (raw)';
+UPDATE food_items SET image_url = '/foods/butternut_squash_roasted.jpg' WHERE name = 'Butternut Squash (roasted)';
+UPDATE food_items SET image_url = '/foods/acorn_squash_roasted.jpg' WHERE name = 'Acorn Squash (roasted)';
+UPDATE food_items SET image_url = '/foods/nopales_grilled.jpg' WHERE name = 'Nopales / Cactus Paddles (grilled)';
+UPDATE food_items SET image_url = '/foods/jicama_raw.jpg' WHERE name = 'Jicama (raw)';
+UPDATE food_items SET image_url = '/foods/swiss_chard_cooked.jpg' WHERE name = 'Swiss Chard (cooked)';
+UPDATE food_items SET image_url = '/foods/watercress_raw.jpg' WHERE name = 'Watercress (raw)';
+UPDATE food_items SET image_url = '/foods/turnip_cooked.jpg' WHERE name = 'Turnip (cooked)';
+UPDATE food_items SET image_url = '/foods/parsnip_roasted.jpg' WHERE name = 'Parsnip (roasted)';
+UPDATE food_items SET image_url = '/foods/leek_cooked.jpg' WHERE name = 'Leek (cooked)';
+UPDATE food_items SET image_url = '/foods/fennel_raw.jpg' WHERE name = 'Fennel (raw)';
 
 -- Fruits
-UPDATE food_items SET image_url = '/foods/dragon_fruit.png' WHERE name = 'Dragon Fruit';
-UPDATE food_items SET image_url = '/foods/papaya_fresh.png' WHERE name = 'Papaya (fresh)';
-UPDATE food_items SET image_url = '/foods/guava_fresh.png' WHERE name = 'Guava (fresh)';
-UPDATE food_items SET image_url = '/foods/passion_fruit_halved.png' WHERE name = 'Passion Fruit';
-UPDATE food_items SET image_url = '/foods/lychee_fresh.png' WHERE name = 'Lychee (fresh)';
-UPDATE food_items SET image_url = '/foods/star_fruit.png' WHERE name = 'Star Fruit / Carambola';
-UPDATE food_items SET image_url = '/foods/jackfruit_fresh.png' WHERE name = 'Jackfruit (fresh)';
-UPDATE food_items SET image_url = '/foods/persimmon_fresh.png' WHERE name = 'Persimmon (fresh)';
-UPDATE food_items SET image_url = '/foods/kumquat.png' WHERE name = 'Kumquat';
-UPDATE food_items SET image_url = '/foods/blood_orange.png' WHERE name = 'Blood Orange';
-UPDATE food_items SET image_url = '/foods/tamarind.png' WHERE name = 'Tamarind';
-UPDATE food_items SET image_url = '/foods/longan_fresh.png' WHERE name = 'Longan (fresh)';
+UPDATE food_items SET image_url = '/foods/dragon_fruit.jpg' WHERE name = 'Dragon Fruit';
+UPDATE food_items SET image_url = '/foods/papaya_fresh.jpg' WHERE name = 'Papaya (fresh)';
+UPDATE food_items SET image_url = '/foods/guava_fresh.jpg' WHERE name = 'Guava (fresh)';
+UPDATE food_items SET image_url = '/foods/passion_fruit_halved.jpg' WHERE name = 'Passion Fruit';
+UPDATE food_items SET image_url = '/foods/lychee_fresh.jpg' WHERE name = 'Lychee (fresh)';
+UPDATE food_items SET image_url = '/foods/star_fruit.jpg' WHERE name = 'Star Fruit / Carambola';
+UPDATE food_items SET image_url = '/foods/jackfruit_fresh.jpg' WHERE name = 'Jackfruit (fresh)';
+UPDATE food_items SET image_url = '/foods/persimmon_fresh.jpg' WHERE name = 'Persimmon (fresh)';
+UPDATE food_items SET image_url = '/foods/kumquat.jpg' WHERE name = 'Kumquat';
+UPDATE food_items SET image_url = '/foods/blood_orange.jpg' WHERE name = 'Blood Orange';
+UPDATE food_items SET image_url = '/foods/tamarind.jpg' WHERE name = 'Tamarind';
+UPDATE food_items SET image_url = '/foods/longan_fresh.jpg' WHERE name = 'Longan (fresh)';
 
 -- Dairy
-UPDATE food_items SET image_url = '/foods/sour_cream.png' WHERE name = 'Sour Cream (full fat)';
-UPDATE food_items SET image_url = '/foods/heavy_cream.png' WHERE name = 'Heavy Whipping Cream';
-UPDATE food_items SET image_url = '/foods/half_and_half.png' WHERE name = 'Half & Half';
-UPDATE food_items SET image_url = '/foods/kefir_plain.png' WHERE name = 'Kefir (plain)';
-UPDATE food_items SET image_url = '/foods/brie_cheese.png' WHERE name = 'Brie Cheese';
-UPDATE food_items SET image_url = '/foods/blue_cheese.png' WHERE name = 'Blue Cheese (crumbled)';
-UPDATE food_items SET image_url = '/foods/gouda_cheese.png' WHERE name = 'Gouda Cheese';
-UPDATE food_items SET image_url = '/foods/feta_crumbled.png' WHERE name = 'Feta Cheese (crumbled)';
-UPDATE food_items SET image_url = '/foods/ricotta_cheese.png' WHERE name = 'Ricotta Cheese';
-UPDATE food_items SET image_url = '/foods/mascarpone_cheese.png' WHERE name = 'Mascarpone Cheese';
+UPDATE food_items SET image_url = '/foods/sour_cream.jpg' WHERE name = 'Sour Cream (full fat)';
+UPDATE food_items SET image_url = '/foods/heavy_cream.jpg' WHERE name = 'Heavy Whipping Cream';
+UPDATE food_items SET image_url = '/foods/half_and_half.jpg' WHERE name = 'Half & Half';
+UPDATE food_items SET image_url = '/foods/kefir_plain.jpg' WHERE name = 'Kefir (plain)';
+UPDATE food_items SET image_url = '/foods/brie_cheese.jpg' WHERE name = 'Brie Cheese';
+UPDATE food_items SET image_url = '/foods/blue_cheese.jpg' WHERE name = 'Blue Cheese (crumbled)';
+UPDATE food_items SET image_url = '/foods/gouda_cheese.jpg' WHERE name = 'Gouda Cheese';
+UPDATE food_items SET image_url = '/foods/feta_crumbled.jpg' WHERE name = 'Feta Cheese (crumbled)';
+UPDATE food_items SET image_url = '/foods/ricotta_cheese.jpg' WHERE name = 'Ricotta Cheese';
+UPDATE food_items SET image_url = '/foods/mascarpone_cheese.jpg' WHERE name = 'Mascarpone Cheese';
 
 -- Cereals / Grains
-UPDATE food_items SET image_url = '/foods/granola_plain.png' WHERE name = 'Granola (plain)';
-UPDATE food_items SET image_url = '/foods/grape_nuts_cereal.png' WHERE name = 'Grape Nuts Cereal';
-UPDATE food_items SET image_url = '/foods/kashi_go_cereal.png' WHERE name = 'Kashi GO Cereal';
-UPDATE food_items SET image_url = '/foods/cap_n_crunch.png' WHERE name = 'Cap''n Crunch';
-UPDATE food_items SET image_url = '/foods/cocoa_puffs.png' WHERE name = 'Cocoa Puffs';
-UPDATE food_items SET image_url = '/foods/polenta_cooked.png' WHERE name = 'Polenta (cooked)';
-UPDATE food_items SET image_url = '/foods/grits_cooked.png' WHERE name = 'Grits (cooked)';
-UPDATE food_items SET image_url = '/foods/millet_cooked.png' WHERE name = 'Millet (cooked)';
-UPDATE food_items SET image_url = '/foods/udon_noodles_cooked.png' WHERE name = 'Udon Noodles (cooked)';
-UPDATE food_items SET image_url = '/foods/soba_noodles_cooked.png' WHERE name = 'Soba Noodles (cooked)';
+UPDATE food_items SET image_url = '/foods/granola_plain.jpg' WHERE name = 'Granola (plain)';
+UPDATE food_items SET image_url = '/foods/grape_nuts_cereal.jpg' WHERE name = 'Grape Nuts Cereal';
+UPDATE food_items SET image_url = '/foods/kashi_go_cereal.jpg' WHERE name = 'Kashi GO Cereal';
+UPDATE food_items SET image_url = '/foods/cap_n_crunch.jpg' WHERE name = 'Cap''n Crunch';
+UPDATE food_items SET image_url = '/foods/cocoa_puffs.jpg' WHERE name = 'Cocoa Puffs';
+UPDATE food_items SET image_url = '/foods/polenta_cooked.jpg' WHERE name = 'Polenta (cooked)';
+UPDATE food_items SET image_url = '/foods/grits_cooked.jpg' WHERE name = 'Grits (cooked)';
+UPDATE food_items SET image_url = '/foods/millet_cooked.jpg' WHERE name = 'Millet (cooked)';
+UPDATE food_items SET image_url = '/foods/udon_noodles_cooked.jpg' WHERE name = 'Udon Noodles (cooked)';
+UPDATE food_items SET image_url = '/foods/soba_noodles_cooked.jpg' WHERE name = 'Soba Noodles (cooked)';
 
 -- Protein Bars / Shakes
-UPDATE food_items SET image_url = '/foods/barebells_chocolate_dough.png' WHERE name = 'Barebells Chocolate Dough Bar';
-UPDATE food_items SET image_url = '/foods/grenade_carb_killa.png' WHERE name = 'Grenade Carb Killa Bar';
-UPDATE food_items SET image_url = '/foods/built_bar_chocolate.png' WHERE name = 'Built Bar Chocolate';
-UPDATE food_items SET image_url = '/foods/ghost_protein_bar.png' WHERE name = 'Ghost Protein Bar';
-UPDATE food_items SET image_url = '/foods/core_power_chocolate.png' WHERE name = 'Core Power Elite Shake (Chocolate)';
-UPDATE food_items SET image_url = '/foods/bsn_syntha6.png' WHERE name = 'BSN Syntha-6 Protein Shake';
-UPDATE food_items SET image_url = '/foods/orgain_plant_protein_shake.png' WHERE name = 'Orgain Plant Protein Shake';
-UPDATE food_items SET image_url = '/foods/vega_sport_protein.png' WHERE name = 'Vega Sport Premium Protein';
+UPDATE food_items SET image_url = '/foods/barebells_chocolate_dough.jpg' WHERE name = 'Barebells Chocolate Dough Bar';
+UPDATE food_items SET image_url = '/foods/grenade_carb_killa.jpg' WHERE name = 'Grenade Carb Killa Bar';
+UPDATE food_items SET image_url = '/foods/built_bar_chocolate.jpg' WHERE name = 'Built Bar Chocolate';
+UPDATE food_items SET image_url = '/foods/ghost_protein_bar.jpg' WHERE name = 'Ghost Protein Bar';
+UPDATE food_items SET image_url = '/foods/core_power_chocolate.jpg' WHERE name = 'Core Power Elite Shake (Chocolate)';
+UPDATE food_items SET image_url = '/foods/bsn_syntha6.jpg' WHERE name = 'BSN Syntha-6 Protein Shake';
+UPDATE food_items SET image_url = '/foods/orgain_plant_protein_shake.jpg' WHERE name = 'Orgain Plant Protein Shake';
+UPDATE food_items SET image_url = '/foods/vega_sport_protein.jpg' WHERE name = 'Vega Sport Premium Protein';
 
 -- Condiments
-UPDATE food_items SET image_url = '/foods/worcestershire_sauce.png' WHERE name = 'Worcestershire Sauce';
-UPDATE food_items SET image_url = '/foods/fish_sauce_bottle.png' WHERE name = 'Fish Sauce';
-UPDATE food_items SET image_url = '/foods/oyster_sauce.png' WHERE name = 'Oyster Sauce';
-UPDATE food_items SET image_url = '/foods/hoisin_sauce.png' WHERE name = 'Hoisin Sauce';
-UPDATE food_items SET image_url = '/foods/miso_paste.png' WHERE name = 'Miso Paste (white)';
-UPDATE food_items SET image_url = '/foods/gochujang_paste.png' WHERE name = 'Gochujang (Korean Chili Paste)';
-UPDATE food_items SET image_url = '/foods/chimichurri_sauce.png' WHERE name = 'Chimichurri Sauce';
-UPDATE food_items SET image_url = '/foods/red_curry_paste.png' WHERE name = 'Red Curry Paste';
+UPDATE food_items SET image_url = '/foods/worcestershire_sauce.jpg' WHERE name = 'Worcestershire Sauce';
+UPDATE food_items SET image_url = '/foods/fish_sauce_bottle.jpg' WHERE name = 'Fish Sauce';
+UPDATE food_items SET image_url = '/foods/oyster_sauce.jpg' WHERE name = 'Oyster Sauce';
+UPDATE food_items SET image_url = '/foods/hoisin_sauce.jpg' WHERE name = 'Hoisin Sauce';
+UPDATE food_items SET image_url = '/foods/miso_paste.jpg' WHERE name = 'Miso Paste (white)';
+UPDATE food_items SET image_url = '/foods/gochujang_paste.jpg' WHERE name = 'Gochujang (Korean Chili Paste)';
+UPDATE food_items SET image_url = '/foods/chimichurri_sauce.jpg' WHERE name = 'Chimichurri Sauce';
+UPDATE food_items SET image_url = '/foods/red_curry_paste.jpg' WHERE name = 'Red Curry Paste';
 
 -- Misc Grains / Breads
-UPDATE food_items SET image_url = '/foods/rice_noodles_cooked.png' WHERE name = 'Rice Noodles (cooked)';
-UPDATE food_items SET image_url = '/foods/egg_noodles_cooked.png' WHERE name = 'Egg Noodles (cooked)';
-UPDATE food_items SET image_url = '/foods/cream_of_rice.png' WHERE name = 'Cream of Rice';
-UPDATE food_items SET image_url = '/foods/sourdough_bread_slice.png' WHERE name = 'Sourdough Bread';
-UPDATE food_items SET image_url = '/foods/cornbread_slice.png' WHERE name = 'Cornbread';
-UPDATE food_items SET image_url = '/foods/focaccia_slice.png' WHERE name = 'Focaccia';
+UPDATE food_items SET image_url = '/foods/rice_noodles_cooked.jpg' WHERE name = 'Rice Noodles (cooked)';
+UPDATE food_items SET image_url = '/foods/egg_noodles_cooked.jpg' WHERE name = 'Egg Noodles (cooked)';
+UPDATE food_items SET image_url = '/foods/cream_of_rice.jpg' WHERE name = 'Cream of Rice';
+UPDATE food_items SET image_url = '/foods/sourdough_bread_slice.jpg' WHERE name = 'Sourdough Bread';
+UPDATE food_items SET image_url = '/foods/cornbread_slice.jpg' WHERE name = 'Cornbread';
+UPDATE food_items SET image_url = '/foods/focaccia_slice.jpg' WHERE name = 'Focaccia';
 
 -- Sandwiches / Meals
-UPDATE food_items SET image_url = '/foods/grilled_cheese_sandwich.png' WHERE name = 'Grilled Cheese Sandwich';
-UPDATE food_items SET image_url = '/foods/blt_sandwich.png' WHERE name = 'BLT Sandwich';
-UPDATE food_items SET image_url = '/foods/club_sandwich.png' WHERE name = 'Club Sandwich';
-UPDATE food_items SET image_url = '/foods/philly_cheesesteak_sandwich.png' WHERE name = 'Philly Cheesesteak Sandwich';
-UPDATE food_items SET image_url = '/foods/french_dip_sandwich.png' WHERE name = 'French Dip Sandwich';
-UPDATE food_items SET image_url = '/foods/grilled_veggie_wrap.png' WHERE name = 'Grilled Veggie Wrap';
+UPDATE food_items SET image_url = '/foods/grilled_cheese_sandwich.jpg' WHERE name = 'Grilled Cheese Sandwich';
+UPDATE food_items SET image_url = '/foods/blt_sandwich.jpg' WHERE name = 'BLT Sandwich';
+UPDATE food_items SET image_url = '/foods/club_sandwich.jpg' WHERE name = 'Club Sandwich';
+UPDATE food_items SET image_url = '/foods/philly_cheesesteak_sandwich.jpg' WHERE name = 'Philly Cheesesteak Sandwich';
+UPDATE food_items SET image_url = '/foods/french_dip_sandwich.jpg' WHERE name = 'French Dip Sandwich';
+UPDATE food_items SET image_url = '/foods/grilled_veggie_wrap.jpg' WHERE name = 'Grilled Veggie Wrap';
 
 -- Soups
-UPDATE food_items SET image_url = '/foods/lentil_soup_bowl.png' WHERE name = 'Lentil Soup';
-UPDATE food_items SET image_url = '/foods/minestrone_soup_bowl.png' WHERE name = 'Minestrone Soup';
-UPDATE food_items SET image_url = '/foods/clam_chowder_bowl.png' WHERE name = 'New England Clam Chowder' AND brand IS NULL;
-UPDATE food_items SET image_url = '/foods/french_onion_soup_bowl.png' WHERE name = 'French Onion Soup';
-UPDATE food_items SET image_url = '/foods/tomato_bisque_bowl.png' WHERE name = 'Tomato Bisque';
+UPDATE food_items SET image_url = '/foods/lentil_soup_bowl.jpg' WHERE name = 'Lentil Soup';
+UPDATE food_items SET image_url = '/foods/minestrone_soup_bowl.jpg' WHERE name = 'Minestrone Soup';
+UPDATE food_items SET image_url = '/foods/clam_chowder_bowl.jpg' WHERE name = 'New England Clam Chowder' AND brand IS NULL;
+UPDATE food_items SET image_url = '/foods/french_onion_soup_bowl.jpg' WHERE name = 'French Onion Soup';
+UPDATE food_items SET image_url = '/foods/tomato_bisque_bowl.jpg' WHERE name = 'Tomato Bisque';
 
 -- Packaged Snacks
-UPDATE food_items SET image_url = '/foods/lays_classic_chips.png' WHERE name = 'Lay''s Classic Chips';
-UPDATE food_items SET image_url = '/foods/pringles_original.png' WHERE name = 'Pringles Original';
-UPDATE food_items SET image_url = '/foods/ritz_crackers.png' WHERE name = 'Ritz Crackers (5)';
-UPDATE food_items SET image_url = '/foods/wheat_thins.png' WHERE name = 'Wheat Thins (handful)';
-UPDATE food_items SET image_url = '/foods/babybel_cheese.png' WHERE name = 'Babybel Mini Cheese';
+UPDATE food_items SET image_url = '/foods/lays_classic_chips.jpg' WHERE name = 'Lay''s Classic Chips';
+UPDATE food_items SET image_url = '/foods/pringles_original.jpg' WHERE name = 'Pringles Original';
+UPDATE food_items SET image_url = '/foods/ritz_crackers.jpg' WHERE name = 'Ritz Crackers (5)';
+UPDATE food_items SET image_url = '/foods/wheat_thins.jpg' WHERE name = 'Wheat Thins (handful)';
+UPDATE food_items SET image_url = '/foods/babybel_cheese.jpg' WHERE name = 'Babybel Mini Cheese';
 
 -- Health Drinks
-UPDATE food_items SET image_url = '/foods/kombucha_ginger_lemon.png' WHERE name = 'Ginger Lemon Kombucha';
-UPDATE food_items SET image_url = '/foods/beet_juice.png' WHERE name = 'Fresh Beet Juice';
-UPDATE food_items SET image_url = '/foods/celery_juice.png' WHERE name = 'Fresh Celery Juice';
-UPDATE food_items SET image_url = '/foods/golden_milk_turmeric_latte.png' WHERE name = 'Golden Milk Turmeric Latte';
+UPDATE food_items SET image_url = '/foods/kombucha_ginger_lemon.jpg' WHERE name = 'Ginger Lemon Kombucha';
+UPDATE food_items SET image_url = '/foods/beet_juice.jpg' WHERE name = 'Fresh Beet Juice';
+UPDATE food_items SET image_url = '/foods/celery_juice.jpg' WHERE name = 'Fresh Celery Juice';
+UPDATE food_items SET image_url = '/foods/golden_milk_turmeric_latte.jpg' WHERE name = 'Golden Milk Turmeric Latte';
 
 -- Desserts Extra
-UPDATE food_items SET image_url = '/foods/tiramisu_slice.png' WHERE name = 'Tiramisu (1 slice)';
-UPDATE food_items SET image_url = '/foods/gelato_scoop.png' WHERE name = 'Gelato (1 scoop)';
-UPDATE food_items SET image_url = '/foods/churros.png' WHERE name = 'Churros (3)';
-UPDATE food_items SET image_url = '/foods/beignets.png' WHERE name = 'Beignets (3)';
-UPDATE food_items SET image_url = '/foods/funnel_cake.png' WHERE name = 'Funnel Cake';
-UPDATE food_items SET image_url = '/foods/soft_pretzel_large.png' WHERE name = 'Large Soft Pretzel';
-UPDATE food_items SET image_url = '/foods/strawberry_cheesecake_slice.png' WHERE name = 'Strawberry Cheesecake (1 slice)';
+UPDATE food_items SET image_url = '/foods/tiramisu_slice.jpg' WHERE name = 'Tiramisu (1 slice)';
+UPDATE food_items SET image_url = '/foods/gelato_scoop.jpg' WHERE name = 'Gelato (1 scoop)';
+UPDATE food_items SET image_url = '/foods/churros.jpg' WHERE name = 'Churros (3)';
+UPDATE food_items SET image_url = '/foods/beignets.jpg' WHERE name = 'Beignets (3)';
+UPDATE food_items SET image_url = '/foods/funnel_cake.jpg' WHERE name = 'Funnel Cake';
+UPDATE food_items SET image_url = '/foods/soft_pretzel_large.jpg' WHERE name = 'Large Soft Pretzel';
+UPDATE food_items SET image_url = '/foods/strawberry_cheesecake_slice.jpg' WHERE name = 'Strawberry Cheesecake (1 slice)';
 
 -- Bojangles
-UPDATE food_items SET image_url = '/foods/bojangles_chicken_supremes.png' WHERE name ILIKE '%Bojangles%' OR name ILIKE '%Chicken Supremes%';
+UPDATE food_items SET image_url = '/foods/bojangles_chicken_supremes.jpg' WHERE name ILIKE '%Bojangles%' OR name ILIKE '%Chicken Supremes%';

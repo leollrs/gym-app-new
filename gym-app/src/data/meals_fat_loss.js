@@ -2,7 +2,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r51',
     title: 'Asian Chicken Lettuce Cups',
-    image: '/meals/asian_chicken_lettuce_cups.png',
+    image: '/meals/asian_chicken_lettuce_cups.jpg',
     calories: 250, protein: 30, carbs: 14, fat: 8, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'lettuce', 'soy_sauce', 'garlic', 'ginger'],
@@ -11,7 +11,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r52',
     title: 'Greek Salad with Grilled Chicken',
-    image: '/meals/greek_salad_with_grilled_chicken.png',
+    image: '/meals/greek_salad_with_grilled_chicken.jpg',
     calories: 290, protein: 32, carbs: 12, fat: 11, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'cucumber', 'tomato', 'olives', 'feta_cheese', 'red_onion', 'olive_oil'],
@@ -20,7 +20,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r53',
     title: 'Egg White Veggie Omelette',
-    image: '/meals/egg_white_veggie_omelette.png',
+    image: '/meals/egg_white_veggie_omelette.jpg',
     calories: 180, protein: 22, carbs: 8, fat: 5, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'spinach', 'bell_pepper', 'mushrooms', 'onion', 'salt', 'pepper'],
@@ -29,7 +29,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r54',
     title: 'Zucchini Noodles with Turkey Bolognese',
-    image: '/meals/zucchini_noodles_with_turkey_bolognese.png',
+    image: '/meals/zucchini_noodles_with_turkey_bolognese.jpg',
     calories: 310, protein: 33, carbs: 18, fat: 9, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_turkey', 'zucchini', 'tomato_sauce', 'garlic', 'onion', 'Italian_seasoning'],
@@ -38,7 +38,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r55',
     title: 'Spicy Shrimp Cauliflower Rice Bowl',
-    image: '/meals/spicy_shrimp_cauliflower_rice_bowl.png',
+    image: '/meals/spicy_shrimp_cauliflower_rice_bowl.jpg',
     calories: 270, protein: 28, carbs: 15, fat: 7, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['shrimp', 'cauliflower', 'soy_sauce', 'sriracha', 'garlic', 'lime', 'green_onion'],
@@ -47,7 +47,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r56',
     title: 'Lemon Herb Steamed Tilapia',
-    image: '/meals/lemon_herb_steamed_tilapia.png',
+    image: '/meals/lemon_herb_steamed_tilapia.jpg',
     calories: 200, protein: 35, carbs: 3, fat: 5, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['tilapia_fillet', 'lemon', 'dill', 'garlic', 'salt', 'pepper', 'capers'],
@@ -56,7 +56,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r57',
     title: 'Miso Soup with Tofu and Seaweed',
-    image: '/meals/miso_soup_with_tofu_and_seaweed.png',
+    image: '/meals/miso_soup_with_tofu_and_seaweed.jpg',
     calories: 140, protein: 15, carbs: 9, fat: 5, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['miso_paste', 'tofu', 'seaweed', 'green_onion', 'dashi_stock'],
@@ -65,7 +65,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r58',
     title: 'Turkey and Cucumber Roll-Ups',
-    image: '/meals/turkey_and_cucumber_roll_ups.png',
+    image: '/meals/turkey_and_cucumber_roll_ups.jpg',
     calories: 190, protein: 25, carbs: 5, fat: 6, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['turkey_breast_slices', 'cucumber', 'cream_cheese_light', 'dill', 'lemon'],
@@ -74,7 +74,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r59',
     title: 'Cottage Cheese and Berry Bowl',
-    image: '/meals/cottage_cheese_and_berry_bowl.png',
+    image: '/meals/cottage_cheese_and_berry_bowl.jpg',
     calories: 210, protein: 24, carbs: 20, fat: 3, prepTime: 5,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['cottage_cheese', 'strawberries', 'blueberries', 'chia_seeds', 'honey'],
@@ -83,7 +83,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r60',
     title: 'Tuna and White Bean Salad',
-    image: '/meals/tuna_and_white_bean_salad.png',
+    image: '/meals/tuna_and_white_bean_salad.jpg',
     calories: 280, protein: 30, carbs: 22, fat: 6, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'white_beans', 'celery', 'red_onion', 'lemon', 'parsley', 'olive_oil'],
@@ -92,7 +92,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r61',
     title: 'Greek Yogurt Cucumber Dill Bowl',
-    image: '/meals/greek_yogurt_cucumber_dill_bowl.png',
+    image: '/meals/greek_yogurt_cucumber_dill_bowl.jpg',
     calories: 175, protein: 18, carbs: 14, fat: 3, prepTime: 5,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'cucumber', 'dill', 'garlic', 'lemon', 'salt'],
@@ -101,7 +101,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r62',
     title: 'Steamed Salmon with Asparagus',
-    image: '/meals/steamed_salmon_with_asparagus.png',
+    image: '/meals/steamed_salmon_with_asparagus.jpg',
     calories: 340, protein: 35, carbs: 8, fat: 16, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'asparagus', 'lemon', 'dill', 'garlic', 'salt', 'pepper'],
@@ -110,7 +110,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r63',
     title: 'Chicken and Spinach Soup',
-    image: '/meals/chicken_and_spinach_soup.png',
+    image: '/meals/chicken_and_spinach_soup.jpg',
     calories: 230, protein: 28, carbs: 12, fat: 6, prepTime: 25,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'spinach', 'chicken_broth', 'garlic', 'onion', 'carrot', 'celery'],
@@ -119,7 +119,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r64',
     title: 'Shrimp Zucchini Stir-Fry',
-    image: '/meals/shrimp_zucchini_stir_fry.png',
+    image: '/meals/shrimp_zucchini_stir_fry.jpg',
     calories: 240, protein: 27, carbs: 10, fat: 8, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['shrimp', 'zucchini', 'bell_pepper', 'soy_sauce', 'garlic', 'sesame_oil', 'ginger'],
@@ -128,7 +128,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r65',
     title: 'Cauliflower Fried Rice with Egg',
-    image: '/meals/cauliflower_fried_rice_with_egg.png',
+    image: '/meals/cauliflower_fried_rice_with_egg.jpg',
     calories: 255, protein: 18, carbs: 16, fat: 9, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['cauliflower', 'eggs', 'peas', 'carrot', 'soy_sauce', 'garlic', 'sesame_oil', 'green_onion'],
@@ -137,7 +137,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r66',
     title: 'Turkey Lettuce Wraps with Avocado Salsa',
-    image: '/meals/turkey_lettuce_wraps_with_avocado_salsa.png',
+    image: '/meals/turkey_lettuce_wraps_with_avocado_salsa.jpg',
     calories: 300, protein: 28, carbs: 14, fat: 12, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_turkey', 'lettuce', 'avocado', 'tomato', 'lime', 'cilantro', 'jalapeño'],
@@ -146,7 +146,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r67',
     title: 'Smoked Salmon Cucumber Bites',
-    image: '/meals/smoked_salmon_cucumber_bites.png',
+    image: '/meals/smoked_salmon_cucumber_bites.jpg',
     calories: 175, protein: 20, carbs: 4, fat: 8, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['smoked_salmon', 'cucumber', 'cream_cheese_light', 'capers', 'dill', 'lemon'],
@@ -155,7 +155,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r68',
     title: 'Tomato Basil Egg White Scramble',
-    image: '/meals/tomato_basil_egg_white_scramble.png',
+    image: '/meals/tomato_basil_egg_white_scramble.jpg',
     calories: 155, protein: 20, carbs: 7, fat: 4, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'tomato', 'fresh_basil', 'garlic', 'olive_oil', 'salt', 'pepper'],
@@ -164,7 +164,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r69',
     title: 'Chicken Cauliflower Rice Bowl',
-    image: '/meals/chicken_cauliflower_rice_bowl.png',
+    image: '/meals/chicken_cauliflower_rice_bowl.jpg',
     calories: 315, protein: 35, carbs: 14, fat: 9, prepTime: 25,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'cauliflower', 'broccoli', 'soy_sauce', 'garlic', 'sesame_oil', 'ginger'],
@@ -173,7 +173,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r70',
     title: 'Tuna Stuffed Bell Peppers',
-    image: '/meals/tuna_stuffed_bell_peppers.png',
+    image: '/meals/tuna_stuffed_bell_peppers.jpg',
     calories: 220, protein: 28, carbs: 12, fat: 5, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'bell_pepper', 'celery', 'red_onion', 'mustard', 'lemon', 'parsley'],
@@ -182,7 +182,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r71',
     title: 'Lentil and Kale Soup',
-    image: '/meals/lentil_and_kale_soup.png',
+    image: '/meals/lentil_and_kale_soup.jpg',
     calories: 275, protein: 18, carbs: 35, fat: 4, prepTime: 30,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['lentils', 'kale', 'carrot', 'onion', 'garlic', 'vegetable_broth', 'cumin', 'turmeric'],
@@ -191,7 +191,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r72',
     title: 'Poached Egg and Smashed Avocado Salad',
-    image: '/meals/poached_egg_and_smashed_avocado_salad.png',
+    image: '/meals/poached_egg_and_smashed_avocado_salad.jpg',
     calories: 295, protein: 16, carbs: 14, fat: 18, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['eggs', 'avocado', 'mixed_greens', 'tomato', 'lemon', 'red_pepper_flakes', 'salt'],
@@ -200,7 +200,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r73',
     title: 'Grilled Chicken Arugula Salad',
-    image: '/meals/grilled_chicken_arugula_salad.png',
+    image: '/meals/grilled_chicken_arugula_salad.jpg',
     calories: 285, protein: 33, carbs: 8, fat: 11, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'arugula', 'cherry_tomatoes', 'parmesan', 'lemon', 'olive_oil', 'black_pepper'],
@@ -209,7 +209,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r74',
     title: 'Shrimp and Mango Lettuce Wraps',
-    image: '/meals/shrimp_and_mango_lettuce_wraps.png',
+    image: '/meals/shrimp_and_mango_lettuce_wraps.jpg',
     calories: 240, protein: 25, carbs: 20, fat: 5, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['shrimp', 'mango', 'lettuce', 'red_onion', 'cilantro', 'lime', 'jalapeño'],
@@ -218,7 +218,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r75',
     title: 'Greek Yogurt with Walnuts and Honey',
-    image: '/meals/greek_yogurt_with_walnuts_and_honey.png',
+    image: '/meals/greek_yogurt_with_walnuts_and_honey.jpg',
     calories: 230, protein: 18, carbs: 18, fat: 10, prepTime: 5,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'walnuts', 'honey', 'cinnamon'],
@@ -227,7 +227,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r76',
     title: 'Steamed Cod with Ginger and Scallions',
-    image: '/meals/steamed_cod_with_ginger_and_scallions.png',
+    image: '/meals/steamed_cod_with_ginger_and_scallions.jpg',
     calories: 195, protein: 34, carbs: 4, fat: 4, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['cod_fillet', 'ginger', 'scallions', 'soy_sauce', 'sesame_oil', 'rice_wine'],
@@ -236,7 +236,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r77',
     title: 'Zucchini Noodle Shrimp Scampi',
-    image: '/meals/zucchini_noodle_shrimp_scampi.png',
+    image: '/meals/zucchini_noodle_shrimp_scampi.jpg',
     calories: 265, protein: 26, carbs: 10, fat: 12, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['shrimp', 'zucchini', 'garlic', 'lemon', 'olive_oil', 'red_pepper_flakes', 'parsley'],
@@ -245,7 +245,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r78',
     title: 'Turkey and Vegetable Soup',
-    image: '/meals/turkey_and_vegetable_soup.png',
+    image: '/meals/turkey_and_vegetable_soup.jpg',
     calories: 220, protein: 26, carbs: 16, fat: 5, prepTime: 30,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_turkey', 'zucchini', 'carrot', 'celery', 'tomato', 'chicken_broth', 'Italian_seasoning'],
@@ -254,7 +254,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r79',
     title: 'Spicy Tuna Cucumber Rolls',
-    image: '/meals/spicy_tuna_cucumber_rolls.png',
+    image: '/meals/spicy_tuna_cucumber_rolls.jpg',
     calories: 185, protein: 24, carbs: 6, fat: 6, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['canned_tuna', 'cucumber', 'sriracha', 'mayo_light', 'sesame_seeds', 'soy_sauce', 'green_onion'],
@@ -263,7 +263,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r80',
     title: 'Egg White and Spinach Muffin Cups',
-    image: '/meals/egg_white_and_spinach_muffin_cups.png',
+    image: '/meals/egg_white_and_spinach_muffin_cups.jpg',
     calories: 165, protein: 22, carbs: 5, fat: 4, prepTime: 25,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['egg_whites', 'spinach', 'mushrooms', 'red_pepper', 'garlic_powder', 'salt', 'pepper'],
@@ -272,7 +272,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r81',
     title: 'Roasted Chicken and Vegetable Bowl',
-    image: '/meals/roasted_chicken_and_vegetable_bowl.png',
+    image: '/meals/roasted_chicken_and_vegetable_bowl.jpg',
     calories: 330, protein: 34, carbs: 20, fat: 10, prepTime: 30,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'broccoli', 'bell_pepper', 'red_onion', 'olive_oil', 'garlic', 'paprika'],
@@ -281,7 +281,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r82',
     title: 'Salmon and Avocado Salad Bowl',
-    image: '/meals/salmon_and_avocado_salad_bowl.png',
+    image: '/meals/salmon_and_avocado_salad_bowl.jpg',
     calories: 370, protein: 32, carbs: 12, fat: 20, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'avocado', 'mixed_greens', 'cucumber', 'lemon', 'olive_oil', 'dill'],
@@ -290,7 +290,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r83',
     title: 'Cucumber Tomato Feta Salad',
-    image: '/meals/cucumber_tomato_feta_salad.png',
+    image: '/meals/cucumber_tomato_feta_salad.jpg',
     calories: 155, protein: 7, carbs: 10, fat: 9, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['cucumber', 'tomato', 'feta_cheese', 'red_onion', 'olives', 'lemon', 'oregano'],
@@ -299,7 +299,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r84',
     title: 'Lean Turkey Taco Lettuce Wraps',
-    image: '/meals/lean_turkey_taco_lettuce_wraps.png',
+    image: '/meals/lean_turkey_taco_lettuce_wraps.jpg',
     calories: 275, protein: 29, carbs: 13, fat: 10, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_turkey', 'lettuce', 'tomato', 'onion', 'taco_seasoning', 'salsa', 'lime'],
@@ -308,7 +308,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r85',
     title: 'Vegetable Egg Drop Soup',
-    image: '/meals/vegetable_egg_drop_soup.png',
+    image: '/meals/vegetable_egg_drop_soup.jpg',
     calories: 130, protein: 15, carbs: 8, fat: 4, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'chicken_broth', 'spinach', 'mushrooms', 'green_onion', 'soy_sauce', 'cornstarch'],
@@ -317,7 +317,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r86',
     title: 'Grilled Shrimp Skewers over Salad',
-    image: '/meals/grilled_shrimp_skewers_over_salad.png',
+    image: '/meals/grilled_shrimp_skewers_over_salad.jpg',
     calories: 255, protein: 29, carbs: 9, fat: 9, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['shrimp', 'mixed_greens', 'cherry_tomatoes', 'lemon', 'garlic', 'olive_oil', 'paprika'],
@@ -326,7 +326,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r87',
     title: 'Cottage Cheese and Pineapple Bowl',
-    image: '/meals/cottage_cheese_and_pineapple_bowl.png',
+    image: '/meals/cottage_cheese_and_pineapple_bowl.jpg',
     calories: 200, protein: 22, carbs: 20, fat: 2, prepTime: 5,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['cottage_cheese', 'pineapple', 'mint', 'lime_zest'],
@@ -335,7 +335,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r88',
     title: 'Baked Herb Chicken Salad',
-    image: '/meals/baked_herb_chicken_salad.png',
+    image: '/meals/baked_herb_chicken_salad.jpg',
     calories: 290, protein: 35, carbs: 10, fat: 9, prepTime: 30,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'romaine_lettuce', 'tomato', 'cucumber', 'rosemary', 'thyme', 'lemon', 'olive_oil'],
@@ -344,7 +344,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r89',
     title: 'Tuna Nicoise Salad',
-    image: '/meals/tuna_nicoise_salad.png',
+    image: '/meals/tuna_nicoise_salad.jpg',
     calories: 310, protein: 28, carbs: 18, fat: 12, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['canned_tuna', 'green_beans', 'tomato', 'egg', 'olives', 'lemon', 'Dijon_mustard', 'olive_oil'],
@@ -353,7 +353,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r90',
     title: 'Spiced Cauliflower and Chickpea Bowl',
-    image: '/meals/spiced_cauliflower_and_chickpea_bowl.png',
+    image: '/meals/spiced_cauliflower_and_chickpea_bowl.jpg',
     calories: 280, protein: 15, carbs: 38, fat: 7, prepTime: 25,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['cauliflower', 'chickpeas', 'cumin', 'turmeric', 'paprika', 'olive_oil', 'lemon', 'spinach'],
@@ -362,7 +362,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r91',
     title: 'Avocado Egg Salad Lettuce Cups',
-    image: '/meals/avocado_egg_salad_lettuce_cups.png',
+    image: '/meals/avocado_egg_salad_lettuce_cups.jpg',
     calories: 270, protein: 16, carbs: 8, fat: 18, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'avocado', 'lettuce', 'celery', 'lemon', 'Dijon_mustard', 'salt', 'pepper'],
@@ -371,7 +371,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r92',
     title: 'Salmon Miso Soup',
-    image: '/meals/salmon_miso_soup.png',
+    image: '/meals/salmon_miso_soup.jpg',
     calories: 250, protein: 28, carbs: 10, fat: 9, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon', 'miso_paste', 'dashi_stock', 'bok_choy', 'mushrooms', 'green_onion', 'tofu'],
@@ -380,7 +380,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r93',
     title: 'Turkey Cucumber Wrap',
-    image: '/meals/turkey_cucumber_wrap.png',
+    image: '/meals/turkey_cucumber_wrap.jpg',
     calories: 210, protein: 27, carbs: 10, fat: 5, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['turkey_breast_slices', 'cucumber', 'spinach', 'mustard', 'red_onion', 'tomato'],
@@ -389,7 +389,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r94',
     title: 'Warm Spinach and Mushroom Egg White Scramble',
-    image: '/meals/warm_spinach_and_mushroom_egg_white_scramble.png',
+    image: '/meals/warm_spinach_and_mushroom_egg_white_scramble.jpg',
     calories: 150, protein: 20, carbs: 6, fat: 4, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['egg_whites', 'spinach', 'mushrooms', 'garlic', 'thyme', 'olive_oil', 'salt', 'pepper'],
@@ -398,7 +398,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r95',
     title: 'Cold Sesame Noodle Bowl with Chicken',
-    image: '/meals/cold_sesame_noodle_bowl_with_chicken.png',
+    image: '/meals/cold_sesame_noodle_bowl_with_chicken.jpg',
     calories: 355, protein: 31, carbs: 28, fat: 12, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'zucchini', 'sesame_paste', 'soy_sauce', 'rice_vinegar', 'garlic', 'ginger', 'cucumber'],
@@ -407,7 +407,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r96',
     title: 'Shrimp and Cabbage Stir-Fry',
-    image: '/meals/shrimp_and_cabbage_stir_fry.png',
+    image: '/meals/shrimp_and_cabbage_stir_fry.jpg',
     calories: 230, protein: 26, carbs: 12, fat: 7, prepTime: 15,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['shrimp', 'cabbage', 'carrot', 'garlic', 'ginger', 'soy_sauce', 'sesame_oil', 'lime'],
@@ -416,7 +416,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r97',
     title: 'Greek Yogurt Parfait with Berries',
-    image: '/meals/greek_yogurt_parfait_with_berries.png',
+    image: '/meals/greek_yogurt_parfait_with_berries.jpg',
     calories: 220, protein: 17, carbs: 26, fat: 4, prepTime: 5,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['greek_yogurt', 'mixed_berries', 'granola_light', 'honey', 'chia_seeds'],
@@ -425,7 +425,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r98',
     title: 'Baked Lemon Herb Salmon',
-    image: '/meals/baked_lemon_herb_salmon.png',
+    image: '/meals/baked_lemon_herb_salmon.jpg',
     calories: 345, protein: 36, carbs: 3, fat: 18, prepTime: 20,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'lemon', 'garlic', 'dill', 'parsley', 'olive_oil', 'salt', 'pepper'],
@@ -434,7 +434,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r99',
     title: 'Chicken and Broccoli Cauliflower Soup',
-    image: '/meals/chicken_and_broccoli_cauliflower_soup.png',
+    image: '/meals/chicken_and_broccoli_cauliflower_soup.jpg',
     calories: 245, protein: 30, carbs: 14, fat: 7, prepTime: 30,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'cauliflower', 'broccoli', 'chicken_broth', 'onion', 'garlic', 'nutritional_yeast'],
@@ -443,7 +443,7 @@ export const MEALS_FAT_LOSS = [
   {
     id: 'r100',
     title: 'Spicy Tuna and Avocado Bowl',
-    image: '/meals/spicy_tuna_and_avocado_bowl.png',
+    image: '/meals/spicy_tuna_and_avocado_bowl.jpg',
     calories: 305, protein: 28, carbs: 14, fat: 14, prepTime: 10,
     tag: 'Fat Loss', category: 'fat_loss', difficulty: 'Easy', serves: 1,
     ingredients: ['canned_tuna', 'avocado', 'cauliflower_rice', 'sriracha', 'soy_sauce', 'sesame_seeds', 'cucumber', 'green_onion'],

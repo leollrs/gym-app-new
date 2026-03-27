@@ -2,7 +2,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r151',
     title: 'Double Chicken Rice Bowl',
-    image: '/meals/double_chicken_rice_bowl.png',
+    image: '/meals/double_chicken_rice_bowl.jpg',
     calories: 900, protein: 70, carbs: 88, fat: 20, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'olive_oil', 'black_beans', 'avocado'],
@@ -11,7 +11,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r152',
     title: 'Loaded Beef Burrito',
-    image: '/meals/loaded_beef_burrito.png',
+    image: '/meals/loaded_beef_burrito.jpg',
     calories: 950, protein: 55, carbs: 95, fat: 32, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_beef', 'large_tortilla', 'rice', 'black_beans', 'cheddar_cheese', 'sour_cream', 'avocado'],
@@ -20,7 +20,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r153',
     title: 'Steak and Eggs Breakfast Plate',
-    image: '/meals/steak_and_eggs_breakfast_plate.png',
+    image: '/meals/steak_and_eggs_breakfast_plate.jpg',
     calories: 850, protein: 65, carbs: 30, fat: 52, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['sirloin_steak', 'eggs', 'butter', 'potatoes', 'spinach', 'salt', 'pepper'],
@@ -29,7 +29,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r154',
     title: 'Mass Gainer Protein Smoothie',
-    image: '/meals/mass_gainer_protein_smoothie.png',
+    image: '/meals/mass_gainer_protein_smoothie.jpg',
     calories: 780, protein: 55, carbs: 90, fat: 18, prepTime: 5,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_milk', 'banana', 'oats', 'peanut_butter', 'protein_powder', 'honey', 'greek_yogurt'],
@@ -38,7 +38,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r155',
     title: 'Big Beef Pasta Bolognese',
-    image: '/meals/big_beef_pasta_bolognese.png',
+    image: '/meals/big_beef_pasta_bolognese.jpg',
     calories: 1050, protein: 58, carbs: 110, fat: 35, prepTime: 40,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_beef', 'pasta', 'tomato_sauce', 'onion', 'garlic', 'olive_oil', 'parmesan', 'red_wine'],
@@ -47,7 +47,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r156',
     title: 'Peanut Butter Oatmeal Stack',
-    image: '/meals/peanut_butter_oatmeal_stack.png',
+    image: '/meals/peanut_butter_oatmeal_stack.jpg',
     calories: 720, protein: 28, carbs: 95, fat: 28, prepTime: 10,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'whole_milk', 'peanut_butter', 'banana', 'honey', 'protein_powder', 'chia_seeds'],
@@ -56,7 +56,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r157',
     title: 'BBQ Chicken Loaded Potato',
-    image: '/meals/bbq_chicken_loaded_potato.png',
+    image: '/meals/bbq_chicken_loaded_potato.jpg',
     calories: 880, protein: 60, carbs: 85, fat: 26, prepTime: 55,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['large_potato', 'chicken_breast', 'bbq_sauce', 'cheddar_cheese', 'sour_cream', 'butter', 'chives'],
@@ -65,7 +65,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r158',
     title: 'Pancake Stack with Bacon and Maple Syrup',
-    image: '/meals/pancake_stack_with_bacon_and_maple_syrup.png',
+    image: '/meals/pancake_stack_with_bacon_and_maple_syrup.jpg',
     calories: 1000, protein: 40, carbs: 115, fat: 38, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['flour', 'eggs', 'whole_milk', 'butter', 'bacon', 'maple_syrup', 'baking_powder', 'protein_powder'],
@@ -74,7 +74,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r159',
     title: 'Salmon and Brown Rice Power Bowl',
-    image: '/meals/salmon_and_brown_rice_power_bowl.png',
+    image: '/meals/salmon_and_brown_rice_power_bowl.jpg',
     calories: 820, protein: 55, carbs: 78, fat: 28, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['salmon_fillet', 'brown_rice', 'avocado', 'edamame', 'cucumber', 'sesame_oil', 'soy_sauce', 'sesame_seeds'],
@@ -83,7 +83,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r160',
     title: 'Triple Egg and Cheese Breakfast Burrito',
-    image: '/meals/triple_egg_and_cheese_breakfast_burrito.png',
+    image: '/meals/triple_egg_and_cheese_breakfast_burrito.jpg',
     calories: 780, protein: 48, carbs: 62, fat: 35, prepTime: 15,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['eggs', 'large_tortilla', 'cheddar_cheese', 'bacon', 'potatoes', 'salsa', 'sour_cream'],
@@ -92,7 +92,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r161',
     title: 'Beef and Cheese Lasagna',
-    image: '/meals/beef_and_cheese_lasagna.png',
+    image: '/meals/beef_and_cheese_lasagna.jpg',
     calories: 1080, protein: 58, carbs: 90, fat: 45, prepTime: 60,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Hard', serves: 1,
     ingredients: ['ground_beef', 'lasagna_sheets', 'ricotta', 'mozzarella', 'tomato_sauce', 'parmesan', 'garlic', 'italian_seasoning'],
@@ -101,7 +101,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r162',
     title: 'Loaded Chicken Stir-Fry with Noodles',
-    image: '/meals/loaded_chicken_stir_fry_with_noodles.png',
+    image: '/meals/loaded_chicken_stir_fry_with_noodles.jpg',
     calories: 870, protein: 55, carbs: 95, fat: 22, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'udon_noodles', 'broccoli', 'bell_pepper', 'soy_sauce', 'oyster_sauce', 'sesame_oil', 'garlic', 'ginger'],
@@ -110,7 +110,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r163',
     title: 'Double Smash Burger',
-    image: '/meals/double_smash_burger.png',
+    image: '/meals/double_smash_burger.jpg',
     calories: 1000, protein: 58, carbs: 65, fat: 52, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_beef', 'burger_buns', 'american_cheese', 'lettuce', 'tomato', 'pickles', 'onion', 'special_sauce', 'butter'],
@@ -119,7 +119,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r164',
     title: 'Nut Butter Banana Waffle Stack',
-    image: '/meals/nut_butter_banana_waffle_stack.png',
+    image: '/meals/nut_butter_banana_waffle_stack.jpg',
     calories: 920, protein: 35, carbs: 108, fat: 38, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['waffle_mix', 'eggs', 'whole_milk', 'almond_butter', 'banana', 'honey', 'walnuts', 'protein_powder'],
@@ -128,7 +128,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r165',
     title: 'Chicken and Sweet Potato Casserole',
-    image: '/meals/chicken_and_sweet_potato_casserole.png',
+    image: '/meals/chicken_and_sweet_potato_casserole.jpg',
     calories: 840, protein: 60, carbs: 80, fat: 24, prepTime: 50,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thighs', 'sweet_potato', 'cream', 'cheddar_cheese', 'onion', 'garlic', 'thyme', 'olive_oil'],
@@ -137,7 +137,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r166',
     title: 'Loaded Nachos with Pulled Pork',
-    image: '/meals/loaded_nachos_with_pulled_pork.png',
+    image: '/meals/loaded_nachos_with_pulled_pork.jpg',
     calories: 1100, protein: 52, carbs: 95, fat: 48, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['tortilla_chips', 'pulled_pork', 'cheddar_cheese', 'black_beans', 'jalapeños', 'sour_cream', 'guacamole', 'salsa'],
@@ -146,7 +146,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r167',
     title: 'Tuna Pasta Bake',
-    image: '/meals/tuna_pasta_bake.png',
+    image: '/meals/tuna_pasta_bake.jpg',
     calories: 820, protein: 55, carbs: 88, fat: 22, prepTime: 40,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['pasta', 'canned_tuna', 'cream_cheese', 'cheddar', 'peas', 'milk', 'onion', 'breadcrumbs'],
@@ -155,7 +155,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r168',
     title: 'Full English Breakfast',
-    image: '/meals/full_english_breakfast.png',
+    image: '/meals/full_english_breakfast.jpg',
     calories: 970, protein: 55, carbs: 55, fat: 55, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['eggs', 'bacon', 'sausages', 'baked_beans', 'mushrooms', 'tomatoes', 'toast', 'butter', 'black_pudding'],
@@ -164,7 +164,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r169',
     title: 'Meatball Sub Sandwich',
-    image: '/meals/meatball_sub_sandwich.png',
+    image: '/meals/meatball_sub_sandwich.jpg',
     calories: 920, protein: 50, carbs: 90, fat: 38, prepTime: 35,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_beef', 'sub_roll', 'tomato_sauce', 'mozzarella', 'parmesan', 'garlic', 'italian_seasoning', 'egg', 'breadcrumbs'],
@@ -173,7 +173,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r170',
     title: 'BBQ Ribs with Mac and Cheese',
-    image: '/meals/bbq_ribs_with_mac_and_cheese.png',
+    image: '/meals/bbq_ribs_with_mac_and_cheese.jpg',
     calories: 1090, protein: 62, carbs: 85, fat: 48, prepTime: 90,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Hard', serves: 1,
     ingredients: ['pork_ribs', 'bbq_sauce', 'pasta', 'cheddar', 'milk', 'butter', 'flour', 'mustard', 'smoked_paprika'],
@@ -182,7 +182,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r171',
     title: 'Chicken Tikka Masala with Rice',
-    image: '/meals/chicken_tikka_masala_with_rice.png',
+    image: '/meals/chicken_tikka_masala_with_rice.jpg',
     calories: 860, protein: 58, carbs: 90, fat: 20, prepTime: 40,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'rice', 'tikka_masala_sauce', 'cream', 'onion', 'garlic', 'ginger', 'garam_masala', 'tomatoes'],
@@ -191,7 +191,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r172',
     title: 'Loaded Cheese Pizza (2 Slices)',
-    image: '/meals/loaded_cheese_pizza_2_slices.png',
+    image: '/meals/loaded_cheese_pizza_2_slices.jpg',
     calories: 950, protein: 42, carbs: 110, fat: 38, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['pizza_dough', 'tomato_sauce', 'mozzarella', 'pepperoni', 'bell_pepper', 'mushrooms', 'olive_oil', 'oregano'],
@@ -200,7 +200,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r173',
     title: 'Beef Steak with Fries and Garlic Butter',
-    image: '/meals/beef_steak_with_fries_and_garlic_butter.png',
+    image: '/meals/beef_steak_with_fries_and_garlic_butter.jpg',
     calories: 980, protein: 62, carbs: 68, fat: 50, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ribeye_steak', 'potatoes', 'butter', 'garlic', 'rosemary', 'thyme', 'olive_oil', 'salt', 'pepper'],
@@ -209,7 +209,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r174',
     title: 'Greek Lamb Gyro Wrap',
-    image: '/meals/greek_lamb_gyro_wrap.png',
+    image: '/meals/greek_lamb_gyro_wrap.jpg',
     calories: 850, protein: 50, carbs: 75, fat: 35, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['lamb_mince', 'large_pita', 'tzatziki', 'tomato', 'onion', 'feta', 'lettuce', 'greek_seasoning', 'lemon'],
@@ -218,7 +218,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r175',
     title: 'Overnight Oats Mega Bowl',
-    image: '/meals/overnight_oats_mega_bowl.png',
+    image: '/meals/overnight_oats_mega_bowl.jpg',
     calories: 760, protein: 42, carbs: 98, fat: 22, prepTime: 5,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['rolled_oats', 'whole_milk', 'protein_powder', 'peanut_butter', 'banana', 'mixed_berries', 'chia_seeds', 'honey', 'greek_yogurt'],
@@ -227,7 +227,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r176',
     title: 'Surf and Turf Bowl',
-    image: '/meals/surf_and_turf_bowl.png',
+    image: '/meals/surf_and_turf_bowl.jpg',
     calories: 940, protein: 70, carbs: 72, fat: 36, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Hard', serves: 1,
     ingredients: ['sirloin_steak', 'shrimp', 'rice', 'garlic_butter', 'asparagus', 'lemon', 'olive_oil', 'salt', 'pepper'],
@@ -236,7 +236,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r177',
     title: 'Loaded Chicken Quesadilla',
-    image: '/meals/loaded_chicken_quesadilla.png',
+    image: '/meals/loaded_chicken_quesadilla.jpg',
     calories: 820, protein: 58, carbs: 65, fat: 34, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'large_tortillas', 'cheddar_cheese', 'bell_pepper', 'onion', 'black_beans', 'sour_cream', 'guacamole'],
@@ -245,7 +245,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r178',
     title: 'Pork Fried Rice Mega Portion',
-    image: '/meals/pork_fried_rice_mega_portion.png',
+    image: '/meals/pork_fried_rice_mega_portion.jpg',
     calories: 900, protein: 48, carbs: 105, fat: 28, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['cooked_rice', 'pork_belly', 'eggs', 'soy_sauce', 'sesame_oil', 'peas', 'carrots', 'onion', 'garlic'],
@@ -254,7 +254,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r179',
     title: 'Triple Cheese Mac and Beef',
-    image: '/meals/triple_cheese_mac_and_beef.png',
+    image: '/meals/triple_cheese_mac_and_beef.jpg',
     calories: 1060, protein: 58, carbs: 98, fat: 44, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['macaroni', 'ground_beef', 'cheddar', 'gruyere', 'parmesan', 'whole_milk', 'butter', 'flour', 'mustard'],
@@ -263,7 +263,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r180',
     title: 'Salmon Teriyaki Bowl',
-    image: '/meals/salmon_teriyaki_bowl.png',
+    image: '/meals/salmon_teriyaki_bowl.jpg',
     calories: 800, protein: 52, carbs: 82, fat: 26, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['salmon_fillet', 'rice', 'teriyaki_sauce', 'broccoli', 'edamame', 'sesame_seeds', 'spring_onion', 'sesame_oil'],
@@ -272,7 +272,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r181',
     title: 'Chicken Caesar Loaded Wrap',
-    image: '/meals/chicken_caesar_loaded_wrap.png',
+    image: '/meals/chicken_caesar_loaded_wrap.jpg',
     calories: 780, protein: 55, carbs: 60, fat: 32, prepTime: 15,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_breast', 'large_wrap', 'romaine_lettuce', 'parmesan', 'caesar_dressing', 'croutons', 'bacon', 'lemon'],
@@ -281,7 +281,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r182',
     title: 'Chorizo and Egg Breakfast Hash',
-    image: '/meals/chorizo_and_egg_breakfast_hash.png',
+    image: '/meals/chorizo_and_egg_breakfast_hash.jpg',
     calories: 870, protein: 45, carbs: 65, fat: 48, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['chorizo', 'potatoes', 'eggs', 'bell_pepper', 'onion', 'olive_oil', 'smoked_paprika', 'cheddar'],
@@ -290,7 +290,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r183',
     title: 'Beef and Bean Chili Bowl',
-    image: '/meals/beef_and_bean_chili_bowl.png',
+    image: '/meals/beef_and_bean_chili_bowl.jpg',
     calories: 830, protein: 55, carbs: 82, fat: 28, prepTime: 45,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_beef', 'kidney_beans', 'rice', 'tomatoes', 'onion', 'garlic', 'chili_powder', 'cumin', 'cheddar', 'sour_cream'],
@@ -299,7 +299,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r184',
     title: 'Protein French Toast Stack',
-    image: '/meals/protein_french_toast_stack.png',
+    image: '/meals/protein_french_toast_stack.jpg',
     calories: 840, protein: 48, carbs: 88, fat: 30, prepTime: 15,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['thick_bread', 'eggs', 'whole_milk', 'protein_powder', 'butter', 'maple_syrup', 'strawberries', 'whipped_cream', 'cinnamon'],
@@ -308,7 +308,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r185',
     title: 'Chicken Alfredo Pasta',
-    image: '/meals/chicken_alfredo_pasta.png',
+    image: '/meals/chicken_alfredo_pasta.jpg',
     calories: 1020, protein: 60, carbs: 95, fat: 38, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'fettuccine', 'heavy_cream', 'parmesan', 'butter', 'garlic', 'black_pepper', 'parsley'],
@@ -317,7 +317,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r186',
     title: 'Greek Chicken and Rice Plate',
-    image: '/meals/greek_chicken_and_rice_plate.png',
+    image: '/meals/greek_chicken_and_rice_plate.jpg',
     calories: 820, protein: 62, carbs: 75, fat: 22, prepTime: 35,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['chicken_thighs', 'rice', 'lemon', 'garlic', 'olive_oil', 'oregano', 'tzatziki', 'cucumber', 'tomato', 'feta'],
@@ -326,7 +326,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r187',
     title: 'Mass Builder Chocolate Shake',
-    image: '/meals/mass_builder_chocolate_shake.png',
+    image: '/meals/mass_builder_chocolate_shake.jpg',
     calories: 900, protein: 60, carbs: 100, fat: 24, prepTime: 5,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['whole_milk', 'chocolate_protein_powder', 'oats', 'peanut_butter', 'banana', 'cocoa_powder', 'honey', 'ice_cream'],
@@ -335,7 +335,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r188',
     title: 'Chicken Parmigiana with Spaghetti',
-    image: '/meals/chicken_parmigiana_with_spaghetti.png',
+    image: '/meals/chicken_parmigiana_with_spaghetti.jpg',
     calories: 1050, protein: 65, carbs: 100, fat: 36, prepTime: 40,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_breast', 'spaghetti', 'tomato_sauce', 'mozzarella', 'parmesan', 'breadcrumbs', 'egg', 'basil', 'olive_oil'],
@@ -344,7 +344,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r189',
     title: 'Loaded Beef Tacos (3 Tacos)',
-    image: '/meals/loaded_beef_tacos_3_tacos.png',
+    image: '/meals/loaded_beef_tacos_3_tacos.jpg',
     calories: 870, protein: 52, carbs: 80, fat: 38, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['ground_beef', 'corn_tortillas', 'cheddar_cheese', 'sour_cream', 'guacamole', 'salsa', 'lettuce', 'tomato', 'taco_seasoning'],
@@ -353,7 +353,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r190',
     title: 'Pulled Pork Rice Bowl',
-    image: '/meals/pulled_pork_rice_bowl.png',
+    image: '/meals/pulled_pork_rice_bowl.jpg',
     calories: 960, protein: 58, carbs: 92, fat: 32, prepTime: 20,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['pulled_pork', 'rice', 'coleslaw', 'bbq_sauce', 'corn', 'black_beans', 'cheddar', 'spring_onion'],
@@ -362,7 +362,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r191',
     title: 'Spaghetti Carbonara with Pancetta',
-    image: '/meals/spaghetti_carbonara_with_pancetta.png',
+    image: '/meals/spaghetti_carbonara_with_pancetta.jpg',
     calories: 990, protein: 48, carbs: 100, fat: 42, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['spaghetti', 'pancetta', 'eggs', 'parmesan', 'black_pepper', 'garlic', 'butter'],
@@ -371,7 +371,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r192',
     title: 'Teriyaki Beef Stir-Fry with Rice',
-    image: '/meals/teriyaki_beef_stir_fry_with_rice.png',
+    image: '/meals/teriyaki_beef_stir_fry_with_rice.jpg',
     calories: 870, protein: 55, carbs: 88, fat: 24, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['beef_strips', 'rice', 'broccoli', 'snap_peas', 'bell_pepper', 'teriyaki_sauce', 'sesame_oil', 'garlic', 'ginger'],
@@ -380,7 +380,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r193',
     title: 'Avocado Toast with Smoked Salmon',
-    image: '/meals/avocado_toast_with_smoked_salmon.png',
+    image: '/meals/avocado_toast_with_smoked_salmon.jpg',
     calories: 750, protein: 42, carbs: 58, fat: 38, prepTime: 10,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['sourdough_bread', 'avocado', 'smoked_salmon', 'eggs', 'cream_cheese', 'lemon', 'capers', 'dill', 'red_onion'],
@@ -389,7 +389,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r194',
     title: 'Turkey and Stuffing Loaded Bowl',
-    image: '/meals/turkey_and_stuffing_loaded_bowl.png',
+    image: '/meals/turkey_and_stuffing_loaded_bowl.jpg',
     calories: 890, protein: 62, carbs: 80, fat: 28, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['turkey_breast', 'stuffing_mix', 'mashed_potato', 'gravy', 'green_beans', 'butter', 'cranberry_sauce'],
@@ -398,7 +398,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r195',
     title: 'Chicken and Waffle Stack',
-    image: '/meals/chicken_and_waffle_stack.png',
+    image: '/meals/chicken_and_waffle_stack.jpg',
     calories: 1000, protein: 52, carbs: 95, fat: 40, prepTime: 35,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thighs', 'waffle_mix', 'eggs', 'buttermilk', 'hot_sauce', 'maple_syrup', 'butter', 'seasoned_flour'],
@@ -407,7 +407,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r196',
     title: 'Beef Fajita Rice Bowl',
-    image: '/meals/beef_fajita_rice_bowl.png',
+    image: '/meals/beef_fajita_rice_bowl.jpg',
     calories: 900, protein: 58, carbs: 85, fat: 30, prepTime: 25,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['beef_strips', 'rice', 'bell_pepper', 'onion', 'fajita_seasoning', 'black_beans', 'cheddar', 'sour_cream', 'guacamole'],
@@ -416,7 +416,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r197',
     title: 'Almond Butter Granola Bowl',
-    image: '/meals/almond_butter_granola_bowl.png',
+    image: '/meals/almond_butter_granola_bowl.jpg',
     calories: 760, protein: 30, carbs: 95, fat: 28, prepTime: 5,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['granola', 'whole_milk_yogurt', 'almond_butter', 'banana', 'blueberries', 'honey', 'almonds', 'protein_powder'],
@@ -425,7 +425,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r198',
     title: 'Loaded Cheeseburger with Fries',
-    image: '/meals/loaded_cheeseburger_with_fries.png',
+    image: '/meals/loaded_cheeseburger_with_fries.jpg',
     calories: 1080, protein: 55, carbs: 88, fat: 52, prepTime: 30,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['ground_beef', 'burger_bun', 'double_cheddar', 'bacon', 'lettuce', 'tomato', 'pickles', 'mayo', 'potatoes', 'ketchup'],
@@ -434,7 +434,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r199',
     title: 'Chicken and Lentil Curry',
-    image: '/meals/chicken_and_lentil_curry.png',
+    image: '/meals/chicken_and_lentil_curry.jpg',
     calories: 830, protein: 60, carbs: 78, fat: 22, prepTime: 40,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Medium', serves: 1,
     ingredients: ['chicken_thighs', 'red_lentils', 'rice', 'coconut_milk', 'tomatoes', 'onion', 'garlic', 'ginger', 'curry_powder', 'spinach'],
@@ -443,7 +443,7 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r200',
     title: 'Ultimate Breakfast Smoothie Bowl',
-    image: '/meals/ultimate_breakfast_smoothie_bowl.png',
+    image: '/meals/ultimate_breakfast_smoothie_bowl.jpg',
     calories: 850, protein: 45, carbs: 105, fat: 26, prepTime: 10,
     tag: 'Mass Gain', category: 'mass_gain', difficulty: 'Easy', serves: 1,
     ingredients: ['frozen_banana', 'whole_milk', 'protein_powder', 'peanut_butter', 'granola', 'mixed_berries', 'coconut_flakes', 'honey', 'chia_seeds', 'almonds'],
