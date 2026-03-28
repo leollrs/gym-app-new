@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
-const ThemeContext = createContext({ isDark: false });
+const ThemeContext = createContext({ isDark: false, toggleTheme: () => {} });
 
 export const ThemeProvider = ({ children }) => {
   const [isDark, setIsDark] = useState(() =>
     typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? document.documentElement.classList.contains('dark') ||
+        window.matchMedia('(prefers-color-scheme: dark)').matches
       : false
   );
 
@@ -20,8 +21,10 @@ export const ThemeProvider = ({ children }) => {
     document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
 
+  const toggleTheme = () => setIsDark((prev) => !prev);
+
   return (
-    <ThemeContext.Provider value={{ isDark }}>
+    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

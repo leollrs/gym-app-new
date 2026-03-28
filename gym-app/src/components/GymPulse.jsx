@@ -28,7 +28,7 @@ const getInitials = (name) => {
 // ── Mini avatar ─────────────────────────────────────────────────────────────
 const MiniAvatar = ({ src, name, index }) => (
   <div
-    className="relative flex-shrink-0 rounded-full border-2 border-[#0F172A] bg-amber-900/40 flex items-center justify-center overflow-hidden"
+    className="relative flex-shrink-0 rounded-full border-2 border-[var(--color-bg-card)] bg-amber-900/40 flex items-center justify-center overflow-hidden"
     style={{
       width: 32,
       height: 32,
@@ -143,7 +143,7 @@ const GymPulse = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
       onClick={() => setShowDetail(true)}
-      className="rounded-[14px] bg-[#0F172A] border border-white/8 p-5 cursor-pointer hover:border-white/12 transition-colors"
+      className="rounded-[14px] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] p-5 cursor-pointer hover:border-[var(--color-border-subtle)] transition-colors"
       aria-live="polite"
       aria-label="Gym activity pulse"
     >
@@ -152,41 +152,41 @@ const GymPulse = () => {
         <div className="w-9 h-9 rounded-[10px] bg-amber-900/40 flex items-center justify-center">
           <Activity size={18} className="text-[#D4AF37]" />
         </div>
-        <h3 className="text-[15px] font-bold text-[#E5E7EB] flex-1">{t('dashboard.gymActivity')}</h3>
+        <h3 className="text-[15px] font-bold text-[var(--color-text-primary)] flex-1">{t('dashboard.gymActivity')}</h3>
         <PulsingDot color="bg-[#D4AF37]" size="w-2.5 h-2.5" />
       </div>
 
       {loading ? (
-        <div className="h-20 rounded-xl bg-[#111827] animate-pulse" />
+        <div className="h-20 rounded-xl bg-[var(--color-surface-hover)] animate-pulse" />
       ) : (
         <>
           {/* Stats row */}
           <div className="grid grid-cols-3 gap-3 mb-4">
             {/* Members today */}
-            <div className="rounded-xl bg-[#111827] p-3 text-center">
+            <div className="rounded-xl bg-[var(--color-surface-hover)] p-3 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
-                <Users size={13} className="text-[#9CA3AF]" />
-                <span className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wide">{t('dashboard.trained')}</span>
+                <Users size={13} className="text-[var(--color-text-muted)]" />
+                <span className="text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wide">{t('dashboard.trained')}</span>
               </div>
-              <p className="text-[20px] font-bold text-[#E5E7EB] leading-none">{membersToday}</p>
-              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('dashboard.todayLabel')}</p>
+              <p className="text-[20px] font-bold text-[var(--color-text-primary)] leading-none">{membersToday}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t('dashboard.todayLabel')}</p>
             </div>
 
             {/* Volume today */}
-            <div className="rounded-xl bg-[#111827] p-3 text-center">
+            <div className="rounded-xl bg-[var(--color-surface-hover)] p-3 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
-                <Dumbbell size={13} className="text-[#9CA3AF]" />
-                <span className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wide">{t('dashboard.volume')}</span>
+                <Dumbbell size={13} className="text-[var(--color-text-muted)]" />
+                <span className="text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wide">{t('dashboard.volume')}</span>
               </div>
-              <p className="text-[20px] font-bold text-[#E5E7EB] leading-none">{fmtNumber(volumeToday)}</p>
-              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('dashboard.lbsToday')}</p>
+              <p className="text-[20px] font-bold text-[var(--color-text-primary)] leading-none">{fmtNumber(volumeToday)}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t('dashboard.lbsToday')}</p>
             </div>
 
             {/* Active now */}
-            <div className="rounded-xl bg-[#111827] p-3 text-center">
+            <div className="rounded-xl bg-[var(--color-surface-hover)] p-3 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <PulsingDot color="bg-emerald-400" size="w-1.5 h-1.5" />
-                <span className="text-[11px] font-medium text-[#6B7280] uppercase tracking-wide">{t('dashboard.active')}</span>
+                <span className="text-[11px] font-medium text-[var(--color-text-muted)] uppercase tracking-wide">{t('dashboard.active')}</span>
               </div>
               <motion.p
                 key={activeNow}
@@ -197,7 +197,7 @@ const GymPulse = () => {
               >
                 {activeNow}
               </motion.p>
-              <p className="text-[10px] text-[#6B7280] mt-0.5">{t('dashboard.rightNow')}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t('dashboard.rightNow')}</p>
             </div>
           </div>
 
@@ -209,7 +209,7 @@ const GymPulse = () => {
                   <MiniAvatar key={t.id} src={t.avatar_url} name={t.full_name} index={i} />
                 ))}
               </div>
-              <p className="text-[12px] text-[#9CA3AF] flex-1 min-w-0 truncate">
+              <p className="text-[12px] text-[var(--color-text-muted)] flex-1 min-w-0 truncate">
                 {recentTrainers[0]?.full_name?.split(' ')[0]}
                 {recentTrainers.length > 1 && ` ${t('dashboard.andXOthers', { count: recentTrainers.length - 1 })}`}
                 {' '}{t('dashboard.trainedToday')}
@@ -224,15 +224,15 @@ const GymPulse = () => {
     {showDetail && (
       <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDetail(false)}>
         <div
-          className="w-full max-w-lg max-h-[75vh] flex flex-col rounded-[24px] bg-[#0A0F1A] border border-white/[0.06] shadow-2xl overflow-hidden mx-4"
+          className="w-full max-w-lg max-h-[75vh] flex flex-col rounded-[24px] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden mx-4"
           onClick={e => e.stopPropagation()}
         >
           {/* Handle + Close */}
           <div className="relative flex justify-center pt-4 pb-3 shrink-0">
-            <div className="w-8 h-[3px] rounded-full bg-white/[0.08]" />
+            <div className="w-8 h-[3px] rounded-full bg-[var(--color-border-subtle)]" />
             <button
               onClick={() => setShowDetail(false)}
-              className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[#6B7280]"
+              className="absolute right-4 top-3 w-8 h-8 rounded-full bg-[var(--color-surface-hover)] flex items-center justify-center text-[var(--color-text-muted)]"
               aria-label="Close"
             >
               <span className="text-[16px]">{'\u2715'}</span>
@@ -240,14 +240,14 @@ const GymPulse = () => {
           </div>
 
           {/* Header */}
-          <div className="px-5 pb-3 border-b border-white/[0.04]">
+          <div className="px-5 pb-3 border-b border-[var(--color-border-subtle)]">
             <div className="flex items-center gap-2">
               <Activity size={18} className="text-[#D4AF37]" />
-              <h2 className="text-[17px] font-bold text-[#E5E7EB]">{t('dashboard.todaysActivity')}</h2>
+              <h2 className="text-[17px] font-bold text-[var(--color-text-primary)]">{t('dashboard.todaysActivity')}</h2>
             </div>
             <div className="flex items-center gap-4 mt-2">
-              <span className="text-[12px] text-[#6B7280]">{t('dashboard.xTrained', { count: membersToday })}</span>
-              <span className="text-[12px] text-[#6B7280]">{t('dashboard.xLbsTotal', { count: fmtNumber(volumeToday) })}</span>
+              <span className="text-[12px] text-[var(--color-text-muted)]">{t('dashboard.xTrained', { count: membersToday })}</span>
+              <span className="text-[12px] text-[var(--color-text-muted)]">{t('dashboard.xLbsTotal', { count: fmtNumber(volumeToday) })}</span>
               {activeNow > 0 && (
                 <span className="flex items-center gap-1 text-[12px] text-emerald-400">
                   <PulsingDot color="bg-emerald-400" size="w-1.5 h-1.5" />
@@ -263,7 +263,7 @@ const GymPulse = () => {
               .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i)
               .sort((a, b) => (a.status === 'in_progress' ? -1 : 1) - (b.status === 'in_progress' ? -1 : 1))
               .map((s, i) => (
-                <div key={`${s.id}-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+                <div key={`${s.id}-${i}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[var(--color-surface-hover)] border border-[var(--color-border-subtle)]">
                   {/* Avatar */}
                   <div className="w-10 h-10 rounded-full bg-amber-900/40 flex items-center justify-center overflow-hidden flex-shrink-0">
                     {s.avatar ? (
@@ -276,7 +276,7 @@ const GymPulse = () => {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{s.name}</p>
+                      <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{s.name}</p>
                       {s.status === 'in_progress' && (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
                           <PulsingDot color="bg-emerald-400" size="w-1.5 h-1.5" />
@@ -284,7 +284,7 @@ const GymPulse = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-[12px] text-[#6B7280] mt-0.5">
+                    <p className="text-[12px] text-[var(--color-text-muted)] mt-0.5">
                       {s.status === 'in_progress'
                         ? t('dashboard.workingOutNow')
                         : s.volume
@@ -299,8 +299,8 @@ const GymPulse = () => {
 
             {todaySessions.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-[14px] text-[#6B7280]">{t('dashboard.noOneTrainedYet')}</p>
-                <p className="text-[12px] text-[#4B5563] mt-1">{t('dashboard.beTheFirst')}</p>
+                <p className="text-[14px] text-[var(--color-text-muted)]">{t('dashboard.noOneTrainedYet')}</p>
+                <p className="text-[12px] text-[var(--color-text-muted)] mt-1">{t('dashboard.beTheFirst')}</p>
               </div>
             )}
           </div>

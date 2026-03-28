@@ -18,11 +18,11 @@ const POINTS_MAP = {
 
 // ── Reward Tiers ─────────────────────────────────────────────────────────────
 const TIERS = [
-  { name: 'Bronze',   min: 0,     max: 999,   color: '#CD7F32' },
-  { name: 'Silver',   min: 1000,  max: 4999,  color: '#9CA3AF' },
-  { name: 'Gold',     min: 5000,  max: 14999, color: '#D4AF37' },
-  { name: 'Platinum', min: 15000, max: 49999, color: '#A78BFA' },
-  { name: 'Diamond',  min: 50000, max: Infinity, color: '#60A5FA' },
+  { name: 'Bronze',   nameKey: 'bronze',   min: 0,     max: 999,   color: '#CD7F32' },
+  { name: 'Silver',   nameKey: 'silver',   min: 1000,  max: 4999,  color: '#9CA3AF' },
+  { name: 'Gold',     nameKey: 'gold',     min: 5000,  max: 14999, color: '#D4AF37' },
+  { name: 'Platinum', nameKey: 'platinum', min: 15000, max: 49999, color: '#A78BFA' },
+  { name: 'Diamond',  nameKey: 'diamond',  min: 50000, max: Infinity, color: '#60A5FA' },
 ];
 
 // ── calculatePointsForAction ─────────────────────────────────────────────────
@@ -53,10 +53,12 @@ export function getRewardTier(points) {
 
   return {
     name: tier.name,
+    nameKey: tier.nameKey,
     color: tier.color,
     min: tier.min,
     max: tier.max,
     nextTier: nextTier ? nextTier.name : null,
+    nextTierKey: nextTier ? nextTier.nameKey : null,
     nextTierColor: nextTier ? nextTier.color : null,
     pointsToNext,
     progress: Math.min(progress, 100),
@@ -165,9 +167,9 @@ export async function getLeaderboard(gymId, limit = 10) {
 
 // ── Placeholder rewards catalog ──────────────────────────────────────────────
 export const REWARDS_CATALOG = [
-  { id: 'smoothie',  name: 'Free Smoothie',              cost: 2000,  icon: 'Coffee', description: 'Redeem at the gym bar' },
-  { id: 'guest',     name: 'Guest Pass',                 cost: 3500,  icon: 'Ticket', description: 'Bring a friend for a day' },
-  { id: 'merch',     name: 'Gym Merch',                  cost: 7500,  icon: 'Shirt', description: 'T-shirt or water bottle' },
-  { id: 'pt',        name: 'Personal Training Session',  cost: 15000, icon: 'Dumbbell', description: '1-on-1 with a trainer' },
-  { id: 'month',     name: 'Free Month',                 cost: 30000, icon: 'Medal', description: 'One month membership' },
+  { id: 'smoothie',  nameKey: 'smoothie',  cost: 2000,  icon: 'Coffee',   descKey: 'smoothieDesc' },
+  { id: 'guest',     nameKey: 'guest',     cost: 3500,  icon: 'Ticket',   descKey: 'guestDesc' },
+  { id: 'merch',     nameKey: 'merch',     cost: 7500,  icon: 'Shirt',    descKey: 'merchDesc' },
+  { id: 'pt',        nameKey: 'pt',        cost: 15000, icon: 'Dumbbell', descKey: 'ptDesc' },
+  { id: 'month',     nameKey: 'month',     cost: 30000, icon: 'Medal',    descKey: 'monthDesc' },
 ];

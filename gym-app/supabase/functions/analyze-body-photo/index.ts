@@ -5,8 +5,45 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+/** Strip EXIF metadata from JPEG to prevent GPS/device info leakage */
+function stripExifFromJpeg(base64: string): string {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    // Only process JPEG (starts with FF D8)
+    if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return base64;
+    const cleaned: number[] = [0xFF, 0xD8];
+    let i = 2;
+    while (i < bytes.length - 1) {
+      if (bytes[i] !== 0xFF) break;
+      const marker = bytes[i + 1];
+      // Remove APP1 (EXIF) and APP2 (ICC profile) markers
+      if (marker === 0xE1 || marker === 0xE2) {
+        const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+        i += 2 + segLen;
+        continue;
+      }
+      // Start of scan — rest is image data
+      if (marker === 0xDA) {
+        for (let j = i; j < bytes.length; j++) cleaned.push(bytes[j]);
+        break;
+      }
+      const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+      for (let j = i; j < i + 2 + segLen; j++) cleaned.push(bytes[j]);
+      i += 2 + segLen;
+    }
+    const cleanedBytes = new Uint8Array(cleaned);
+    let result = '';
+    for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
+    return btoa(result);
+  } catch {
+    return base64; // On error, return original
+  }
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -21,7 +58,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -33,7 +70,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: `Auth failed: ${authError?.message || 'no user'}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
@@ -41,7 +78,7 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) {
       return new Response(
         JSON.stringify({ error: 'OPENAI_API_KEY not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -52,12 +89,20 @@ serve(async (req) => {
     const weight = body.weight_lbs;
     const height = body.height_inches;
     const sex = body.sex || 'unknown';
+    const lang = body.language === 'es' ? 'es' : 'en';
+    const langInstruction = lang === 'es'
+      ? '\n\nIMPORTANT: All text values in the JSON (muscle_quality, scan_quality, scan_notes) MUST be in Spanish. Responde completamente en español.'
+      : '';
 
     if (!frontImage) {
-      throw new Error('No image provided');
+      return new Response(
+        JSON.stringify({ error: 'No image provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // ── RATE LIMIT (15/hour) ────────────────────────────────────
+    // ── RATE LIMIT (15/hour) — fail closed ──────────────────────
+    let rateLimitOk = false;
     try {
       const RATE_LIMIT = 15;
       const ENDPOINT = 'analyze-body-photo';
@@ -81,21 +126,30 @@ serve(async (req) => {
         profile_id: user.id,
         endpoint: ENDPOINT,
       });
-    } catch {
-      // proceed anyway
+      rateLimitOk = true;
+    } catch (rateLimitError) {
+      console.error('Rate limit check failed:', rateLimitError);
+      return new Response(
+        JSON.stringify({ error: 'Service temporarily unavailable' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // ── Strip EXIF metadata before sending to AI ────────────────
+    const cleanFront = stripExifFromJpeg(frontImage);
+    const cleanSide = sideImage ? stripExifFromJpeg(sideImage) : null;
 
     // ── Build image inputs ──────────────────────────────────────
     const imageInputs: any[] = [
       {
         type: 'input_image',
-        image_url: `data:image/jpeg;base64,${frontImage}`,
+        image_url: `data:image/jpeg;base64,${cleanFront}`,
       },
     ];
-    if (sideImage) {
+    if (cleanSide) {
       imageInputs.push({
         type: 'input_image',
-        image_url: `data:image/jpeg;base64,${sideImage}`,
+        image_url: `data:image/jpeg;base64,${cleanSide}`,
       });
     }
 
@@ -128,7 +182,9 @@ CRITICAL RULES:
 - Body fat % ranges: elite athlete 6-13% (M) / 14-20% (F), fit 14-17% (M) / 21-24% (F), average 18-24% (M) / 25-31% (F)
 - Circumference estimates should be realistic for the apparent build
 - Return null for any measurement you cannot reasonably estimate
-- It is better to return null than a bad guess`,
+- It is better to return null than a bad guess
+
+IMPORTANT: If the image contains inappropriate, explicit, or offensive content that is not a legitimate body/fitness photo, respond with exactly: {"error": "inappropriate_content", "message": "This image cannot be analyzed"}${langInstruction}`,
           },
           {
             role: 'user',
@@ -179,6 +235,14 @@ Analyze body composition and estimate measurements. Return JSON with these field
       estimates = JSON.parse(jsonStr);
     } catch {
       throw new Error('Failed to parse AI response');
+    }
+
+    // ── Content moderation check ────────────────────────────────
+    if (estimates.error === 'inappropriate_content') {
+      return new Response(
+        JSON.stringify({ error: 'inappropriate_content', message: 'This image cannot be analyzed' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Validate numeric fields
@@ -233,7 +297,7 @@ Analyze body composition and estimate measurements. Return JSON with these field
     const msg = err instanceof Error ? err.message : String(err);
     return new Response(
       JSON.stringify({ error: msg }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

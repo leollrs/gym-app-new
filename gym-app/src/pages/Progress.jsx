@@ -58,12 +58,12 @@ export default function Progress() {
   const handleSwipe = (i) => handleTabChange(TAB_KEYS[i]);
 
   return (
-    <div className="bg-[#05070B]" data-tour="tour-progress-page">
+    <div className="bg-[var(--color-bg-primary)]">
       {/* Sticky header */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[#05070B]/95 border-b border-white/6">
-        <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-3 pb-3">
+      <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[var(--color-bg-primary)]/95 border-b border-white/6">
+        <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-3 pb-3" data-tour="tour-progress-page">
           <h1
-            className="text-[22px] font-black text-[#E5E7EB] mb-3"
+            className="text-[22px] font-black text-[var(--color-text-primary)] mb-3"
             style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
           >
             {t('progress.title')}
@@ -79,7 +79,7 @@ export default function Progress() {
       </div>
 
       {/* Tab content (swipeable) */}
-      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-5 pb-28 md:pb-12">
+      <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-5 pb-32 md:pb-12">
         <SwipeableTabView activeIndex={tabIndex} onChangeIndex={handleSwipe} tabKeys={TAB_KEYS}>
           <div>{loadedTabs.has('overview') && <ProgressOverview />}</div>
           <div>{loadedTabs.has('body') && <ProgressBody />}</div>

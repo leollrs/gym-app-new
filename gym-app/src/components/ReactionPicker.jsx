@@ -1,21 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 // ── Reaction definitions ────────────────────────────────────────────────────
-const REACTIONS = [
-  { type: 'strong',     emoji: '\uD83D\uDCAA', label: 'Strong' },
-  { type: 'fire',       emoji: '\uD83D\uDD25', label: 'Fire' },
-  { type: 'clap',       emoji: '\uD83D\uDC4F', label: 'Clap' },
-  { type: 'legend',     emoji: '\uD83C\uDFC6', label: 'Legend' },
-  { type: 'beast_mode', emoji: '\uD83D\uDE24', label: 'Beast Mode' },
+const REACTION_DEFS = [
+  { type: 'strong',     emoji: '\uD83D\uDCAA', key: 'strong' },
+  { type: 'fire',       emoji: '\uD83D\uDD25', key: 'fire' },
+  { type: 'clap',       emoji: '\uD83D\uDC4F', key: 'clap' },
+  { type: 'legend',     emoji: '\uD83C\uDFC6', key: 'legend' },
+  { type: 'beast_mode', emoji: '\uD83D\uDE24', key: 'beastMode' },
 ];
 
 const DEFAULT_REACTION = 'strong';
 
-const EMOJI_MAP = Object.fromEntries(REACTIONS.map(r => [r.type, r.emoji]));
+const REACTIONS = REACTION_DEFS;
+const EMOJI_MAP = Object.fromEntries(REACTION_DEFS.map(r => [r.type, r.emoji]));
 
 // ── ReactionPicker ──────────────────────────────────────────────────────────
 const ReactionPicker = ({ feedItemId, currentUserId, currentReaction, reactionCounts, onReact }) => {
+  const { t } = useTranslation('pages');
   const [showPicker, setShowPicker] = useState(false);
   const longPressTimer = useRef(null);
   const containerRef = useRef(null);
@@ -88,7 +91,7 @@ const ReactionPicker = ({ feedItemId, currentUserId, currentReaction, reactionCo
         <span className="text-[16px] leading-none">
           {currentReaction ? (EMOJI_MAP[currentReaction] ?? '\uD83D\uDCAA') : '\uD83D\uDCAA'}
         </span>
-        {totalCount > 0 ? totalCount : 'React'}
+        {totalCount > 0 ? totalCount : t('reactions.react')}
       </button>
 
       {/* ── Picker popup ─────────────────────────────────────────── */}
@@ -102,7 +105,7 @@ const ReactionPicker = ({ feedItemId, currentUserId, currentReaction, reactionCo
             onMouseLeave={() => setShowPicker(false)}
             className="absolute bottom-full left-0 mb-2 z-50 flex items-center gap-1 px-2 py-1.5 rounded-full bg-[#111827] border border-white/10 shadow-xl shadow-black/40"
           >
-            {REACTIONS.map((r) => {
+            {REACTION_DEFS.map((r) => {
               const isActive = currentReaction === r.type;
               return (
                 <motion.button
@@ -116,7 +119,7 @@ const ReactionPicker = ({ feedItemId, currentUserId, currentReaction, reactionCo
                       ? 'bg-[#D4AF37]/20 ring-2 ring-[#D4AF37]/50'
                       : 'hover:bg-white/8'
                   }`}
-                  title={r.label}
+                  title={t(`reactions.${r.key}`)}
                 >
                   {r.emoji}
                 </motion.button>

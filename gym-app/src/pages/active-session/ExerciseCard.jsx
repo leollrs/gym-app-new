@@ -4,6 +4,7 @@ import { exercises as exerciseLibrary } from '../../data/exercises';
 import { supabase } from '../../lib/supabase';
 import CoachMark from '../../components/CoachMark';
 import { useTranslation } from 'react-i18next';
+import { exName, exInstructions } from '../../lib/exerciseName';
 
 const resolveVideoSrc = (path) => {
   if (!path) return null;
@@ -51,7 +52,7 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t }) => {
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0">
             <h2 className="text-[18px] font-black text-[#E5E7EB] leading-tight">
-              {exercise.name}
+              {exName(exercise)}
             </h2>
             <div className="flex items-center gap-2 mt-1">
               {muscle && (
@@ -62,6 +63,11 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t }) => {
                 {exercise.targetSets} sets × {exercise.targetReps} reps
               </span>
             </div>
+            {exInstructions(exercise) && (
+              <p className="text-[12px] leading-[1.5] text-[#8B95A5] mt-2">
+                {exInstructions(exercise)}
+              </p>
+            )}
           </div>
 
           {/* Right side: PR badge or Demo button */}

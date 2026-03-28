@@ -1,24 +1,37 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#05070B">
+    <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#05070B" media="(prefers-color-scheme: dark)">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="IronForge">
     <meta name="format-detection" content="telephone=no">
     <meta name="msapplication-tap-highlight" content="no">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co; media-src 'self' blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co https://us.i.posthog.com wss://*.supabase.co; frame-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>IronForge</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply theme before first paint to prevent flash
+      // Default to dark when prefers-color-scheme is unavailable (some Android WebViews)
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches ||
+          !window.matchMedia('(prefers-color-scheme: light)').matches) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
     <style>
-      /* Prevent flash of unstyled content on native */
-      html, body { background-color: #05070B; }
+      /* Prevent flash of unstyled content — use CSS variables set by theme */
+      html, body { background-color: #F8FAFC; }
+      html.dark, html.dark body { background-color: #05070B; }
     </style>
   </head>
   <body>

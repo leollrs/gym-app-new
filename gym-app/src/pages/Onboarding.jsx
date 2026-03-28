@@ -71,10 +71,10 @@ function getDefaultDays(freq) {
 // Map English day names to index for display
 const DAY_NAME_TO_INDEX = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
 
-const TOTAL_STEPS = 8; // added language step as step 0, health step as step 6
+const TOTAL_STEPS = 9; // invite code step 0, language step 1, health step 7
 
 // ── STEP INDICATOR ─────────────────────────────────────────
-const STEP_LABELS = ['Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics'];
+const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics'];
 
 const StepIndicator = ({ current }) => (
   <div className="flex items-center justify-between mb-8 px-2">
@@ -141,6 +141,11 @@ const Onboarding = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
+  // Invite code state
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteStatus, setInviteStatus] = useState('idle'); // idle | verifying | success | error
+  const [inviteError, setInviteError] = useState('');
+
   const [data, setData] = useState({
     language:                   i18n.language || 'en',
     fitness_level:              null,
@@ -168,6 +173,48 @@ const Onboarding = () => {
   const selectLanguage = (lang) => {
     set('language', lang);
     i18n.changeLanguage(lang);
+  };
+
+  const handleInviteCodeChange = (val) => {
+    // Strip dashes and spaces, uppercase
+    setInviteCode(val.replace(/[-\s]/g, '').toUpperCase());
+    // Reset error when user types
+    if (inviteStatus === 'error') {
+      setInviteStatus('idle');
+      setInviteError('');
+    }
+  };
+
+  const handleVerifyInviteCode = async () => {
+    if (!inviteCode.trim()) return;
+    setInviteStatus('verifying');
+    setInviteError('');
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc('claim_invite_code', {
+        p_invite_code: inviteCode.trim(),
+      });
+      if (rpcError) throw rpcError;
+      // Check for error codes in the RPC response
+      if (result?.error) {
+        setInviteStatus('error');
+        const code = result.error;
+        const errorKeys = {
+          INVALID_CODE: 'inviteCode.errors.invalidCode',
+          ALREADY_USED: 'inviteCode.errors.alreadyUsed',
+          EXPIRED: 'inviteCode.errors.expired',
+          WRONG_GYM: 'inviteCode.errors.wrongGym',
+        };
+        setInviteError(t(errorKeys[code] || 'inviteCode.errors.invalidCode'));
+        return;
+      }
+      setInviteStatus('success');
+      await refreshProfile();
+      // Auto-advance after 1.5s
+      setTimeout(() => setStep(1), 1500);
+    } catch (err) {
+      setInviteStatus('error');
+      setInviteError(err.message || t('inviteCode.errors.invalidCode'));
+    }
   };
 
   const toggleEquipment = (val) =>
@@ -228,11 +275,12 @@ const Onboarding = () => {
   };
 
   const canAdvance = () => {
-    if (step === 0) return !!data.language;
-    if (step === 1) return !!data.fitness_level;
-    if (step === 2) return !!data.primary_goal;
-    if (step === 3) return data.available_equipment.length > 0;
-    if (step === 4) return data.preferred_training_days.length > 0 && !!data.preferred_training_time;
+    if (step === 0) return true; // invite code step — always allow (skip or verify)
+    if (step === 1) return !!data.language;
+    if (step === 2) return !!data.fitness_level;
+    if (step === 3) return !!data.primary_goal;
+    if (step === 4) return data.available_equipment.length > 0;
+    if (step === 5) return data.preferred_training_days.length > 0 && !!data.preferred_training_time;
     return true;
   };
 
@@ -344,8 +392,69 @@ const Onboarding = () => {
 
         <StepIndicator current={step} />
 
-        {/* ── STEP 0: LANGUAGE SELECTION ── */}
+        {/* ── STEP 0: INVITE CODE ── */}
         {step === 0 && (
+          <div className="animate-fade-in">
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('inviteCode.title')}</h2>
+            <p className="text-[13px] text-[#6B7280] mb-6">{t('inviteCode.subtitle')}</p>
+
+            <div className="flex flex-col items-center gap-4">
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={e => handleInviteCodeChange(e.target.value)}
+                placeholder="e.g. ABC123"
+                disabled={inviteStatus === 'verifying' || inviteStatus === 'success'}
+                className="w-full bg-[#0B1220] border border-white/[0.06] rounded-xl px-4 py-4 text-center text-[20px] font-mono font-bold tracking-[0.2em] uppercase text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors disabled:opacity-50"
+              />
+
+              {/* Verify button */}
+              {inviteStatus !== 'success' && (
+                <button
+                  type="button"
+                  onClick={handleVerifyInviteCode}
+                  disabled={!inviteCode.trim() || inviteStatus === 'verifying'}
+                  className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold text-[15px] py-3.5 rounded-xl transition-all"
+                >
+                  {inviteStatus === 'verifying'
+                    ? t('inviteCode.verifying')
+                    : t('inviteCode.verify')}
+                </button>
+              )}
+
+              {/* Success state */}
+              {inviteStatus === 'success' && (
+                <div className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
+                  <Check size={18} className="text-emerald-400" />
+                  <span className="text-[14px] font-semibold text-emerald-400">
+                    {t('inviteCode.success')}
+                  </span>
+                </div>
+              )}
+
+              {/* Error state */}
+              {inviteStatus === 'error' && inviteError && (
+                <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                  <p className="text-[13px] text-red-400 text-center">{inviteError}</p>
+                </div>
+              )}
+
+              {/* Skip button */}
+              {inviteStatus !== 'success' && (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full text-center text-[13px] text-[#6B7280] hover:text-[#9CA3AF] py-2 transition-colors"
+                >
+                  {t('inviteCode.skip')}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 1: LANGUAGE SELECTION ── */}
+        {step === 1 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('langStep.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('langStep.subtitle')}</p>
@@ -384,8 +493,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 1: FITNESS LEVEL ── */}
-        {step === 1 && (
+        {/* ── STEP 2: FITNESS LEVEL ── */}
+        {step === 2 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('fitnessLevel.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-4">{t('fitnessLevel.subtitle')}</p>
@@ -409,19 +518,19 @@ const Onboarding = () => {
               <div className="mt-6 animate-fade-in">
                 <div className="bg-[#D4AF37]/6 border border-[#D4AF37]/15 rounded-xl px-4 py-3 mb-4">
                   <p className="text-[13px] text-[#E5E7EB] font-semibold mb-0.5">
-                    {t('fitnessLevel.maxes.title', { defaultValue: 'Nice — you\'ve got experience! 💪', interpolation: { escapeValue: false } })}
+                    {t('fitnessLevel.maxes.title')}
                   </p>
                   <p className="text-[12px] text-[#9CA3AF] leading-relaxed">
-                    {t('fitnessLevel.maxes.subtitle', { defaultValue: 'Enter your estimated 1-rep maxes so we can dial in your weights from day one. Leave blank any you don\'t know.', interpolation: { escapeValue: false } })}
+                    {t('fitnessLevel.maxes.subtitle')}
                   </p>
                 </div>
 
                 <div className="flex flex-col gap-3">
                   {[
-                    { id: 'ex_bp',  label: t('fitnessLevel.maxes.bench',    { defaultValue: 'Bench Press' }),     icon: '🏋️' },
-                    { id: 'ex_sq',  label: t('fitnessLevel.maxes.squat',    { defaultValue: 'Back Squat' }),      icon: '🦵' },
-                    { id: 'ex_dl',  label: t('fitnessLevel.maxes.deadlift', { defaultValue: 'Deadlift' }),        icon: '🔥' },
-                    { id: 'ex_ohp', label: t('fitnessLevel.maxes.ohp',      { defaultValue: 'Overhead Press' }),  icon: '🙌' },
+                    { id: 'ex_bp',  label: t('fitnessLevel.maxes.bench'),    icon: '🏋️' },
+                    { id: 'ex_sq',  label: t('fitnessLevel.maxes.squat'),    icon: '🦵' },
+                    { id: 'ex_dl',  label: t('fitnessLevel.maxes.deadlift'), icon: '🔥' },
+                    { id: 'ex_ohp', label: t('fitnessLevel.maxes.ohp'),      icon: '🙌' },
                   ].map(lift => (
                     <div key={lift.id} className="bg-[#0F172A] border border-white/[0.06] rounded-xl px-4 py-3 flex items-center gap-3">
                       <span className="text-lg flex-shrink-0">{lift.icon}</span>
@@ -446,15 +555,15 @@ const Onboarding = () => {
                 </div>
 
                 <p className="text-[11px] text-[#4B5563] mt-3 text-center">
-                  {t('fitnessLevel.maxes.hint', { defaultValue: 'We\'ll use these to calculate suggested weights for all your exercises.', interpolation: { escapeValue: false } })}
+                  {t('fitnessLevel.maxes.hint')}
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {/* ── STEP 2: GOAL ── */}
-        {step === 2 && (
+        {/* ── STEP 3: GOAL ── */}
+        {step === 3 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('goal.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-4">{t('goal.subtitle')}</p>
@@ -474,8 +583,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 3: FREQUENCY + EQUIPMENT ── */}
-        {step === 3 && (
+        {/* ── STEP 4: FREQUENCY + EQUIPMENT ── */}
+        {step === 4 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('training.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-5">{t('training.subtitle')}</p>
@@ -540,8 +649,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 4: LOCK IN YOUR SCHEDULE ── */}
-        {step === 4 && (
+        {/* ── STEP 5: LOCK IN YOUR SCHEDULE ── */}
+        {step === 5 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('schedule.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-5">{t('schedule.subtitle')}</p>
@@ -666,8 +775,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 5: BODY STATS + INJURIES ── */}
-        {step === 5 && (
+        {/* ── STEP 6: BODY STATS + INJURIES ── */}
+        {step === 6 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">
               {t('bodyStats.title')} <span className="text-[#4B5563] font-normal text-[15px]">({t('common:optional')})</span>
@@ -677,10 +786,10 @@ const Onboarding = () => {
             {/* Sex */}
             <div className="mb-5">
               <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
-                Biological Sex
+                {t('bodyStats.sex')}
               </label>
               <div className="flex gap-2">
-                {[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }].map(opt => (
+                {[{ value: 'male', label: t('bodyStats.male') }, { value: 'female', label: t('bodyStats.female') }].map(opt => (
                   <button
                     key={opt.value}
                     type="button"
@@ -695,13 +804,13 @@ const Onboarding = () => {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-[#4B5563] mt-1.5">Used for accurate calorie calculations</p>
+              <p className="text-[11px] text-[#4B5563] mt-1.5">{t('bodyStats.sexHint')}</p>
             </div>
 
             {/* Age */}
             <div className="mb-5">
               <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
-                Age
+                {t('bodyStats.age')}
               </label>
               <input
                 type="number"
@@ -718,7 +827,7 @@ const Onboarding = () => {
             {/* Height */}
             <div className="mb-5">
               <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
-                Height
+                {t('bodyStats.height')}
               </label>
               <div className="flex gap-2">
                 <div className="flex-1 relative">
@@ -812,13 +921,13 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 6: HEALTH INTEGRATION ── */}
-        {step === 6 && (
+        {/* ── STEP 7: HEALTH INTEGRATION ── */}
+        {step === 7 && (
           <div className="animate-fade-in">
-            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('health.title', { defaultValue: 'Connect Your Health Data' })}</h2>
-            <p className="text-[13px] text-[#6B7280] mb-6">{t('health.subtitle', { defaultValue: 'Sync steps, heart rate, and more to get a complete picture of your fitness.' })}</p>
+            <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('health.title')}</h2>
+            <p className="text-[13px] text-[#6B7280] mb-6">{t('health.subtitle')}</p>
 
-            <Hint>{t('health.hint', { defaultValue: 'Linking your health data helps us track recovery, calories burned, and overall activity — even outside the gym.' })}</Hint>
+            <Hint>{t('health.hint')}</Hint>
 
             {/* Platform illustration */}
             <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-6 mb-6 text-center">
@@ -826,21 +935,21 @@ const Onboarding = () => {
                 <Heart size={28} className="text-[#D4AF37]" />
               </div>
               <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">
-                {platform === 'web' ? t('health.webTitle', { defaultValue: 'Health Integration' }) : healthPlatformName}
+                {platform === 'web' ? t('health.webTitle') : healthPlatformName}
               </p>
               <p className="text-[12px] text-[#6B7280] mb-5">
                 {platform === 'web'
-                  ? t('health.webDesc', { defaultValue: 'Download the app on your phone to sync with Apple Health or Health Connect.' })
-                  : t('health.nativeDesc', { defaultValue: 'We\'ll read steps, heart rate, weight, and calories. You can change this anytime in settings.', interpolation: { escapeValue: false } })}
+                  ? t('health.webDesc')
+                  : t('health.nativeDesc')}
               </p>
 
               {/* Data types we sync */}
               <div className="flex justify-center gap-3 mb-5">
                 {[
-                  { label: t('health.steps', { defaultValue: 'Steps' }), icon: '👟' },
-                  { label: t('health.heartRate', { defaultValue: 'Heart Rate' }), icon: '❤️' },
-                  { label: t('health.calories', { defaultValue: 'Calories' }), icon: '🔥' },
-                  { label: t('health.weight', { defaultValue: 'Weight' }), icon: '⚖️' },
+                  { label: t('health.steps'), icon: '👟' },
+                  { label: t('health.heartRate'), icon: '❤️' },
+                  { label: t('health.calories'), icon: '🔥' },
+                  { label: t('health.weight'), icon: '⚖️' },
                 ].map(item => (
                   <div key={item.label} className="flex flex-col items-center gap-1.5">
                     <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-lg">
@@ -860,9 +969,9 @@ const Onboarding = () => {
                   className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3.5 rounded-xl transition-all"
                 >
                   {healthStatus === 'linking' ? (
-                    <>{t('health.connecting', { defaultValue: 'Connecting...' })}</>
+                    <>{t('health.connecting')}</>
                   ) : (
-                    <><Smartphone size={16} /> {t('health.connect', { defaultValue: `Connect ${healthPlatformName}`, healthPlatformName })}</>
+                    <><Smartphone size={16} /> {t('health.connect', { healthPlatformName })}</>
                   )}
                 </button>
               )}
@@ -872,7 +981,7 @@ const Onboarding = () => {
                 <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
                   <Check size={18} className="text-emerald-400" />
                   <span className="text-[14px] font-semibold text-emerald-400">
-                    {t('health.connected', { defaultValue: `${healthPlatformName} Connected`, healthPlatformName })}
+                    {t('health.connected', { healthPlatformName })}
                   </span>
                 </div>
               )}
@@ -880,22 +989,22 @@ const Onboarding = () => {
               {/* Unavailable state */}
               {healthStatus === 'unavailable' && (
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
-                  <p className="text-[13px] text-yellow-400">{t('health.unavailable', { defaultValue: `${healthPlatformName} is not available on this device. You can set this up later in settings.`, healthPlatformName })}</p>
+                  <p className="text-[13px] text-yellow-400">{t('health.unavailable', { healthPlatformName })}</p>
                 </div>
               )}
 
               {/* Error state */}
               {healthStatus === 'error' && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mt-3">
-                  <p className="text-[13px] text-red-400">{t('health.error', { defaultValue: 'Could not connect. You can try again later in settings.' })}</p>
+                  <p className="text-[13px] text-red-400">{t('health.error')}</p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ── STEP 7: FIND YOUR GYM SQUAD (final step) ── */}
-        {step === 7 && (
+        {/* ── STEP 8: FIND YOUR GYM SQUAD (final step) ── */}
+        {step === 8 && (
           <div className="animate-fade-in">
             <h2 className="text-[20px] font-semibold text-[#E5E7EB] mb-1">{t('social.title')}</h2>
             <p className="text-[13px] text-[#6B7280] mb-6">{t('social.subtitle')}</p>
@@ -983,17 +1092,16 @@ const Onboarding = () => {
           </p>
         )}
 
-        {/* ── NAV BUTTONS ── */}
+        {/* ── NAV BUTTONS (hidden on invite code step which has its own buttons) ── */}
+        {step > 0 && (
         <div className="flex gap-3 mt-8">
-          {step > 0 && (
-            <button
-              type="button"
-              onClick={() => setStep(s => s - 1)}
-              className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
-            >
-              <ChevronLeft size={17} /> {t('common:back')}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setStep(s => s - 1)}
+            className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
+          >
+            <ChevronLeft size={17} /> {t('common:back')}
+          </button>
 
           {step < TOTAL_STEPS - 1 ? (
             <button
@@ -1017,15 +1125,16 @@ const Onboarding = () => {
             </button>
           )}
         </div>
+        )}
 
         {/* Skip on body stats or health step */}
-        {(step === 5 || step === 6) && (
+        {(step === 6 || step === 7) && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
             className="w-full text-center text-[12px] text-[#4B5563] hover:text-[#6B7280] mt-3 py-2 transition-colors"
           >
-            {step === 6 ? t('health.skip', { defaultValue: 'Set up later' }) : t('common:skip')}
+            {step === 7 ? t('health.skip') : t('common:skip')}
           </button>
         )}
       </div>

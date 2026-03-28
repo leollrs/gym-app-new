@@ -20,7 +20,7 @@ const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY  = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -355,7 +355,30 @@ serve(async (req) => {
     const { gym_id, title, body, data: pushData } = await req.json();
     const targetGymId = gym_id || callerProfile.gym_id;
 
-    if (!title) return jsonResp({ error: 'title is required' }, 400);
+    // Validate title
+    if (!title || typeof title !== 'string') {
+      return jsonResp({ error: 'title is required' }, 400);
+    }
+    if (title.length > 200) {
+      return jsonResp({ error: 'title must be 200 characters or less' }, 400);
+    }
+
+    // Validate body
+    if (body && typeof body !== 'string') {
+      return jsonResp({ error: 'body must be a string' }, 400);
+    }
+    if (body && body.length > 1000) {
+      return jsonResp({ error: 'body must be 1000 characters or less' }, 400);
+    }
+
+    // Strip HTML tags from title and body
+    const cleanTitle = title.replace(/<[^>]*>/g, '');
+    const cleanBody = body ? body.replace(/<[^>]*>/g, '') : body;
+
+    // Validate pushData size
+    if (pushData && JSON.stringify(pushData).length > 4096) {
+      return jsonResp({ error: 'data payload too large' }, 400);
+    }
 
     // Fetch all push tokens WITH platform info
     const { data: tokens, error: tokensErr } = await supabase
@@ -380,8 +403,8 @@ serve(async (req) => {
 
     // Send in parallel — iOS to APNs, Android to FCM
     const [iosResult, androidResult] = await Promise.all([
-      iosTokens.length > 0 ? sendAPNs(iosTokens, title, body || '', pushData || {}) : { sent: 0, failed: 0 },
-      androidTokens.length > 0 ? sendFCM(androidTokens, title, body || '', pushData || {}) : { sent: 0, failed: 0 },
+      iosTokens.length > 0 ? sendAPNs(iosTokens, cleanTitle, cleanBody || '', pushData || {}) : { sent: 0, failed: 0 },
+      androidTokens.length > 0 ? sendFCM(androidTokens, cleanTitle, cleanBody || '', pushData || {}) : { sent: 0, failed: 0 },
     ]);
 
     const totalSent = iosResult.sent + androidResult.sent;

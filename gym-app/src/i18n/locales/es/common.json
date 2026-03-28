@@ -73,7 +73,8 @@
     "thursday": "Jueves",
     "friday": "Viernes",
     "saturday": "Sábado",
-    "sunday": "Domingo"
+    "sunday": "Domingo",
+    "initials": ["D", "L", "M", "M", "J", "V", "S"]
   },
 
   "language": {

@@ -24,6 +24,9 @@ export default function Community({ defaultTab = 'feed' }) {
 
   const TABS = TAB_KEYS.map(key => ({ key, label: t(`community.tabs.${key}`) }));
 
+  // Scroll to top on mount (tab param in URL prevents ScrollToTop from firing)
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   // Sync tab from URL changes
   useEffect(() => {
     if (tabParam) {
@@ -43,7 +46,8 @@ export default function Community({ defaultTab = 'feed' }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12" data-tour="tour-community-page">
+    <div className="min-h-screen bg-[#05070B] pb-32 md:pb-12">
+      <div data-tour="tour-community-page">
       <PageHeader title={t('community.title')}>
         <UnderlineTabs
           tabs={TABS.map(tb => ({ key: tb.key, label: tb.label }))}
@@ -51,6 +55,7 @@ export default function Community({ defaultTab = 'feed' }) {
           onChange={handleTabChange}
         />
       </PageHeader>
+      </div>
 
       {/* Tab content */}
       <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 sm:px-6 pt-4">

@@ -37,7 +37,7 @@ const Countdown = ({ date, prefix }) => {
     return () => clearInterval(id);
   }, [date]);
   return (
-    <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+    <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
       <Clock size={11} /> {prefix} {label}
     </span>
   );
@@ -67,18 +67,18 @@ const ParticipantList = ({ challengeId, t }) => {
   );
 
   if (names.length === 0) return (
-    <p className="text-[13px] text-[#6B7280] text-center py-5">{t('challenges.noOneJoinedFirst')}</p>
+    <p className="text-[13px] text-[var(--color-text-muted)] text-center py-5">{t('challenges.noOneJoinedFirst')}</p>
   );
 
   return (
     <div className="mt-4 space-y-2">
-      <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
+      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
       {names.map((name, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#111827] border border-white/[0.06]">
+        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
           <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
             <span className="text-[12px] font-bold text-[#D4AF37]">{name[0]}</span>
           </div>
-          <p className="text-[14px] font-medium text-[#E5E7EB]">{name}</p>
+          <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{name}</p>
         </div>
       ))}
     </div>
@@ -159,9 +159,9 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-[#9CA3AF] font-medium">{t('challenges.yourScore')}</p>
-            <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
-              {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[#9CA3AF]">{unit}</span>
+            <p className="text-[11px] text-[var(--color-text-muted)] font-medium">{t('challenges.yourScore')}</p>
+            <p className="text-[18px] font-bold text-[var(--color-text-primary)] mt-0.5">
+              {myEntry.score.toLocaleString()} <span className="text-[13px] font-normal text-[var(--color-text-muted)]">{unit}</span>
             </p>
             {status === 'ended' && myRank < 3 && rewards[myRank] && (
               <div className="mt-1">
@@ -182,7 +182,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
           <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-[13px] text-[#6B7280] text-center py-6">
+        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">
           {status === 'upcoming' ? t('challenges.leaderboardOpens') : t('challenges.noOneJoined')}
         </p>
       ) : (
@@ -191,13 +191,16 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
             const isMe = e.id === myId;
             const top = entries[0]?.score || 1;
             const barPct = Math.max((e.score / top) * 100, 2);
-            const barColor = isMe ? '#D4AF37' : i === 0 ? '#D4AF37' : i === 1 ? '#9CA3AF' : i === 2 ? '#CD7F32' : '#4B5563';
+            const isDark = document.documentElement.classList.contains('dark');
+            const silver = isDark ? '#9CA3AF' : '#6B7280';
+            const base   = isDark ? '#4B5563' : '#374151';
+            const barColor = isMe ? '#D4AF37' : i === 0 ? '#D4AF37' : i === 1 ? silver : i === 2 ? '#CD7F32' : base;
             return (
               <div key={e.id}
                 className={`relative flex items-center gap-4 px-4 py-4 rounded-2xl overflow-hidden transition-colors ${
                   isMe
                     ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'
-                    : 'bg-[#111827] border border-white/[0.06]'
+                    : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
                 }`}
               >
                 {/* Score bar background */}
@@ -210,19 +213,19 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
                   {i < 3 ? (
                     <span className="text-[22px] leading-none">{MEDAL[i]}</span>
                   ) : (
-                    <span className="text-[16px] font-bold text-[#6B7280] tabular-nums">{i + 1}</span>
+                    <span className="text-[16px] font-bold text-[var(--color-text-muted)] tabular-nums">{i + 1}</span>
                   )}
                 </div>
                 {/* Name */}
-                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                <p className={`flex-1 text-[14px] font-semibold truncate relative z-10 ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
                   {e.name}{isMe && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
                 </p>
                 {/* Score */}
                 <div className="relative z-10 text-right flex-shrink-0">
-                  <span className={`text-[14px] font-bold ${isMe ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                  <span className={`text-[14px] font-bold ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
                     {e.score.toLocaleString()}
                   </span>
-                  <span className="text-[11px] font-medium text-[#6B7280] ml-1">{unit}</span>
+                  <span className="text-[11px] font-medium text-[var(--color-text-muted)] ml-1">{unit}</span>
                 </div>
                 {status === 'ended' && i < 3 && rewards[i] && (
                   <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full relative z-10 flex-shrink-0">
@@ -366,10 +369,10 @@ const DailyChallenge = ({ userId, gymId, t }) => {
     : `${progress} / ${challenge.target} ${challenge.unit}`;
 
   return (
-    <div className="rounded-2xl bg-gradient-to-r from-[#0F172A] to-[#1a1a2e] border border-[#D4AF37]/20 p-5 mb-6">
+    <div className="rounded-2xl bg-[var(--color-bg-card)] border border-[#D4AF37]/20 p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">{t('challenges.dailyChallenge')}</p>
-        <span className="text-[10px] text-[#6B7280] font-medium">{format(today, 'MMM d')}</span>
+        <span className="text-[10px] text-[var(--color-text-muted)] font-medium">{format(today, 'MMM d')}</span>
       </div>
 
       <div className="flex items-center gap-3 mb-3">
@@ -380,8 +383,8 @@ const DailyChallenge = ({ userId, gymId, t }) => {
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[16px] font-bold text-[#E5E7EB]">{challenge.nameKey ? t(`challenges.dailyChallengeNames.${challenge.nameKey}`, sanitize(challenge.name)) : sanitize(challenge.name)}</p>
-          <p className="text-[13px] text-[#9CA3AF] mt-0.5">{challenge.descKey ? t(`challenges.dailyChallengeDescs.${challenge.descKey}`, challenge.desc) : challenge.desc}</p>
+          <p className="text-[16px] font-bold text-[var(--color-text-primary)]">{challenge.nameKey ? t(`challenges.dailyChallengeNames.${challenge.nameKey}`, sanitize(challenge.name)) : sanitize(challenge.name)}</p>
+          <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{challenge.descKey ? t(`challenges.dailyChallengeDescs.${challenge.descKey}`, challenge.desc) : challenge.desc}</p>
         </div>
       </div>
 
@@ -393,10 +396,10 @@ const DailyChallenge = ({ userId, gymId, t }) => {
       ) : (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[12px] text-[#9CA3AF] font-medium">{loading ? '...' : progressLabel}</span>
-            <span className="text-[12px] text-[#6B7280] font-medium">{Math.round(pct)}%</span>
+            <span className="text-[12px] text-[var(--color-text-muted)] font-medium">{loading ? '...' : progressLabel}</span>
+            <span className="text-[12px] text-[var(--color-text-muted)] font-medium">{Math.round(pct)}%</span>
           </div>
-          <div className="h-2 bg-[#1E293B] rounded-full overflow-hidden">
+          <div className="h-2 bg-[var(--color-bg-secondary)] rounded-full overflow-hidden">
             <div
               className="h-full bg-[#D4AF37] rounded-full transition-all duration-500"
               style={{ width: `${pct}%` }}
@@ -422,7 +425,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const statusStyle = {
     live:     'text-emerald-400 bg-emerald-500/10',
     upcoming: 'text-blue-400 bg-blue-500/10',
-    ended:    'text-[#6B7280] bg-white/[0.06]',
+    ended:    'text-[var(--color-text-muted)] bg-white/[0.06]',
   }[status];
 
   const statusLabel = t(`challenges.tabs.${status}`);
@@ -443,7 +446,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   };
 
   return (
-    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+    <div className="bg-white/[0.04] rounded-2xl border border-[var(--color-border)] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
       <div
         role="button"
         tabIndex={0}
@@ -456,34 +459,34 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <p className="text-[16px] font-semibold text-[#E5E7EB] truncate">{sanitize(challenge.name)}</p>
+            <p className="text-[16px] font-semibold text-[var(--color-text-primary)] truncate">{sanitize(challenge.name)}</p>
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusStyle}`}>
               {statusLabel}
             </span>
           </div>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <span className="text-[12px] text-[#9CA3AF]">{t(`challenges.typeLabels.${meta.labelKey ?? challenge.type}`, meta.labelKey ?? '')}</span>
+            <span className="text-[12px] text-[var(--color-text-muted)]">{t(`challenges.typeLabels.${meta.labelKey ?? challenge.type}`, meta.labelKey ?? '')}</span>
             {participantCount > 0 && (
               <>
-                <span className="text-[#6B7280]">·</span>
-                <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+                <span className="text-[var(--color-text-muted)]">·</span>
+                <span className="flex items-center gap-1 text-[12px] text-[var(--color-text-muted)]">
                   <Users size={12} /> {participantCount}
                 </span>
               </>
             )}
             {hasRewards && (
               <>
-                <span className="text-[#6B7280]">·</span>
+                <span className="text-[var(--color-text-muted)]">·</span>
                 <span className="flex items-center gap-1 text-[11px] text-[#D4AF37] font-medium">
                   <Gift size={11} /> {t('challenges.rewards')}
                 </span>
               </>
             )}
-            <span className="text-[#6B7280]">·</span>
+            <span className="text-[var(--color-text-muted)]">·</span>
             {status === 'live' && <Countdown date={challenge.end_date} prefix={t('challenges.endsIn')} />}
             {status === 'upcoming' && <Countdown date={challenge.start_date} prefix={t('challenges.startsIn')} />}
             {status === 'ended' && (
-              <span className="text-[12px] text-[#9CA3AF]">
+              <span className="text-[12px] text-[var(--color-text-muted)]">
                 {t('challenges.ended', { date: format(new Date(challenge.end_date), 'MMM d') })}
               </span>
             )}
@@ -513,15 +516,15 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           )
         )}
 
-        <ChevronDown size={20} className={`text-[#6B7280] flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={20} className={`text-[var(--color-text-muted)] flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </div>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-white/[0.06] bg-[#111827]/50">
+        <div className="px-5 pb-5 pt-1 border-t border-[var(--color-border)] bg-[var(--color-bg-card)]">
           {challenge.description && (
-            <p className="text-[14px] text-[#9CA3AF] leading-relaxed mt-4">{sanitize(challenge.description)}</p>
+            <p className="text-[14px] text-[var(--color-text-muted)] leading-relaxed mt-4">{sanitize(challenge.description)}</p>
           )}
-          <div className="mt-3 text-[12px] text-[#6B7280] font-medium">
+          <div className="mt-3 text-[12px] text-[var(--color-text-muted)] font-medium">
             {format(new Date(challenge.start_date), 'MMM d')} – {format(new Date(challenge.end_date), 'MMM d, yyyy')}
           </div>
 
@@ -539,7 +542,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
                     <div key={i} className="flex items-center gap-3">
                       <span className="text-[18px]">{medals[i]}</span>
                       <div className="flex-1">
-                        <span className="text-[13px] font-semibold text-[#E5E7EB]">{r.points} pts</span>
+                        <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{r.points} pts</span>
                         {r.prize && <span className="text-[13px] text-[#D4AF37] ml-2">+ {sanitize(r.prize)}</span>}
                       </div>
                     </div>
@@ -626,18 +629,18 @@ export default function Challenges({ embedded = false }) {
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
   return (
-    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
+    <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-32 md:pb-12'}`}>
       {/* Header */}
       {!embedded && (
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/[0.06]">
+      <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border)]">
         <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center">
               <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('challenges.title')}</h1>
-              <p className="text-[13px] text-[#9CA3AF] mt-0.5">{t('challenges.subtitle')}</p>
+              <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight">{t('challenges.title')}</h1>
+              <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('challenges.subtitle')}</p>
             </div>
           </div>
         </div>

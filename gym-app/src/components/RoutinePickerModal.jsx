@@ -1,13 +1,14 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Dumbbell, MinusCircle } from 'lucide-react';
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+import { useTranslation } from 'react-i18next';
 
 const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRoutineId, onSelect, onClear }) => {
+  const { t } = useTranslation('pages');
+
   if (!open) return null;
 
-  const dayName = DAY_NAMES[dayOfWeek] ?? '';
+  const dayName = t(`routinePicker.days.${dayOfWeek}`, '');
 
   return (
     <AnimatePresence>
@@ -40,7 +41,7 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
             <div className="flex items-center justify-between px-5 py-3">
               <div>
                 <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider">
-                  Assign Workout
+                  {t('routinePicker.assignWorkout')}
                 </p>
                 <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
                   {dayName}
@@ -50,7 +51,7 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                 type="button"
                 onClick={onClose}
                 className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center"
-                aria-label="Close"
+                aria-label={t('routinePicker.close')}
               >
                 <X size={16} className="text-[#6B7280]" />
               </button>
@@ -61,9 +62,9 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
               {routines.length === 0 ? (
                 <div className="text-center py-8">
                   <Dumbbell size={32} className="mx-auto text-[#4B5563] mb-3" />
-                  <p className="text-[14px] font-semibold text-[#E5E7EB]">No routines available</p>
+                  <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('routinePicker.noRoutinesAvailable')}</p>
                   <p className="text-[12px] text-[#6B7280] mt-1">
-                    Generate a program or create a routine first.
+                    {t('routinePicker.noRoutinesHint')}
                   </p>
                 </div>
               ) : (
@@ -96,12 +97,12 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                             {label}
                           </p>
                           <p className="text-[11px] text-[#6B7280]">
-                            {exerciseCount} exercises
+                            {t('routinePicker.exercises_count', { count: exerciseCount })}
                           </p>
                         </div>
                         {isSelected && (
                           <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider shrink-0">
-                            Current
+                            {t('routinePicker.current')}
                           </span>
                         )}
                       </button>
@@ -120,10 +121,10 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[14px] font-semibold text-red-400">
-                          Rest Day
+                          {t('routinePicker.restDay')}
                         </p>
                         <p className="text-[11px] text-[#6B7280]">
-                          Remove workout from {dayName}
+                          {t('routinePicker.removeWorkoutFrom', { day: dayName })}
                         </p>
                       </div>
                     </button>

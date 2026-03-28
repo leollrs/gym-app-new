@@ -48,19 +48,20 @@ const RewardIcon = ({ name, size = 28, className = '' }) => {
 };
 
 // ── Tier badge component ─────────────────────────────────────────────────────
-const TierBadge = ({ tier, size = 'md' }) => {
+const TierBadge = ({ tier, size = 'md', t }) => {
   const sizes = {
     sm: 'text-[10px] px-2 py-0.5',
     md: 'text-[11px] px-3 py-1',
     lg: 'text-[13px] px-4 py-1.5',
   };
+  const label = t ? t(`rewards.tiers.${tier.nameKey}`, tier.name) : tier.name;
   return (
     <span
       className={`inline-flex items-center gap-1 font-bold rounded-full ${sizes[size]}`}
       style={{ backgroundColor: `${tier.color}15`, color: tier.color, border: `1px solid ${tier.color}30` }}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tier.color }} />
-      {tier.name}
+      {label}
     </span>
   );
 };
@@ -116,27 +117,27 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="redeem-reward-title"
-          className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 max-w-sm w-full shadow-2xl"
+          className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-6 max-w-sm w-full shadow-2xl"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-5">
-            <h3 id="redeem-reward-title" className="text-[18px] font-bold text-[#E5E7EB]">{t('rewards.redeemReward')}</h3>
-            <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <h3 id="redeem-reward-title" className="text-[18px] font-bold text-[var(--color-text-primary)]">{t('rewards.redeemReward')}</h3>
+            <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
               <X size={20} />
             </button>
           </div>
 
           <div className="text-center py-4">
             <RewardIcon name={reward.icon} size={48} className="text-[#D4AF37]" />
-            <p className="text-[16px] font-semibold text-[#E5E7EB] mt-3">{reward.name}</p>
-            <p className="text-[13px] text-[#9CA3AF] mt-1">{reward.description}</p>
+            <p className="text-[16px] font-semibold text-[var(--color-text-primary)] mt-3">{reward.name}</p>
+            <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{reward.description}</p>
             <div className="flex items-center justify-center gap-1.5 mt-4">
               <Coins size={16} className="text-[#D4AF37]" />
               <span className="text-[20px] font-bold text-[#D4AF37] tabular-nums">{reward.cost.toLocaleString()}</span>
-              <span className="text-[13px] text-[#9CA3AF]">pts</span>
+              <span className="text-[13px] text-[var(--color-text-muted)]">pts</span>
             </div>
             {!canAfford && (
               <p className="text-[12px] text-[#EF4444] mt-2">
@@ -148,7 +149,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
           <div className="flex gap-3 mt-5">
             <button
               onClick={onClose}
-              className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
+              className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold text-[var(--color-text-muted)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors duration-200"
             >
               {t('rewards.cancel')}
             </button>
@@ -168,6 +169,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
 
 // ── Redemption QR Modal ──────────────────────────────────────────────────────
 const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, onClose }) => {
+  const { t } = useTranslation('pages');
   const payload = `gym-redeem:${gymId}:${userId}:${reward.id}:${redemptionId}`;
 
   useEffect(() => {
@@ -189,7 +191,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
         >
           <X size={18} />
         </button>
@@ -197,7 +199,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         {/* Success badge */}
         <div className="bg-[#10B981]/10 flex items-center justify-center gap-2 py-3">
           <CheckCircle2 size={16} className="text-[#10B981]" />
-          <span className="text-[13px] font-bold text-[#10B981]">Reward Redeemed!</span>
+          <span className="text-[13px] font-bold text-[#10B981]">{t('rewards.rewardRedeemed')}</span>
         </div>
 
         {/* QR code */}
@@ -213,14 +215,14 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         </div>
 
         {/* Info */}
-        <div className="bg-[#0F172A] border-t border-white/[0.06] p-5">
+        <div className="bg-[var(--color-bg-card)] border-t border-[var(--color-border-subtle)] p-5">
           <div className="flex items-center justify-center gap-2 mb-1">
             <RewardIcon name={reward.icon} size={20} className="text-[#D4AF37]" />
-            <p className="text-[16px] font-bold text-[#E5E7EB]">{reward.name}</p>
+            <p className="text-[16px] font-bold text-[var(--color-text-primary)]">{reward.name}</p>
           </div>
-          <p className="text-[13px] text-[#9CA3AF] text-center mb-1">{memberName}</p>
-          <p className="text-[12px] text-[#6B7280] text-center">
-            Show this QR code to staff to claim your reward
+          <p className="text-[13px] text-[var(--color-text-muted)] text-center mb-1">{memberName}</p>
+          <p className="text-[12px] text-[var(--color-text-muted)] text-center">
+            {t('rewards.showQrToStaff')}
           </p>
         </div>
       </div>
@@ -239,11 +241,11 @@ const HistoryTab = ({ history, loading, t }) => {
   if (history.length === 0) {
     return (
       <div className="text-center py-20 px-6">
-        <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
-          <History size={28} className="text-[#6B7280]" />
+        <div className="w-14 h-14 rounded-[14px] bg-[var(--color-bg-deep)] flex items-center justify-center mx-auto mb-3">
+          <History size={28} className="text-[var(--color-text-muted)]" />
         </div>
-        <p className="text-[15px] font-semibold text-[#E5E7EB]">{t('rewards.noPointsYet')}</p>
-        <p className="text-[13px] text-[#9CA3AF] mt-1">{t('rewards.noPointsHint')}</p>
+        <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{t('rewards.noPointsYet')}</p>
+        <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{t('rewards.noPointsHint')}</p>
       </div>
     );
   }
@@ -260,7 +262,7 @@ const HistoryTab = ({ history, loading, t }) => {
         return (
           <div
             key={entry.id}
-            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200"
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] hover:bg-white/[0.06] transition-colors duration-200"
           >
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -269,10 +271,10 @@ const HistoryTab = ({ history, loading, t }) => {
               <Icon size={17} style={{ color: meta.color }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+              <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">
                 {entry.description || meta.label}
               </p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
                 {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
               </p>
             </div>
@@ -285,17 +287,17 @@ const HistoryTab = ({ history, loading, t }) => {
       {!showAll && history.length > 5 && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
-          Show all {history.length} entries
+          {t('rewards.showAllEntries', { count: history.length })}
         </button>
       )}
       {showAll && history.length > 5 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
-          Show less
+          {t('rewards.showLess')}
         </button>
       )}
     </div>
@@ -308,25 +310,29 @@ const RewardsTab = ({ points, onRedeem, t }) => (
   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
     {REWARDS_CATALOG.map((reward) => {
       const canAfford = points >= reward.cost;
+      const name = t(`rewards.catalog.${reward.nameKey}`, reward.nameKey);
+      const desc = t(`rewards.catalog.${reward.descKey}`, reward.descKey);
+      // Build a display-friendly reward object for the redeem modal
+      const displayReward = { ...reward, name, description: desc };
       return (
         <div
           key={reward.id}
-          className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-4 flex flex-col items-center text-center hover:bg-white/[0.06] transition-colors duration-200"
+          className="bg-white/[0.04] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex flex-col items-center text-center hover:bg-white/[0.06] transition-colors duration-200"
         >
           <RewardIcon name={reward.icon} size={28} className="text-[#D4AF37] mb-2" />
-          <p className="text-[13px] font-semibold text-[#E5E7EB] leading-tight">{reward.name}</p>
-          <p className="text-[11px] text-[#6B7280] mt-1 leading-snug">{reward.description}</p>
+          <p className="text-[13px] font-semibold text-[var(--color-text-primary)] leading-tight">{name}</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-1 leading-snug">{desc}</p>
           <div className="flex items-center gap-1 mt-3">
             <Coins size={12} className="text-[#D4AF37]" />
             <span className="text-[13px] font-bold text-[#D4AF37]">{reward.cost.toLocaleString()}</span>
           </div>
           <button
-            onClick={() => onRedeem(reward)}
+            onClick={() => onRedeem(displayReward)}
             disabled={!canAfford}
             className={`w-full mt-3 py-2.5 rounded-xl text-[12px] font-bold transition-all active:scale-95 ${
               canAfford
                 ? 'bg-[#D4AF37] text-black hover:bg-[#E6C766]'
-                : 'bg-white/[0.04] text-[#6B7280] cursor-not-allowed'
+                : 'bg-white/[0.04] text-[var(--color-text-muted)] cursor-not-allowed'
             }`}
           >
             {canAfford ? t('rewards.redeem') : t('rewards.needMore', { count: (reward.cost - points).toLocaleString() })}
@@ -352,10 +358,10 @@ const StampCircle = ({ slot, emoji, total }) => {
         slot.isFree
           ? slot.filled
             ? `${size} bg-[#D4AF37]/20 border-2 border-[#D4AF37] shadow-[0_0_16px_rgba(212,175,55,0.35)]`
-            : `${size} bg-white/[0.04] border-2 border-dashed border-white/[0.06]`
+            : `${size} bg-white/[0.04] border-2 border-dashed border-[var(--color-border-subtle)]`
           : slot.filled
             ? `${size} bg-[#D4AF37]/12 border-[1.5px] border-[#D4AF37]/50 shadow-[0_0_10px_rgba(212,175,55,0.15)]`
-            : `${size} bg-white/[0.04] border-[1.5px] border-white/[0.06]`
+            : `${size} bg-white/[0.04] border-[1.5px] border-[var(--color-border-subtle)]`
       }`}
     >
       {slot.isFree ? (
@@ -425,12 +431,12 @@ const PurchasesList = ({ purchases, t }) => {
 
   if (purchases.length === 0) {
     return (
-      <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
-        <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
-          <ShoppingBag size={28} className="text-[#6B7280]" />
+      <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)]">
+        <div className="w-14 h-14 rounded-[14px] bg-[var(--color-bg-deep)] flex items-center justify-center mx-auto mb-3">
+          <ShoppingBag size={28} className="text-[var(--color-text-muted)]" />
         </div>
-        <p className="text-[15px] font-semibold text-[#E5E7EB]">{t('rewards.noPurchasesYet')}</p>
-        <p className="text-[13px] text-[#9CA3AF] mt-1">{t('rewards.purchaseHistoryHint')}</p>
+        <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{t('rewards.noPurchasesYet')}</p>
+        <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{t('rewards.purchaseHistoryHint')}</p>
       </div>
     );
   }
@@ -442,7 +448,7 @@ const PurchasesList = ({ purchases, t }) => {
       {visible.map((purchase) => (
         <div
           key={purchase.id}
-          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200"
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] hover:bg-white/[0.06] transition-colors duration-200"
         >
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#D4AF37]/10">
             <span className="text-[16px]">
@@ -451,11 +457,11 @@ const PurchasesList = ({ purchases, t }) => {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+              <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">
                 {purchase.gym_products?.name || 'Product'}
               </p>
               {purchase.quantity > 1 && (
-                <span className="text-[11px] text-[#9CA3AF]">x{purchase.quantity}</span>
+                <span className="text-[11px] text-[var(--color-text-muted)]">x{purchase.quantity}</span>
               )}
               {purchase.is_free_reward && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
@@ -463,13 +469,13 @@ const PurchasesList = ({ purchases, t }) => {
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
               {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true })}
             </p>
           </div>
           <div className="flex flex-col items-end flex-shrink-0">
             {!purchase.is_free_reward && (
-              <span className="text-[13px] font-bold text-[#E5E7EB]">
+              <span className="text-[13px] font-bold text-[var(--color-text-primary)]">
                 ${parseFloat(purchase.total_price || 0).toFixed(2)}
               </span>
             )}
@@ -484,17 +490,17 @@ const PurchasesList = ({ purchases, t }) => {
       {!showAll && purchases.length > 5 && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
-          Show all {purchases.length} purchases
+          {t('rewards.showAllPurchases', { count: purchases.length })}
         </button>
       )}
       {showAll && purchases.length > 5 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+          className="w-full py-2.5 rounded-xl text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
         >
-          Show less
+          {t('rewards.showLess')}
         </button>
       )}
     </div>
@@ -571,18 +577,18 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
       <div className="space-y-8">
         {/* ── Punch Cards Section ─────────────────────────────── */}
         <div>
-          <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-3 flex items-center gap-2">
+          <h3 className="text-[15px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
             <Gift size={16} className="text-[#D4AF37]" />
             {t('rewards.punchCards')}
           </h3>
 
           {punchCards.length === 0 ? (
-            <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
-              <div className="w-14 h-14 rounded-[14px] bg-[#111827] flex items-center justify-center mx-auto mb-3">
-                <Gift size={28} className="text-[#6B7280]" />
+            <div className="text-center py-14 px-6 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)]">
+              <div className="w-14 h-14 rounded-[14px] bg-[var(--color-bg-deep)] flex items-center justify-center mx-auto mb-3">
+                <Gift size={28} className="text-[var(--color-text-muted)]" />
               </div>
-              <p className="text-[15px] font-semibold text-[#E5E7EB]">{t('rewards.noPunchCardsYet')}</p>
-              <p className="text-[13px] text-[#9CA3AF] mt-1">
+              <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{t('rewards.noPunchCardsYet')}</p>
+              <p className="text-[13px] text-[var(--color-text-muted)] mt-1">
                 {t('rewards.noPunchCardsHint')}
               </p>
             </div>
@@ -595,9 +601,9 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                 return (
                   <div
                     key={card.id}
-                    className="relative rounded-[22px] overflow-hidden border border-white/[0.06] shadow-[0_2px_24px_rgba(0,0,0,0.4)]"
+                    className="relative rounded-[22px] overflow-hidden border border-[var(--color-border-subtle)] shadow-[0_2px_24px_rgba(0,0,0,0.4)]"
                     style={{
-                      background: 'linear-gradient(165deg, #0F172A 0%, #0A0D14 50%, #0D1117 100%)',
+                      background: 'linear-gradient(165deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 50%, var(--color-bg-card) 100%)',
                     }}
                   >
                     {/* Subtle top accent line */}
@@ -613,10 +619,10 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                             </span>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[15px] font-bold text-white tracking-[-0.01em] truncate">
+                            <p className="text-[15px] font-bold text-[var(--color-text-primary)] tracking-[-0.01em] truncate">
                               {card.gym_products?.name || 'Product'}
                             </p>
-                            <p className="text-[12px] text-white/40 mt-0.5">
+                            <p className="text-[12px] text-[var(--color-text-muted)] mt-0.5">
                               {isComplete
                                 ? t('rewards.rewardUnlocked')
                                 : t('rewards.visitsLeft', { count: remaining })}
@@ -627,7 +633,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                           <span className="text-[22px] font-bold text-[#D4AF37] tracking-tight leading-none tabular-nums">
                             {card.current_punches}
                           </span>
-                          <span className="text-[13px] font-medium text-white/20">/{card.punch_card_target}</span>
+                          <span className="text-[13px] font-medium text-[var(--color-text-muted)]">/{card.punch_card_target}</span>
                         </div>
                       </div>
                     </div>
@@ -670,7 +676,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                             </span>
                           </div>
                         ) : (
-                          <p className="text-[12px] text-white/25">
+                          <p className="text-[12px] text-[var(--color-text-muted)]">
                             {isComplete ? t('rewards.claimReward') : progressPct >= 60 ? t('rewards.almostThere') : t('rewards.keepGoing')}
                           </p>
                         )}
@@ -686,7 +692,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                         <button
                           onClick={() => handleAddToWallet(card)}
                           disabled={walletLoadingId !== null}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white/50 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.07] hover:text-white/70 transition-all disabled:opacity-40"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[var(--color-text-muted)] bg-[var(--color-surface-hover)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-bg-deep)] transition-all disabled:opacity-40"
                         >
                           {walletLoadingId === card.id ? (
                             <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/60 rounded-full animate-spin" />
@@ -706,7 +712,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
 
         {/* ── Purchase History Section ────────────────────────── */}
         <div>
-          <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-3 flex items-center gap-2">
+          <h3 className="text-[15px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
             <ShoppingBag size={16} className="text-[#D4AF37]" />
             {t('rewards.purchaseHistory')}
           </h3>
@@ -831,7 +837,7 @@ export default function Rewards() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
+    <div className="min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12">
       {/* Redemption QR modal */}
       {successReward && (
         <RedemptionQRModal
@@ -870,7 +876,7 @@ export default function Rewards() {
       )}
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/[0.06]">
+      <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border-subtle)]">
         <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           {/* Title row */}
           <div className="flex items-center gap-4 mb-5">
@@ -878,23 +884,23 @@ export default function Rewards() {
               <Coins size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('rewards.title')}</h1>
-              <p className="text-[13px] text-[#9CA3AF] mt-0.5">{t('rewards.subtitle')}</p>
+              <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight">{t('rewards.title')}</h1>
+              <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('rewards.subtitle')}</p>
             </div>
           </div>
 
           {/* Points hero card */}
-          <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] p-5 mb-5">
+          <div className="bg-white/[0.04] rounded-2xl border border-[var(--color-border-subtle)] p-5 mb-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-widest">{t('rewards.yourPoints')}</p>
+                <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">{t('rewards.yourPoints')}</p>
                 <p className="text-[36px] font-bold text-[#D4AF37] leading-tight mt-1 tabular-nums">
                   <AnimatedPoints value={pointsData.total_points} />
                 </p>
               </div>
               <div className="text-right">
-                <TierBadge tier={tier} size="lg" />
-                <p className="text-[11px] text-[#6B7280] mt-2">
+                <TierBadge tier={tier} size="lg" t={t} />
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
                   {t('rewards.lifetime')}: {pointsData.lifetime_points?.toLocaleString() ?? 0}
                 </p>
               </div>
@@ -904,8 +910,8 @@ export default function Rewards() {
             {tier.nextTier && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-medium text-[#6B7280]">
-                    {t('rewards.progressTo', { tier: tier.nextTier })}
+                  <span className="text-[11px] font-medium text-[var(--color-text-muted)]">
+                    {t('rewards.progressTo', { tier: t(`rewards.tiers.${tier.nextTierKey}`, tier.nextTier) })}
                   </span>
                   <span className="text-[11px] font-semibold" style={{ color: tier.nextTierColor }}>
                     {t('rewards.ptsToGo', { count: tier.pointsToNext.toLocaleString() })}
@@ -925,7 +931,7 @@ export default function Rewards() {
           </div>
 
           {/* Tab bar */}
-          <div className="flex gap-1 bg-[#111827] p-1 rounded-xl">
+          <div className="flex gap-1 bg-[var(--color-bg-deep)] p-1 rounded-xl">
             {TAB_KEYS.map((tabKey) => (
               <button
                 key={tabKey}
@@ -933,7 +939,7 @@ export default function Rewards() {
                 className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${
                   tab === tabKey
                     ? 'bg-[#D4AF37] text-black font-semibold'
-                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)]'
                 }`}
               >
                 {t(`rewards.tabs.${tabKey}`)}

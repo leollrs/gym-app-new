@@ -19,7 +19,7 @@ const PASS_KEY_B64 = Deno.env.get('APPLE_PUNCH_KEY_BASE64') || '';
 const WWDR_CERT_B64 = Deno.env.get('APPLE_WWDR_CERT_BASE64') || '';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -51,13 +51,11 @@ serve(async (req: Request) => {
     if (user) {
       userId = user.id;
     } else if (bodyProfileId) {
-      // Internal call from webhook — verify token is service role by decoding JWT payload
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.role === 'service_role') {
-          userId = bodyProfileId;
-        }
-      } catch { /* not a valid JWT */ }
+      // Internal call from webhook — verify token is the actual service-role key
+      // (full string comparison, NOT decoded JWT payload which can be spoofed)
+      if (token === SUPABASE_SERVICE_ROLE_KEY) {
+        userId = bodyProfileId;
+      }
     }
 
     if (!userId) {
@@ -295,9 +293,9 @@ serve(async (req: Request) => {
         signature[i] = derString.charCodeAt(i);
       }
     } catch (signErr: any) {
+      console.error('Punch card pass signing error:', signErr?.message, signErr?.stack);
       return new Response(JSON.stringify({
-        error: 'Signing failed: ' + (signErr?.message || String(signErr)),
-        stack: (signErr?.stack || '').substring(0, 500),
+        error: 'Pass generation failed',
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -316,8 +314,7 @@ serve(async (req: Request) => {
   } catch (err: any) {
     console.error('generate-punch-card-pass error:', err?.message, err?.stack);
     return new Response(JSON.stringify({
-      error: err?.message || String(err),
-      stack: (err?.stack || '').substring(0, 500),
+      error: 'Pass generation failed',
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

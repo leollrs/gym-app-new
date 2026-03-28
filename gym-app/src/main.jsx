@@ -60,7 +60,10 @@ onWatchMessage((msg) => {
 
   if (action === 'request_routines') {
     try {
-      const userId = JSON.parse(localStorage.getItem('sb-erdhnixjnjullhjzmvpm-auth-token') || '{}')?.user?.id;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const supabaseRef = supabaseUrl.match(/https:\/\/([^.]+)\./)?.[1] || '';
+      const storageKey = `sb-${supabaseRef}-auth-token`;
+      const userId = JSON.parse(localStorage.getItem(storageKey) || '{}')?.user?.id;
       if (userId) {
         const cached = getCached(`routines:${userId}`);
         if (cached?.data?.length) {
@@ -168,13 +171,41 @@ if (isNative) {
 
 // ── Native platform initialization ──────────────────────────
 if (isNative) {
-  // Status bar — light text on dark background
+  // Add platform CSS class to html element for platform-specific styling
+  if (Capacitor.getPlatform() === 'android') {
+    document.documentElement.classList.add('android-platform');
+    // On Android, ensure dark mode class matches system setting
+    // Some Android WebViews don't properly report prefers-color-scheme
+    const androidIsDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const hasNoPreference = !window.matchMedia('(prefers-color-scheme: light)').matches && !androidIsDark;
+    if (hasNoPreference) {
+      // WebView can't detect system theme, default to dark
+      document.documentElement.classList.add('dark');
+    }
+  } else if (Capacitor.getPlatform() === 'ios') {
+    document.documentElement.classList.add('ios-platform');
+  }
+
+  // Status bar — adapt to current theme
   import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-    StatusBar.setStyle({ style: Style.Dark });
-    StatusBar.setBackgroundColor({ color: '#05070B' });
+    const applyStatusBarTheme = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+      StatusBar.setBackgroundColor({ color: isDark ? '#05070B' : '#F8FAFC' });
+    };
+    applyStatusBarTheme();
     if (Capacitor.getPlatform() === 'android') {
       StatusBar.setOverlaysWebView({ overlay: true });
     }
+    // Watch for theme changes to update status bar
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          applyStatusBarTheme();
+        }
+      });
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   }).catch(() => {});
 
   // Keyboard — handle iOS keyboard push behavior

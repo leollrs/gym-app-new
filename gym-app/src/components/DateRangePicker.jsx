@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CalendarDays } from 'lucide-react';
 
 const PRESETS = [
-  { key: '7d',   label: 'Last 7 Days',   days: 7 },
-  { key: '14d',  label: 'Last 14 Days',  days: 14 },
-  { key: '30d',  label: 'Last 30 Days',  days: 30 },
-  { key: '90d',  label: 'Last 90 Days',  days: 90 },
-  { key: '6m',   label: 'Last 6 Months', days: 183 },
-  { key: '1y',   label: 'Last Year',     days: 365 },
-  { key: 'all',  label: 'All Time',      days: null },
+  { key: '7d',   label: 'Last 7 Days',   days: 7,    i18nKey: 'last7' },
+  { key: '14d',  label: 'Last 14 Days',  days: 14,   i18nKey: 'last14' },
+  { key: '30d',  label: 'Last 30 Days',  days: 30,   i18nKey: 'last30' },
+  { key: '90d',  label: 'Last 90 Days',  days: 90,   i18nKey: 'last90' },
+  { key: '6m',   label: 'Last 6 Months', days: 183,  i18nKey: 'last6m' },
+  { key: '1y',   label: 'Last Year',     days: 365,  i18nKey: 'lastYear' },
+  { key: 'all',  label: 'All Time',      days: null,  i18nKey: 'allTime' },
 ];
 
 function daysAgo(n) {
@@ -33,6 +34,7 @@ function rangeFromPreset(key) {
 }
 
 export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
+  const { t } = useTranslation('pages');
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(defaultPreset);
   const [customFrom, setCustomFrom] = useState('');
@@ -43,11 +45,11 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
   const displayLabel = useMemo(() => {
     if (selected === 'custom') {
       if (customFrom && customTo) return `${customFrom} — ${customTo}`;
-      return 'Custom Range';
+      return t('dateRange.customRange');
     }
     const preset = PRESETS.find((p) => p.key === selected);
-    return preset ? preset.label : 'Select Range';
-  }, [selected, customFrom, customTo]);
+    return preset ? t(`dateRange.${preset.i18nKey}`) : t('dateRange.selectRange');
+  }, [selected, customFrom, customTo, t]);
 
   // Fire onChange on mount with default preset
   useEffect(() => {
@@ -117,7 +119,7 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                     : 'text-[#E5E7EB] hover:bg-white/5'
                 }`}
             >
-              {p.label}
+              {t(`dateRange.${p.i18nKey}`)}
             </button>
           ))}
 
@@ -135,14 +137,14 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                   : 'text-[#E5E7EB] hover:bg-white/5'
               }`}
           >
-            Custom Range
+            {t('dateRange.customRange')}
           </button>
 
           {/* Custom Date Inputs */}
           {selected === 'custom' && (
             <div className="px-4 pt-2 pb-3 space-y-3">
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">From</label>
+                <label className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.from')}</label>
                 <input
                   type="date"
                   value={customFrom}
@@ -153,7 +155,7 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">To</label>
+                <label className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.to')}</label>
                 <input
                   type="date"
                   value={customTo}
@@ -171,7 +173,7 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                            bg-[#D4AF37] text-[#05070B] hover:bg-[#D4AF37]/90
                            disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Apply
+                {t('dateRange.apply')}
               </button>
             </div>
           )}

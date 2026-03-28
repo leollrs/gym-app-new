@@ -795,7 +795,7 @@ export default function GymDetail() {
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{c.title}</h4>
+                            <h4 className="text-[13px] font-semibold text-[#E5E7EB] truncate">{c.name}</h4>
                             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle}`}>
                               {status}
                             </span>
@@ -823,7 +823,7 @@ export default function GymDetail() {
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => setDeleteConfirm({ type: 'challenge', id: c.id, name: c.title })}
+                            onClick={() => setDeleteConfirm({ type: 'challenge', id: c.id, name: c.name })}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Sparkles, Clock, RefreshCw, Dumbbell, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -20,6 +21,7 @@ const MUSCLE_COLORS = {
 };
 
 export default function WorkoutOfTheDay() {
+  const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const navigate = useNavigate();
 
@@ -144,14 +146,14 @@ export default function WorkoutOfTheDay() {
       <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-5 h-5 text-[#D4AF37]" />
-          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">Today's Workout</h3>
+          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">{t('workoutOfDay.todaysWorkout')}</h3>
         </div>
         <p className="text-sm text-red-400 mb-3">{error}</p>
         <button
           onClick={handleRegenerate}
           className="text-sm text-[#D4AF37] font-medium hover:underline"
         >
-          Try again
+          {t('workoutOfDay.tryAgain')}
         </button>
       </div>
     );
@@ -166,7 +168,7 @@ export default function WorkoutOfTheDay() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-[#D4AF37]" />
-          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">Today's Workout</h3>
+          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">{t('workoutOfDay.todaysWorkout')}</h3>
         </div>
         <button
           onClick={handleRegenerate}
@@ -174,7 +176,7 @@ export default function WorkoutOfTheDay() {
           className="flex items-center gap-1 text-xs text-[#9CA3AF] hover:text-[#D4AF37] transition-colors disabled:opacity-40"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
-          Regenerate
+          {t('workoutOfDay.regenerate')}
         </button>
       </div>
 
@@ -240,12 +242,12 @@ export default function WorkoutOfTheDay() {
         {saving ? (
           <>
             <RefreshCw className="w-4 h-4 animate-spin" />
-            Setting up...
+            {t('workoutOfDay.settingUp')}
           </>
         ) : (
           <>
             <Dumbbell className="w-4 h-4" />
-            Start This Workout
+            {t('workoutOfDay.startThisWorkout')}
             <ChevronRight className="w-4 h-4" />
           </>
         )}

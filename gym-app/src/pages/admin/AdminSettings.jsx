@@ -93,6 +93,8 @@ export default function AdminSettings() {
   const [openTime, setOpenTime]    = useState('06:00');
   const [closeTime, setCloseTime]  = useState('22:00');
   const [openDays, setOpenDays]    = useState([0, 1, 2, 3, 4, 5, 6]);
+  const defaultHours = () => [0,1,2,3,4,5,6].map(d => ({ day_of_week: d, open_time: '06:00', close_time: '22:00', is_closed: false }));
+  const [dayHours, setDayHours]    = useState(defaultHours);
 
 
   useEffect(() => { document.title = 'Admin - Settings | TuGymPR'; }, []);
@@ -101,16 +103,17 @@ export default function AdminSettings() {
   const { data: settingsData, isLoading } = useQuery({
     queryKey: adminKeys.settings(gymId),
     queryFn: async () => {
-      const [{ data: gymData }, { data: brandingData }] = await Promise.all([
+      const [{ data: gymData }, { data: brandingData }, { data: hoursData }] = await Promise.all([
         supabase.from('gyms').select('*').eq('id', gymId).single(),
         supabase.from('gym_branding').select('primary_color, accent_color, welcome_message, logo_url').eq('gym_id', gymId).single(),
+        supabase.from('gym_hours').select('*').eq('gym_id', gymId).order('day_of_week'),
       ]);
       let signedLogoUrl = '';
       const path = brandingData?.logo_url ?? '';
       if (path) {
         signedLogoUrl = await getSignedLogoUrl(path);
       }
-      return { gym: gymData, branding: brandingData, signedLogoUrl };
+      return { gym: gymData, branding: brandingData, signedLogoUrl, hours: hoursData };
     },
     enabled: !!gymId,
   });
@@ -118,12 +121,15 @@ export default function AdminSettings() {
   // Populate form when data loads
   useEffect(() => {
     if (!settingsData) return;
-    const { gym, branding, signedLogoUrl } = settingsData;
+    const { gym, branding, signedLogoUrl, hours } = settingsData;
     if (gym) {
       setName(gym.name ?? '');
       setOpenTime(gym.open_time ?? '06:00');
       setCloseTime(gym.close_time ?? '22:00');
       setOpenDays(gym.open_days ?? [0, 1, 2, 3, 4, 5, 6]);
+    }
+    if (hours?.length) {
+      setDayHours(hours.map(h => ({ day_of_week: h.day_of_week, open_time: h.open_time, close_time: h.close_time, is_closed: h.is_closed })));
     }
     if (branding) {
       setPrimary(branding.primary_color ?? '#D4AF37');
@@ -176,12 +182,14 @@ export default function AdminSettings() {
   // ── Save mutation ──
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Derive open_days from dayHours for backward compat
+      const derivedOpenDays = dayHours.filter(d => !d.is_closed).map(d => d.day_of_week).sort();
       const [{ error: gymErr }, { error: brandingErr }] = await Promise.all([
         supabase.from('gyms').update({
           name,
-          open_time: openTime,
-          close_time: closeTime,
-          open_days: openDays,
+          open_time: dayHours.find(d => !d.is_closed)?.open_time || openTime,
+          close_time: dayHours.find(d => !d.is_closed)?.close_time || closeTime,
+          open_days: derivedOpenDays,
           updated_at: new Date().toISOString(),
         }).eq('id', gymId),
         supabase.from('gym_branding').update({
@@ -191,6 +199,9 @@ export default function AdminSettings() {
           updated_at: new Date().toISOString(),
         }).eq('gym_id', gymId),
       ]);
+      // Upsert per-day hours
+      const hoursRows = dayHours.map(d => ({ gym_id: gymId, day_of_week: d.day_of_week, open_time: d.open_time, close_time: d.close_time, is_closed: d.is_closed }));
+      await supabase.from('gym_hours').upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
       if (!brandingErr) applyBranding({ primaryColor, secondaryColor: accentColor });
       if (gymErr || brandingErr) {
         throw new Error(gymErr?.message || brandingErr?.message);
@@ -294,37 +305,46 @@ export default function AdminSettings() {
           </AdminCard>
         </FadeIn>
 
-        {/* Gym hours */}
+        {/* Gym hours — per-day table */}
         <FadeIn delay={60}>
           <AdminCard hover padding="p-5">
             <SectionLabel icon={Clock} className="mb-4">Gym Hours</SectionLabel>
-            <p className="text-[12px] text-[#6B7280] mb-3">Used to pause leaderboard updates during closed hours</p>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Opens</label>
-                <input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
-              </div>
-              <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Closes</label>
-                <input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">Open Days</label>
-              <div className="grid grid-cols-4 md:grid-cols-7 gap-1.5">
-                {DAYS.map((day, idx) => (
-                  <button key={day} onClick={() => toggleDay(idx)}
-                    className={`px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors ${
-                      openDays.includes(idx)
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                        : 'bg-[#111827] border border-white/6 text-[#6B7280]'
-                    }`}>
-                    {day.slice(0, 3)}
-                  </button>
-                ))}
-              </div>
+            <p className="text-[12px] text-[#6B7280] mb-4">Set opening hours for each day. Toggle days off to mark as closed.</p>
+            <div className="space-y-2">
+              {DAYS.map((day, idx) => {
+                const dh = dayHours.find(d => d.day_of_week === idx) || { open_time: '06:00', close_time: '22:00', is_closed: false };
+                const updateDay = (field, value) => {
+                  setDayHours(prev => prev.map(d => d.day_of_week === idx ? { ...d, [field]: value } : d));
+                };
+                return (
+                  <div key={day} className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${dh.is_closed ? 'opacity-50' : ''}`}
+                    style={{ backgroundColor: 'var(--color-bg-deep, #111827)', border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))' }}>
+                    <button
+                      onClick={() => updateDay('is_closed', !dh.is_closed)}
+                      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
+                      style={{ backgroundColor: dh.is_closed ? 'var(--color-text-faint, #4B5563)' : 'var(--color-accent, #D4AF37)' }}
+                      aria-label={`Toggle ${day}`}
+                    >
+                      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: dh.is_closed ? '2px' : 'calc(100% - 18px)' }} />
+                    </button>
+                    <span className="text-[13px] font-semibold w-12 flex-shrink-0" style={{ color: 'var(--color-text-primary, #E5E7EB)' }}>
+                      {day.slice(0, 3)}
+                    </span>
+                    {dh.is_closed ? (
+                      <span className="text-[12px] font-medium" style={{ color: 'var(--color-danger, #EF4444)' }}>Closed</span>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)}
+                          className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted, #6B7280)' }}>to</span>
+                        <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)}
+                          className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </AdminCard>
         </FadeIn>

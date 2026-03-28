@@ -23,7 +23,7 @@ const formatVolume = (lbs) => {
 
 const StatCard = ({ icon: Icon, label, value, accent }) => (
   <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center gap-2 text-center">
-    <Icon size={18} style={{ color: accent || '#D4AF37' }} strokeWidth={2} />
+    <Icon size={18} style={{ color: accent || 'var(--color-accent)' }} strokeWidth={2} />
     <p className="text-[32px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
     <p className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{label}</p>
   </div>
@@ -149,7 +149,9 @@ const SessionSummary = () => {
           data: {
             achievement_key:  ach.key,
             achievement_name: ach.label,
+            achievement_name_key: ach.labelKey,
             achievement_desc: ach.desc,
+            achievement_desc_key: ach.descKey,
           },
         });
 
@@ -208,12 +210,12 @@ const SessionSummary = () => {
         <div
           className="w-20 h-20 rounded-full flex items-center justify-center mb-6 mt-4 animate-scale-pop"
           style={{
-            background: 'rgba(212,175,55,0.15)',
-            border: '2px solid rgba(212,175,55,0.4)',
+            background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+            border: '2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
             boxShadow: '0 0 40px rgba(212,175,55,0.25)',
           }}
         >
-          <CheckCircle size={40} strokeWidth={2} style={{ color: '#D4AF37' }} />
+          <CheckCircle size={40} strokeWidth={2} style={{ color: 'var(--color-accent)' }} />
         </div>
 
         {/* ── Title ──────────────────────────────────────────────── */}
@@ -255,13 +257,13 @@ const SessionSummary = () => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.5, duration: 0.3, ease: 'easeOut' }}
             className="w-full max-w-sm md:max-w-lg rounded-2xl p-5 mb-6 bg-gradient-to-r from-[#D4AF37]/10 to-transparent"
-            style={{ border: '1px solid rgba(212,175,55,0.25)' }}
+            style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
           >
             <div className="flex items-center gap-3 mb-4">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center"
                 style={{
-                  background: 'rgba(212,175,55,0.15)',
+                  background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
                   boxShadow: '0 0 20px rgba(212,175,55,0.3)',
                 }}
               >
@@ -296,11 +298,11 @@ const SessionSummary = () => {
         {xpEarned > 0 && (
           <div
             className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 flex items-center gap-3"
-            style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)' }}
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
           >
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-[16px]"
-              style={{ backgroundColor: 'rgba(212,175,55,0.15)', color: '#D4AF37', border: '2px solid rgba(212,175,55,0.4)' }}
+              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)' }}
             >
               +
             </div>

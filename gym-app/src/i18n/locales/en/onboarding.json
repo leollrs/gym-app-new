@@ -2,6 +2,21 @@
   "title": "Let's set you up",
   "subtitle": "A few quick questions so we can build your perfect plan",
 
+  "inviteCode": {
+    "title": "Do you have an invite code?",
+    "subtitle": "If your gym gave you a code, enter it to link your account.",
+    "verify": "Verify Code",
+    "verifying": "Verifying...",
+    "success": "Account linked!",
+    "skip": "Skip — I don't have a code",
+    "errors": {
+      "invalidCode": "Invalid code. Check and try again.",
+      "alreadyUsed": "This code has already been used.",
+      "expired": "This code has expired. Ask your gym for a new one.",
+      "wrongGym": "This code is for a different gym."
+    }
+  },
+
   "langStep": {
     "title": "Choose your language",
     "subtitle": "You can change this anytime in settings"
@@ -25,6 +40,15 @@
       "label": "I know what I'm doing",
       "desc": "3+ years of structured training, comfortable with complex lifts",
       "badge": "Advanced"
+    },
+    "maxes": {
+      "title": "Nice — you've got experience! 💪",
+      "subtitle": "Enter your known 1RM maxes (optional)",
+      "bench": "Bench Press",
+      "squat": "Back Squat",
+      "deadlift": "Deadlift",
+      "ohp": "Overhead Press",
+      "hint": "Leave blank if unsure — we'll estimate from your workouts"
     }
   },
 
@@ -101,7 +125,32 @@
     "elbows": "Elbows",
     "hips": "Hips",
     "neck": "Neck",
-    "ankles": "Ankles"
+    "ankles": "Ankles",
+    "sex": "Biological Sex",
+    "male": "Male",
+    "female": "Female",
+    "sexHint": "Used for accurate calorie calculations",
+    "age": "Age",
+    "height": "Height"
+  },
+
+  "health": {
+    "title": "Connect Your Health Data",
+    "subtitle": "Sync steps, heart rate, and more to get a complete picture of your fitness.",
+    "hint": "Linking your health data helps us track recovery, calories burned, and overall activity — even outside the gym.",
+    "webTitle": "Health Integration",
+    "webDesc": "Download the app on your phone to sync with Apple Health or Health Connect.",
+    "nativeDesc": "We'll read steps, heart rate, weight, and calories. You can change this anytime in settings.",
+    "steps": "Steps",
+    "heartRate": "Heart Rate",
+    "calories": "Calories",
+    "weight": "Weight",
+    "connecting": "Connecting...",
+    "connect": "Connect {{healthPlatformName}}",
+    "connected": "{{healthPlatformName}} Connected",
+    "unavailable": "{{healthPlatformName}} is not available on this device. You can set this up later in settings.",
+    "error": "Could not connect. You can try again later in settings.",
+    "skip": "Set up later"
   },
 
   "social": {

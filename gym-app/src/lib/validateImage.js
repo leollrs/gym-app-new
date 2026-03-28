@@ -35,5 +35,50 @@ export async function validateImageFile(file, { maxSizeMB = 5, allowedTypes = ['
     return { valid: false, error: 'Invalid image file. Only PNG, JPEG, and WebP are allowed' };
   }
 
+  // ── Max dimension check (prevents decompression bomb attacks) ──
+  const MAX_DIMENSION = 4096;
+  try {
+    const dimensions = await getImageDimensions(file);
+    if (dimensions && (dimensions.width > MAX_DIMENSION || dimensions.height > MAX_DIMENSION)) {
+      return { valid: false, error: `Image dimensions must not exceed ${MAX_DIMENSION}x${MAX_DIMENSION} pixels` };
+    }
+  } catch {
+    // NOTE: If dimension check fails client-side (e.g. in a Worker context
+    // where Image/createImageBitmap is unavailable), server-side validation
+    // should enforce the same max dimension limit as a fallback.
+  }
+
   return { valid: true, mime: matched.mime };
+}
+
+/**
+ * Loads the image to read its natural dimensions.
+ * Returns { width, height } or null if not possible in this environment.
+ */
+function getImageDimensions(file) {
+  // Prefer createImageBitmap (works in workers and main thread)
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(file).then(bmp => {
+      const { width, height } = bmp;
+      bmp.close();
+      return { width, height };
+    });
+  }
+  // Fallback: HTMLImageElement (main thread only)
+  if (typeof Image !== 'undefined') {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  }
+  return Promise.resolve(null);
 }

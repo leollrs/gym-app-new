@@ -185,7 +185,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
   const [submitting, setSubmitting]     = useState(false);
+  const [commentError, setCommentError] = useState('');
   const inputRef = useRef(null);
+  const lastCommentTime = useRef(0);
 
   const loadComments = async () => {
     if (comments !== null) return;
@@ -207,8 +209,24 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 
   const handleSubmitComment = async () => {
     if (!commentText.trim() || submitting) return;
-    setSubmitting(true);
+    setCommentError('');
     const content = commentText.trim();
+
+    // Rate limit: 5 seconds between comments
+    const now = Date.now();
+    if (now - lastCommentTime.current < 5000) {
+      setCommentError(t('social.commentRateLimit', 'Please wait a few seconds between comments'));
+      return;
+    }
+
+    // Max length validation
+    if (content.length > 500) {
+      setCommentError(t('social.commentTooLong', 'Comment must be 500 characters or less'));
+      return;
+    }
+
+    lastCommentTime.current = now;
+    setSubmitting(true);
     setCommentText('');
     const { data: newComment, error } = await supabase
       .from('feed_comments')
@@ -280,6 +298,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
               comments.map(c => <CommentRow key={c.id} comment={c} />)
             )}
           </div>
+          {commentError && (
+            <p className="text-[12px] text-red-400 mt-2 px-1">{commentError}</p>
+          )}
           <div className="flex gap-2 mt-3">
             <input
               ref={inputRef}
@@ -287,6 +308,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
               onChange={e => setCommentText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmitComment()}
               placeholder={t('social.writeComment')}
+              maxLength={500}
               className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 bg-[#111827] border border-white/[0.06] text-[#E5E7EB] placeholder-[#4B5563]"
             />
             <button
@@ -379,6 +401,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
         .select('id, full_name, username, avatar_url')
         .eq('gym_id', gymId)
         .neq('id', userId)
+        .in('role', ['member', 'trainer'])
         .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
         .limit(20)
         .then(({ data, error }) => {
@@ -770,7 +793,7 @@ const SocialFeed = ({ embedded = false }) => {
   const activeFeed  = tab === 'friends' ? friendsFeed : myFeed;
 
   return (
-    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-28 md:pb-12'}`}>
+    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-32 md:pb-12'}`}>
       <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8'}`}>
 
         {/* Header */}

@@ -4,34 +4,35 @@ import { motion } from 'framer-motion';
 import { Dumbbell, ArrowRight, ClipboardList, Scale, Users, Trophy, Sparkles, ChevronRight, Flame, Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation, Trans } from 'react-i18next';
 
 // ── Goal-based personalized messages ────────────────────────
-const GOAL_MESSAGES = {
-  muscle_gain:     { headline: 'Your muscle-building journey starts now', icon: 'Dumbbell' },
-  fat_loss:        { headline: 'Your fat-loss transformation begins today', icon: 'Flame' },
-  strength:        { headline: 'Time to start lifting heavier', icon: 'Trophy' },
-  endurance:       { headline: 'Your endurance journey starts here', icon: 'Activity' },
-  general_fitness: { headline: 'Your path to better fitness starts now', icon: 'Sparkles' },
+const GOAL_KEYS = {
+  muscle_gain:     { headlineKey: 'firstWorkoutWelcome.goalMusclGain', icon: 'Dumbbell' },
+  fat_loss:        { headlineKey: 'firstWorkoutWelcome.goalFatLoss', icon: 'Flame' },
+  strength:        { headlineKey: 'firstWorkoutWelcome.goalStrength', icon: 'Trophy' },
+  endurance:       { headlineKey: 'firstWorkoutWelcome.goalEndurance', icon: 'Activity' },
+  general_fitness: { headlineKey: 'firstWorkoutWelcome.goalGeneralFitness', icon: 'Sparkles' },
 };
 
 const GOAL_ICON_MAP = { Dumbbell, Flame, Trophy, Activity, Sparkles };
 
-// ── Quick tips data ─────────────────────────────────────────
-const QUICK_TIPS = [
+// ── Quick tips keys ─────────────────────────────────────────
+const QUICK_TIP_KEYS = [
   {
     icon: ClipboardList,
-    title: 'Log every set',
-    desc: 'The app tracks your progress and tells you when to increase weight.',
+    titleKey: 'firstWorkoutWelcome.tipLogTitle',
+    descKey: 'firstWorkoutWelcome.tipLogDesc',
   },
   {
     icon: Scale,
-    title: 'Track your weight weekly',
-    desc: 'Consistent weigh-ins help you spot trends and stay on track.',
+    titleKey: 'firstWorkoutWelcome.tipWeightTitle',
+    descKey: 'firstWorkoutWelcome.tipWeightDesc',
   },
   {
     icon: Users,
-    title: 'Add a gym buddy',
-    desc: 'Members who train with friends are 2x more likely to stay consistent.',
+    titleKey: 'firstWorkoutWelcome.tipBuddyTitle',
+    descKey: 'firstWorkoutWelcome.tipBuddyDesc',
   },
 ];
 
@@ -111,6 +112,7 @@ const scaleIn = {
 const FirstWorkoutWelcome = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useTranslation('pages');
 
   const [onboardingData, setOnboardingData] = useState(null);
   const [firstRoutineId, setFirstRoutineId] = useState(null);
@@ -152,7 +154,7 @@ const FirstWorkoutWelcome = () => {
     fetchData();
   }, [user]);
 
-  const goalInfo = GOAL_MESSAGES[onboardingData?.primary_goal] || GOAL_MESSAGES.general_fitness;
+  const goalInfo = GOAL_KEYS[onboardingData?.primary_goal] || GOAL_KEYS.general_fitness;
 
   const handleStartWorkout = () => {
     if (firstRoutineId) {
@@ -171,7 +173,7 @@ const FirstWorkoutWelcome = () => {
       <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          <p className="text-[13px] text-[#4B5563]">Preparing your plan...</p>
+          <p className="text-[13px] text-[#4B5563]">{t('firstWorkoutWelcome.preparingYourPlan')}</p>
         </div>
       </div>
     );
@@ -196,10 +198,10 @@ const FirstWorkoutWelcome = () => {
               <Sparkles size={28} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <h1 className="text-[28px] font-bold text-[#E5E7EB] mb-2">
-              You're all set! {'\u{1F389}'}
+              {t('firstWorkoutWelcome.youreAllSet')} {'\u{1F389}'}
             </h1>
             <p className="text-[15px] text-[#9CA3AF]">
-              {(() => { const GIcon = GOAL_ICON_MAP[goalInfo.icon]; return GIcon ? <GIcon size={16} className="inline mr-1 text-[#D4AF37]" /> : null; })()}{goalInfo.headline}
+              {(() => { const GIcon = GOAL_ICON_MAP[goalInfo.icon]; return GIcon ? <GIcon size={16} className="inline mr-1 text-[#D4AF37]" /> : null; })()}{t(goalInfo.headlineKey)}
             </p>
           </motion.div>
 
@@ -210,12 +212,12 @@ const FirstWorkoutWelcome = () => {
               className="w-full flex items-center justify-center gap-3 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[16px] py-4 px-6 rounded-[14px] transition-all shadow-[0_0_30px_rgba(212,175,55,0.15)]"
             >
               <Dumbbell size={20} strokeWidth={2.5} />
-              {hasRoutines ? 'Start Your First Workout' : 'Browse Your Workouts'}
+              {hasRoutines ? t('firstWorkoutWelcome.startYourFirstWorkout') : t('firstWorkoutWelcome.browseYourWorkouts')}
               <ArrowRight size={18} strokeWidth={2.5} />
             </button>
             {!hasRoutines && (
               <p className="text-[12px] text-[#6B7280] text-center mt-2">
-                Your auto-generated program is waiting for you
+                {t('firstWorkoutWelcome.autoGeneratedProgram')}
               </p>
             )}
           </motion.div>
@@ -226,7 +228,7 @@ const FirstWorkoutWelcome = () => {
               onClick={handleExplore}
               className="w-full text-center text-[14px] text-[#9CA3AF] hover:text-[#E5E7EB] py-2 transition-colors"
             >
-              Explore the app first
+              {t('firstWorkoutWelcome.exploreAppFirst')}
             </button>
           </motion.div>
 
@@ -238,10 +240,11 @@ const FirstWorkoutWelcome = () => {
                   <Trophy size={20} className="text-[#D4AF37]" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-1">First Week Challenge</p>
+                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-1">{t('firstWorkoutWelcome.firstWeekChallenge')}</p>
                   <p className="text-[13px] text-[#9CA3AF] leading-relaxed">
-                    Complete 3 workouts this week to unlock the{' '}
-                    <span className="text-[#D4AF37] font-semibold">Early Bird</span> badge
+                    <Trans i18nKey="firstWorkoutWelcome.firstWeekChallengeDesc" ns="pages">
+                      Complete 3 workouts this week to unlock the <span className="text-[#D4AF37] font-semibold">Early Bird</span> badge
+                    </Trans>
                   </p>
                 </div>
               </div>
@@ -254,7 +257,7 @@ const FirstWorkoutWelcome = () => {
                       <span className="text-[11px] font-bold text-[#4B5563]">{n}</span>
                     </div>
                     <span className="text-[11px] text-[#4B5563]">
-                      {n === 1 ? 'Today' : n === 2 ? 'Mid-week' : 'End of week'}
+                      {n === 1 ? t('firstWorkoutWelcome.today') : n === 2 ? t('firstWorkoutWelcome.midWeek') : t('firstWorkoutWelcome.endOfWeek')}
                     </span>
                   </div>
                 ))}
@@ -265,14 +268,14 @@ const FirstWorkoutWelcome = () => {
           {/* ── Quick tips ── */}
           <motion.div variants={itemVariants}>
             <p className="text-[11px] font-semibold text-[#4B5563] uppercase tracking-wider mb-3">
-              Quick tips to get started
+              {t('firstWorkoutWelcome.quickTipsTitle')}
             </p>
             <div className="flex flex-col gap-2.5">
-              {QUICK_TIPS.map((tip) => {
+              {QUICK_TIP_KEYS.map((tip) => {
                 const Icon = tip.icon;
                 return (
                   <motion.div
-                    key={tip.title}
+                    key={tip.titleKey}
                     className="bg-[#0F172A] rounded-[14px] border border-white/8 px-4 py-3.5 flex items-start gap-3.5"
                     variants={itemVariants}
                   >
@@ -280,8 +283,8 @@ const FirstWorkoutWelcome = () => {
                       <Icon size={17} className="text-[#9CA3AF]" strokeWidth={2} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-0.5">{tip.title}</p>
-                      <p className="text-[12px] text-[#6B7280] leading-relaxed">{tip.desc}</p>
+                      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-0.5">{t(tip.titleKey)}</p>
+                      <p className="text-[12px] text-[#6B7280] leading-relaxed">{t(tip.descKey)}</p>
                     </div>
                     <ChevronRight size={14} className="text-[#4B5563] flex-shrink-0 mt-1" />
                   </motion.div>

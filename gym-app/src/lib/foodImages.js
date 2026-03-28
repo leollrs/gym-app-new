@@ -2,6 +2,8 @@
 // Maps food name patterns to image paths
 // 646 rules
 
+import { foodImageUrl } from './imageUrl';
+
 const R = [
   ["/foods/chicken_breast.jpg",[["chicken breast"], ["pechuga de pollo"]]],
   ["/foods/chicken_thigh.jpg",[["chicken thigh"], ["muslo de pollo"]]],
@@ -679,7 +681,7 @@ export function getFoodImage(name, brand) {
   const l = brand ? `${brand} ${name}`.toLowerCase() : name.toLowerCase();
   for (const [img, pats] of R) {
     for (const parts of pats) {
-      if (parts.every(p => l.includes(p))) { cache.set(key, img); return img; }
+      if (parts.every(p => l.includes(p))) { const url = foodImageUrl(img); cache.set(key, url); return url; }
     }
   }
   // Fallback: try name-only match (for non-branded items)
@@ -687,7 +689,7 @@ export function getFoodImage(name, brand) {
     const nameOnly = name.toLowerCase();
     for (const [img, pats] of R) {
       for (const parts of pats) {
-        if (parts.every(p => nameOnly.includes(p))) { cache.set(key, img); return img; }
+        if (parts.every(p => nameOnly.includes(p))) { const url = foodImageUrl(img); cache.set(key, url); return url; }
       }
     }
   }

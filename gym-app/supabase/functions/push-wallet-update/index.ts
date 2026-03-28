@@ -29,7 +29,7 @@ const PUSH_KEY_ID = Deno.env.get('APPLE_PUSH_KEY_ID') || '';
 const TEAM_ID = Deno.env.get('APPLE_TEAM_ID') || '';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -88,8 +88,41 @@ serve(async (req: Request) => {
   }
 
   try {
+    // ── Auth: require service-role token or cron secret ──
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token = authHeader.replace('Bearer ', '');
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
+
+    const isServiceRole = token === SUPABASE_SERVICE_ROLE_KEY;
+    const isCronAuth = cronSecret && incomingSecret === cronSecret;
+
+    let profileId: string | undefined;
+    let reason = 'punch_card_update';
+
+    if (!isServiceRole && !isCronAuth) {
+      // Try user auth — only allow if user is requesting their own profile
+      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const authClient = createClient(SUPABASE_URL, ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await authClient.auth.getUser();
+      const body = await req.json();
+      if (!user || user.id !== body.profileId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      profileId = body.profileId;
+      reason = body.reason || 'punch_card_update';
+    } else {
+      const body = await req.json();
+      profileId = body.profileId;
+      reason = body.reason || 'punch_card_update';
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { profileId, reason = 'punch_card_update' } = await req.json();
 
     if (!profileId) {
       return new Response(JSON.stringify({ error: 'Missing profileId' }), {
@@ -209,7 +242,8 @@ serve(async (req: Request) => {
           }
         }
       } catch (err: any) {
-        errors.push(`${reg.device_library_identifier}: ${err.message}`);
+        console.error(`APNs push failed for device ${reg.device_library_identifier}:`, err?.message, err?.stack);
+        errors.push(`${reg.device_library_identifier}: push failed`);
       }
     }
 
@@ -240,7 +274,7 @@ serve(async (req: Request) => {
 
   } catch (err: any) {
     console.error('push-wallet-update error:', err?.message, err?.stack);
-    return new Response(JSON.stringify({ error: err?.message }), {
+    return new Response(JSON.stringify({ error: 'Wallet update failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

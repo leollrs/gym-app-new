@@ -8,8 +8,10 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'first_workout',
     label: 'First Rep',
+    labelKey: 'milestones.first_workout.label',
     icon: 'Dumbbell',
     desc: 'Log your very first workout',
+    descKey: 'milestones.first_workout.desc',
     color: '#D4AF37',
     category: 'Workouts',
     check: (d) => d.totalSessions >= 1,
@@ -18,8 +20,10 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'sessions_10',
     label: '10 Sessions',
+    labelKey: 'milestones.sessions_10.label',
     icon: 'Flame',
     desc: 'Complete 10 workouts',
+    descKey: 'milestones.sessions_10.desc',
     color: '#D4AF37',
     category: 'Workouts',
     check: (d) => d.totalSessions >= 10,
@@ -28,8 +32,10 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'sessions_25',
     label: '25 Sessions',
+    labelKey: 'milestones.sessions_25.label',
     icon: 'Zap',
     desc: 'Complete 25 workouts',
+    descKey: 'milestones.sessions_25.desc',
     color: '#F97316',
     category: 'Workouts',
     check: (d) => d.totalSessions >= 25,
@@ -38,8 +44,10 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'sessions_50',
     label: 'Half Century',
+    labelKey: 'milestones.sessions_50.label',
     icon: 'Star',
     desc: 'Complete 50 workouts',
+    descKey: 'milestones.sessions_50.desc',
     color: '#A78BFA',
     category: 'Workouts',
     check: (d) => d.totalSessions >= 50,
@@ -48,21 +56,25 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'century_club',
     label: 'Century Club',
+    labelKey: 'milestones.century_club.label',
     icon: 'Trophy',
     desc: '100 workouts completed',
+    descKey: 'milestones.century_club.desc',
     color: '#EF4444',
     category: 'Workouts',
     check: (d) => d.totalSessions >= 100,
     progressOf: { key: 'totalSessions', target: 100 },
   },
-  { key: 'sessions_200', label: 'Iron Veteran', icon: 'Shield', desc: 'Complete 200 workouts', color: '#EF4444', category: 'Workouts', check: (d) => d.totalSessions >= 200, progressOf: { key: 'totalSessions', target: 200 } },
-  { key: 'sessions_500', label: 'Legend', icon: 'Crown', desc: 'Complete 500 workouts', color: '#D4AF37', category: 'Workouts', check: (d) => d.totalSessions >= 500, progressOf: { key: 'totalSessions', target: 500 } },
+  { key: 'sessions_200', label: 'Iron Veteran', labelKey: 'milestones.sessions_200.label', icon: 'Shield', desc: 'Complete 200 workouts', descKey: 'milestones.sessions_200.desc', color: '#EF4444', category: 'Workouts', check: (d) => d.totalSessions >= 200, progressOf: { key: 'totalSessions', target: 200 } },
+  { key: 'sessions_500', label: 'Legend', labelKey: 'milestones.sessions_500.label', icon: 'Crown', desc: 'Complete 500 workouts', descKey: 'milestones.sessions_500.desc', color: '#D4AF37', category: 'Workouts', check: (d) => d.totalSessions >= 500, progressOf: { key: 'totalSessions', target: 500 } },
   // Streaks
   {
     key: 'streak_7',
     label: 'Week Warrior',
+    labelKey: 'milestones.streak_7.label',
     icon: 'CalendarCheck',
     desc: 'Train 7 days in a row',
+    descKey: 'milestones.streak_7.desc',
     color: '#10B981',
     category: 'Streaks',
     check: (d) => d.currentStreak >= 7,
@@ -71,8 +83,10 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'streak_30',
     label: 'Monthly Machine',
+    labelKey: 'milestones.streak_30.label',
     icon: 'RotateCw',
     desc: 'Train 30 days in a row',
+    descKey: 'milestones.streak_30.desc',
     color: '#10B981',
     category: 'Streaks',
     check: (d) => d.currentStreak >= 30,
@@ -81,22 +95,26 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'streak_90',
     label: 'Unstoppable',
+    labelKey: 'milestones.streak_90.label',
     icon: 'Rocket',
     desc: '90-day training streak',
+    descKey: 'milestones.streak_90.desc',
     color: '#10B981',
     category: 'Streaks',
     check: (d) => d.currentStreak >= 90,
     progressOf: { key: 'currentStreak', target: 90 },
   },
-  { key: 'streak_14', label: 'Two Week Terror', icon: 'Flame', desc: 'Train 14 days in a row', color: '#10B981', category: 'Streaks', check: (d) => d.currentStreak >= 14, progressOf: { key: 'currentStreak', target: 14 } },
-  { key: 'streak_180', label: 'Half Year Hero', icon: 'Mountain', desc: '180-day training streak', color: '#10B981', category: 'Streaks', check: (d) => d.currentStreak >= 180, progressOf: { key: 'currentStreak', target: 180 } },
-  { key: 'streak_365', label: 'Year of Iron', icon: 'Trophy', desc: '365-day training streak — absolute legend', color: '#D4AF37', category: 'Streaks', check: (d) => d.currentStreak >= 365, progressOf: { key: 'currentStreak', target: 365 } },
+  { key: 'streak_14', label: 'Two Week Terror', labelKey: 'milestones.streak_14.label', icon: 'Flame', desc: 'Train 14 days in a row', descKey: 'milestones.streak_14.desc', color: '#10B981', category: 'Streaks', check: (d) => d.currentStreak >= 14, progressOf: { key: 'currentStreak', target: 14 } },
+  { key: 'streak_180', label: 'Half Year Hero', labelKey: 'milestones.streak_180.label', icon: 'Mountain', desc: '180-day training streak', descKey: 'milestones.streak_180.desc', color: '#10B981', category: 'Streaks', check: (d) => d.currentStreak >= 180, progressOf: { key: 'currentStreak', target: 180 } },
+  { key: 'streak_365', label: 'Year of Iron', labelKey: 'milestones.streak_365.label', icon: 'Trophy', desc: '365-day training streak — absolute legend', descKey: 'milestones.streak_365.desc', color: '#D4AF37', category: 'Streaks', check: (d) => d.currentStreak >= 365, progressOf: { key: 'currentStreak', target: 365 } },
   // PRs
   {
     key: 'first_pr',
     label: 'Personal Best',
+    labelKey: 'milestones.first_pr.label',
     icon: 'Target',
     desc: 'Set your first personal record',
+    descKey: 'milestones.first_pr.desc',
     color: '#D4AF37',
     category: 'PRs',
     check: (d) => d.totalPRs >= 1,
@@ -105,21 +123,25 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'prs_10',
     label: 'PR Machine',
+    labelKey: 'milestones.prs_10.label',
     icon: 'TrendingUp',
     desc: 'Set 10 personal records',
+    descKey: 'milestones.prs_10.desc',
     color: '#D4AF37',
     category: 'PRs',
     check: (d) => d.totalPRs >= 10,
     progressOf: { key: 'totalPRs', target: 10 },
   },
-  { key: 'prs_25', label: 'Record Breaker', icon: 'Award', desc: 'Set 25 personal records', color: '#F97316', category: 'PRs', check: (d) => d.totalPRs >= 25, progressOf: { key: 'totalPRs', target: 25 } },
-  { key: 'prs_50', label: 'PR Legend', icon: 'Crown', desc: 'Set 50 personal records', color: '#EF4444', category: 'PRs', check: (d) => d.totalPRs >= 50, progressOf: { key: 'totalPRs', target: 50 } },
+  { key: 'prs_25', label: 'Record Breaker', labelKey: 'milestones.prs_25.label', icon: 'Award', desc: 'Set 25 personal records', descKey: 'milestones.prs_25.desc', color: '#F97316', category: 'PRs', check: (d) => d.totalPRs >= 25, progressOf: { key: 'totalPRs', target: 25 } },
+  { key: 'prs_50', label: 'PR Legend', labelKey: 'milestones.prs_50.label', icon: 'Crown', desc: 'Set 50 personal records', descKey: 'milestones.prs_50.desc', color: '#EF4444', category: 'PRs', check: (d) => d.totalPRs >= 50, progressOf: { key: 'totalPRs', target: 50 } },
   // Social
   {
     key: 'first_friend',
     label: 'Better Together',
+    labelKey: 'milestones.first_friend.label',
     icon: 'UserPlus',
     desc: 'Add your first gym friend',
+    descKey: 'milestones.first_friend.desc',
     color: '#3B82F6',
     category: 'Social',
     check: (d) => d.friendCount >= 1,
@@ -128,21 +150,25 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'social_5',
     label: 'Squad Goals',
+    labelKey: 'milestones.social_5.label',
     icon: 'Users',
     desc: 'Have 5 friends in the gym',
+    descKey: 'milestones.social_5.desc',
     color: '#3B82F6',
     category: 'Social',
     check: (d) => d.friendCount >= 5,
     progressOf: { key: 'friendCount', target: 5 },
   },
-  { key: 'social_10', label: 'Popular', icon: 'Heart', desc: 'Have 10 friends in the gym', color: '#3B82F6', category: 'Social', check: (d) => d.friendCount >= 10, progressOf: { key: 'friendCount', target: 10 } },
-  { key: 'social_20', label: 'Influencer', icon: 'Megaphone', desc: 'Have 20 friends in the gym', color: '#8B5CF6', category: 'Social', check: (d) => d.friendCount >= 20, progressOf: { key: 'friendCount', target: 20 } },
+  { key: 'social_10', label: 'Popular', labelKey: 'milestones.social_10.label', icon: 'Heart', desc: 'Have 10 friends in the gym', descKey: 'milestones.social_10.desc', color: '#3B82F6', category: 'Social', check: (d) => d.friendCount >= 10, progressOf: { key: 'friendCount', target: 10 } },
+  { key: 'social_20', label: 'Influencer', labelKey: 'milestones.social_20.label', icon: 'Megaphone', desc: 'Have 20 friends in the gym', descKey: 'milestones.social_20.desc', color: '#8B5CF6', category: 'Social', check: (d) => d.friendCount >= 20, progressOf: { key: 'friendCount', target: 20 } },
   // Special
   {
     key: 'habit_formed',
     label: 'Habit Formed',
+    labelKey: 'milestones.habit_formed.label',
     icon: 'Brain',
     desc: 'Complete 9 workouts in your first 6 weeks',
+    descKey: 'milestones.habit_formed.desc',
     color: '#8B5CF6',
     category: 'Special',
     check: (d) => d.sessionsInFirst6Weeks >= 9,
@@ -151,22 +177,26 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'first_challenge',
     label: 'Competitor',
+    labelKey: 'milestones.first_challenge.label',
     icon: 'Medal',
     desc: 'Complete your first challenge',
+    descKey: 'milestones.first_challenge.desc',
     color: '#F59E0B',
     category: 'Special',
     check: (d) => d.challengesCompleted >= 1,
     progressOf: null,
   },
-  { key: 'challenges_5', label: 'Challenge Addict', icon: 'Swords', desc: 'Complete 5 challenges', color: '#F59E0B', category: 'Special', check: (d) => d.challengesCompleted >= 5, progressOf: { key: 'challengesCompleted', target: 5 } },
-  { key: 'checkins_10', label: 'Regular', icon: 'MapPin', desc: 'Check in 10 times in a month', color: '#10B981', category: 'Special', check: (d) => d.monthlyCheckins >= 10, progressOf: { key: 'monthlyCheckins', target: 10 } },
-  { key: 'first_nutrition', label: 'Fuel Up', icon: 'Apple', desc: 'Log your first meal', color: '#34D399', category: 'Special', check: (d) => d.hasNutritionLog, progressOf: null },
+  { key: 'challenges_5', label: 'Challenge Addict', labelKey: 'milestones.challenges_5.label', icon: 'Swords', desc: 'Complete 5 challenges', descKey: 'milestones.challenges_5.desc', color: '#F59E0B', category: 'Special', check: (d) => d.challengesCompleted >= 5, progressOf: { key: 'challengesCompleted', target: 5 } },
+  { key: 'checkins_10', label: 'Regular', labelKey: 'milestones.checkins_10.label', icon: 'MapPin', desc: 'Check in 10 times in a month', descKey: 'milestones.checkins_10.desc', color: '#10B981', category: 'Special', check: (d) => d.monthlyCheckins >= 10, progressOf: { key: 'monthlyCheckins', target: 10 } },
+  { key: 'first_nutrition', label: 'Fuel Up', labelKey: 'milestones.first_nutrition.label', icon: 'Apple', desc: 'Log your first meal', descKey: 'milestones.first_nutrition.desc', color: '#34D399', category: 'Special', check: (d) => d.hasNutritionLog, progressOf: null },
   // Volume
   {
     key: 'volume_10k',
     label: '10K Club',
+    labelKey: 'milestones.volume_10k.label',
     icon: 'Weight',
     desc: 'Lift 10,000 lbs total',
+    descKey: 'milestones.volume_10k.desc',
     color: '#6B7280',
     category: 'Volume',
     check: (d) => d.totalVolumeLbs >= 10000,
@@ -175,15 +205,17 @@ export const ACHIEVEMENT_DEFS = [
   {
     key: 'volume_100k',
     label: '100K Strong',
+    labelKey: 'milestones.volume_100k.label',
     icon: 'Gem',
     desc: 'Lift 100,000 lbs total',
+    descKey: 'milestones.volume_100k.desc',
     color: '#D4AF37',
     category: 'Volume',
     check: (d) => d.totalVolumeLbs >= 100000,
     progressOf: { key: 'totalVolumeLbs', target: 100000 },
   },
-  { key: 'volume_500k', label: 'Half Ton Hero', icon: 'Mountain', desc: 'Lift 500,000 lbs total', color: '#A78BFA', category: 'Volume', check: (d) => d.totalVolumeLbs >= 500000, progressOf: { key: 'totalVolumeLbs', target: 500000 } },
-  { key: 'volume_1m', label: 'Million Pound Club', icon: 'Crown', desc: 'Lift 1,000,000 lbs total', color: '#D4AF37', category: 'Volume', check: (d) => d.totalVolumeLbs >= 1000000, progressOf: { key: 'totalVolumeLbs', target: 1000000 } },
+  { key: 'volume_500k', label: 'Half Ton Hero', labelKey: 'milestones.volume_500k.label', icon: 'Mountain', desc: 'Lift 500,000 lbs total', descKey: 'milestones.volume_500k.desc', color: '#A78BFA', category: 'Volume', check: (d) => d.totalVolumeLbs >= 500000, progressOf: { key: 'totalVolumeLbs', target: 500000 } },
+  { key: 'volume_1m', label: 'Million Pound Club', labelKey: 'milestones.volume_1m.label', icon: 'Crown', desc: 'Lift 1,000,000 lbs total', descKey: 'milestones.volume_1m.desc', color: '#D4AF37', category: 'Volume', check: (d) => d.totalVolumeLbs >= 1000000, progressOf: { key: 'totalVolumeLbs', target: 1000000 } },
 ];
 
 // ── Category order for display ────────────────────────────────────────────────
@@ -226,13 +258,16 @@ export function useStreakFreeze(userId) {
 // ── Compute streak from an array of session objects with completed_at ─────────
 // Options:
 //   restDays: number[] — days of week with no workout scheduled (0=Sun..6=Sat)
-//   userId: string — for freeze tracking
-export function computeStreakFromSessions(sessions, { restDays = [], userId = null } = {}) {
+//   gymClosedDays: number[] — days of week the gym is closed (0=Sun..6=Sat)
+//   userId: string — for freeze tracking (1 freeze per month, resets on the 1st)
+export function computeStreakFromSessions(sessions, { restDays = [], gymClosedDays = [], userId = null } = {}) {
   const dates = new Set(
     sessions.map((s) => new Date(s.completed_at).toDateString())
   );
 
-  const freezes = userId ? getStreakFreezes(userId) : { total: 0, used: 0 };
+  // Only use freeze/rest-day logic if user has specific training days set
+  const hasSchedule = restDays.length > 0;
+  const freezes = (hasSchedule && userId) ? getStreakFreezes(userId) : { total: 0, used: 0 };
   let freezesRemaining = freezes.total - freezes.used;
 
   let streak = 0;
@@ -240,17 +275,19 @@ export function computeStreakFromSessions(sessions, { restDays = [], userId = nu
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
+    const dow = d.getDay();
 
     if (dates.has(d.toDateString())) {
       streak++;
     } else if (i === 0) {
-      // Today — haven't worked out yet, don't break
       continue;
-    } else if (restDays.includes(d.getDay())) {
-      // Scheduled rest day — skip, doesn't break streak
+    } else if (hasSchedule && restDays.includes(dow)) {
+      // Scheduled rest day — only counts if user has specific training days
       streak++;
-    } else if (freezesRemaining > 0) {
-      // Use a freeze for this missed day
+    } else if (gymClosedDays.includes(dow)) {
+      streak++;
+    } else if (hasSchedule && freezesRemaining > 0) {
+      // Freeze only available when user has a specific schedule
       freezesRemaining--;
       streak++;
     } else {

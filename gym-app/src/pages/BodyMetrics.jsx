@@ -511,7 +511,7 @@ export default function BodyMetrics() {
                 label: 'Current',
                 value: currentW != null ? `${fmtW(currentW)} lbs` : '—',
                 icon: Scale,
-                color: '#D4AF37',
+                color: 'var(--color-accent)',
               },
               {
                 label: `Change (${period}d)`,
@@ -554,7 +554,7 @@ export default function BodyMetrics() {
                     onClick={() => setPeriod(opt.days)}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
                     style={period === opt.days
-                      ? { background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }
+                      ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
                       : { background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
                   >
                     {opt.label}
@@ -588,7 +588,7 @@ export default function BodyMetrics() {
                     tick={{ fontSize: 10, fill: '#6B7280' }}
                     tickLine={false} axisLine={false}
                   />
-                  <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }} />
                   <Area
                     type="monotone" dataKey="weight"
                     stroke="#D4AF37" strokeWidth={2}
@@ -643,7 +643,7 @@ export default function BodyMetrics() {
             )}
             {weightLogs[0]?.logged_at === today() && (
               <p className="text-[12px] mt-2" style={{ color: 'var(--text-muted)' }}>
-                Today's entry: <span style={{ color: '#D4AF37' }}>{fmtW(weightLogs[0].weight_lbs)} lbs</span> — saving again will update it.
+                Today's entry: <span style={{ color: 'var(--color-accent)' }}>{fmtW(weightLogs[0].weight_lbs)} lbs</span> — saving again will update it.
               </p>
             )}
           </div>
@@ -658,7 +658,7 @@ export default function BodyMetrics() {
               <button
                 onClick={() => setShowMeasurements(true)}
                 className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-                style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
               >
                 <Plus size={13} strokeWidth={2.5} />
                 {latestMeasurements ? 'Update' : 'Add'}
@@ -750,7 +750,7 @@ export default function BodyMetrics() {
               <button
                 onClick={() => { setShowPhotoUpload(v => !v); setPhotoError(''); setUploadFile(null); }}
                 className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-                style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
               >
                 <Camera size={13} strokeWidth={2.5} />
                 Add Photo
@@ -768,7 +768,7 @@ export default function BodyMetrics() {
                       onClick={() => setUploadAngle(angle)}
                       className="flex-1 py-2 rounded-xl text-[12px] font-bold capitalize transition-all border"
                       style={uploadAngle === angle
-                        ? { background: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.5)', color: '#D4AF37' }
+                        ? { background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
                         : { background: 'transparent', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}
                     >
                       {angle}
@@ -792,7 +792,7 @@ export default function BodyMetrics() {
                 <button
                   onClick={handlePhotoUpload} disabled={uploading || !uploadFile}
                   className="mt-3 w-full py-2.5 rounded-xl font-bold text-[13px] text-black transition-opacity disabled:opacity-50"
-                  style={{ background: '#D4AF37' }}
+                  style={{ background: 'var(--color-accent)' }}
                 >
                   {uploading ? 'Uploading…' : 'Upload Photo'}
                 </button>

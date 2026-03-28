@@ -1,9 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import {
   X, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus,
   Trophy, Flame, Dumbbell, Calendar, Clock, Target, Award,
   Camera, Weight, BarChart3, Zap, Copy,
+  Star, Shield, Crown, CalendarCheck, RotateCw, Rocket, Mountain,
+  UserPlus, Users, Heart, Megaphone, Brain, Medal, Swords, MapPin, Apple, Gem,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -23,12 +26,13 @@ import {
   isSameDay, subMonths, addMonths, isAfter, isBefore, differenceInDays,
   getDay,
 } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 const GOLD = '#D4AF37';
 const GREEN = '#10B981';
 const RED = '#EF4444';
-const CARD = 'bg-white/[0.04] rounded-2xl border border-white/[0.06]';
+const CARD = 'bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)]';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const fmtNum = (n) => {
@@ -46,7 +50,7 @@ const pctChange = (current, previous) => {
 const ChangeIndicator = ({ current, previous, suffix = '', invert = false }) => {
   const diff = current - previous;
   const pct = pctChange(current, previous);
-  if (diff === 0 || (!current && !previous)) return <span className="text-[#6B7280] text-xs">—</span>;
+  if (diff === 0 || (!current && !previous)) return <span className="text-[var(--color-text-subtle)] text-xs">—</span>;
   const isPositive = invert ? diff < 0 : diff > 0;
   const color = isPositive ? GREEN : RED;
   const Icon = diff > 0 ? TrendingUp : TrendingDown;
@@ -59,10 +63,10 @@ const ChangeIndicator = ({ current, previous, suffix = '', invert = false }) => 
 };
 
 // ── Major lifts to track ─────────────────────────────────────────────────────
-const MAJOR_LIFTS = [
-  { id: 'ex_bp', name: 'Bench Press' },
-  { id: 'ex_sq', name: 'Back Squat' },
-  { id: 'ex_dl', name: 'Deadlift' },
+const MAJOR_LIFT_IDS = [
+  { id: 'ex_bp', key: 'benchPress' },
+  { id: 'ex_sq', key: 'backSquat' },
+  { id: 'ex_dl', key: 'deadlift' },
 ];
 
 // ── Section wrapper with staggered animation ─────────────────────────────────
@@ -75,7 +79,7 @@ const Section = ({ title, icon: Icon, children, index = 0 }) => (
   >
     <div className="flex items-center gap-2 mb-4">
       {Icon && <Icon size={18} style={{ color: GOLD }} />}
-      <h3 className="text-[16px] font-semibold text-[#E5E7EB]">{title}</h3>
+      <h3 className="text-[16px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
     </div>
     {children}
   </motion.div>
@@ -83,9 +87,9 @@ const Section = ({ title, icon: Icon, children, index = 0 }) => (
 
 // ── Stat pill ────────────────────────────────────────────────────────────────
 const StatPill = ({ label, value, prev, suffix, invert }) => (
-  <div className="flex-1 min-w-[120px] bg-[#111827] rounded-xl p-3 text-center">
-    <p className="text-[11px] text-[#6B7280] uppercase tracking-wider mb-1">{label}</p>
-    <p className="text-lg font-bold text-[#E5E7EB]">{value}{suffix && <span className="text-xs text-[#9CA3AF] ml-0.5">{suffix}</span>}</p>
+  <div className="flex-1 min-w-[120px] bg-[var(--color-bg-deep)] rounded-xl p-3 text-center">
+    <p className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider mb-1">{label}</p>
+    <p className="text-lg font-bold text-[var(--color-text-primary)]">{value}{suffix && <span className="text-xs text-[var(--color-text-muted)] ml-0.5">{suffix}</span>}</p>
     {prev !== undefined && <ChangeIndicator current={parseFloat(value?.toString().replace(/,/g, '')) || 0} previous={prev} invert={invert} />}
   </div>
 );
@@ -102,8 +106,8 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
   return (
     <div>
       <div className="grid grid-cols-7 gap-1 mb-1">
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-          <div key={i} className="text-[10px] text-[#6B7280] text-center">{d}</div>
+        {[t('monthlyReport.daySun'), t('monthlyReport.dayMon'), t('monthlyReport.dayTue'), t('monthlyReport.dayWed'), t('monthlyReport.dayThu'), t('monthlyReport.dayFri'), t('monthlyReport.daySat')].map((d, i) => (
+          <div key={i} className="text-[10px] text-[var(--color-text-subtle)] text-center">{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1">
@@ -117,10 +121,10 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
               key={dateStr}
               className={`w-full aspect-square rounded-[4px] transition-colors ${
                 isFuture
-                  ? 'bg-white/[0.04]'
+                  ? 'bg-[var(--color-bg-hover)]'
                   : trained
                     ? 'bg-[#D4AF37]/80'
-                    : 'bg-white/[0.06]'
+                    : 'bg-[var(--color-bg-active)]'
               }`}
               title={`${format(day, 'MMM d')}${trained ? ' — Trained' : ''}`}
             />
@@ -131,12 +135,27 @@ const CalendarHeatmap = ({ days, trainedDates }) => {
   );
 };
 
+// ── Icon string → component map for achievements ────────────────────────────
+const ICON_MAP = {
+  Dumbbell, Flame, Zap, Star, Trophy, Shield, Crown, CalendarCheck,
+  RotateCw, Rocket, Mountain, Target, TrendingUp, Award, UserPlus,
+  Users, Heart, Megaphone, Brain, Medal, Swords, MapPin, Apple, Weight, Gem,
+};
+
+// ── Angle label translations ────────────────────────────────────────────────
+const ANGLE_LABELS = {
+  en: { front: 'Front', side: 'Side', back: 'Back' },
+  es: { front: 'Frontal', side: 'Lateral', back: 'Espalda' },
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ══ MonthlyProgressReport ════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════════
 const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) => {
+  const { t, i18n } = useTranslation('pages');
   const { user, profile, gymName, gymLogoUrl } = useAuth();
   const targetId = profileIdProp || user?.id;
+  const dateFnsLocale = i18n.language === 'es' ? { locale: esLocale } : undefined;
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -326,7 +345,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           return d >= weekStart && d <= weekEnd;
         });
         const vol = weekSessions.reduce((sum, ss) => sum + (parseFloat(ss.total_volume_lbs) || 0), 0);
-        weeklyVolume.push({ name: `Wk ${weekNum}`, volume: Math.round(vol), count: weekSessions.length });
+        weeklyVolume.push({ name: `${t('monthlyReport.wkAbbr')} ${weekNum}`, volume: Math.round(vol), count: weekSessions.length });
         weekStart = new Date(weekEnd);
         weekStart.setDate(weekStart.getDate() + 1);
         weekNum++;
@@ -354,7 +373,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
         .map(([name, vol]) => ({ name, volume: Math.round(vol) }));
 
       // 1RM changes for major lifts
-      const liftChanges = MAJOR_LIFTS.map(lift => {
+      const liftChanges = MAJOR_LIFT_IDS.map(lift => {
         const thisMonthPRs = (prHistory ?? []).filter(p => p.exercise_id === lift.id);
         const prevMonthPRs = (prevPrHistory ?? []).filter(p => p.exercise_id === lift.id);
         const endE1RM = thisMonthPRs.length > 0
@@ -434,50 +453,58 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Lock body scroll immediately when modal opens (not after data loads)
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [isOpen]);
+
   // ── Motivational summary ─────────────────────────────────────────────────
   const motivationalText = useMemo(() => {
     if (!data) return '';
     const parts = [];
 
     if (data.totalWorkouts === 0) {
-      return "No workouts logged this month. Every journey has slow stretches — the important thing is showing up next time.";
+      return t('monthlyReport.noWorkoutsLogged');
     }
 
-    if (data.totalWorkouts >= 16) parts.push("Incredible consistency this month!");
-    else if (data.totalWorkouts >= 12) parts.push("Great month of training!");
-    else if (data.totalWorkouts >= 8) parts.push("Solid work this month!");
-    else if (data.totalWorkouts >= 4) parts.push("Good start this month.");
-    else parts.push("Every workout counts.");
+    if (data.totalWorkouts >= 16) parts.push(t('monthlyReport.incredibleConsistency'));
+    else if (data.totalWorkouts >= 12) parts.push(t('monthlyReport.greatMonth'));
+    else if (data.totalWorkouts >= 8) parts.push(t('monthlyReport.solidWork'));
+    else if (data.totalWorkouts >= 4) parts.push(t('monthlyReport.goodStart'));
+    else parts.push(t('monthlyReport.everyWorkoutCounts'));
 
     if (data.prs.length > 0) {
-      parts.push(`You hit ${data.prs.length} new PR${data.prs.length > 1 ? 's' : ''}.`);
+      parts.push(t('monthlyReport.youHitPRs', { count: data.prs.length }));
     }
 
-    parts.push(`You trained ${data.trainedDates.length} day${data.trainedDates.length !== 1 ? 's' : ''} and lifted ${fmtNum(Math.round(data.totalVolume))} lbs total.`);
+    parts.push(t('monthlyReport.youTrainedDays', { days: data.trainedDates.length, volume: fmtNum(Math.round(data.totalVolume)) }));
 
     if (data.bestStreak >= 5) {
-      parts.push(`Your best streak was ${data.bestStreak} days in a row — impressive.`);
+      parts.push(t('monthlyReport.bestStreakWas', { count: data.bestStreak }));
     }
 
     const benchChange = data.liftChanges.find(l => l.id === 'ex_bp');
     if (benchChange?.change && benchChange.change > 0) {
-      parts.push(`Your bench press e1RM is up ${benchChange.change} lbs.`);
+      parts.push(t('monthlyReport.benchE1rmUp', { change: benchChange.change }));
     }
 
     if (data.weightChange) {
       const wc = parseFloat(data.weightChange);
-      if (wc < -1) parts.push(`You dropped ${Math.abs(wc)} lbs of bodyweight.`);
-      else if (wc > 1) parts.push(`You gained ${wc} lbs of bodyweight.`);
+      if (wc < -1) parts.push(t('monthlyReport.droppedWeight', { amount: Math.abs(wc) }));
+      else if (wc > 1) parts.push(t('monthlyReport.gainedWeight', { amount: wc }));
     }
 
     if (data.achievementsList.length > 0) {
-      parts.push(`Plus ${data.achievementsList.length} achievement${data.achievementsList.length > 1 ? 's' : ''} unlocked.`);
+      parts.push(t('monthlyReport.achievementsUnlockedCount', { count: data.achievementsList.length }));
     }
 
-    parts.push("Keep pushing.");
+    parts.push(t('monthlyReport.keepPushing'));
 
     return parts.join(' ');
-  }, [data]);
+  }, [data, t]);
 
   // ── Render logic ─────────────────────────────────────────────────────────
   // If used as a controlled modal, respect isOpen
@@ -485,7 +512,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   if (isModal && !isOpen) return null;
 
   const content = (
-    <div className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full'}`}>
+    <div className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full bg-[var(--color-bg-primary)]'}`}>
       <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-4 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <motion.div
@@ -497,12 +524,12 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <BarChart3 size={20} style={{ color: GOLD }} />
-              <h2 className="text-[20px] font-semibold text-[#E5E7EB]">Monthly Report</h2>
+              <h2 className="text-[20px] font-semibold text-[var(--color-text-primary)]">{t('monthlyReport.title')}</h2>
             </div>
             <div className="flex items-center gap-2">
               {isModal && onClose && (
-                <button onClick={onClose} className="p-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition-colors">
-                  <X size={16} className="text-[#9CA3AF]" />
+                <button onClick={onClose} className="p-2 rounded-lg bg-[var(--color-bg-hover)] hover:bg-[var(--color-bg-active)] transition-colors">
+                  <X size={16} className="text-[var(--color-text-muted)]" />
                 </button>
               )}
             </div>
@@ -512,19 +539,19 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
           <div className="flex items-center justify-center gap-4 mt-3">
             <button
               onClick={() => setMonth(m => startOfMonth(subMonths(m, 1)))}
-              className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+              className="p-1.5 rounded-lg bg-[var(--color-bg-hover)] hover:bg-[var(--color-bg-active)] transition-colors"
             >
-              <ChevronLeft size={16} className="text-[#9CA3AF]" />
+              <ChevronLeft size={16} className="text-[var(--color-text-muted)]" />
             </button>
-            <span className="text-[15px] font-semibold text-[#E5E7EB] min-w-[160px] text-center">
-              {format(month, 'MMMM yyyy')}
+            <span className="text-[15px] font-semibold text-[var(--color-text-primary)] min-w-[160px] text-center">
+              {format(month, 'MMMM yyyy', dateFnsLocale)}
             </span>
             <button
               onClick={() => canGoNext && setMonth(m => startOfMonth(addMonths(m, 1)))}
               disabled={!canGoNext}
-              className={`p-1.5 rounded-lg transition-colors ${canGoNext ? 'bg-white/[0.04] hover:bg-white/[0.06]' : 'opacity-30 cursor-not-allowed'}`}
+              className={`p-1.5 rounded-lg transition-colors ${canGoNext ? 'bg-[var(--color-bg-hover)] hover:bg-[var(--color-bg-active)]' : 'opacity-30 cursor-not-allowed'}`}
             >
-              <ChevronRight size={16} className="text-[#9CA3AF]" />
+              <ChevronRight size={16} className="text-[var(--color-text-muted)]" />
             </button>
           </div>
         </motion.div>
@@ -536,19 +563,19 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
 
         {!loading && !data && (
           <div className={`${CARD} p-8 text-center`}>
-            <p className="text-[#9CA3AF]">Could not load report data.</p>
+            <p className="text-[var(--color-text-muted)]">{t('monthlyReport.couldNotLoad')}</p>
           </div>
         )}
 
         {!loading && data && (
           <FadeIn><div className="flex flex-col gap-6 pb-8">
             {/* ══ 1. Training Summary ════════════════════════════════════════ */}
-            <Section title="Training Summary" icon={Dumbbell} index={0}>
+            <Section title={t('monthlyReport.trainingSummary')} icon={Dumbbell} index={0}>
               <div className="flex flex-wrap gap-2 mb-4">
-                <StatPill label="Workouts" value={data.totalWorkouts} prev={data.prevTotalWorkouts} />
-                <StatPill label="Volume" value={fmtNum(Math.round(data.totalVolume))} prev={data.prevTotalVolume} suffix="lbs" />
-                <StatPill label="Total Time" value={fmtDuration(data.totalTime)} prev={data.prevTotalTime} />
-                <StatPill label="Avg Session" value={fmtDuration(data.avgDuration)} prev={data.prevAvgDuration} />
+                <StatPill label={t('monthlyReport.workouts')} value={data.totalWorkouts} prev={data.prevTotalWorkouts} />
+                <StatPill label={t('monthlyReport.volume')} value={fmtNum(Math.round(data.totalVolume))} prev={data.prevTotalVolume} suffix={t('monthlyReport.lbs')} />
+                <StatPill label={t('monthlyReport.totalTime')} value={fmtDuration(data.totalTime)} prev={data.prevTotalTime} />
+                <StatPill label={t('monthlyReport.avgSession')} value={fmtDuration(data.avgDuration)} prev={data.prevAvgDuration} />
               </div>
 
               {/* Weekly volume bar chart */}
@@ -557,10 +584,10 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data.weeklyVolume} barSize={32}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                      <XAxis dataKey="name" tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => fmtNum(v)} />
+                      <XAxis dataKey="name" tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => fmtNum(v)} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${fmtNum(v)} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                      <Bar dataKey="volume" fill={GOLD} radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="volume" name={t('monthlyReport.volume')} fill={GOLD} radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -568,24 +595,24 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
             </Section>
 
             {/* ══ 2. Consistency Score ════════════════════════════════════════ */}
-            <Section title="Consistency" icon={Calendar} index={1}>
+            <Section title={t('monthlyReport.consistency')} icon={Calendar} index={1}>
               <div className="flex flex-wrap gap-2 mb-4">
-                <div className="flex-1 min-w-[100px] bg-[#111827] rounded-xl p-3 text-center">
-                  <p className="text-[11px] text-[#6B7280] uppercase tracking-wider mb-1">Days Trained</p>
-                  <p className="text-lg font-bold text-[#E5E7EB]">
-                    {data.trainedDates.length}<span className="text-xs text-[#6B7280]">/{data.daysPlanned}</span>
+                <div className="flex-1 min-w-[100px] bg-[var(--color-bg-deep)] rounded-xl p-3 text-center">
+                  <p className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider mb-1">{t('monthlyReport.daysTrained')}</p>
+                  <p className="text-lg font-bold text-[var(--color-text-primary)]">
+                    {data.trainedDates.length}<span className="text-xs text-[var(--color-text-subtle)]">/{data.daysPlanned}</span>
                   </p>
                 </div>
-                <div className="flex-1 min-w-[100px] bg-[#111827] rounded-xl p-3 text-center">
-                  <p className="text-[11px] text-[#6B7280] uppercase tracking-wider mb-1">Attendance</p>
+                <div className="flex-1 min-w-[100px] bg-[var(--color-bg-deep)] rounded-xl p-3 text-center">
+                  <p className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider mb-1">{t('monthlyReport.attendance')}</p>
                   <p className="text-lg font-bold" style={{ color: data.attendanceRate >= 80 ? GREEN : data.attendanceRate >= 50 ? GOLD : RED }}>
                     {Math.min(data.attendanceRate, 100)}%
                   </p>
                 </div>
-                <div className="flex-1 min-w-[100px] bg-[#111827] rounded-xl p-3 text-center">
-                  <p className="text-[11px] text-[#6B7280] uppercase tracking-wider mb-1">Best Streak</p>
-                  <p className="text-lg font-bold text-[#E5E7EB]">
-                    {data.bestStreak} <span className="text-xs text-[#6B7280]">day{data.bestStreak !== 1 ? 's' : ''}</span>
+                <div className="flex-1 min-w-[100px] bg-[var(--color-bg-deep)] rounded-xl p-3 text-center">
+                  <p className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider mb-1">{t('monthlyReport.bestStreak')}</p>
+                  <p className="text-lg font-bold text-[var(--color-text-primary)]">
+                    {data.bestStreak} <span className="text-xs text-[var(--color-text-subtle)]">{t('monthlyReport.days', { count: data.bestStreak })}</span>
                   </p>
                 </div>
               </div>
@@ -594,46 +621,46 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
             </Section>
 
             {/* ══ 3. Strength Gains ══════════════════════════════════════════ */}
-            <Section title="Strength Gains" icon={Zap} index={2}>
+            <Section title={t('monthlyReport.strengthGains')} icon={Zap} index={2}>
               {/* PRs hit */}
               {data.prs.length > 0 ? (
                 <div className="mb-4">
-                  <p className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">
-                    PRs Hit ({data.prs.length})
+                  <p className="text-xs text-[var(--color-text-subtle)] uppercase tracking-wider mb-2">
+                    {t('monthlyReport.prsHit')} ({data.prs.length})
                   </p>
                   <div className="space-y-1.5">
                     {data.prs.map((pr, i) => (
-                      <div key={i} className="flex items-center justify-between bg-[#111827] rounded-lg px-3 py-2">
+                      <div key={i} className="flex items-center justify-between bg-[var(--color-bg-deep)] rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2">
                           <Trophy size={14} style={{ color: GOLD }} />
-                          <span className="text-[13px] text-[#E5E7EB]">{pr.exerciseName}</span>
+                          <span className="text-[13px] text-[var(--color-text-primary)]">{pr.exerciseName}</span>
                         </div>
-                        <span className="text-[13px] text-[#9CA3AF]">
+                        <span className="text-[13px] text-[var(--color-text-muted)]">
                           {pr.weight_lbs} x {pr.reps}
-                          <span className="text-[#6B7280] ml-1">(e1RM: {Math.round(pr.e1rm)})</span>
+                          <span className="text-[var(--color-text-subtle)] ml-1">(e1RM: {Math.round(pr.e1rm)})</span>
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <p className="text-[13px] text-[#6B7280] mb-4">No new PRs this month.</p>
+                <p className="text-[13px] text-[var(--color-text-subtle)] mb-4">{t('monthlyReport.noNewPRs')}</p>
               )}
 
               {/* Top exercises by volume */}
               {data.topExercises.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">Top Exercises by Volume</p>
+                  <p className="text-xs text-[var(--color-text-subtle)] uppercase tracking-wider mb-2">{t('monthlyReport.topExercisesByVolume')}</p>
                   <div className="space-y-1.5">
                     {data.topExercises.map((ex, i) => {
                       const maxVol = data.topExercises[0].volume;
                       return (
-                        <div key={i} className="bg-[#111827] rounded-lg px-3 py-2">
+                        <div key={i} className="bg-[var(--color-bg-deep)] rounded-lg px-3 py-2">
                           <div className="flex justify-between mb-1">
-                            <span className="text-[13px] text-[#E5E7EB]">{ex.name}</span>
-                            <span className="text-[13px] text-[#9CA3AF]">{fmtNum(ex.volume)} lbs</span>
+                            <span className="text-[13px] text-[var(--color-text-primary)]">{ex.name}</span>
+                            <span className="text-[13px] text-[var(--color-text-muted)]">{fmtNum(ex.volume)} {t('monthlyReport.lbs')}</span>
                           </div>
-                          <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                          <div className="w-full h-1.5 bg-[var(--color-bg-active)] rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all"
                               style={{ width: `${(ex.volume / maxVol) * 100}%`, background: GOLD }}
@@ -649,18 +676,18 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
               {/* 1RM changes for major lifts */}
               {data.liftChanges.length > 0 && (
                 <div>
-                  <p className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">Estimated 1RM Changes</p>
+                  <p className="text-xs text-[var(--color-text-subtle)] uppercase tracking-wider mb-2">{t('monthlyReport.estimated1rmChanges')}</p>
                   <div className="space-y-1.5">
                     {data.liftChanges.map((lift, i) => (
-                      <div key={i} className="flex items-center justify-between bg-[#111827] rounded-lg px-3 py-2">
-                        <span className="text-[13px] text-[#E5E7EB]">{lift.name}</span>
+                      <div key={i} className="flex items-center justify-between bg-[var(--color-bg-deep)] rounded-lg px-3 py-2">
+                        <span className="text-[13px] text-[var(--color-text-primary)]">{t(`monthlyReport.lifts.${lift.key}`)}</span>
                         <div className="flex items-center gap-3">
-                          <span className="text-[13px] text-[#6B7280]">
+                          <span className="text-[13px] text-[var(--color-text-subtle)]">
                             {lift.start ?? '—'} <span className="mx-1">→</span> {lift.end ?? '—'}
                           </span>
                           {lift.change !== null && (
-                            <span className={`text-xs font-medium ${lift.change > 0 ? 'text-[#10B981]' : lift.change < 0 ? 'text-[#EF4444]' : 'text-[#6B7280]'}`}>
-                              {lift.change > 0 ? '+' : ''}{lift.change} lbs
+                            <span className={`text-xs font-medium ${lift.change > 0 ? 'text-[#10B981]' : lift.change < 0 ? 'text-[#EF4444]' : 'text-[var(--color-text-subtle)]'}`}>
+                              {lift.change > 0 ? '+' : ''}{lift.change} {t('monthlyReport.lbs')}
                             </span>
                           )}
                         </div>
@@ -671,23 +698,23 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
               )}
 
               {data.prs.length === 0 && data.topExercises.length === 0 && data.liftChanges.length === 0 && (
-                <p className="text-[13px] text-[#6B7280]">No strength data for this month.</p>
+                <p className="text-[13px] text-[var(--color-text-subtle)]">{t('monthlyReport.noStrengthData')}</p>
               )}
             </Section>
 
             {/* ══ 4. Body Composition ════════════════════════════════════════ */}
             {(data.startWeight || data.startMeas || data.photoComparisons.length > 0) && (
-              <Section title="Body Composition" icon={Weight} index={3}>
+              <Section title={t('monthlyReport.bodyComposition')} icon={Weight} index={3}>
                 {/* Weight change */}
                 {data.startWeight && data.endWeight && (
-                  <div className="flex items-center gap-3 bg-[#111827] rounded-lg px-3 py-2 mb-3">
-                    <span className="text-[13px] text-[#9CA3AF]">Weight</span>
-                    <span className="text-[13px] text-[#E5E7EB] ml-auto">
-                      {data.startWeight.toFixed(1)} → {data.endWeight.toFixed(1)} lbs
+                  <div className="flex items-center gap-3 bg-[var(--color-bg-deep)] rounded-lg px-3 py-2 mb-3">
+                    <span className="text-[13px] text-[var(--color-text-muted)]">{t('monthlyReport.weight')}</span>
+                    <span className="text-[13px] text-[var(--color-text-primary)] ml-auto">
+                      {data.startWeight.toFixed(1)} → {data.endWeight.toFixed(1)} {t('monthlyReport.lbs')}
                     </span>
                     {data.weightChange && (
-                      <span className={`text-xs font-medium ${parseFloat(data.weightChange) < 0 ? 'text-[#10B981]' : parseFloat(data.weightChange) > 0 ? 'text-[#EF4444]' : 'text-[#6B7280]'}`}>
-                        {parseFloat(data.weightChange) > 0 ? '+' : ''}{data.weightChange} lbs
+                      <span className={`text-xs font-medium ${parseFloat(data.weightChange) < 0 ? 'text-[#10B981]' : parseFloat(data.weightChange) > 0 ? 'text-[#EF4444]' : 'text-[var(--color-text-subtle)]'}`}>
+                        {parseFloat(data.weightChange) > 0 ? '+' : ''}{data.weightChange} {t('monthlyReport.lbs')}
                       </span>
                     )}
                   </div>
@@ -696,26 +723,27 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                 {/* Measurement changes */}
                 {data.startMeas && data.endMeas && (
                   <div className="mb-3">
-                    <p className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">Measurement Changes</p>
+                    <p className="text-xs text-[var(--color-text-subtle)] uppercase tracking-wider mb-2">{t('monthlyReport.measurementChanges')}</p>
                     <div className="grid grid-cols-2 gap-1.5">
                       {[
-                        { key: 'chest_cm', label: 'Chest' },
-                        { key: 'waist_cm', label: 'Waist' },
-                        { key: 'hips_cm', label: 'Hips' },
-                        { key: 'left_arm_cm', label: 'L. Arm' },
-                        { key: 'right_arm_cm', label: 'R. Arm' },
-                        { key: 'body_fat_pct', label: 'Body Fat' },
-                      ].map(({ key, label }) => {
+                        { key: 'chest_cm', labelKey: 'chest' },
+                        { key: 'waist_cm', labelKey: 'waist' },
+                        { key: 'hips_cm', labelKey: 'hips' },
+                        { key: 'left_arm_cm', labelKey: 'leftArm' },
+                        { key: 'right_arm_cm', labelKey: 'rightArm' },
+                        { key: 'body_fat_pct', labelKey: 'bodyFat' },
+                      ].map(({ key, labelKey }) => {
+                        const label = t(`monthlyReport.${labelKey}`);
                         const s = data.startMeas[key];
                         const e = data.endMeas[key];
                         if (s == null && e == null) return null;
                         const diff = s != null && e != null ? (e - s).toFixed(1) : null;
                         const unit = key === 'body_fat_pct' ? '%' : 'cm';
                         return (
-                          <div key={key} className="bg-[#111827] rounded-lg px-3 py-2 flex justify-between items-center">
-                            <span className="text-[12px] text-[#6B7280]">{label}</span>
+                          <div key={key} className="bg-[var(--color-bg-deep)] rounded-lg px-3 py-2 flex justify-between items-center">
+                            <span className="text-[12px] text-[var(--color-text-subtle)]">{label}</span>
                             <div className="text-right">
-                              <span className="text-[12px] text-[#E5E7EB]">{e != null ? e : s}{unit}</span>
+                              <span className="text-[12px] text-[var(--color-text-primary)]">{e != null ? e : s}{unit}</span>
                               {diff && parseFloat(diff) !== 0 && (
                                 <span className={`text-[10px] ml-1 ${parseFloat(diff) < 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                                   ({parseFloat(diff) > 0 ? '+' : ''}{diff})
@@ -732,38 +760,38 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                 {/* Photo comparisons */}
                 {data.photoComparisons.length > 0 && (
                   <div>
-                    <p className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">Progress Photos</p>
+                    <p className="text-xs text-[var(--color-text-subtle)] uppercase tracking-wider mb-2">{t('monthlyReport.progressPhotos')}</p>
                     <div className="space-y-3">
                       {data.photoComparisons.map(({ angle, before, after }) => (
                         <div key={angle}>
-                          <p className="text-[11px] text-[#6B7280] uppercase mb-1 capitalize">{angle}</p>
+                          <p className="text-[11px] text-[var(--color-text-subtle)] uppercase mb-1 capitalize">{(ANGLE_LABELS[i18n.language] || ANGLE_LABELS.en)[angle] || angle}</p>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <div className="aspect-[3/4] bg-[#111827] rounded-lg overflow-hidden">
+                              <div className="aspect-[3/4] bg-[var(--color-bg-deep)] rounded-lg overflow-hidden">
                                 {before.url ? (
                                   <img src={before.url} alt={`${angle} before`} className="w-full h-full object-cover" />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[#6B7280]">
+                                  <div className="w-full h-full flex items-center justify-center text-[var(--color-text-subtle)]">
                                     <Camera size={20} />
                                   </div>
                                 )}
                               </div>
-                              <p className="text-[10px] text-[#6B7280] text-center mt-1">
-                                {format(parseISO(before.taken_at), 'MMM d')}
+                              <p className="text-[10px] text-[var(--color-text-subtle)] text-center mt-1">
+                                {format(parseISO(before.taken_at), 'MMM d', dateFnsLocale)}
                               </p>
                             </div>
                             <div>
-                              <div className="aspect-[3/4] bg-[#111827] rounded-lg overflow-hidden">
+                              <div className="aspect-[3/4] bg-[var(--color-bg-deep)] rounded-lg overflow-hidden">
                                 {after.url ? (
                                   <img src={after.url} alt={`${angle} after`} className="w-full h-full object-cover" />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[#6B7280]">
+                                  <div className="w-full h-full flex items-center justify-center text-[var(--color-text-subtle)]">
                                     <Camera size={20} />
                                   </div>
                                 )}
                               </div>
-                              <p className="text-[10px] text-[#6B7280] text-center mt-1">
-                                {format(parseISO(after.taken_at), 'MMM d')}
+                              <p className="text-[10px] text-[var(--color-text-subtle)] text-center mt-1">
+                                {format(parseISO(after.taken_at), 'MMM d', dateFnsLocale)}
                               </p>
                             </div>
                           </div>
@@ -777,24 +805,27 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
 
             {/* ══ 5. Achievements Unlocked ═══════════════════════════════════ */}
             {data.achievementsList.length > 0 && (
-              <Section title="Achievements Unlocked" icon={Award} index={4}>
+              <Section title={t('monthlyReport.achievementsUnlocked')} icon={Award} index={4}>
                 <div className="grid grid-cols-2 gap-2">
-                  {data.achievementsList.map((a, i) => (
-                    <div key={i} className="bg-[#111827] rounded-lg px-3 py-2.5 flex items-center gap-2.5">
-                      <span className="text-xl">{a.icon}</span>
+                  {data.achievementsList.map((a, i) => {
+                    const AIcon = ICON_MAP[a.icon] || Medal;
+                    return (
+                    <div key={i} className="bg-[var(--color-bg-deep)] rounded-lg px-3 py-2.5 flex items-center gap-2.5">
+                      <AIcon size={20} style={{ color: a.color || GOLD }} />
                       <div>
-                        <p className="text-[13px] font-medium text-[#E5E7EB]">{a.label}</p>
-                        <p className="text-[11px] text-[#6B7280]">{a.desc}</p>
+                        <p className="text-[13px] font-medium text-[var(--color-text-primary)]">{t(a.labelKey, a.label)}</p>
+                        <p className="text-[11px] text-[var(--color-text-subtle)]">{t(a.descKey, a.desc)}</p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </Section>
             )}
 
             {/* ══ 6. Motivational Summary ════════════════════════════════════ */}
-            <Section title="Summary" icon={Flame} index={5}>
-              <p className="text-[14px] text-[#E5E7EB] leading-relaxed">{motivationalText}</p>
+            <Section title={t('monthlyReport.summary')} icon={Flame} index={5}>
+              <p className="text-[14px] text-[var(--color-text-primary)] leading-relaxed">{motivationalText}</p>
             </Section>
           </div></FadeIn>
         )}

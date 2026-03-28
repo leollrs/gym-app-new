@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft } from 'lucide-react';
+import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft, X, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications, useInvalidate } from '../hooks/useSupabaseQuery';
 import logger from '../lib/logger';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, differenceInDays } from 'date-fns';
 import { sanitize } from '../lib/sanitize';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import { useTranslation } from 'react-i18next';
 
 const TYPE_META = {
   announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
@@ -29,11 +30,13 @@ const ANN_ACCENT = {
 export default function Notifications() {
   const { user, profile, refreshNotifications } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id);
   const { invalidateNotifications } = useInvalidate();
   const [items, setItems]               = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [marking, setMarking]           = useState(false);
+  const [displayLimit, setDisplayLimit]   = useState(5);
 
   // Sync TanStack Query data into local state (needed for optimistic updates)
   const loading = queryLoading && items.length === 0;
@@ -79,6 +82,51 @@ export default function Notifications() {
     return () => supabase.removeChannel(ch);
   }, [user?.id]);
 
+  // Auto-clear notifications older than 14 days
+  useEffect(() => {
+    if (!user?.id) return;
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    supabase
+      .from('notifications')
+      .delete()
+      .eq('profile_id', user.id)
+      .lt('created_at', fourteenDaysAgo.toISOString())
+      .then(({ error }) => {
+        if (error) logger.error('Notifications: auto-cleanup failed:', error);
+        else invalidateNotifications(user.id);
+      });
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Delete a single notification (with confirmation)
+  const deleteNotification = useCallback(async (id) => {
+    const confirmed = window.confirm(t('notifications.deleteConfirm'));
+    if (!confirmed) return;
+    setItems(prev => prev.filter(n => n.id !== id));
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) {
+      console.error('[Notif] delete failed:', error.message, error.code);
+      invalidateNotifications(user.id);
+    } else {
+      invalidateNotifications(user.id);
+      refreshNotifications();
+    }
+  }, [user?.id, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear all notifications
+  const clearAllNotifications = useCallback(async () => {
+    if (!items.length) return;
+    const confirmed = window.confirm(t('notifications.deleteAllConfirm', { count: items.length }));
+    if (!confirmed) return;
+    setItems([]);
+    const { error } = await supabase.from('notifications').delete().eq('profile_id', user.id);
+    if (error) {
+      console.error('[Notif] clearAll failed:', error.message, error.code);
+    }
+    invalidateNotifications(user.id);
+    refreshNotifications();
+  }, [user?.id, items.length, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Mark a single notification as read
   const markRead = async (id) => {
     const now = new Date().toISOString();
@@ -123,27 +171,28 @@ export default function Notifications() {
   const unreadCount = items.filter(n => !n.read_at).length;
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-28 md:pb-12">
+    <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#05070B]/95 backdrop-blur-xl border-b border-white/6">
+      <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
         <div className="max-w-2xl md:max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => navigate(-1)}
               aria-label="Go back"
-              className="p-2 -ml-2 rounded-xl text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/5 transition-colors"
+              className="p-2 -ml-2 rounded-xl transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
             >
               <ChevronLeft size={24} strokeWidth={2} />
             </button>
-            <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
-              <Bell size={18} className="text-[#D4AF37]" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(var(--color-accent), 0.1)', background: 'var(--color-accent-glow)' }}>
+              <Bell size={18} style={{ color: 'var(--color-accent)' }} />
             </div>
             <div>
-              <h1 className="text-[18px] font-bold text-[#E5E7EB]">Notifications</h1>
+              <h1 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('notifications.title')}</h1>
               {unreadCount > 0 && (
-                <p className="text-[12px] text-[#D4AF37] font-medium">
-                  {unreadCount} {unreadCount === 1 ? 'message' : 'messages'} not read
+                <p className="text-[12px] font-medium" style={{ color: 'var(--color-accent)' }}>
+                  {t('notifications.messagesUnread', { count: unreadCount })}
                 </p>
               )}
             </div>
@@ -152,9 +201,10 @@ export default function Notifications() {
             <button
               onClick={markAllRead}
               disabled={marking}
-              className="flex items-center gap-1.5 text-[12px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50"
+              style={{ color: 'var(--color-accent)' }}
             >
-              <CheckCheck size={14} /> Mark all read
+              <CheckCheck size={14} /> {t('notifications.markAllRead')}
             </button>
           )}
         </div>
@@ -164,16 +214,16 @@ export default function Notifications() {
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">Gym News</h2>
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>{t('notifications.gymNews')}</h2>
             <div className="flex flex-col gap-3">
               {announcements.map(ann => (
                 <div
                   key={ann.id}
-                  className="bg-[#0F172A] rounded-2xl border border-white/6 hover:border-white/12 transition-colors px-5 py-4 border-l-[3px]"
-                  style={{ borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}
+                  className="rounded-2xl transition-colors px-5 py-4 border-l-[3px]"
+                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)', borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}
                 >
-                  <p className="text-[15px] font-semibold text-[#E5E7EB] leading-snug">{sanitize(ann.title)}</p>
-                  <p className="text-[13px] text-[#6B7280] mt-1.5 leading-relaxed">{sanitize(ann.message)}</p>
+                  <p className="text-[15px] font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ann.title)}</p>
+                  <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(ann.message)}</p>
                 </div>
               ))}
             </div>
@@ -182,55 +232,112 @@ export default function Notifications() {
 
         {/* Your notifications */}
         <section>
-          <h2 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">
-            Your notifications
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
+              {t('notifications.yourNotifications')}
+            </h2>
+            {items.length > 0 && (
+              <button
+                onClick={clearAllNotifications}
+                className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors"
+                style={{ color: 'var(--color-danger, #EF4444)' }}
+              >
+                <Trash2 size={12} /> {t('notifications.clearAll')}
+              </button>
+            )}
+          </div>
         {loading ? (
           <Skeleton variant="list-item" count={4} />
         ) : items.length === 0 ? (
           <EmptyState
             icon={Bell}
-            title="No notifications yet"
-            description="You'll see workout milestones, PRs, and gym announcements here"
+            title={t('notifications.noNotificationsYet')}
+            description={t('notifications.noNotificationsHint')}
           />
         ) : (
-          <div className="space-y-1.5">
-            {items.map(n => {
-              const meta = TYPE_META[n.type] ?? TYPE_META.default;
-              const Icon = meta.icon;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => !n.read_at && markRead(n.id)}
-                  className={`w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-all ${
-                    n.read_at
-                      ? 'bg-[#0F172A] border-white/4 opacity-60'
-                      : 'bg-[#0F172A] border-white/8 hover:border-white/20 hover:bg-white/[0.03]'
-                  }`}
-                >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>
-                    <Icon size={16} className={meta.color} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className={`text-[13px] font-semibold leading-snug ${n.read_at ? 'text-[#9CA3AF]' : 'text-[#E5E7EB]'}`}>
-                        {sanitize(n.title)}
-                      </p>
-                      {!n.read_at && (
-                        <span className="w-2 h-2 rounded-full bg-[#D4AF37] flex-shrink-0 mt-1" />
-                      )}
+          <>
+            <div className="space-y-1.5">
+              {items.slice(0, displayLimit).map(n => {
+                const meta = TYPE_META[n.type] ?? TYPE_META.default;
+                const Icon = meta.icon;
+                return (
+                  <div
+                    key={n.id}
+                    className={`group relative w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-all ${
+                      n.read_at
+                        ? 'border-[var(--color-border-subtle)] opacity-60'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)]'
+                    }`}
+                    style={{ backgroundColor: 'var(--color-bg-card)' }}
+                  >
+                    <button
+                      onClick={() => !n.read_at && markRead(n.id)}
+                      className="absolute inset-0 rounded-2xl"
+                      aria-label={n.read_at ? t('notifications.alreadyRead') : t('notifications.markAsRead')}
+                    />
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>
+                      <Icon size={16} className={meta.color} />
                     </div>
-                    {n.body && (
-                      <p className="text-[12px] text-[#6B7280] mt-0.5 leading-relaxed">{sanitize(n.body)}</p>
-                    )}
-                    <p className="text-[11px] text-[#4B5563] mt-1">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[13px] font-semibold leading-snug"
+                           style={{ color: n.read_at ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}
+                        >
+                          {sanitize(n.title)}
+                        </p>
+                        {!n.read_at && (
+                          <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: 'var(--color-accent)' }} />
+                        )}
+                      </div>
+                      {n.body && (
+                        <p className="text-[12px] mt-0.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(n.body)}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                        </p>
+                        <span className="text-[11px]" style={{ color: 'var(--color-text-faint)' }}>
+                          · {t('notifications.expiresIn', { days: Math.max(0, 14 - differenceInDays(new Date(), new Date(n.created_at))) })}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                      className="relative z-10 p-1.5 rounded-lg transition-colors flex-shrink-0"
+                      style={{ color: 'var(--color-danger, #EF4444)' }}
+                      aria-label={t('notifications.deleteNotification')}
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
+                );
+              })}
+            </div>
+
+            {items.length > displayLimit && (
+              <div className="flex flex-col items-center gap-2 mt-4">
+                <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('notifications.showing', { shown: Math.min(displayLimit, items.length), total: items.length })}
+                </p>
+                <button
+                  onClick={() => setDisplayLimit(prev => prev + 5)}
+                  className="text-[13px] font-semibold px-5 py-2 rounded-xl transition-colors"
+                  style={{
+                    color: 'var(--color-accent)',
+                    border: '1px solid var(--color-border-default)',
+                    backgroundColor: 'var(--color-bg-card)',
+                  }}
+                >
+                  {t('notifications.seeMore')}
                 </button>
-              );
-            })}
-          </div>
+              </div>
+            )}
+            {items.length > 0 && items.length <= displayLimit && (
+              <p className="text-center text-[12px] mt-4" style={{ color: 'var(--color-text-muted)' }}>
+                {t('notifications.showingAll', { count: items.length })}
+              </p>
+            )}
+          </>
         )}
         </section>
       </div>

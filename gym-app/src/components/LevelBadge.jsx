@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { getRewardTier } from '../lib/rewardsEngine';
 
 // ── Level calculation ────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ export function getLevel(totalPoints) {
 
 // ── Compact badge (for nav, social cards, etc.) ──────────────────────────────
 export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
+  const { t } = useTranslation('pages');
   const { level } = getLevel(totalPoints);
   const tier = getRewardTier(totalPoints);
 
@@ -24,6 +26,8 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
     md: 'w-8 h-8 text-[12px]',
   };
 
+  const tierLabel = t(`rewards.tiers.${tier.nameKey}`, tier.name);
+
   return (
     <div
       className={`${sizes[size]} rounded-full flex items-center justify-center font-black flex-shrink-0 tabular-nums`}
@@ -32,7 +36,7 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
         color: tier.color,
         border: `1.5px solid ${tier.color}40`,
       }}
-      title={`Level ${level} • ${tier.name}`}
+      title={`${t('rewards.level', 'Level')} ${level} • ${tierLabel}`}
     >
       {level}
     </div>
@@ -41,10 +45,13 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
 
 // ── Full level card (for dashboard, profile) ─────────────────────────────────
 export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
+  const { t } = useTranslation('pages');
   // Level and tier are based on lifetime points (never decrease when spending)
   const pts = lifetimePoints ?? totalPoints ?? 0;
   const { level, xpIntoLevel, xpForNext, progress } = getLevel(pts);
   const tier = getRewardTier(pts);
+  const levelLabel = t('rewards.level', 'Level');
+  const tierLabel = t(`rewards.tiers.${tier.nameKey}`, tier.name);
 
   return (
     <div className={`bg-white/[0.04] rounded-2xl border border-white/[0.06] p-5 ${className}`}>
@@ -61,7 +68,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-bold text-[#E5E7EB]">Level {level}</span>
+            <span className="text-[15px] font-bold text-[#E5E7EB]">{levelLabel} {level}</span>
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{
@@ -70,11 +77,11 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
                 border: `1px solid ${tier.color}30`,
               }}
             >
-              {tier.name}
+              {tierLabel}
             </span>
           </div>
           <p className="text-[11px] text-[#6B7280] mt-0.5">
-            {totalPoints.toLocaleString()} XP total
+            {t('rewards.xpTotal', { count: totalPoints.toLocaleString() })}
           </p>
         </div>
       </div>
@@ -86,7 +93,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
             {xpIntoLevel} / {xpForNext} XP
           </span>
           <span className="text-[10px] font-semibold" style={{ color: tier.color }}>
-            Level {level + 1}
+            {levelLabel} {level + 1}
           </span>
         </div>
         <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">

@@ -3,6 +3,7 @@
  * Uses pre-built real meal combos, scales portions to hit macro targets.
  */
 import { getFoodImage } from './foodImages';
+import { foodImageUrl } from './imageUrl';
 
 // ═══════════════════════════════════════════════════════════
 // MEAL TEMPLATES — Real meals people actually eat
@@ -433,7 +434,7 @@ function buildItem(food, servings, role) {
     name: food.name,
     name_es: food.name_es,
     brand: food.brand,
-    image_url: getFoodImage(food.name, food.brand) || food.image_url,
+    image_url: getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url),
     serving_size: food.serving_size,
     serving_unit: food.serving_unit,
     servings: s,

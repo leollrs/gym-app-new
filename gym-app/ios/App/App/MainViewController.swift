@@ -9,9 +9,15 @@ class MainViewController: CAPBridgeViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Disable rubber-band overscroll bounce on the WebView
         webView?.scrollView.bounces = false
         webView?.scrollView.alwaysBounceVertical = false
         webView?.scrollView.alwaysBounceHorizontal = false
+    }
+
+    // Free memory when iOS sends a memory warning (before camera could trigger OOM)
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        // Clear URL cache to reduce memory footprint
+        URLCache.shared.removeAllCachedResponses()
     }
 }

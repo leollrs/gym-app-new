@@ -74,6 +74,12 @@ export default function PlatformLayout({ children }) {
     n => n.exact ? location.pathname === n.to : location.pathname.startsWith(n.to)
   );
 
+  // Scroll content area to top on route change
+  const scrollContainerRef = useRef(null);
+  useEffect(() => {
+    scrollContainerRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
@@ -148,7 +154,7 @@ export default function PlatformLayout({ children }) {
       <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <header
           className="md:hidden flex items-center justify-between px-4 border-b border-white/[0.06] bg-[#05070B]/95 backdrop-blur-xl flex-shrink-0"
-          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: '12px', height: 'calc(52px + env(safe-area-inset-top))' }}
+          style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', paddingBottom: '12px', height: 'calc(52px + var(--safe-area-top, env(safe-area-inset-top)))' }}
         >
           <div className="flex items-center gap-2">
             <Shield size={16} className="text-[#D4AF37]" />
@@ -159,7 +165,7 @@ export default function PlatformLayout({ children }) {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pb-[calc(72px+var(--safe-area-bottom,env(safe-area-inset-bottom)))] md:pb-0">
           {children}
         </div>
       </main>
@@ -175,7 +181,7 @@ export default function PlatformLayout({ children }) {
         className={`md:hidden fixed bottom-0 left-0 right-0 z-[70] transition-transform duration-300 ease-out ${
           moreMenuOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}
       >
         <div className="bg-[#0F172A] border-t border-white/[0.06] rounded-t-2xl px-4 pt-3 pb-4">
           <div className="flex items-center justify-between mb-3">
@@ -213,7 +219,7 @@ export default function PlatformLayout({ children }) {
 
       {/* Mobile bottom nav */}
       <nav aria-label="Platform mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/[0.06] bg-[#05070B]/95 backdrop-blur-2xl transition-colors duration-200"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
         {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
           <NavLink
             key={to}

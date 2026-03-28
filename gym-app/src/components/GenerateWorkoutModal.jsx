@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,38 +9,39 @@ import { generateProgram, estimateDuration } from '../lib/workoutGenerator';
 import useFocusTrap from '../hooks/useFocusTrap';
 
 const GENDER_OPTIONS = [
-  { value: 'male',   label: 'Male'   },
-  { value: 'female', label: 'Female' },
-  { value: 'other',  label: 'Other'  },
+  { value: 'male' },
+  { value: 'female' },
+  { value: 'other' },
 ];
 
 const MUSCLE_OPTIONS = [
-  { value: 'Chest',     label: 'Chest'     },
-  { value: 'Back',      label: 'Back'      },
-  { value: 'Legs',      label: 'Legs'      },
-  { value: 'Glutes',    label: 'Glutes'    },
-  { value: 'Shoulders', label: 'Shoulders' },
-  { value: 'Biceps',    label: 'Arms'      },
-  { value: 'Core',      label: 'Core'      },
+  { value: 'Chest' },
+  { value: 'Back' },
+  { value: 'Legs' },
+  { value: 'Glutes' },
+  { value: 'Shoulders' },
+  { value: 'Biceps' },
+  { value: 'Core' },
 ];
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 // ── Step 1: Body Data ──────────────────────────────────────────────────────
 const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
+  const { t } = useTranslation('pages');
   const set = (k, v) => onChange(k, v);
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-[17px] font-bold text-[#E5E7EB] mb-0.5">Body profile</h2>
-        <p className="text-[12px] text-[#6B7280]">Used to personalize your split, volume, and cardio prescription.</p>
+        <h2 className="text-[17px] font-bold text-[#E5E7EB] mb-0.5">{t('generateWorkout.bodyProfile')}</h2>
+        <p className="text-[12px] text-[#6B7280]">{t('generateWorkout.bodyProfileDesc')}</p>
       </div>
 
       {/* Height + Weight */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">Height (cm)</label>
+          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.heightCm')}</label>
           <input
             type="number" min="100" max="250" placeholder="e.g. 175"
             value={form.height_cm}
@@ -48,7 +50,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
           />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">Weight (kg)</label>
+          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.weightKg')}</label>
           <input
             type="number" min="30" max="300" placeholder="e.g. 80"
             value={form.weight_kg}
@@ -60,7 +62,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Age */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">Age</label>
+        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.age')}</label>
         <input
           type="number" min="14" max="90" placeholder="e.g. 28"
           value={form.age}
@@ -71,7 +73,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Gender */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">Gender</label>
+        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.gender')}</label>
         <div className="flex gap-2">
           {GENDER_OPTIONS.map(g => (
             <button
@@ -84,7 +86,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
                   : 'bg-[#111827] border-white/6 text-[#6B7280] hover:border-white/12 hover:text-[#9CA3AF]'
               }`}
             >
-              {g.label}
+              {t(`generateWorkout.genderOptions.${g.value}`)}
             </button>
           ))}
         </div>
@@ -92,8 +94,8 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Priority muscles */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">Priority muscle groups</label>
-        <p className="text-[11px] text-[#4B5563] mb-2">Pick up to 3. These get extra volume and placement priority.</p>
+        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">{t('generateWorkout.priorityMuscles')}</label>
+        <p className="text-[11px] text-[#4B5563] mb-2">{t('generateWorkout.priorityMusclesDesc')}</p>
         <div className="flex flex-wrap gap-2">
           {MUSCLE_OPTIONS.map(m => {
             const active = form.priority_muscles.includes(m.value);
@@ -111,7 +113,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
                     : 'bg-[#111827] border-white/6 text-[#6B7280] hover:border-white/12 hover:text-[#9CA3AF]'
                 }`}
               >
-                {m.label}
+                {t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}
               </button>
             );
           })}
@@ -123,8 +125,10 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 
 // ── Step 2: Preview ────────────────────────────────────────────────────────
 const StepPreview = ({ result }) => {
+  const { t } = useTranslation('pages');
   if (!result) return null;
   const { splitLabel, routinesA, routinesB, cardio, dayTemplates } = result;
+  const DAY_LABELS = DAY_KEYS.map(k => t(`days.${k}`, { ns: 'common' }));
 
   // Build weekly schedule display
   // Assign routines to days of the week
@@ -160,15 +164,15 @@ const StepPreview = ({ result }) => {
         <div className="flex items-center gap-2 mb-0.5">
           <h2 className="text-[17px] font-bold text-[#E5E7EB]">{splitLabel}</h2>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37]">
-            {routinesA.length} day{routinesA.length !== 1 ? 's' : ''}/week
+            {routinesA.length} {t('generateWorkout.daysPerWeek')}
           </span>
         </div>
-        <p className="text-[12px] text-[#6B7280]">~{avgDuration} min/session · 6-week program · A/B weekly rotation</p>
+        <p className="text-[12px] text-[#6B7280]">{t('generateWorkout.minPerSession', { min: avgDuration })}</p>
       </div>
 
       {/* Week 1 */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">Week 1 (A)</p>
+        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week1')}</p>
         <div className="grid grid-cols-7 gap-1">
           {week1Days.map(({ day, type, routine }) => (
             <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
@@ -180,7 +184,7 @@ const StepPreview = ({ result }) => {
                   {routine.label.replace(' Day', '')}
                 </span>
               ) : (
-                <span className="text-[8px] text-[#4B5563] mt-1">Rest</span>
+                <span className="text-[8px] text-[#4B5563] mt-1">{t('generateWorkout.rest')}</span>
               )}
             </div>
           ))}
@@ -189,7 +193,7 @@ const StepPreview = ({ result }) => {
 
       {/* Week 2 */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">Week 2 (B) — different exercises</p>
+        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week2')}</p>
         <div className="grid grid-cols-7 gap-1">
           {week2Days.map(({ day, type, routine }) => (
             <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
@@ -201,7 +205,7 @@ const StepPreview = ({ result }) => {
                   {routine.label.replace(' Day', '')}
                 </span>
               ) : (
-                <span className="text-[8px] text-[#4B5563] mt-1">Rest</span>
+                <span className="text-[8px] text-[#4B5563] mt-1">{t('generateWorkout.rest')}</span>
               )}
             </div>
           ))}
@@ -210,7 +214,7 @@ const StepPreview = ({ result }) => {
 
       {/* Routines preview */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">Week 1 routines</p>
+        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week1Routines')}</p>
         <div className="space-y-2">
           {routinesA.map((r, i) => (
             <div key={i} className="flex items-center gap-3 bg-[#111827] rounded-xl px-3 py-2.5">
@@ -219,7 +223,7 @@ const StepPreview = ({ result }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name}</p>
-                <p className="text-[11px] text-[#6B7280]">{r.exercises.length} exercises</p>
+                <p className="text-[11px] text-[#6B7280]">{r.exercises.length} {t('workouts.exercises')}</p>
               </div>
               <span className="text-[11px] font-semibold text-[#6B7280]">~{estimateDuration(r, r.exercises[0]?.restSeconds || 90)}m</span>
             </div>
@@ -232,7 +236,7 @@ const StepPreview = ({ result }) => {
         <div className="flex items-start gap-3 bg-emerald-500/6 border border-emerald-500/15 rounded-xl px-4 py-3">
           <Heart size={15} className="text-emerald-400 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-semibold text-emerald-400">{cardio.daysPerWeek}× cardio/week</p>
+            <p className="text-[13px] font-semibold text-emerald-400">{t('generateWorkout.cardioPerWeek', { count: cardio.daysPerWeek })}</p>
             <p className="text-[12px] text-[#6B7280]">{cardio.description}</p>
           </div>
         </div>
@@ -243,6 +247,7 @@ const StepPreview = ({ result }) => {
 
 // ── Main Modal ─────────────────────────────────────────────────────────────
 const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
+  const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const [step, setStep]     = useState(0);
   const [saving, setSaving] = useState(false);
@@ -366,7 +371,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       onGenerated?.();
       onClose();
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(err.message || t('generateWorkout.somethingWentWrong'));
     } finally {
       setSaving(false);
     }
@@ -396,8 +401,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <Zap size={15} className="text-[#D4AF37]" />
             </div>
             <div>
-              <p id="generate-workout-title" className="text-[15px] font-bold text-[#E5E7EB]">Generate My Program</p>
-              <p className="text-[11px] text-[#6B7280]">Step {step + 1} of 2</p>
+              <p id="generate-workout-title" className="text-[15px] font-bold text-[#E5E7EB]">{t('generateWorkout.generateMyProgram')}</p>
+              <p className="text-[11px] text-[#6B7280]">{t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Close dialog" className="p-1">
@@ -431,7 +436,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
                 onClick={() => setStep(s => s - 1)}
                 className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-white/10 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors text-[13px] font-semibold"
               >
-                <ChevronLeft size={15} /> Back
+                <ChevronLeft size={15} /> {t('generateWorkout.back')}
               </button>
             )}
             {step === 0 ? (
@@ -440,7 +445,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
                 disabled={!canAdvance}
                 className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-[14px] py-3 rounded-xl transition-all"
               >
-                Preview Program <ChevronRight size={15} />
+                {t('generateWorkout.previewProgram')} <ChevronRight size={15} />
               </button>
             ) : (
               <button
@@ -448,7 +453,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
                 disabled={saving}
                 className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3 rounded-xl transition-all"
               >
-                {saving ? 'Generating…' : <><Check size={15} strokeWidth={2.5} /> Generate My Program</>}
+                {saving ? t('generateWorkout.generating') : <><Check size={15} strokeWidth={2.5} /> {t('generateWorkout.generateMyProgram')}</>}
               </button>
             )}
           </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // ── AchievementToast ──────────────────────────────────────────────────────────
 // Full-screen celebration overlay that sequences through earned achievements.
@@ -6,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 //   achievements: array of achievement defs (from ACHIEVEMENT_DEFS)
 //   onDone: callback fired when all achievements have been shown
 export default function AchievementToast({ achievements, onDone }) {
+  const { t } = useTranslation('pages');
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -91,7 +93,7 @@ export default function AchievementToast({ achievements, onDone }) {
           className="text-[11px] font-bold uppercase tracking-[0.22em] mb-6"
           style={{ color: current.color }}
         >
-          Achievement Unlocked
+          {t('profile.achievementUnlocked', 'Achievement Unlocked')}
         </p>
 
         {/* Icon badge */}
@@ -131,17 +133,17 @@ export default function AchievementToast({ achievements, onDone }) {
             letterSpacing: '-0.01em',
           }}
         >
-          {current.label}
+          {t(current.labelKey, current.label)}
         </h2>
 
         {/* Description */}
         <p className="text-[14px] leading-relaxed mb-8" style={{ color: '#9CA3AF' }}>
-          {current.desc}
+          {t(current.descKey, current.desc)}
         </p>
 
         {/* Dismiss hint */}
         <p className="text-[11px]" style={{ color: '#4B5563' }}>
-          Tap anywhere to continue
+          {t('profile.tapToContinue', 'Tap anywhere to continue')}
         </p>
 
         {/* Multiple achievements indicator */}

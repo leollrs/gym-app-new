@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
   CheckCircle, MessageSquare, Download,
@@ -104,7 +104,7 @@ async function fetchChurnData(gymId) {
   }
 
   const [challengeRes, winBackRes] = await Promise.all([
-    supabase.from('challenges').select('id, title').eq('gym_id', gymId).in('status', ['active', 'upcoming']).order('title'),
+    supabase.from('challenges').select('id, name').eq('gym_id', gymId).gte('end_date', new Date().toISOString()).order('name'),
     supabase.from('win_back_attempts').select('id, user_id, message, offer, outcome, created_at').eq('gym_id', gymId).order('created_at', { ascending: false }),
   ]);
   return {
@@ -123,10 +123,13 @@ const outcomeConfig = {
 
 export default function AdminChurn() {
   const { profile } = useAuth();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // SECURITY: Always derive gymId from the authenticated user's profile.
+  // Never accept gymId from URL params, query strings, or other user input.
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
+  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
   useEffect(() => { document.title = 'Admin - Churn | TuGymPR'; }, []);
 
@@ -244,6 +247,15 @@ export default function AdminChurn() {
   ];
 
   const loading = isLoading;
+
+  // Guard: only admins/super_admins with a valid gym_id may access this page
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied. You are not authorized to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
@@ -365,7 +377,7 @@ export default function AdminChurn() {
                         <select defaultValue="" onChange={e => handleAddToChallenge(m, e.target.value)}
                           className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#1E293B] text-[#9CA3AF] border border-white/8 outline-none focus:border-[#D4AF37]/40 cursor-pointer hover:border-white/12 transition-colors">
                           <option value="" disabled>+ Add to Challenge</option>
-                          {challenges.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                          {challenges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       )}
                       <button onClick={() => setContactPanel(m)}

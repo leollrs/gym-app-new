@@ -52,7 +52,7 @@ async function fetchOverviewData(gymId) {
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
     supabase.from('churn_followup_settings').select('*').eq('gym_id', gymId).single(),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).gte('created_at', fortyEightHoursAgo).limit(500),
-    supabase.from('challenges').select('id, title, end_date').eq('gym_id', gymId).eq('status', 'active').gte('end_date', now.toISOString()).lte('end_date', threeDaysFromNow).limit(20),
+    supabase.from('challenges').select('id, name, end_date').eq('gym_id', gymId).eq('status', 'active').gte('end_date', now.toISOString()).lte('end_date', threeDaysFromNow).limit(20),
     supabase.from('drip_campaign_steps').select('*').eq('gym_id', gymId).order('step_number').limit(50),
     supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(5000),
   ]);
@@ -159,7 +159,7 @@ async function fetchOverviewData(gymId) {
   }
   (challengesEndingSoonRes.data || []).forEach(ch => {
     const daysLeft = Math.max(0, Math.ceil((new Date(ch.end_date) - now) / 86400000));
-    actionItems.push({ icon: Trophy, iconColor: 'text-amber-400', text: `"${ch.title}" ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`, link: '/admin/challenges' });
+    actionItems.push({ icon: Trophy, iconColor: 'text-amber-400', text: `"${ch.name}" ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`, link: '/admin/challenges' });
   });
 
   // Chart data
@@ -228,7 +228,11 @@ function OverviewSkeleton() {
 export default function AdminOverview() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+
+  // SECURITY: Always derive gymId from the authenticated user's profile.
+  // Never accept gymId from URL params, query strings, or other user input.
   const gymId = profile?.gym_id;
+  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
   const [refreshingChurn, setRefreshingChurn] = useState(false);
   const [greetingHour] = useState(() => new Date().getHours());
@@ -263,6 +267,15 @@ export default function AdminOverview() {
     await refetch();
     setRefreshingChurn(false);
   };
+
+  // Guard: only admins/super_admins with a valid gym_id may access this page
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied. You are not authorized to view this page.</p>
+      </div>
+    );
+  }
 
   if (isLoading || !data) return <OverviewSkeleton />;
 

@@ -77,22 +77,15 @@ async function saveToken({ userId, gymId, token }) {
     const platform = Capacitor.getPlatform();
     log(`Saving token to DB (platform: ${platform}, token: ${token.substring(0, 12)}...)`);
 
-    // Try delete + insert instead of upsert (avoids RLS issues with ON CONFLICT)
-    await supabase
-      .from('push_tokens')
-      .delete()
-      .eq('profile_id', userId)
-      .eq('platform', platform);
-
     const { data, error, status, statusText } = await supabase
       .from('push_tokens')
-      .insert({
+      .upsert({
         profile_id: userId,
         gym_id: gymId,
         token,
         platform,
         updated_at: new Date().toISOString(),
-      })
+      }, { onConflict: 'profile_id,token' })
       .select('id');
 
     if (error) {

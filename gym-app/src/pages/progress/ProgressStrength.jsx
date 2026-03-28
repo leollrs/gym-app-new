@@ -33,7 +33,7 @@ const PRRow = ({ pr, history }) => {
       >
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }}
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}
         >
           <Trophy size={15} />
         </div>
@@ -207,7 +207,7 @@ export default function ProgressStrength() {
           {prs.length > 0 && (
             <span
               className="ml-2 text-[12px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }}
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}
             >
               {prs.length}
             </span>

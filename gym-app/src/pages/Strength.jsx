@@ -4,6 +4,7 @@ import { ArrowLeft, Trophy, ChevronDown, TrendingUp } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
@@ -43,6 +44,7 @@ const STANDARDS = [
 ];
 
 const TIER_LABELS  = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
+const TIER_KEYS    = ['beginner', 'novice', 'intermediate', 'advanced', 'elite'];
 const TIER_COLORS  = ['#6B7280', '#60A5FA', '#10B981', '#D4AF37', '#EF4444'];
 
 
@@ -67,14 +69,15 @@ const getTierProgress = (orm, bw, tiers, tier) => {
 
 // ── Standards card ────────────────────────────────────────────────────────────
 const StandardCard = ({ standard, pr, bodyweight }) => {
+  const { t } = useTranslation('pages');
   const orm  = pr ? parseFloat(pr.estimated_1rm) : null;
   const tier = orm != null ? getTier(orm, bodyweight, standard.tiers) : -1;
 
   const tierLabel = tier < 0
-    ? 'No data'
-    : tier < TIER_LABELS.length
-      ? TIER_LABELS[tier]
-      : 'Elite';
+    ? t('strength.noData')
+    : tier < TIER_KEYS.length
+      ? t(`strength.tierLabels.${TIER_KEYS[tier]}`)
+      : t('strength.tierLabels.elite');
 
   const tierColor = tier < 0
     ? '#4B5563'
@@ -106,7 +109,7 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
         <>
           <p className="text-[28px] font-black text-white leading-none mb-1">
             {Math.round(orm)}
-            <span className="text-[13px] font-medium ml-1 text-[#9CA3AF]">lbs</span>
+            <span className="text-[13px] font-medium ml-1 text-[#9CA3AF]">{t('strength.lbs')}</span>
           </p>
           <p className="text-[11px] mb-3 text-[#9CA3AF]">
             {pr.weight_lbs} lbs × {pr.reps} reps
@@ -123,11 +126,11 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
                 }}
               />
             </div>
-            {nextTierLbs && tier < TIER_LABELS.length - 1 && (
+            {nextTierLbs && tier < TIER_KEYS.length - 1 && (
               <p className="text-[10px] text-[#9CA3AF]">
-                {nextTierLbs - Math.round(orm)} lbs to{' '}
+                {t('strength.lbsTo', { count: nextTierLbs - Math.round(orm) })}{' '}
                 <span style={{ color: TIER_COLORS[Math.min(tier + 1, TIER_COLORS.length - 1)] }}>
-                  {TIER_LABELS[tier + 1]}
+                  {t(`strength.tierLabels.${TIER_KEYS[tier + 1]}`)}
                 </span>
               </p>
             )}
@@ -135,19 +138,19 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
 
           {/* Tier dots */}
           <div className="flex items-center gap-1 mt-3">
-            {TIER_LABELS.map((t, i) => (
+            {TIER_KEYS.map((tk, i) => (
               <div
-                key={t}
+                key={tk}
                 className="flex-1 h-1 rounded-full"
                 style={{ background: i <= tier ? TIER_COLORS[i] : 'rgba(255,255,255,0.08)' }}
-                title={t}
+                title={t(`strength.tierLabels.${tk}`)}
               />
             ))}
           </div>
         </>
       ) : (
         <p className="text-[12px] mt-1 text-[#9CA3AF]">
-          Log this lift to see your level
+          {t('strength.logLiftToSeeLevel')}
         </p>
       )}
     </div>
@@ -156,6 +159,7 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
 
 // ── PR history chart row ──────────────────────────────────────────────────────
 const PRRow = ({ pr, history }) => {
+  const { t } = useTranslation('pages');
   const [open, setOpen] = useState(false);
 
   const chartData = (history ?? []).map(h => ({
@@ -174,7 +178,7 @@ const PRRow = ({ pr, history }) => {
       >
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
-          style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }}
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}
         >
           <Trophy size={15} />
         </div>
@@ -203,12 +207,12 @@ const PRRow = ({ pr, history }) => {
         <div className="px-4 pb-4 border-t border-white/4">
           {chartData.length < 2 ? (
             <p className="text-[12px] pt-3 text-[#9CA3AF]">
-              Hit this lift again to see your 1RM trend
+              {t('strength.hitLiftAgainTrend')}
             </p>
           ) : (
             <div className="pt-3">
               <p className="text-[12px] font-medium mb-2 text-[#9CA3AF]">
-                Estimated 1RM over time
+                {t('strength.estimated1RMOverTime')}
               </p>
               <ResponsiveContainer width="100%" height={140}>
                 <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -224,7 +228,7 @@ const PRRow = ({ pr, history }) => {
                     tick={{ fontSize: 10, fill: '#6B7280' }}
                     tickLine={false} axisLine={false}
                   />
-                  <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }} />
                   <Line
                     type="monotone" dataKey="orm"
                     stroke="#D4AF37" strokeWidth={2}
@@ -243,6 +247,7 @@ const PRRow = ({ pr, history }) => {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Strength() {
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -311,8 +316,8 @@ export default function Strength() {
           <ArrowLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[20px] font-bold text-[#E5E7EB]">Strength</h1>
-          <p className="text-[12px] text-[#9CA3AF]">Personal records &amp; strength standards</p>
+          <h1 className="text-[20px] font-bold text-[#E5E7EB]">{t('strength.pageTitle')}</h1>
+          <p className="text-[12px] text-[#9CA3AF]">{t('strength.pageSubtitle')}</p>
         </div>
       </div>
 
@@ -325,14 +330,14 @@ export default function Strength() {
             <button
               onClick={() => setShowPRs(s => !s)}
               className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2.5 rounded-xl transition-colors"
-              style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
             >
               <Trophy size={14} />
-              Personal Records
+              {t('strength.personalRecords')}
               {prs.length > 0 && (
                 <span
                   className="text-[11px] font-bold px-1.5 py-0.5 rounded-full ml-0.5"
-                  style={{ background: 'rgba(212,175,55,0.15)' }}
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}
                 >
                   {prs.length}
                 </span>
@@ -346,8 +351,8 @@ export default function Strength() {
               {prs.length === 0 ? (
                 <div className="bg-[#0F172A] rounded-2xl border border-white/8 py-16 flex flex-col items-center gap-3 mb-7">
                   <TrendingUp size={32} className="text-[#4B5563]" strokeWidth={1.5} />
-                  <p className="text-[14px] text-[#9CA3AF]">No PRs yet</p>
-                  <p className="text-[12px] text-[#6B7280]">Complete workouts to start tracking</p>
+                  <p className="text-[14px] text-[#9CA3AF]">{t('strength.noPRsYet')}</p>
+                  <p className="text-[12px] text-[#6B7280]">{t('strength.completeWorkoutsToTrack')}</p>
                 </div>
               ) : (
                 <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/4 mb-7">
@@ -366,8 +371,8 @@ export default function Strength() {
           {/* ── Top exercises (standard cards) ────────────────────────── */}
           <CoachMark
             id="strength-standards"
-            title="Strength Standards"
-            description="See how your lifts compare to others at your bodyweight. Levels go from Beginner to Elite."
+            title={t('strength.coachMarkTitle')}
+            description={t('strength.coachMarkDesc')}
             position="bottom"
           >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-7">
@@ -386,21 +391,21 @@ export default function Strength() {
           <div className="mb-2">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[15px] font-bold text-[#E5E7EB]">
-                Strength Standards
+                {t('strength.strengthStandards')}
               </p>
               {!bodyweight && (
                 <button
                   onClick={() => navigate('/progress?tab=body')}
                   className="text-[11px] font-semibold px-3 py-1 rounded-xl"
-                  style={{ background: 'rgba(212,175,55,0.08)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
                 >
-                  Log weight to unlock
+                  {t('strength.logWeightToUnlock')}
                 </button>
               )}
             </div>
             {bodyweight && (
               <p className="text-[12px] mb-3 text-[#9CA3AF]">
-                Based on your bodyweight of <span className="text-[#E5E7EB]">{bodyweight} lbs</span>
+                {t('strength.basedOnBodyweight', { weight: bodyweight })}
               </p>
             )}
           </div>

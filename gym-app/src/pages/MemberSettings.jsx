@@ -22,7 +22,7 @@ export default function MemberSettings() {
   const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
 
   return (
-    <div className="min-h-screen bg-[#05070B] text-[#E5E7EB] pb-32 overscroll-none overflow-y-auto" style={{ overscrollBehavior: 'none' }}>
+    <div className="min-h-screen bg-[#05070B] text-[#E5E7EB] pb-32">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-[#05070B]/90 backdrop-blur-2xl border-b border-white/[0.06]">
         <div className="flex items-center gap-3 px-4 py-3">
@@ -109,7 +109,7 @@ export default function MemberSettings() {
 
         {/* Privacy */}
         <div>
-          <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">Privacy</h3>
+          <h3 className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3 px-1">{t('settingsPrivacy.privacy')}</h3>
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
             <button
               type="button"
@@ -125,8 +125,8 @@ export default function MemberSettings() {
               <div className="flex items-center gap-3">
                 {leaderboardVisible ? <Eye size={16} className="text-[#6B7280]" /> : <EyeOff size={16} className="text-[#6B7280]" />}
                 <div>
-                  <span className="text-[14px] font-semibold text-[#E5E7EB]">Show me on leaderboards</span>
-                  <p className="text-[11px] text-[#6B7280] mt-0.5">When off, you won't appear on any public leaderboard</p>
+                  <span className="text-[14px] font-semibold text-[#E5E7EB]">{t('settingsPrivacy.showOnLeaderboards')}</span>
+                  <p className="text-[11px] text-[#6B7280] mt-0.5">{t('settingsPrivacy.showOnLeaderboardsDesc')}</p>
                 </div>
               </div>
               <div className={`w-10 h-6 rounded-full transition-colors relative ${leaderboardVisible ? 'bg-[#10B981]' : 'bg-[#374151]'}`}>
@@ -183,45 +183,64 @@ export default function MemberSettings() {
       {/* Delete confirmation modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-xl bg-black/60 px-4">
-          <div className="w-full max-w-[400px] rounded-2xl bg-[#0F172A] border border-white/[0.06] p-6 shadow-2xl">
+          <div className="w-full max-w-[400px] rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
                 <AlertTriangle size={20} className="text-red-400" />
               </div>
               <div>
-                <h3 className="text-[16px] font-bold text-[#E5E7EB]">{t('settings.deleteAccount')}</h3>
-                <p className="text-[12px] text-[#6B7280]">{t('settings.thisCannotBeUndone')}</p>
+                <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('settings.deleteAccount')}</h3>
+                <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('settings.thisCannotBeUndone')}</p>
               </div>
             </div>
-            <p className="text-[13px] text-[#9CA3AF] mb-4">
-              All your data will be permanently deleted. Type <strong className="text-red-400">DELETE</strong> to confirm.
-            </p>
+            <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }} dangerouslySetInnerHTML={{ __html: t('settings.deleteConfirmMessage') }} />
             <input
               type="text"
               value={deleteText}
               onChange={e => setDeleteText(e.target.value)}
               placeholder={t('settings.typeDelete')}
-              className="w-full px-4 py-3 rounded-xl bg-[#0A0D14] border border-white/[0.06] text-[#E5E7EB] text-[14px] mb-4 focus:outline-none focus:border-red-500/50"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              className="w-full px-4 py-3 rounded-xl text-[14px] mb-4 focus:outline-none"
+              style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
             />
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => { setShowDeleteConfirm(false); setDeleteText(''); }}
-                className="flex-1 py-3.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[#9CA3AF] text-[14px] font-semibold"
+                className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold"
+                style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' }}
               >
                 {t('settings.cancel')}
               </button>
-              <button
-                type="button"
-                disabled={deleteText !== 'DELETE' || deleting}
-                onClick={async () => {
-                  setDeleting(true);
-                  await deleteAccount();
-                }}
-                className="flex-1 py-3.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {deleting ? t('settings.deleting') : t('settings.deleteForever')}
-              </button>
+              {(() => {
+                const canDelete = ['delete', 'eliminar'].includes(deleteText.trim().toLowerCase());
+                return (
+                  <button
+                    type="button"
+                    disabled={!canDelete || deleting}
+                    onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        await deleteAccount();
+                      } catch (err) {
+                        setDeleting(false);
+                        alert(err.message || 'Failed to delete account');
+                      }
+                    }}
+                    className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold transition-all"
+                    style={{
+                      backgroundColor: canDelete ? '#DC2626' : 'var(--color-bg-secondary)',
+                      color: canDelete ? '#FFFFFF' : 'var(--color-text-subtle)',
+                      border: canDelete ? '1px solid #DC2626' : '1px solid var(--color-border-default)',
+                      opacity: deleting ? 0.6 : 1,
+                    }}
+                  >
+                    {deleting ? t('settings.deleting') : t('settings.deleteForever')}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

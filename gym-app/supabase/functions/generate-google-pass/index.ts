@@ -27,7 +27,7 @@ const ISSUER_ID = Deno.env.get('GOOGLE_WALLET_ISSUER_ID') || '';
 const SERVICE_ACCOUNT_KEY_B64 = Deno.env.get('GOOGLE_WALLET_KEY_BASE64') || '';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 

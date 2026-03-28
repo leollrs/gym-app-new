@@ -1,11 +1,13 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { X, Download, Wallet, Smartphone } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Barcode from 'react-barcode';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { useTranslation } from 'react-i18next';
 
 const WalletPass = registerPlugin('WalletPass');
 import { supabase } from '../lib/supabase';
+import { signQRPayload } from '../lib/qrSecurity';
 
 /**
  * Fullscreen modal that displays a member's QR code or barcode for scanning
@@ -19,9 +21,21 @@ import { supabase } from '../lib/supabase';
  * @param {function} onClose     - Close handler
  */
 export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose }) {
+  const { t } = useTranslation('pages');
   const codeRef = useRef(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
+  const [signedPayload, setSignedPayload] = useState(null);
+
+  // Sign the QR payload with HMAC to prevent forgery
+  useEffect(() => {
+    if (!payload) return;
+    let cancelled = false;
+    signQRPayload(payload).then((signed) => {
+      if (!cancelled) setSignedPayload(signed);
+    });
+    return () => { cancelled = true; };
+  }, [payload]);
 
   const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
   const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';
@@ -62,7 +76,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
     try {
       const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      if (!session) throw new Error(t('qrCode.notAuthenticated'));
 
       // Fetch member's active punch cards to include on the wallet pass
       let punchCards = [];
@@ -100,7 +114,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
 
       // Edge function returns { unsupported: true } if certs aren't configured
       if (data?.unsupported) {
-        throw new Error('Wallet passes not yet configured for this gym');
+        throw new Error(t('qrCode.walletNotConfigured'));
       }
 
       if (platform === 'ios') {
@@ -111,7 +125,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         window.open(data.saveUrl, '_blank');
       }
     } catch (err) {
-      setWalletError(err.message || 'Failed to generate wallet pass');
+      setWalletError(err.message || t('qrCode.walletFailed'));
     } finally {
       setWalletLoading(false);
     }
@@ -169,10 +183,10 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         {/* Info + actions — dark bg */}
         <div className="bg-[#0F172A] border-t border-white/8 p-5">
           <p className="text-[15px] font-bold text-[#E5E7EB] text-center mb-1">
-            {memberName || 'Your Gym Pass'}
+            {memberName || t('qrCode.yourGymPass')}
           </p>
           <p className="text-[12px] text-[#6B7280] text-center mb-4">
-            Show this code at the scanner to check in
+            {t('qrCode.showAtScanner')}
           </p>
 
           <div className="flex gap-2">
@@ -186,7 +200,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
               }}
             >
               <Download size={15} />
-              Save Image
+              {t('qrCode.saveImage')}
             </button>
             <button
               onClick={handleAddToWallet}
@@ -204,12 +218,12 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
                 <Wallet size={15} />
               )}
               {walletLoading
-                ? 'Generating...'
+                ? t('qrCode.generating')
                 : Capacitor.getPlatform() === 'ios'
-                  ? 'Apple Wallet'
+                  ? t('qrCode.appleWallet')
                   : Capacitor.getPlatform() === 'android'
-                    ? 'Google Wallet'
-                    : 'Add to Wallet'}
+                    ? t('qrCode.googleWallet')
+                    : t('qrCode.addToWallet')}
             </button>
           </div>
 

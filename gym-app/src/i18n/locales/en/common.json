@@ -73,7 +73,8 @@
     "thursday": "Thursday",
     "friday": "Friday",
     "saturday": "Saturday",
-    "sunday": "Sunday"
+    "sunday": "Sunday",
+    "initials": ["S", "M", "T", "W", "T", "F", "S"]
   },
 
   "language": {

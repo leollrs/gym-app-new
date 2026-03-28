@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Timer } from 'lucide-react';
+import { Play, Timer, CheckCircle2 } from 'lucide-react';
+import { exName } from '../lib/exerciseName';
 
 const CYCLE_INTERVAL = 4000; // ms per exercise
 
@@ -10,12 +11,23 @@ const WorkoutHeroCard = ({
   routineId,
   exercises = [],
   isActive = false,
+  isCompleted = false,
   activeSetsCompleted = 0,
   activeSetsTotal = 0,
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [videoReady, setVideoReady] = useState(false);
+
+  // Reset video ready state when the current exercise changes
+  useEffect(() => {
+    setVideoReady(false);
+  }, [currentIndex]);
+
+  const handleVideoReady = useCallback(() => {
+    setVideoReady(true);
+  }, []);
 
   // Cycle through exercises
   useEffect(() => {
@@ -27,11 +39,11 @@ const WorkoutHeroCard = ({
   }, [exercises.length]);
 
   const current = exercises[currentIndex] || {};
-  const exerciseName = current.name || t('workoutHeroCard.workout');
+  const exerciseName = exName(current) || t('workoutHeroCard.workout');
   const exerciseVideo = current.video || null;
   const hasMedia = !!exerciseVideo;
 
-  const fallbackBg = 'linear-gradient(145deg, #1a1f35 0%, #0d1117 50%, #0a0f1a 100%)';
+  const fallbackBg = 'linear-gradient(145deg, var(--color-bg-deep) 0%, var(--color-bg-secondary) 50%, var(--color-bg-primary) 100%)';
 
   return (
     <motion.button
@@ -52,7 +64,18 @@ const WorkoutHeroCard = ({
           transition={{ duration: 0.6 }}
           className="absolute inset-0"
         >
-          {exerciseVideo ? (
+          {/* Always render the gradient placeholder */}
+          <div className="w-full h-full" style={{ background: fallbackBg }}>
+            <div
+              className="absolute inset-0 opacity-[0.04]"
+              style={{
+                backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                backgroundSize: '24px 24px',
+              }}
+            />
+          </div>
+          {/* Video loads on top and fades in when ready */}
+          {exerciseVideo && (
             <video
               key={exerciseVideo}
               src={exerciseVideo}
@@ -60,18 +83,11 @@ const WorkoutHeroCard = ({
               loop
               muted
               playsInline
-              className="w-full h-full object-cover"
+              preload="auto"
+              onCanPlay={handleVideoReady}
+              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+              style={{ opacity: videoReady ? 1 : 0 }}
             />
-          ) : (
-            <div className="w-full h-full" style={{ background: fallbackBg }}>
-              <div
-                className="absolute inset-0 opacity-[0.04]"
-                style={{
-                  backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-                  backgroundSize: '24px 24px',
-                }}
-              />
-            </div>
           )}
         </motion.div>
       </AnimatePresence>
@@ -151,18 +167,24 @@ const WorkoutHeroCard = ({
         {/* CTA Button */}
         <div
           className={`w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 transition-all mt-2 ${
-            isActive
+            isCompleted
+              ? 'bg-emerald-500/20 border border-emerald-500/30'
+              : isActive
               ? 'bg-emerald-500 shadow-[0_4px_24px_rgba(16,185,129,0.3)]'
               : 'bg-[#D4AF37] shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
           }`}
         >
-          {isActive ? (
+          {isCompleted ? (
+            <CheckCircle2 size={18} className="text-emerald-400" strokeWidth={2.5} />
+          ) : isActive ? (
             <Timer size={18} className="text-black" strokeWidth={2.5} />
           ) : (
             <Play size={18} className="text-black" fill="black" strokeWidth={0} />
           )}
-          <span className="text-[16px] font-black text-black tracking-wide uppercase">
-            {isActive ? t('workoutHeroCard.resumeWorkout') : t('workoutHeroCard.startWorkout')}
+          <span className={`text-[16px] font-black tracking-wide uppercase ${
+            isCompleted ? 'text-emerald-400' : 'text-black'
+          }`}>
+            {isCompleted ? t('workoutHeroCard.workoutCompleted', 'Workout Completed') : isActive ? t('workoutHeroCard.resumeWorkout') : t('workoutHeroCard.startWorkout')}
           </span>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const BOARDS = [
   { key: 'rankings',    label: 'Rankings' },
@@ -13,6 +14,7 @@ const BOARDS = [
 export { BOARDS };
 
 export default function BoardSelector({ active, onChange }) {
+  const { t } = useTranslation('pages');
   const scrollRef = useRef(null);
   const activeRef = useRef(null);
 
@@ -42,7 +44,7 @@ export default function BoardSelector({ active, onChange }) {
               : 'bg-white/[0.04] text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.06]'
           }`}
         >
-          {b.label}
+          {t(`leaderboard.boards.${b.key}`)}
         </button>
       ))}
     </div>

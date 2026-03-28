@@ -78,31 +78,31 @@ export default function ActivityChart({ gymId }) {
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-[13px] font-semibold text-[#E5E7EB]">Engagement</p>
-          <p className="text-[11px] text-[#6B7280] mt-0.5">% of signed members who logged &ge;1 workout that month</p>
+          <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">Engagement</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">% of signed members who logged &ge;1 workout that month</p>
         </div>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors"
         >
           <Download size={13} />
           Export
         </button>
       </div>
       {activityData.length === 0 ? (
-        <p className="text-[13px] text-[#6B7280] text-center py-10">No session data yet</p>
+        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">No session data yet</p>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={activityData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}%`} />
+            <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}%`} />
             <Tooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null;
                 const d = payload[0].payload;
                 return (
-                  <div className="bg-[#1a1f2e] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
-                    {label && <p className="text-[#6B7280] text-[11px] mb-1">{label}</p>}
+                  <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
+                    {label && <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{label}</p>}
                     <p className="font-semibold text-[#3B82F6]">Engaged: {d.engagement}% ({d.active} / {d.total})</p>
                   </div>
                 );

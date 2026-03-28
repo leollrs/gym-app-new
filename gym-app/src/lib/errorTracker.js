@@ -64,18 +64,42 @@ function isDuplicate(message) {
  * - 'http_error'         — 400/500 level HTTP errors from API
  * - 'action_failed'      — Specific user action failed (save workout, check-in, etc.)
  */
+/**
+ * Scrub sensitive data (tokens, emails, keys) from strings before logging.
+ */
+function scrubSensitive(str) {
+  if (typeof str !== 'string') return str;
+  return str
+    // JWT tokens (eyJ...)
+    .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[REDACTED_TOKEN]')
+    // Email addresses
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED_EMAIL]')
+    // Bearer tokens in headers
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    // API keys (long hex/base64 strings)
+    .replace(/(?:key|token|secret|password|apikey)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}/gi, '[REDACTED_KEY]');
+}
+
 export async function trackError(type, error, extra = {}) {
   try {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? 'Unknown error');
-    const stack = error instanceof Error ? error.stack : undefined;
+    const message = scrubSensitive(rawMessage);
+    const stack = error instanceof Error ? scrubSensitive(error.stack) : undefined;
 
     // Don't track errors from the error tracker itself
     if (message.includes('error_logs')) return;
 
     if (isDuplicate(`${type}:${message}`)) return;
 
-    const page = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
+    // Strip query params from page URL (may contain tokens/codes)
+    const page = typeof window !== 'undefined' ? window.location.pathname : undefined;
+
+    // Scrub any string values in extra metadata
+    const cleanExtra = {};
+    for (const [k, v] of Object.entries(extra)) {
+      cleanExtra[k] = typeof v === 'string' ? scrubSensitive(v) : v;
+    }
 
     await supabase.from('error_logs').insert({
       type,
@@ -84,7 +108,7 @@ export async function trackError(type, error, extra = {}) {
       page,
       component: extra.componentStack ? 'ErrorBoundary' : extra.component || undefined,
       device_info: getDeviceInfo(),
-      metadata: Object.keys(extra).length > 0 ? extra : undefined,
+      metadata: Object.keys(cleanExtra).length > 0 ? cleanExtra : undefined,
       profile_id: _authContext?.profile?.id || null,
       gym_id: _authContext?.profile?.gym_id || null,
     });

@@ -26,7 +26,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -165,6 +165,38 @@ serve(async (req) => {
   }
 
   try {
+    // ── Auth: only allow calls with a valid cron secret or service-role token ──
+    // Timing-safe comparison to prevent timing-based secret extraction
+    function timingSafeEqual(a: string, b: string): boolean {
+      if (a.length !== b.length) return false;
+      const encoder = new TextEncoder();
+      const bufA = encoder.encode(a);
+      const bufB = encoder.encode(b);
+      let result = 0;
+      for (let i = 0; i < bufA.length; i++) {
+        result |= bufA[i] ^ bufB[i];
+      }
+      return result === 0;
+    }
+
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
+
+    const isCronAuth = cronSecret && incomingSecret && timingSafeEqual(cronSecret, incomingSecret);
+
+    if (!isCronAuth) {
+      // Fallback: check if caller is using the actual service_role key
+      const token = authHeader.replace('Bearer ', '');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      if (!token || !serviceKey || !timingSafeEqual(token, serviceKey)) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * MS_PER_DAY).toISOString();
@@ -181,6 +213,7 @@ serve(async (req) => {
 
     let totalScored = 0;
     let totalFollowups = 0;
+    let highRiskCount = 0;
 
     for (const gym of gyms) {
       const gymId = gym.id;
@@ -225,25 +258,33 @@ serve(async (req) => {
         challengesRes, bodyRes, trainerRes, prsRes,
       ] = await Promise.all([
         supabase.from('check_ins').select('profile_id, checked_in_at')
-          .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds),
-        supabase.from('workout_sessions').select('profile_id, status, started_at, duration_seconds, total_volume_lbs')
+          .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds)
+          .limit(5000),
+        supabase.from('workout_sessions').select('profile_id, status, started_at, duration_seconds')
           .eq('gym_id', gymId).gte('started_at', ninetyDaysAgo).in('profile_id', memberIds)
-          .order('started_at', { ascending: false }),
+          .order('started_at', { ascending: false })
+          .limit(5000),
         supabase.from('workout_sessions').select('profile_id, started_at')
-          .eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds),
+          .eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds)
+          .limit(10000),
         supabase.from('friendships').select('requester_id, addressee_id')
           .eq('status', 'accepted').or(
             memberIds.map((id: string) => `requester_id.eq.${id}`).join(',') + ',' +
             memberIds.map((id: string) => `addressee_id.eq.${id}`).join(',')
-          ),
-        supabase.from('challenge_participants').select('profile_id').in('profile_id', memberIds),
+          )
+          .limit(5000),
+        supabase.from('challenge_participants').select('profile_id').in('profile_id', memberIds)
+          .limit(2000),
         supabase.from('body_weight_logs').select('profile_id')
-          .eq('gym_id', gymId).gte('logged_at', sixtyDaysAgo).in('profile_id', memberIds),
+          .eq('gym_id', gymId).gte('logged_at', sixtyDaysAgo).in('profile_id', memberIds)
+          .limit(5000),
         supabase.from('trainer_clients').select('client_id')
-          .eq('gym_id', gymId).in('client_id', memberIds),
+          .eq('gym_id', gymId).in('client_id', memberIds)
+          .limit(1000),
         supabase.from('activity_feed_items').select('actor_id')
           .eq('gym_id', gymId).eq('type', 'pr_hit').gte('created_at', thirtyDaysAgo)
-          .in('actor_id', memberIds),
+          .in('actor_id', memberIds)
+          .limit(2000),
       ]);
 
       // Build lookup maps
@@ -305,6 +346,8 @@ serve(async (req) => {
 
       // Score each member
       const rows: any[] = [];
+      // Keep full signals in memory for calibration model, but don't persist PII
+      const memberSignals: Record<string, Record<string, { score: number; maxPts: number; label: string }>> = {};
 
       for (const m of members) {
         const tenure = (now.getTime() - new Date(m.created_at).getTime()) / (MS_PER_DAY * 30.44);
@@ -324,8 +367,12 @@ serve(async (req) => {
           engagement_depth: signalEngagement(sd.compL30, sd.abL30, avgDurL, avgDurP),
         };
 
+        // Store full signals in memory for calibration, not in DB rows
+        memberSignals[m.id] = signals;
+
         const score = computeScore(signals, gymWeights);
         const tier = getRiskTier(score);
+        if (tier === 'high' || tier === 'critical') highRiskCount++;
 
         const keySignals = Object.entries(signals)
           .filter(([, s]) => s.score > 0)
@@ -338,7 +385,7 @@ serve(async (req) => {
           gym_id: gymId,
           score,
           risk_tier: tier,
-          signals,
+          signal_count: Object.keys(signals).length,
           key_signals: keySignals,
           velocity: 0, // will be updated after insert from history
           metrics: { avgWeekly, prevWeekly, tenure, friends: friendCount[m.id] || 0 },
@@ -418,9 +465,8 @@ serve(async (req) => {
       }
 
       // ── Auto-label churn outcomes (feeds calibration model) ──
-      // Build a signal snapshot map for quick lookup
-      const signalMap: Record<string, any> = {};
-      rows.forEach(r => { signalMap[r.profile_id] = r.signals; });
+      // Use in-memory signals (not persisted in DB rows) for calibration labeling
+      const signalMap: Record<string, any> = memberSignals;
 
       const outcomeInserts: any[] = [];
 
@@ -498,6 +544,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         scored: totalScored,
+        highRiskCount,
         followups_sent: totalFollowups,
         computed_at: now.toISOString(),
       }),

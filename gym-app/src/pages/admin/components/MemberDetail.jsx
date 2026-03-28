@@ -298,7 +298,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     onClick={handleSaveExternalId}
                     disabled={externalIdSaving || externalId === (member.qr_external_id ?? '')}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                    style={{ background: 'rgba(212,175,55,0.12)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }}
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
                   >
                     <Save size={12} />
                     {externalIdSaving ? 'Saving...' : 'Save'}
@@ -346,7 +346,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                       className="w-full bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
                     <button onClick={handleSendFollowup} disabled={followupSending || !followupMsg.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-                      style={{ background: 'rgba(212,175,55,0.12)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
                       <Send size={12} /> {followupSending ? 'Sending…' : 'Send Follow-up'}
                     </button>
                   </>
@@ -362,7 +362,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
             <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
               className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-              style={{ background: 'rgba(212,175,55,0.12)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }}>
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
               <Save size={12} /> {noteSaving ? 'Saving…' : 'Save Note'}
             </button>
           </div>

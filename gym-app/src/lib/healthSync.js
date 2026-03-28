@@ -45,16 +45,61 @@ export async function isAvailable() {
 export async function requestPermissions() {
   try {
     if (!isNative()) return { granted: false };
-    const result = await Health.requestAuthorization({
+    await Health.requestAuthorization({
       read: ['steps', 'weight', 'heartRate', 'calories'],
       write: ['weight'],
     });
-    // If requestAuthorization resolves without error, treat as granted.
-    // iOS doesn't tell us if read was denied (privacy by design).
     return { granted: true };
   } catch (e) {
     console.warn('Health requestPermissions failed:', e);
     return { granted: false };
+  }
+}
+
+/**
+ * Check if we can actually read a data type by attempting a small query.
+ * iOS doesn't tell us if read was denied, so we try reading and see if we get data or an error.
+ */
+export async function checkReadAccess(dataType) {
+  try {
+    if (!isNative()) return false;
+    await Health.queryAggregated({
+      dataType,
+      startDate: startOfDay().toISOString(),
+      endDate: endOfDay().toISOString(),
+      bucket: 'day',
+      aggregation: 'sum',
+    });
+    // If it doesn't throw, we have at least some access
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read the latest weight from Apple Health (last 7 days).
+ * Returns { value: number (lbs), date: string } or null.
+ */
+export async function readLatestWeight() {
+  try {
+    if (!isNative()) return null;
+    const result = await Health.readSamples({
+      dataType: 'weight',
+      startDate: daysAgo(7).toISOString(),
+      endDate: endOfDay().toISOString(),
+      limit: 1,
+      ascending: false,
+    });
+    const sample = result?.samples?.[0];
+    if (!sample) return null;
+    return {
+      value: Math.round((sample.value || 0) * 2.20462 * 10) / 10,
+      date: new Date(sample.startDate).toISOString().split('T')[0],
+    };
+  } catch (e) {
+    console.warn('readLatestWeight failed:', e);
+    return null;
   }
 }
 

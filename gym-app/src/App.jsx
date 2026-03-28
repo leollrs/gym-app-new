@@ -11,6 +11,7 @@ import { initPushNotifications } from './lib/pushNotifications';
 
 // ── Eagerly loaded (critical path for members) ──────────────
 import Navigation from './components/Navigation';
+import AppTour from './components/AppTour';
 import Dashboard from './pages/Dashboard';
 import Workouts from './pages/Workouts';
 import Login from './pages/Login';
@@ -25,12 +26,14 @@ const MemberSettings   = lazy(() => import('./pages/MemberSettings'));
 const WorkoutBuilder   = lazy(() => import('./pages/WorkoutBuilder'));
 const SessionSummary   = lazy(() => import('./pages/SessionSummary'));
 const Nutrition        = lazy(() => import('./pages/Nutrition'));
+const MyGym            = lazy(() => import('./pages/MyGym'));
 const CheckIn          = lazy(() => import('./pages/CheckIn'));
 const ExerciseLibraryPage = lazy(() => import('./pages/ExerciseLibrary').then(m => ({ default: m.ExerciseLibraryPage })));
 const Challenges       = lazy(() => import('./pages/Challenges'));
 const Progress         = lazy(() => import('./pages/Progress'));
 const Community        = lazy(() => import('./pages/Community'));
 const Notifications    = lazy(() => import('./pages/Notifications'));
+const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 const Rewards          = lazy(() => import('./pages/Rewards'));
 const FirstWorkoutWelcome = lazy(() => import('./components/FirstWorkoutWelcome'));
 const TVDisplay        = lazy(() => import('./pages/TVDisplay'));
@@ -74,6 +77,27 @@ const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const SmsManagement      = lazy(() => import('./pages/platform/SmsManagement'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
+
+// ── SCROLL TO TOP ON NAVIGATION ──────────────────────────────
+// Disable browser scroll restoration — we handle it manually
+if ('scrollRestoration' in window.history) {
+  window.history.scrollRestoration = 'manual';
+}
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    document.getElementById('main-content')?.scrollTo(0, 0);
+    // Retry after lazy components mount
+    const t1 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 50);
+    const t2 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 150);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [pathname]);
+  return null;
+}
 
 // ── LOADING SCREEN (animated runner) ─────────────────────────
 const LoadingScreen = () => (
@@ -386,6 +410,7 @@ function App() {
         onClose={() => setWatchQROpen(false)}
       />
     )}
+    <ScrollToTop />
     <Routes>
 
       {/* Public — unauthenticated only */}
@@ -494,6 +519,7 @@ function App() {
                 Skip to main content
               </a>
               <Navigation />
+              <AppTour userId={user?.id} />
               <div id="main-content" role="main">
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
@@ -515,7 +541,8 @@ function App() {
                 <Route path="/community"         element={<Community />} />
                 <Route path="/social"            element={<SocialFeed />} />
                 <Route path="/challenges"        element={<Challenges />} />
-                <Route path="/notifications"     element={<Notifications />} />
+                <Route path="/notifications"          element={<Notifications />} />
+                <Route path="/notification-settings" element={<NotificationSettings />} />
 
                 {/* Progress (consolidated hub) */}
                 <Route path="/progress"          element={<Progress />} />
@@ -524,6 +551,7 @@ function App() {
                 <Route path="/profile"           element={<Profile />} />
                 <Route path="/settings"          element={<MemberSettings />} />
                 <Route path="/nutrition"         element={<Nutrition />} />
+                <Route path="/my-gym"           element={<MyGym />} />
 
                 {/* Redirects: standalone pages now live inside hub pages */}
                 <Route path="/workout-log"       element={<Navigate to="/progress?tab=log" replace />} />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Plus, Trash2, Dumbbell,
   ChevronRight, RotateCcw
@@ -10,18 +11,19 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { clearCache } from '../lib/queryCache';
+import { exName } from '../lib/exerciseName';
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
-const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown }) => {
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, t }) => {
   if (!exercise) return null;
 
   return (
-    <div className="bg-[#0F172A] rounded-2xl border border-white/6 overflow-hidden hover:border-white/20 hover:bg-white/[0.03] transition-all">
+    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
       {/* Top: name + reorder + delete — all 44px touch targets */}
-      <div className="flex items-center gap-2 px-4 py-2.5">
+      <div className="flex items-center gap-2 px-5 py-3">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{exercise.name}</p>
+          <p className="font-semibold text-[#E5E7EB] text-[15px] truncate">{exName(exercise)}</p>
           <p className="text-[12px] text-[#6B7280] mt-0.5 truncate">{exercise.muscle} · {exercise.equipment}</p>
         </div>
         <div className="flex items-center flex-shrink-0 -mr-1">
@@ -49,26 +51,26 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
       </div>
 
       {/* Controls: sets / reps / rest */}
-      <div className="grid grid-cols-3 border-t border-white/5">
+      <div className="grid grid-cols-3 border-t border-white/[0.06]">
         {/* Sets */}
         <div className="px-3 py-3">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Sets</p>
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">{t('workoutBuilder.sets')}</p>
           <div className="flex items-center justify-between">
             <button
               onClick={() => onChange(index, 'sets', Math.max(1, item.sets - 1))}
-              className="w-9 h-9 rounded-xl bg-white/5 text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/10 active:scale-90 transition-all leading-none"
+              className="w-9 h-9 rounded-xl bg-white/[0.06] text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/[0.10] active:scale-90 transition-all leading-none"
             >−</button>
             <span className="text-[#E5E7EB] font-bold text-[18px] tabular-nums">{item.sets}</span>
             <button
               onClick={() => onChange(index, 'sets', Math.min(10, item.sets + 1))}
-              className="w-9 h-9 rounded-xl bg-white/5 text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/10 active:scale-90 transition-all leading-none"
+              className="w-9 h-9 rounded-xl bg-white/[0.06] text-[#E5E7EB] text-xl flex items-center justify-center hover:bg-white/[0.10] active:scale-90 transition-all leading-none"
             >+</button>
           </div>
         </div>
 
         {/* Reps */}
-        <div className="px-3 py-3 border-l border-r border-white/5">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Reps</p>
+        <div className="px-3 py-3 border-l border-r border-white/[0.06]">
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">{t('workoutBuilder.reps')}</p>
           <input
             type="number"
             inputMode="numeric"
@@ -80,17 +82,17 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
               const n = parseInt(v, 10);
               onChange(index, 'reps', (!isNaN(n) && n < 0) ? '0' : v);
             }}
-            className="w-full bg-[#111827] border border-white/8 rounded-xl px-2 py-2 text-[#E5E7EB] text-[14px] font-semibold text-center focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-2 py-2 text-[#E5E7EB] text-[14px] font-semibold text-center focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
           />
         </div>
 
         {/* Rest */}
         <div className="px-3 py-3">
-          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">Rest</p>
+          <p className="text-[10px] text-[#6B7280] uppercase font-bold tracking-wider mb-2">{t('workoutBuilder.rest')}</p>
           <select
             value={item.restSeconds}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
-            className="w-full bg-[#111827] border border-white/8 rounded-xl px-1 py-2 text-[#E5E7EB] text-[13px] font-semibold focus:outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none text-center"
+            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-1 py-2 text-[#E5E7EB] text-[13px] font-semibold focus:outline-none focus:border-[#D4AF37]/40 transition-colors appearance-none text-center"
           >
             {REST_OPTIONS.map(s => (
               <option key={s} value={s}>{s < 60 ? `${s}s` : `${s / 60}m`}</option>
@@ -103,7 +105,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
 };
 
 // Simple card list for Mine / Friends picker tabs
-const PickerList = ({ exercises, selectedIds, onSelect, emptyText }) => {
+const PickerList = ({ exercises, selectedIds, onSelect, emptyText, t }) => {
   if (exercises.length === 0) {
     return (
       <div className="text-center py-16">
@@ -119,24 +121,24 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText }) => {
         return (
           <div
             key={ex.id}
-            className="bg-[#0F172A] rounded-2xl border border-white/8 flex items-center gap-4 px-4 py-3.5"
+            className="bg-white/[0.04] rounded-2xl border border-white/[0.06] flex items-center gap-4 px-5 py-3.5"
           >
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-[15px] text-[#E5E7EB] truncate">{ex.name}</p>
+              <p className="font-semibold text-[15px] text-[#E5E7EB] truncate">{exName(ex)}</p>
               <p className="text-[12px] text-[#6B7280] mt-0.5 truncate">{ex.muscle} · {ex.equipment}</p>
             </div>
             {added ? (
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg flex-shrink-0"
                 style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
-                Added
+                {t('workoutBuilder.added')}
               </span>
             ) : (
               <button
                 onClick={() => onSelect(ex)}
                 className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
-                style={{ background: 'rgba(212,175,55,0.18)', border: '1.5px solid rgba(212,175,55,0.5)' }}
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 50%, transparent)' }}
               >
-                <Plus size={18} strokeWidth={2.5} style={{ color: '#D4AF37' }} />
+                <Plus size={18} strokeWidth={2.5} style={{ color: 'var(--color-accent)' }} />
               </button>
             )}
           </div>
@@ -147,10 +149,13 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText }) => {
 };
 
 const WorkoutBuilder = () => {
+  const { t } = useTranslation('pages');
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get('from') || '/workouts';
+  const rawReturn = searchParams.get('from') || '/workouts';
+  // Only allow relative paths starting with / but not // (protocol-relative URLs)
+  const returnTo = (rawReturn.startsWith('/') && !rawReturn.startsWith('//')) ? rawReturn : '/workouts';
   const { user, profile } = useAuth();
   const { showToast } = useToast();
   const [showLibrary, setShowLibrary] = useState(false);
@@ -204,7 +209,7 @@ const WorkoutBuilder = () => {
 
     supabase
       .from('exercises')
-      .select('id, name, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, created_by')
+      .select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, created_by')
       .eq('gym_id', profile.gym_id)
       .eq('is_active', true)
       .then(({ data }) => {
@@ -212,6 +217,7 @@ const WorkoutBuilder = () => {
           setCustomExs((data || []).map(r => ({
             id:               r.id,
             name:             r.name,
+            name_es:          r.name_es || null,
             muscle:           r.muscle_group,
             equipment:        r.equipment,
             category:         r.category,
@@ -335,7 +341,7 @@ const WorkoutBuilder = () => {
       } else {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
-        showToast('Routine saved', 'success');
+        showToast(t('workoutBuilder.routineSaved'), 'success');
       }
     } catch (err) {
       setError(err.message || 'Save failed');
@@ -377,35 +383,37 @@ const WorkoutBuilder = () => {
   return (
     <div className="fixed inset-0 bg-[#05070B] z-[90] flex flex-col animate-fade-in">
 
-      {/* Header */}
-      <header className="flex-shrink-0 px-4 py-3.5 border-b border-white/6 flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-2xl">
+      {/* Header — safe area aware */}
+      <header
+        className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 bg-[#05070B]/90 backdrop-blur-xl"
+        style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}
+      >
         <button
           onClick={handleBack}
           disabled={saving}
-          className="text-[#D4AF37] hover:text-[#E6C766] transition-colors flex items-center -ml-1 disabled:opacity-50 flex-shrink-0"
+          className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.06] transition-colors disabled:opacity-50 flex-shrink-0"
         >
-          <ChevronLeft size={26} strokeWidth={2.5} />
-          <span className="text-[16px] font-semibold -ml-0.5">Workouts</span>
+          <ChevronLeft size={20} strokeWidth={2.5} className="text-[#9CA3AF]" />
         </button>
 
         <div className="flex-1 text-center">
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            className="bg-transparent text-[#E5E7EB] font-semibold text-[16px] text-center focus:outline-none w-full max-w-[200px] border-b border-transparent focus:border-[#D4AF37]/30 transition-colors"
+            className="bg-transparent text-[#E5E7EB] font-bold text-[18px] text-center focus:outline-none w-full max-w-[220px] border-b-2 border-transparent focus:border-[#D4AF37]/40 transition-colors"
           />
         </div>
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`font-bold text-[14px] px-4 py-1.5 rounded-full transition-all disabled:opacity-50 flex-shrink-0 ${
+          className={`font-bold text-[13px] px-4 py-2 rounded-xl transition-all disabled:opacity-50 flex-shrink-0 ${
             saved
               ? 'bg-[#10B981] text-white'
               : 'bg-[#D4AF37] hover:bg-[#E6C766] text-black'
           }`}
         >
-          {saving ? '…' : saved ? 'Saved ✓' : 'Save'}
+          {saving ? '…' : saved ? `${t('workoutBuilder.saved')} ✓` : t('workoutBuilder.save')}
         </button>
       </header>
 
@@ -424,24 +432,24 @@ const WorkoutBuilder = () => {
       {showLibrary && (
         <div className="fixed inset-0 z-[95] bg-[#05070B] flex flex-col animate-fade-in">
           {/* Header */}
-          <div className="sticky top-0 z-10 border-b border-white/6 bg-[#05070B]/90 backdrop-blur-2xl">
+          <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[#05070B]/90 backdrop-blur-2xl">
             <div className="px-4 py-3.5 flex items-center gap-3">
               <button
                 onClick={() => setShowLibrary(false)}
                 className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
               >
                 <ChevronLeft size={24} strokeWidth={2.5} />
-                <span className="font-semibold text-[16px]">Back</span>
+                <span className="font-semibold text-[16px]">{t('workoutBuilder.back')}</span>
               </button>
-              <h2 className="flex-1 text-center font-semibold text-[16px] text-[#E5E7EB]">Add Exercise</h2>
+              <h2 className="flex-1 text-center font-semibold text-[16px] text-[#E5E7EB]">{t('workoutBuilder.addExercise')}</h2>
               <div className="w-16" />
             </div>
             {/* Tabs */}
             <div className="flex px-4 gap-5">
               {[
-                { key: 'library', label: 'Library' },
-                { key: 'mine',    label: `Mine${myExs.length ? ` (${myExs.length})` : ''}` },
-                { key: 'friends', label: `Friends${friendExs.length ? ` (${friendExs.length})` : ''}` },
+                { key: 'library', label: t('workoutBuilder.library') },
+                { key: 'mine',    label: `${t('workoutBuilder.mine')}${myExs.length ? ` (${myExs.length})` : ''}` },
+                { key: 'friends', label: `${t('workoutBuilder.friends')}${friendExs.length ? ` (${friendExs.length})` : ''}` },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -472,7 +480,8 @@ const WorkoutBuilder = () => {
                 exercises={myExs}
                 selectedIds={selectedIds}
                 onSelect={handleAdd}
-                emptyText="You haven't created any exercises yet. Go to the Exercise Library to add one."
+                emptyText={t('workoutBuilder.noOwnExercises')}
+                t={t}
               />
             )}
             {pickerTab === 'friends' && (
@@ -480,7 +489,8 @@ const WorkoutBuilder = () => {
                 exercises={friendExs}
                 selectedIds={selectedIds}
                 onSelect={handleAdd}
-                emptyText="No exercises from friends yet."
+                emptyText={t('workoutBuilder.noFriendExercises')}
+                t={t}
               />
             )}
           </div>
@@ -494,10 +504,10 @@ const WorkoutBuilder = () => {
         <div className="flex items-center gap-3 mb-8 text-[13px] text-[#6B7280]">
           <span className="flex items-center gap-1.5">
             <Dumbbell size={13} className="text-[#D4AF37]" />
-            {routineExercises.length} exercise{routineExercises.length !== 1 ? 's' : ''}
+            {routineExercises.length} {routineExercises.length !== 1 ? t('workoutBuilder.exercises') : t('workoutBuilder.exercise')}
           </span>
           <span className="text-[#4B5563]">·</span>
-          <span>{routineExercises.reduce((sum, e) => sum + e.sets, 0)} total sets</span>
+          <span>{routineExercises.reduce((sum, e) => sum + e.sets, 0)} {t('workoutBuilder.totalSets')}</span>
           <span className="text-[#4B5563]">·</span>
           <span>~{Math.round(routineExercises.reduce((sum, e) => sum + (e.sets * (e.restSeconds + 45)), 0) / 60)} min</span>
         </div>
@@ -516,14 +526,15 @@ const WorkoutBuilder = () => {
                 onRemove={handleRemove}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
+                t={t}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-14 text-[#6B7280] mb-5">
             <Dumbbell size={44} className="mx-auto mb-4 opacity-15" />
-            <p className="text-[16px] font-medium text-[#9CA3AF]">No exercises yet</p>
-            <p className="text-[13px] mt-1">Add exercises from the library below</p>
+            <p className="text-[16px] font-medium text-[#9CA3AF]">{t('workoutBuilder.noExercisesYet')}</p>
+            <p className="text-[13px] mt-1">{t('workoutBuilder.addFromLibrary')}</p>
           </div>
         )}
 
@@ -532,7 +543,7 @@ const WorkoutBuilder = () => {
           onClick={() => setShowLibrary(true)}
           className="hidden md:flex w-full items-center justify-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 border border-[#D4AF37]/25 hover:border-[#D4AF37]/45 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-2xl transition-all"
         >
-          <Plus size={19} strokeWidth={2.5} /> Add Exercise
+          <Plus size={19} strokeWidth={2.5} /> {t('workoutBuilder.addExercise')}
         </button>
 
         {/* Mobile: prominent add button when empty */}
@@ -541,7 +552,7 @@ const WorkoutBuilder = () => {
             onClick={() => setShowLibrary(true)}
             className="md:hidden w-full flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/25 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-2xl transition-all active:scale-95"
           >
-            <Plus size={19} strokeWidth={2.5} /> Add Exercise
+            <Plus size={19} strokeWidth={2.5} /> {t('workoutBuilder.addExercise')}
           </button>
         )}
 
@@ -559,7 +570,7 @@ const WorkoutBuilder = () => {
             disabled={saving}
             className="hidden md:flex w-full mt-4 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[16px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
           >
-            {saving ? '…' : 'Save & Done'}
+            {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>
         )}
 
@@ -569,7 +580,7 @@ const WorkoutBuilder = () => {
             onClick={() => setRoutineExercises(originalExercises.map(e => ({ ...e })))}
             className="w-full flex items-center justify-center gap-2 text-[#4B5563] hover:text-[#9CA3AF] text-[12px] mt-3 py-2 transition-colors"
           >
-            <RotateCcw size={12} /> Reset to saved
+            <RotateCcw size={12} /> {t('workoutBuilder.resetToSaved')}
           </button>
         )}
       </div>
@@ -577,20 +588,20 @@ const WorkoutBuilder = () => {
       </div>{/* end scrollable body */}
 
       {/* Mobile bottom bar — flex-shrink-0 so it stays pinned at the bottom */}
-      <div className="md:hidden flex-shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-[#05070B]/95 backdrop-blur-xl border-t border-white/6">
+      <div className="md:hidden flex-shrink-0 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] bg-[#05070B]/95 backdrop-blur-xl border-t border-white/[0.06]">
         <div className="flex gap-3">
           <button
             onClick={() => setShowLibrary(true)}
             className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold text-[14px] py-3.5 rounded-2xl active:scale-95 transition-all"
           >
-            <Plus size={18} strokeWidth={2.5} /> Add
+            <Plus size={18} strokeWidth={2.5} /> {t('workoutBuilder.add')}
           </button>
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
             className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-black font-bold text-[15px] py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center"
           >
-            {saving ? '…' : 'Save & Done'}
+            {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>
         </div>
       </div>

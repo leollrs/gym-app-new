@@ -5,8 +5,42 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+/** Strip EXIF metadata from JPEG to prevent GPS/device info leakage */
+function stripExifFromJpeg(base64: string): string {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return base64;
+    const cleaned: number[] = [0xFF, 0xD8];
+    let i = 2;
+    while (i < bytes.length - 1) {
+      if (bytes[i] !== 0xFF) break;
+      const marker = bytes[i + 1];
+      if (marker === 0xE1 || marker === 0xE2) {
+        const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+        i += 2 + segLen;
+        continue;
+      }
+      if (marker === 0xDA) {
+        for (let j = i; j < bytes.length; j++) cleaned.push(bytes[j]);
+        break;
+      }
+      const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+      for (let j = i; j < i + 2 + segLen; j++) cleaned.push(bytes[j]);
+      i += 2 + segLen;
+    }
+    const cleanedBytes = new Uint8Array(cleaned);
+    let result = '';
+    for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
+    return btoa(result);
+  } catch {
+    return base64;
+  }
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -21,7 +55,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -33,7 +67,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: `Auth failed: ${authError?.message || 'no user'}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
@@ -41,16 +75,26 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) {
       return new Response(
         JSON.stringify({ error: 'OPENAI_API_KEY not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { image } = await req.json();
-    if (!image) {
-      throw new Error('No image provided');
+    const { image: rawImage, language } = await req.json();
+    const lang = language === 'es' ? 'es' : 'en';
+    const langInstruction = lang === 'es'
+      ? '\n\nIMPORTANT: All text values in the JSON (food_name, item names) MUST be in Spanish. Responde completamente en español.'
+      : '';
+    if (!rawImage) {
+      return new Response(
+        JSON.stringify({ error: 'No image provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+    // Strip EXIF metadata before sending to AI
+    const image = stripExifFromJpeg(rawImage);
 
-    // ── RATE LIMIT CHECK (15 requests/hour per user) ────────────
+    // ── RATE LIMIT CHECK (15 requests/hour per user) — fail closed ──
+    let rateLimitOk = false;
     try {
       const RATE_LIMIT = 15;
       const ENDPOINT = 'analyze-food-photo';
@@ -74,8 +118,13 @@ serve(async (req) => {
         profile_id: user.id,
         endpoint: ENDPOINT,
       });
-    } catch {
-      // Rate limit check failed — proceed anyway
+      rateLimitOk = true;
+    } catch (rateLimitError) {
+      console.error('Rate limit check failed:', rateLimitError);
+      return new Response(
+        JSON.stringify({ error: 'Service temporarily unavailable' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     // ── END RATE LIMIT ──────────────────────────────────────────
 
@@ -99,7 +148,9 @@ CRITICAL RULES:
 - Be precise with macros using real nutritional data
 - Common references per 100g: chicken breast 165cal/31P/0C/3.6F, white rice cooked 130cal/2.7P/28C/0.3F, banana 89cal/1.1P/23C/0.3F, egg 155cal/13P/1.1C/11F, bread 265cal/9P/49C/3.2F
 - Regular Coke 355ml can = 140cal/0P/39C/0F
-- Do NOT hallucinate or guess. Use real nutritional knowledge only.`,
+- Do NOT hallucinate or guess. Use real nutritional knowledge only.
+
+IMPORTANT: If the image contains inappropriate, explicit, or offensive content that is not a legitimate food photo, respond with exactly: {"error": "inappropriate_content", "message": "This image cannot be analyzed"}${langInstruction}`,
           },
           {
             role: 'user',
@@ -141,6 +192,14 @@ If no food or drink visible: { "error": "no_food_detected" }`,
     } catch {
       console.error('Failed to parse AI response:', aiText);
       throw new Error('Failed to parse AI response: ' + aiText.slice(0, 200));
+    }
+
+    // ── Content moderation check ────────────────────────────────
+    if (parsed.error === 'inappropriate_content') {
+      return new Response(
+        JSON.stringify({ error: 'inappropriate_content', message: 'This image cannot be analyzed' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (parsed.error === 'no_food_detected') {
@@ -194,7 +253,7 @@ If no food or drink visible: { "error": "no_food_detected" }`,
     console.error('analyze-food-photo error:', msg);
     return new Response(
       JSON.stringify({ error: msg }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

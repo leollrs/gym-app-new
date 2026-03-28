@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useReducer, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useReducer, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   TrendingUp, TrendingDown, Minus, Scale, Plus, X, Check,
-  Camera, Clock, Upload, Image, Trash2,
+  Camera, Clock, Upload, Image as ImageIcon, Trash2, ChevronDown,
 } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
 import {
@@ -13,11 +13,13 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, parseISO, subDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import {
   MEASUREMENT_FIELDS, PERIOD_OPTIONS,
   fmtW, today, cmToIn, inToCm,
 } from './progressConstants';
 import ChartTooltip from '../../components/ChartTooltip';
+import { takePhoto } from '../../lib/takePhoto';
 
 // ── MeasurementsModal ────────────────────────────────────────────────────────
 
@@ -74,6 +76,7 @@ const MEASUREMENT_LABEL_KEYS = {
 
 // ── Measurement Trend Chart ──────────────────────────────────────────────────
 const MeasurementChart = ({ history, metrics }) => {
+  const { t, i18n } = useTranslation('pages');
   const [activeMetric, setActiveMetric] = useState(0);
   const metric = metrics[activeMetric];
 
@@ -88,7 +91,7 @@ const MeasurementChart = ({ history, metrics }) => {
       }
       if (val == null) return null;
       return {
-        date: format(parseISO(m.measured_at), 'MMM d'),
+        date: format(parseISO(m.measured_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
         value: metric.convert ? cmToIn(val) : Math.round(val * 10) / 10,
       };
     }).filter(Boolean);
@@ -104,9 +107,9 @@ const MeasurementChart = ({ history, metrics }) => {
   const totalDelta = Math.round((last - first) * 10) / 10;
 
   return (
-    <div className="mt-4 pt-4 border-t border-white/[0.06]">
+    <div className="mt-4 pt-4 border-t border-[var(--color-border-subtle)]">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-[0.12em]">Progress Trends</p>
+        <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.12em]">{t('progressBody.progressTrends')}</p>
         {totalDelta !== 0 && (
           <span className="text-[10px] font-bold tabular-nums" style={{ color: totalDelta > 0 ? (metric.key === 'waist_cm' || metric.key === 'body_fat_pct' ? '#EF4444' : '#10B981') : (metric.key === 'waist_cm' || metric.key === 'body_fat_pct' ? '#10B981' : '#EF4444') }}>
             {totalDelta > 0 ? '+' : ''}{totalDelta}{metric.unit}
@@ -115,13 +118,13 @@ const MeasurementChart = ({ history, metrics }) => {
       </div>
 
       {/* Metric selector pills */}
-      <div className="flex gap-1.5 mb-4 overflow-x-auto scroll-smooth scrollbar-none">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {metrics.map((m, i) => (
           <button key={m.key} onClick={() => setActiveMetric(i)}
-            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex-shrink-0 transition-all"
+            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all"
             style={activeMetric === i
               ? { background: `${m.color}18`, color: m.color, border: `1px solid ${m.color}30` }
-              : { background: 'rgba(17,24,39,0.6)', color: '#4B5563', border: '1px solid rgba(255,255,255,0.06)' }
+              : { background: 'var(--color-bg-deep)', color: 'var(--color-text-subtle)', border: '1px solid var(--color-border-subtle)' }
             }>
             {m.label}
           </button>
@@ -137,10 +140,10 @@ const MeasurementChart = ({ history, metrics }) => {
               <stop offset="95%" stopColor={metric.color} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-          <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#4B5563' }} tickLine={false} axisLine={false} />
-          <YAxis domain={[yMin, yMax]} tick={{ fontSize: 9, fill: '#4B5563' }} tickLine={false} axisLine={false} />
-          <Tooltip content={<ChartTooltip formatter={(v) => `${v} ${metric.unit}`} />} cursor={{ fill: `${metric.color}08` }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} />
+          <YAxis domain={[yMin, yMax]} tick={{ fontSize: 9, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} />
+          <Tooltip content={<ChartTooltip formatter={(v) => `${v} ${metric.unit}`} nameLabel={metric.label} />} cursor={{ fill: `${metric.color}08` }} />
           <Area type="monotone" dataKey="value" stroke={metric.color} strokeWidth={2} fill="url(#measGrad)" dot={false} activeDot={{ r: 5, strokeWidth: 2, fill: metric.color }} />
         </AreaChart>
       </ResponsiveContainer>
@@ -148,9 +151,109 @@ const MeasurementChart = ({ history, metrics }) => {
   );
 };
 
+const ProgressPhotoTimeline = ({ byDate, byMonth, latestDate, onDeletePhoto }) => {
+  const { t, i18n } = useTranslation('pages');
+  const [expandedDates, setExpandedDates] = useState(() => new Set([latestDate]));
+  const [expandedMonths, setExpandedMonths] = useState(() => {
+    const months = Object.keys(byMonth);
+    return new Set(months.length ? [months[0]] : []);
+  });
+  const [deleting, setDeleting] = useState(null);
+
+  const toggleMonth = (m) => setExpandedMonths(prev => {
+    const next = new Set(prev);
+    next.has(m) ? next.delete(m) : next.add(m);
+    return next;
+  });
+  const toggleDate = (d) => setExpandedDates(prev => {
+    const next = new Set(prev);
+    next.has(d) ? next.delete(d) : next.add(d);
+    return next;
+  });
+
+  const handleDelete = async (photo) => {
+    const msg = t('progressBody.confirmDeletePhoto', 'Delete this progress photo? This cannot be undone.');
+    if (!window.confirm(msg)) return;
+    setDeleting(photo.id);
+    await onDeletePhoto(photo);
+    setDeleting(null);
+  };
+
+  const ANGLES = ['front', 'side', 'back'];
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(byMonth).map(([month, dates]) => (
+        <div key={month}>
+          {Object.keys(byMonth).length > 1 && (
+            <button onClick={() => toggleMonth(month)}
+              className="flex items-center justify-between w-full py-2 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{month}</span>
+              <ChevronDown size={14} className={`text-[var(--color-text-muted)] transition-transform ${expandedMonths.has(month) ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+
+          {(Object.keys(byMonth).length === 1 || expandedMonths.has(month)) && dates.map(dateKey => {
+            const photos = byDate[dateKey];
+            const isExpanded = expandedDates.has(dateKey);
+            const dateLabel = format(parseISO(dateKey), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
+            const hasPhotos = ANGLES.some(a => photos[a]);
+
+            return (
+              <div key={dateKey} className="mb-2">
+                <button onClick={() => toggleDate(dateKey)}
+                  className="flex items-center justify-between w-full py-2 px-3 rounded-xl transition-colors"
+                  style={{ background: isExpanded ? 'var(--color-surface-hover)' : 'transparent' }}>
+                  <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{dateLabel}</span>
+                  <ChevronDown size={14} className={`text-[var(--color-text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isExpanded && hasPhotos && (
+                  <div className="grid grid-cols-3 gap-2 mt-2 px-1">
+                    {ANGLES.map(angle => {
+                      const photo = photos[angle];
+                      return (
+                        <div key={angle} className="text-center">
+                          {photo ? (
+                            <div className="relative aspect-[3/4] rounded-xl overflow-hidden group" style={{ border: '1px solid var(--color-border-subtle)' }}>
+                              <img src={photo.url} alt={angle} className="w-full h-full object-cover" loading="lazy" />
+                              <button
+                                onClick={() => handleDelete(photo)}
+                                disabled={deleting === photo.id}
+                                className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-opacity opacity-0 group-hover:opacity-100 active:opacity-100"
+                                style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+                                aria-label={t('progressBody.deletePhoto', 'Delete photo')}
+                              >
+                                {deleting === photo.id
+                                  ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                  : <Trash2 size={13} className="text-red-400" />
+                                }
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="aspect-[3/4] rounded-xl flex items-center justify-center"
+                              style={{ background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-subtle)' }}>
+                              <ImageIcon size={16} className="text-[var(--color-text-muted)]" />
+                            </div>
+                          )}
+                          <p className="text-[9px] text-[var(--color-text-muted)] mt-1 capitalize font-medium">{t(`progressBody.angle_${angle}`)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const SCAN_STEPS = [
-  { id: 'front', label: 'Front View', instruction: 'Stand facing the camera, arms relaxed at your sides, feet shoulder-width apart.' },
-  { id: 'side', label: 'Side View', instruction: 'Turn 90° to your right. Stand naturally with arms at your sides.' },
+  { id: 'front', labelKey: 'progressBody.photoSteps.front_title', instructionKey: 'progressBody.photoSteps.front_desc' },
+  { id: 'side', labelKey: 'progressBody.photoSteps.side_title', instructionKey: 'progressBody.photoSteps.side_desc' },
 ];
 
 const compressImage = (file, maxW = 800) => new Promise((resolve, reject) => {
@@ -176,7 +279,7 @@ const blobToBase64 = (blob) => new Promise((resolve) => {
 });
 
 const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const empty = MEASUREMENT_FIELDS.reduce((a, f) => ({ ...a, [f.key]: '' }), {});
   const initialForm = existing
     ? MEASUREMENT_FIELDS.reduce(
@@ -195,7 +298,6 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     form: initialForm,
   });
   const { form, saving, error, scanning, scanPreview } = state;
-  const fileRef = useRef(null);
 
   // Guided scan state
   const [scanMode, setScanMode] = useState(false);
@@ -203,6 +305,102 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   const [frontPhoto, setFrontPhoto] = useState(null); // { preview, base64 }
   const [sidePhoto, setSidePhoto] = useState(null);
   const [scanResult, setScanResult] = useState(null); // AI response with derived metrics
+
+  // Clean up localStorage when modal closes
+  const handleClose = useCallback(() => {
+    try { localStorage.removeItem('_bodyScanFront'); localStorage.removeItem('_bodyScanSide'); } catch {}
+    onClose();
+  }, [onClose]);
+
+  // Resume pending body scan after Android WebView restart
+  useEffect(() => {
+    try {
+      // Case 1: completed result
+      const done = localStorage.getItem('_pendingBodyResult');
+      if (done) {
+        localStorage.removeItem('_pendingBodyResult');
+        localStorage.removeItem('_pendingBodyScan');
+        const estimates = JSON.parse(done);
+        if (estimates) {
+          dispatch({ type: 'MERGE_ESTIMATES', estimates });
+          setScanResult(estimates);
+        }
+        return;
+      }
+      // Case 2: analysis was in progress (photos saved, API not yet complete)
+      const pending = localStorage.getItem('_pendingBodyScan');
+      if (pending) {
+        localStorage.removeItem('_pendingBodyScan');
+        // Also clean up photo cache since analysis already started
+        try { localStorage.removeItem('_bodyScanFront'); localStorage.removeItem('_bodyScanSide'); } catch {}
+        const { frontBase64, sideBase64 } = JSON.parse(pending);
+        if (frontBase64) {
+          dispatch({ type: 'SET_SCANNING', payload: true });
+          (async () => {
+            try {
+              const reqBody = { image: frontBase64, language: i18n.language };
+              if (sideBase64) reqBody.sideImage = sideBase64;
+              const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', { body: reqBody });
+              if (fnError) {
+                let msg = fnError.message || 'Analysis failed';
+                try { const b = await fnError.context?.json(); if (b?.error) msg = b.error; } catch {}
+                throw new Error(msg);
+              }
+              if (data?.error) throw new Error(data.error);
+              if (data?.estimates) {
+                dispatch({ type: 'MERGE_ESTIMATES', estimates: data.estimates });
+                setScanResult(data.estimates);
+              }
+            } catch (err) {
+              dispatch({ type: 'SET_ERROR', payload: err.message || 'Photo analysis failed' });
+            } finally {
+              dispatch({ type: 'SET_SCANNING', payload: false });
+            }
+          })();
+        }
+        return;
+      }
+      // Case 3: front photo was captured but scan wasn't started yet (Samsung WebView killed)
+      const savedFront = localStorage.getItem('_bodyScanFront');
+      if (savedFront) {
+        const front = JSON.parse(savedFront);
+        setFrontPhoto(front);
+        setScanMode(true);
+        const savedSide = localStorage.getItem('_bodyScanSide');
+        if (savedSide) {
+          // Both photos captured — auto-run analysis
+          const side = JSON.parse(savedSide);
+          setSidePhoto(side);
+          localStorage.removeItem('_bodyScanFront');
+          localStorage.removeItem('_bodyScanSide');
+          runAnalysis(front.base64, side.base64);
+        } else {
+          // Only front photo — resume at step 1 (side photo)
+          setScanStep(1);
+          // Auto-open camera for side photo after a brief delay
+          setTimeout(async () => {
+            try {
+              const { takePhoto } = await import('../../lib/takePhoto');
+              const file = await takePhoto();
+              if (file) {
+                const compressed = await compressImage(file);
+                const sideBase64 = await blobToBase64(compressed);
+                const thumbBlob = await compressImage(file, 200);
+                const sidePreview = await new Promise(r => {
+                  const reader = new FileReader();
+                  reader.onload = ev => r(ev.target.result);
+                  reader.readAsDataURL(thumbBlob);
+                });
+                try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview: sidePreview, base64: sideBase64 })); } catch {}
+                setSidePhoto({ preview: sidePreview, base64: sideBase64 });
+                runAnalysis(front.base64, sideBase64);
+              }
+            } catch {}
+          }, 800);
+        }
+      }
+    } catch {}
+  }, []);
 
   const handlePhotoCapture = async (e) => {
     const file = e.target.files?.[0];
@@ -219,9 +417,13 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       const preview = await new Promise(r => { thumbReader.onload = ev => r(ev.target.result); thumbReader.readAsDataURL(thumbBlob); });
 
       if (scanStep === 0) {
+        // Persist to localStorage — survives Samsung WebView kill
+        try { localStorage.setItem('_bodyScanFront', JSON.stringify({ preview, base64 })); } catch {}
         setFrontPhoto({ preview, base64 });
         setScanStep(1);
       } else {
+        // Persist side photo before analysis
+        try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview, base64 })); } catch {}
         setSidePhoto({ preview, base64 });
         // Both photos captured — run analysis
         await runAnalysis(frontPhoto.base64, base64);
@@ -241,8 +443,16 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     dispatch({ type: 'SET_SCANNING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: '' });
 
+    // Save to localStorage before API call — survives Android WebView restart
     try {
-      const body = { image: frontBase64 };
+      localStorage.setItem('_pendingBodyScan', JSON.stringify({ frontBase64, sideBase64 }));
+      // Clear individual photo cache — they're now in _pendingBodyScan
+      localStorage.removeItem('_bodyScanFront');
+      localStorage.removeItem('_bodyScanSide');
+    } catch {}
+
+    try {
+      const body = { image: frontBase64, language: i18n.language };
       if (sideBase64) body.sideImage = sideBase64;
 
       const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', { body });
@@ -255,11 +465,14 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       if (data?.error) throw new Error(data.error);
 
       if (data?.estimates) {
+        // Clear pending — analysis succeeded
+        try { localStorage.removeItem('_pendingBodyScan'); } catch {}
         dispatch({ type: 'MERGE_ESTIMATES', estimates: data.estimates });
         setScanResult(data.estimates);
         setScanMode(false);
       }
     } catch (err) {
+      try { localStorage.removeItem('_pendingBodyScan'); } catch {}
       dispatch({ type: 'SET_ERROR', payload: err.message || 'Photo analysis failed' });
       setScanMode(false);
     } finally {
@@ -273,6 +486,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     setFrontPhoto(null);
     setSidePhoto(null);
     setScanResult(null);
+    try { localStorage.removeItem('_bodyScanFront'); localStorage.removeItem('_bodyScanSide'); } catch {}
   };
 
   const handleSave = async () => {
@@ -294,7 +508,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
         .upsert(payload, { onConflict: 'profile_id,measured_at' });
       if (err) throw new Error(err.message);
       onSaved();
-      onClose();
+      handleClose();
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message === 'Load failed' ? 'Network error — check your connection and try again.' : (err.message || 'Failed to save') });
       dispatch({ type: 'SET_SAVING', payload: false });
@@ -308,40 +522,40 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" onClick={() => setScanMode(false)}>
         <div className="relative w-full max-w-md mx-4 rounded-[28px] overflow-hidden"
-          style={{ background: 'linear-gradient(180deg, #0C1222 0%, #080D18 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)' }}
+          style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.3), 0 0 0 1px var(--color-border-subtle)' }}
           onClick={e => e.stopPropagation()}>
 
           {/* Header */}
           <div className="px-6 pt-6 pb-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-[0.15em]">Body Scan</p>
+              <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.15em]">{t('progressBody.bodyScan')}</p>
               <button onClick={() => setScanMode(false)}>
-                <X size={18} className="text-[#6B7280]" />
+                <X size={18} className="text-[var(--color-text-muted)]" />
               </button>
             </div>
-            <h3 className="text-[20px] font-bold text-white">{currentStep.label}</h3>
-            <p className="text-[12px] text-[#6B7280] mt-1 leading-relaxed">{currentStep.instruction}</p>
+            <h3 className="text-[20px] font-bold text-[var(--color-text-primary)]">{t(currentStep.labelKey)}</h3>
+            <p className="text-[12px] text-[var(--color-text-muted)] mt-1 leading-relaxed">{t(currentStep.instructionKey)}</p>
           </div>
 
           {/* Step indicators */}
           <div className="flex gap-2 px-6 mb-5">
             {SCAN_STEPS.map((s, i) => (
               <div key={s.id} className="flex-1 h-[3px] rounded-full" style={{
-                background: i < scanStep ? '#10B981' : i === scanStep ? '#D4AF37' : 'rgba(255,255,255,0.06)',
+                background: i < scanStep ? '#10B981' : i === scanStep ? 'var(--color-accent)' : 'var(--color-border-subtle)',
               }} />
             ))}
           </div>
 
           {/* Photo preview area */}
           <div className="mx-6 mb-5 aspect-[3/4] rounded-[18px] overflow-hidden flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '2px dashed rgba(255,255,255,0.08)' }}>
+            style={{ background: 'var(--color-surface-hover)', border: '2px dashed var(--color-border-subtle)' }}>
             {scanStep === 1 && frontPhoto ? (
               <div className="relative w-full h-full">
                 <img src={frontPhoto.preview} alt="Front" className="w-full h-full object-cover opacity-30" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <Check size={32} className="text-[#10B981] mb-2" />
-                  <p className="text-[12px] font-semibold text-[#10B981]">Front captured</p>
-                  <p className="text-[11px] text-[#6B7280] mt-1">Now take the side view</p>
+                  <p className="text-[12px] font-semibold text-[#10B981]">{t('progressBody.frontCaptured')}</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{t('progressBody.nowTakeSide')}</p>
                 </div>
               </div>
             ) : (
@@ -356,35 +570,42 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                     <path d="M40 8 C44 8 47 12 47 18 C47 24 44 28 40 28 C36 28 33 24 33 18 C33 12 36 8 40 8 Z M34 32 L46 32 C50 32 54 36 54 40 L52 80 L48 80 L46 120 L42 120 L42 152 L38 152 L38 120 L34 120 L32 80 L28 80 L26 40 C26 36 30 32 34 32 Z" fill="white" />
                   )}
                 </svg>
-                <p className="text-[11px] text-[#374151]">Align yourself with the outline</p>
+                <p className="text-[11px] text-[var(--color-text-muted)]">{t('progressBody.alignOutline')}</p>
               </div>
             )}
           </div>
 
           {/* Tips */}
-          <div className="mx-6 mb-5 px-4 py-3 rounded-[14px]" style={{ background: 'rgba(212,175,55,0.04)', border: '1px solid rgba(212,175,55,0.08)' }}>
-            <p className="text-[10px] text-[#6B7280] leading-relaxed">
-              <span className="text-[#D4AF37] font-semibold">Tips:</span> Wear fitted clothing. Use consistent lighting. Stand 5-6 feet from camera. Photos are analyzed and immediately discarded.
+          <div className="mx-6 mb-5 px-4 py-3 rounded-[14px]" style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+            <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+              <span className="text-[#D4AF37] font-semibold">{t('progressBody.tips')}:</span> {t('progressBody.tipsText')}
             </p>
           </div>
 
           {/* Action buttons */}
           <div className="px-6 pb-6">
-            <button onClick={() => fileRef.current?.click()}
+            <button onClick={async () => {
+                const file = await takePhoto();
+                if (file) {
+                  const dt = new DataTransfer();
+                  dt.items.add(file);
+                  handlePhotoCapture({ target: { files: dt.files, value: '' } });
+                }
+              }}
               className="w-full py-[16px] rounded-[16px] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all mb-3"
-              style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #C4A030 100%)', color: '#000', boxShadow: '0 4px 16px rgba(212,175,55,0.25)' }}>
-              <Camera size={18} /> Take {currentStep.label} Photo
+              style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: '#000', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+              <Camera size={18} /> {t('progressBody.takePhoto', { view: t(currentStep.labelKey) })}
             </button>
             {scanStep === 1 && (
               <button onClick={skipSidePhoto}
-                className="w-full py-3 rounded-[14px] text-[12px] font-semibold text-[#6B7280] active:scale-[0.97] transition-all"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                Skip side photo (less accurate)
+                className="w-full py-3 rounded-[14px] text-[12px] font-semibold text-[var(--color-text-muted)] active:scale-[0.97] transition-all"
+                style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                {t('progressBody.skipSidePhoto')}
               </button>
             )}
           </div>
 
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+
         </div>
       </div>
     );
@@ -392,44 +613,44 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 
   // ── Main modal (form + results) ──────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" onClick={handleClose}>
       <div className="w-full max-w-md overflow-hidden rounded-t-[28px] md:rounded-[28px]"
-        style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+        style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
         onClick={e => e.stopPropagation()}>
 
-        <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
-          <p className="text-[17px] font-bold text-[#E5E7EB]">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)]">
+          <p className="text-[17px] font-bold text-[var(--color-text-primary)]">
             {existing ? t('progress.body.updateMeasurements') : t('progress.body.addMeasurements')}
           </p>
-          <button onClick={onClose} aria-label="Close"><X size={18} className="text-[#6B7280]" /></button>
+          <button onClick={handleClose} aria-label="Close"><X size={18} className="text-[var(--color-text-muted)]" /></button>
         </div>
 
         <div className="p-5 max-h-[65vh] overflow-y-auto">
           {/* AI Body Scan button */}
           <div className="mb-5">
             {scanning ? (
-              <div className="flex flex-col items-center py-6 rounded-[16px]" style={{ background: 'rgba(212,175,55,0.04)', border: '1px solid rgba(212,175,55,0.1)' }}>
+              <div className="flex flex-col items-center py-6 rounded-[16px]" style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
                 <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mb-3" />
-                <p className="text-[13px] font-semibold text-[#D4AF37]">Analyzing your photos...</p>
-                <p className="text-[10px] text-[#4B5563] mt-1">Estimating body composition</p>
+                <p className="text-[13px] font-semibold text-[#D4AF37]">{t('progressBody.analyzingPhotos')}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{t('progressBody.estimatingComposition')}</p>
               </div>
             ) : scanResult ? (
               <div className="rounded-[16px] overflow-hidden" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
                 <div className="px-4 py-3.5 flex items-center gap-3">
                   <div className="flex gap-2">
-                    {frontPhoto && <img src={frontPhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />}
-                    {sidePhoto && <img src={sidePhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />}
+                    {frontPhoto && <img src={frontPhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {sidePhoto && <img src={sidePhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid var(--color-border-subtle)' }} />}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
                       <Check size={13} className="text-[#10B981]" />
-                      <span className="text-[12px] font-bold text-[#10B981]">Scan complete</span>
+                      <span className="text-[12px] font-bold text-[#10B981]">{t('progressBody.scanComplete')}</span>
                     </div>
-                    <p className="text-[10px] text-[#6B7280] mt-0.5">
-                      {scanResult.scan_quality === 'good' ? 'High quality scan' : scanResult.scan_quality === 'fair' ? 'Fair quality — ' + (scanResult.scan_notes || '') : 'Low quality — ' + (scanResult.scan_notes || '')}
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                      {scanResult.scan_quality === 'good' ? t('progressBody.highQualityScan') : scanResult.scan_quality === 'fair' ? t('progressBody.fairQuality') + ' — ' + (scanResult.scan_notes || '') : t('progressBody.lowQuality') + ' — ' + (scanResult.scan_notes || '')}
                     </p>
                   </div>
-                  <button onClick={resetScan} className="text-[10px] font-semibold text-[#D4AF37]">Rescan</button>
+                  <button onClick={resetScan} className="text-[10px] font-semibold text-[#D4AF37]">{t('progressBody.rescan')}</button>
                 </div>
 
                 {/* Derived metrics */}
@@ -442,7 +663,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                     )}
                     {scanResult.lean_mass_kg != null && (
                       <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981' }}>
-                        {scanResult.lean_mass_kg}kg lean
+                        {scanResult.lean_mass_kg}kg {t('progressBody.lean')}
                       </span>
                     )}
                     {scanResult.ffmi != null && (
@@ -460,18 +681,18 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 
                 {/* AI disclaimer */}
                 <div className="px-4 pb-3.5">
-                  <p className="text-[9px] text-[#374151] leading-relaxed">
-                    AI estimates may vary ±3-5%. Edit values below for accuracy. Photos were not stored.
+                  <p className="text-[9px] text-[var(--color-text-muted)] leading-relaxed">
+                    {t('progressBody.aiDisclaimer')}
                   </p>
                 </div>
               </div>
             ) : (
               <button onClick={resetScan}
                 className="w-full py-4 rounded-[16px] flex flex-col items-center gap-2 active:scale-[0.97] transition-all"
-                style={{ background: 'rgba(212,175,55,0.04)', border: '1px solid rgba(212,175,55,0.1)' }}>
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
                 <Camera size={22} className="text-[#D4AF37]" />
-                <span className="text-[13px] font-bold text-[#D4AF37]">AI Body Scan</span>
-                <span className="text-[10px] text-[#4B5563]">2 photos (front + side) for best accuracy</span>
+                <span className="text-[13px] font-bold text-[#D4AF37]">{t('progressBody.aiBodyScan')}</span>
+                <span className="text-[10px] text-[var(--color-text-muted)]">{t('progressBody.photosForAccuracy')}</span>
               </button>
             )}
           </div>
@@ -495,7 +716,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                     const n = parseFloat(v);
                     dispatch({ type: 'UPDATE_FIELD', key: f.key, value: !isNaN(n) && n < 0 ? '0' : v });
                   }}
-                  className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                  className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[#D4AF37]/40"
                 />
               </div>
             ))}
@@ -506,7 +727,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
         <div className="px-5 pb-5">
           <button onClick={handleSave} disabled={saving}
             className="w-full py-[14px] rounded-[16px] font-bold text-[14px] active:scale-[0.97] transition-all disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #C4A030 100%)', color: '#000', boxShadow: '0 4px 16px rgba(212,175,55,0.2)' }}>
+            style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)', color: '#000', boxShadow: '0 4px 16px color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
             {saving ? t('progress.body.saving') : t('progress.body.saveMeasurements')}
           </button>
         </div>
@@ -566,7 +787,7 @@ function bodyReducer(state, action) {
 
 // ── BodyTab ──────────────────────────────────────────────────────────────────
 export default function ProgressBody() {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { user, profile } = useAuth();
   const [state, dispatch] = useReducer(bodyReducer, bodyInitialState);
   const {
@@ -576,7 +797,6 @@ export default function ProgressBody() {
 
   const [progressPhotos, setProgressPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const photoInputRef = useRef(null);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -611,8 +831,10 @@ export default function ProgressBody() {
     // Resolve photo URLs
     if (photos?.length) {
       const withUrls = await Promise.all(photos.map(async (p) => {
-        const { data: urlData } = supabase.storage.from('progress-photos').getPublicUrl(p.storage_path);
-        return { ...p, url: urlData?.publicUrl || null };
+        const { data: urlData } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrl(p.storage_path, 3600); // 1 hour expiry
+        return { ...p, url: urlData?.signedUrl || null };
       }));
       setProgressPhotos(withUrls.filter(p => p.url));
     } else {
@@ -622,7 +844,7 @@ export default function ProgressBody() {
       type: 'SET_DATA',
       weightLogs: [...allLogs].reverse(),
       chartData: allLogs.map(l => ({
-        date: format(parseISO(l.logged_at), 'MMM d'),
+        date: format(parseISO(l.logged_at), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined }),
         weight: parseFloat(l.weight_lbs),
       })),
       latestMeasurements: allMeas[0] ?? null,
@@ -634,6 +856,29 @@ export default function ProgressBody() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleDeletePhoto = async (photo) => {
+    try {
+      // Delete from storage
+      await supabase.storage.from('progress-photos').remove([photo.storage_path]);
+      // Delete from database
+      await supabase.from('progress_photos').delete().eq('id', photo.id);
+      // Update local state
+      setProgressPhotos(prev => prev.filter(p => p.id !== photo.id));
+    } catch (err) {
+      console.error('[ProgressBody] Failed to delete photo:', err);
+    }
+  };
+
+  // Auto-open measurements modal if there's pending body scan data (Samsung WebView restart)
+  useEffect(() => {
+    const hasPending = localStorage.getItem('_bodyScanFront') ||
+                       localStorage.getItem('_pendingBodyScan') ||
+                       localStorage.getItem('_pendingBodyResult');
+    if (hasPending) {
+      dispatch({ type: 'TOGGLE_MEASUREMENTS', payload: true });
+    }
+  }, []);
 
   // Lock body scroll when modals are open
   useEffect(() => {
@@ -699,8 +944,21 @@ export default function ProgressBody() {
 
   return (
     <div>
+      {/* Weight history button */}
+      {weightLogs.length > 0 && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: true })}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg active:scale-[0.95] transition-all"
+            style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.12)' }}>
+            <Clock size={11} className="text-[#60A5FA]" />
+            <span className="text-[10px] font-bold text-[#60A5FA]">{t('progressBody.history')}</span>
+          </button>
+        </div>
+      )}
+
       {/* Log weight bar */}
-      <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 border border-[#D4AF37]/25" style={{ background: 'rgba(212,175,55,0.06)' }}>
+      <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4 border border-[#D4AF37]/25" style={{ background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }}>
         <Scale size={16} className="text-[#D4AF37] flex-shrink-0" />
         <input
           type="number"
@@ -715,9 +973,9 @@ export default function ProgressBody() {
             dispatch({ type: 'SET_WEIGHT_INPUT', payload: !isNaN(n) && n < 0 ? '0' : v });
           }}
           onKeyDown={e => e.key === 'Enter' && handleLogWeight()}
-          className="flex-1 min-w-0 bg-transparent text-[14px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
+          className="flex-1 min-w-0 bg-transparent text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none"
         />
-        <span className="text-[12px] text-[#6B7280] flex-shrink-0 mr-1">lbs</span>
+        <span className="text-[12px] text-[var(--color-text-muted)] flex-shrink-0 mr-1">lbs</span>
         <button
           onClick={handleLogWeight}
           disabled={loggingWeight || !weightInput}
@@ -737,27 +995,9 @@ export default function ProgressBody() {
       {weightError && <p className="text-[12px] text-red-400 -mt-2 mb-3">{weightError}</p>}
       {!weightError && weightLogs[0]?.logged_at === today() && (
         <div className="flex items-center justify-between -mt-2 mb-3">
-          <p className="text-[11px] text-[#6B7280]">
+          <p className="text-[11px] text-[var(--color-text-muted)]">
             {t('progress.body.today')}: <span className="text-[#D4AF37]">{fmtW(weightLogs[0].weight_lbs)} lbs</span> — {t('progress.body.enterNewValueToUpdate')}
           </p>
-          <button
-            onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: true })}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg active:scale-[0.95] transition-all"
-            style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.12)' }}>
-            <Clock size={11} className="text-[#60A5FA]" />
-            <span className="text-[10px] font-bold text-[#60A5FA]">History</span>
-          </button>
-        </div>
-      )}
-      {!weightError && (!weightLogs[0] || weightLogs[0]?.logged_at !== today()) && weightLogs.length > 0 && (
-        <div className="flex justify-end -mt-2 mb-3">
-          <button
-            onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: true })}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg active:scale-[0.95] transition-all"
-            style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.12)' }}>
-            <Clock size={11} className="text-[#60A5FA]" />
-            <span className="text-[10px] font-bold text-[#60A5FA]">History</span>
-          </button>
         </div>
       )}
 
@@ -770,19 +1010,19 @@ export default function ProgressBody() {
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-4 flex flex-col items-center gap-1.5 text-center"
+            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex flex-col items-center gap-1.5 text-center"
           >
             <Icon size={16} style={{ color }} strokeWidth={2} />
-            <p className="text-[22px] font-black leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">{label}</p>
+            <p className="text-[22px] font-black leading-none text-[var(--color-text-primary)]" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{label}</p>
           </div>
         ))}
       </div>
 
       {/* Weight chart */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
+      <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('progress.body.weightTrend')}</p>
+          <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{t('progress.body.weightTrend')}</p>
           <div className="flex gap-1.5">
             {PERIOD_OPTIONS.map(opt => (
               <button
@@ -791,8 +1031,8 @@ export default function ProgressBody() {
                 className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
                 style={
                   period === opt.days
-                    ? { background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }
-                    : { background: '#111827', color: '#6B7280', border: '1px solid rgba(255,255,255,0.06)' }
+                    ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
+                    : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
                 }
               >
                 {opt.label}
@@ -803,7 +1043,7 @@ export default function ProgressBody() {
 
         {chartData.length < 2 ? (
           <div className="h-[160px] flex items-center justify-center">
-            <p className="text-[13px] text-[#6B7280]">{t('progress.body.logAtLeast2')}</p>
+            <p className="text-[13px] text-[var(--color-text-muted)]">{t('progress.body.logAtLeast2')}</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={180}>
@@ -814,21 +1054,21 @@ export default function ProgressBody() {
                   <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                 tickLine={false}
                 axisLine={false}
                 interval={Math.max(0, Math.floor(chartData.length / 5) - 1)}
               />
               <YAxis
                 domain={[yMin, yMax]}
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                 tickLine={false}
                 axisLine={false}
               />
-              <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+              <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} nameLabel={t('progressBody.tooltipWeight')} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
               <Area
                 type="monotone"
                 dataKey="weight"
@@ -844,13 +1084,13 @@ export default function ProgressBody() {
       </div>
 
       {/* Body measurements */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
+      <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('progress.body.measurements')}</p>
+          <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{t('progress.body.measurements')}</p>
           <button
             onClick={() => dispatch({ type: 'TOGGLE_MEASUREMENTS', payload: true })}
             className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-            style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
           >
             <Plus size={13} strokeWidth={2.5} />
             {latestMeasurements ? t('progress.body.update') : t('progress.body.add')}
@@ -859,8 +1099,8 @@ export default function ProgressBody() {
 
         {latestMeasurements ? (
           <>
-            <p className="text-[11px] mb-3 text-[#6B7280]">
-              {t('progress.body.lastRecorded')} {format(parseISO(latestMeasurements.measured_at), 'MMMM d, yyyy')}
+            <p className="text-[11px] mb-3 text-[var(--color-text-muted)]">
+              {t('progress.body.lastRecorded')} {format(parseISO(latestMeasurements.measured_at), 'MMMM d, yyyy', { locale: i18n.language === 'es' ? esLocale : undefined })}
             </p>
 
             {/* Body fat warning */}
@@ -869,7 +1109,7 @@ export default function ProgressBody() {
                 style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.1)' }}>
                 <TrendingUp size={13} className="text-[#EF4444] flex-shrink-0 mt-0.5" />
                 <p className="text-[10px] text-[#EF4444]/80 leading-relaxed">
-                  Body fat is above 25%. Consider adjusting nutrition and increasing cardio to reduce fat while maintaining muscle.
+                  {t('progressBody.bodyFatAbove25')}
                 </p>
               </div>
             )}
@@ -887,17 +1127,17 @@ export default function ProgressBody() {
                 const deltaColor = delta == null || delta === 0 ? '#4B5563' : deltaGood ? '#10B981' : '#EF4444';
 
                 return (
-                  <div key={f.key} className="rounded-xl p-3 text-center" style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-[18px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <div key={f.key} className="rounded-xl p-3 text-center" style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                    <p className="text-[18px] font-black text-[var(--color-text-primary)] leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {displayVal.toFixed(1)}
-                      <span className="text-[10px] font-medium ml-0.5 text-[#4B5563]">{f.unit}</span>
+                      <span className="text-[10px] font-medium ml-0.5 text-[var(--color-text-muted)]">{f.unit}</span>
                     </p>
                     {delta != null && delta !== 0 && (
                       <p className="text-[9px] font-bold mt-1 tabular-nums" style={{ color: deltaColor }}>
                         {delta > 0 ? '+' : ''}{delta.toFixed(1)} {f.unit}
                       </p>
                     )}
-                    <p className="text-[9px] font-semibold uppercase tracking-wide mt-1 text-[#4B5563]">
+                    <p className="text-[9px] font-semibold uppercase tracking-wide mt-1 text-[var(--color-text-muted)]">
                       {MEASUREMENT_LABEL_KEYS[f.key] ? t(MEASUREMENT_LABEL_KEYS[f.key]) : f.label}
                     </p>
                   </div>
@@ -908,12 +1148,12 @@ export default function ProgressBody() {
             {/* Measurement trend chart */}
             {measurementHistory.length > 1 && (() => {
               const CHART_METRICS = [
-                { key: 'body_fat_pct', label: 'Body Fat', color: '#F59E0B', unit: '%', convert: false },
-                { key: 'chest_cm', label: 'Chest', color: '#D4AF37', unit: 'in', convert: true },
-                { key: 'waist_cm', label: 'Waist', color: '#EF4444', unit: 'in', convert: true },
-                { key: 'left_arm_cm', label: 'Arms', color: '#10B981', unit: 'in', convert: true, avg: ['left_arm_cm', 'right_arm_cm'] },
-                { key: 'left_thigh_cm', label: 'Thighs', color: '#A78BFA', unit: 'in', convert: true, avg: ['left_thigh_cm', 'right_thigh_cm'] },
-                { key: 'hips_cm', label: 'Hips', color: '#60A5FA', unit: 'in', convert: true },
+                { key: 'body_fat_pct', label: t('progressBody.chartLabels.bodyFat'), color: '#F59E0B', unit: '%', convert: false },
+                { key: 'chest_cm', label: t('progressBody.chartLabels.chest'), color: '#D4AF37', unit: 'in', convert: true },
+                { key: 'waist_cm', label: t('progressBody.chartLabels.waist'), color: '#EF4444', unit: 'in', convert: true },
+                { key: 'left_arm_cm', label: t('progressBody.chartLabels.arms'), color: '#10B981', unit: 'in', convert: true, avg: ['left_arm_cm', 'right_arm_cm'] },
+                { key: 'left_thigh_cm', label: t('progressBody.chartLabels.thighs'), color: '#A78BFA', unit: 'in', convert: true, avg: ['left_thigh_cm', 'right_thigh_cm'] },
+                { key: 'hips_cm', label: t('progressBody.chartLabels.hips'), color: '#60A5FA', unit: 'in', convert: true },
               ];
               // Filter to metrics that have data
               const available = CHART_METRICS.filter(m => measurementHistory.some(h => {
@@ -932,88 +1172,90 @@ export default function ProgressBody() {
           </>
         ) : (
           <div className="py-6 text-center">
-            <p className="text-[13px] text-[#6B7280]">{t('progress.body.noMeasurementsYet')}</p>
-            <p className="text-[11px] mt-1 text-[#4B5563]">{t('progress.body.trackMeasurementsHint')}</p>
+            <p className="text-[13px] text-[var(--color-text-muted)]">{t('progress.body.noMeasurementsYet')}</p>
+            <p className="text-[11px] mt-1 text-[var(--color-text-muted)]">{t('progress.body.trackMeasurementsHint')}</p>
           </div>
         )}
       </div>
 
       {/* Progress Photos */}
-      <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5 mb-5">
+      <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-[14px] font-semibold text-[#E5E7EB]">Progress Photos</p>
-          <button
-            onClick={() => photoInputRef.current?.click()}
-            disabled={uploadingPhoto}
-            className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-            style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
-          >
-            {uploadingPhoto ? (
-              <div className="w-3 h-3 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-            ) : (
-              <Upload size={13} strokeWidth={2.5} />
-            )}
-            Add Photo
-          </button>
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic"
-            capture="environment"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file || !user) return;
-              e.target.value = '';
-              setUploadingPhoto(true);
-              try {
-                // Compress
-                const compressed = await compressImage(file, 1200);
-                const path = `${user.id}/${Date.now()}.jpg`;
-                const { data: uploadData, error: uploadErr } = await supabase.storage
-                  .from('progress-photos')
-                  .upload(path, compressed, { contentType: 'image/jpeg', upsert: false });
-                if (uploadErr) throw uploadErr;
-
-                // Insert DB record
-                await supabase.from('progress_photos').insert({
-                  profile_id: user.id,
-                  gym_id: profile.gym_id,
-                  storage_path: uploadData.path,
-                  view_angle: 'front',
-                  taken_at: today(),
-                  is_private: true,
-                });
-
-                // Reload photos
-                loadData();
-              } catch (err) {
-                console.error('Photo upload failed:', err);
-              } finally {
-                setUploadingPhoto(false);
-              }
-            }}
-          />
-        </div>
-
-        {progressPhotos.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2">
-            {progressPhotos.map(photo => (
-              <div key={photo.id} className="relative group">
-                <div className="aspect-[3/4] rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <img src={photo.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                </div>
-                <p className="text-[9px] text-[#4B5563] mt-1 text-center">
-                  {format(parseISO(photo.taken_at), 'MMM d')}
-                </p>
-              </div>
+          <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{t('progressBody.progressPhotos')}</p>
+          <div className="flex gap-1">
+            {['front', 'side', 'back'].map(angle => (
+              <button
+                key={angle}
+                onClick={async () => {
+                  const file = await takePhoto();
+                  if (!file || !user) return;
+                  setUploadingPhoto(true);
+                  try {
+                    const compressed = await compressImage(file, 1200);
+                    const path = `${user.id}/${Date.now()}-${angle}.jpg`;
+                    const { data: uploadData, error: uploadErr } = await supabase.storage
+                      .from('progress-photos')
+                      .upload(path, compressed, { contentType: 'image/jpeg', upsert: false });
+                    if (uploadErr) throw uploadErr;
+                    await supabase.from('progress_photos').insert({
+                      profile_id: user.id,
+                      gym_id: profile.gym_id,
+                      storage_path: uploadData.path,
+                      view_angle: angle,
+                      taken_at: today(),
+                      is_private: true,
+                    });
+                    loadData();
+                  } catch (err) {
+                    console.error('Photo upload failed:', err);
+                  } finally {
+                    setUploadingPhoto(false);
+                  }
+                }}
+                disabled={uploadingPhoto}
+                className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1.5 rounded-lg capitalize transition-colors"
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+              >
+                <Camera size={11} /> {t(`progressBody.angle_${angle}`)}
+              </button>
             ))}
           </div>
-        ) : (
+        </div>
+
+        {progressPhotos.length > 0 ? (() => {
+          // Group photos by date, then by month/year
+          const byDate = {};
+          progressPhotos.forEach(p => {
+            const dateKey = format(parseISO(p.taken_at), 'yyyy-MM-dd');
+            if (!byDate[dateKey]) byDate[dateKey] = { front: null, side: null, back: null };
+            const angle = (p.view_angle || 'front').toLowerCase();
+            if (['front', 'side', 'back'].includes(angle)) byDate[dateKey][angle] = p;
+            else byDate[dateKey].front = byDate[dateKey].front || p; // fallback
+          });
+          const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+          const latestDate = sortedDates[0];
+
+          // Group dates by month
+          const byMonth = {};
+          sortedDates.forEach(d => {
+            const monthKey = format(parseISO(d), 'MMMM yyyy', { locale: i18n.language === 'es' ? esLocale : undefined });
+            if (!byMonth[monthKey]) byMonth[monthKey] = [];
+            byMonth[monthKey].push(d);
+          });
+
+          return (
+            <ProgressPhotoTimeline
+              byDate={byDate}
+              byMonth={byMonth}
+              latestDate={latestDate}
+              onDeletePhoto={handleDeletePhoto}
+            />
+          );
+        })() : (
           <div className="py-8 text-center">
-            <Image size={28} className="text-[#2A3040] mx-auto mb-2" />
-            <p className="text-[12px] text-[#4B5563]">No progress photos yet</p>
-            <p className="text-[10px] text-[#374151] mt-0.5">Track your visual transformation over time</p>
+            <ImageIcon size={28} className="text-[var(--color-text-muted)] mx-auto mb-2" />
+            <p className="text-[12px] text-[var(--color-text-muted)]">{t('progressBody.noProgressPhotosYet')}</p>
+            <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t('progressBody.trackVisualTransformation')}</p>
           </div>
         )}
       </div>
@@ -1035,18 +1277,18 @@ export default function ProgressBody() {
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
           onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })}>
           <div className="w-full max-w-md max-h-[75vh] overflow-hidden rounded-[24px]"
-            style={{ background: 'linear-gradient(180deg, #0F172A 0%, #0B1120 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+            style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
             onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
+            <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)]">
               <div>
-                <p className="text-[17px] font-bold text-[#E5E7EB]">Weight History</p>
-                <p className="text-[11px] text-[#4B5563] mt-0.5">{weightLogs.length} entries</p>
+                <p className="text-[17px] font-bold text-[var(--color-text-primary)]">{t('progressBody.weightHistory')}</p>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{weightLogs.length} {t('progressBody.entries')}</p>
               </div>
               <button onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })} aria-label="Close">
-                <X size={18} className="text-[#6B7280]" />
+                <X size={18} className="text-[var(--color-text-muted)]" />
               </button>
             </div>
-            <div className="overflow-y-auto divide-y divide-white/[0.03]" style={{ maxHeight: 'calc(75vh - 80px)' }}>
+            <div className="overflow-y-auto divide-y divide-[var(--color-border-subtle)]" style={{ maxHeight: 'calc(75vh - 80px)' }}>
               {weightLogs.map((log, i) => {
                 const prev = weightLogs[i + 1];
                 const diff = prev ? parseFloat(log.weight_lbs) - parseFloat(prev.weight_lbs) : null;
@@ -1054,10 +1296,10 @@ export default function ProgressBody() {
                 return (
                   <div key={log.id} className="flex items-center justify-between px-5 py-3.5">
                     <div>
-                      <p className="text-[13px] font-semibold text-[#E5E7EB]">
-                        {isToday ? 'Today' : format(parseISO(log.logged_at), 'EEE, MMM d')}
+                      <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+                        {isToday ? t('progress.body.today') : format(parseISO(log.logged_at), 'EEE, MMM d', { locale: i18n.language === 'es' ? esLocale : undefined })}
                       </p>
-                      {log.notes && <p className="text-[11px] mt-0.5 text-[#4B5563]">{log.notes}</p>}
+                      {log.notes && <p className="text-[11px] mt-0.5 text-[var(--color-text-muted)]">{log.notes}</p>}
                     </div>
                     <div className="flex items-center gap-3">
                       {diff != null && (
@@ -1066,9 +1308,9 @@ export default function ProgressBody() {
                           {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                         </span>
                       )}
-                      <p className="text-[15px] font-black text-white tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <p className="text-[15px] font-black text-[var(--color-text-primary)] tabular-nums" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {fmtW(log.weight_lbs)}
-                        <span className="text-[10px] font-medium text-[#4B5563] ml-0.5">lbs</span>
+                        <span className="text-[10px] font-medium text-[var(--color-text-muted)] ml-0.5">lbs</span>
                       </p>
                     </div>
                   </div>
@@ -1076,7 +1318,7 @@ export default function ProgressBody() {
               })}
               {weightLogs.length === 0 && (
                 <div className="py-12 text-center">
-                  <p className="text-[13px] text-[#4B5563]">No weight entries yet</p>
+                  <p className="text-[13px] text-[var(--color-text-muted)]">{t('progressBody.noWeightEntriesYet')}</p>
                 </div>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Dumbbell, Mail, Lock, User, Hash, AlertCircle, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +40,10 @@ const Signup = () => {
   const [globalError, setGlobalError] = useState('');
   const [loading,     setLoading]     = useState(false);
 
+  // Anti-enumeration: track failed signup attempts
+  const signupAttempts = useRef(0);
+  const MAX_SIGNUP_ATTEMPTS = 8;
+
   // If coming via invite link, verify gym exists (don't leak gym name to unauthenticated users)
   useEffect(() => {
     if (!inviteSlug) return;
@@ -72,6 +76,31 @@ const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGlobalError('');
+
+    // Anti-enumeration: block after too many failed attempts
+    if (signupAttempts.current >= MAX_SIGNUP_ATTEMPTS) {
+      setGlobalError('Too many attempts. Please try again later.');
+      return;
+    }
+
+    // Server-side-enforceable length validation
+    if (form.fullName.trim().length > 100 || form.fullName.trim().length < 1) {
+      setGlobalError('Full name must be between 1 and 100 characters');
+      return;
+    }
+    if (form.username && form.username.length > 30) {
+      setGlobalError('Username must be 30 characters or less');
+      return;
+    }
+    if (form.email.length > 254) {
+      setGlobalError('Email must be 254 characters or less');
+      return;
+    }
+    if (form.password.length > 128) {
+      setGlobalError('Password must be 128 characters or less');
+      return;
+    }
+
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -85,8 +114,10 @@ const Signup = () => {
         username: form.username,
         gymSlug:  form.gymSlug,
       });
+
       navigate('/onboarding');
     } catch (err) {
+      signupAttempts.current += 1;
       setGlobalError(err.message || t('common:somethingWentWrong'));
     } finally {
       setLoading(false);
@@ -138,6 +169,7 @@ const Signup = () => {
               value={form.fullName}
               onChange={set('fullName')}
               error={errors.fullName}
+              maxLength={100}
             />
 
             <Field
@@ -148,6 +180,7 @@ const Signup = () => {
               value={form.username}
               onChange={set('username')}
               error={errors.username}
+              maxLength={30}
             />
 
             <Field
@@ -158,6 +191,7 @@ const Signup = () => {
               value={form.email}
               onChange={set('email')}
               error={errors.email}
+              maxLength={254}
             />
 
             <Field
@@ -168,6 +202,7 @@ const Signup = () => {
               value={form.password}
               onChange={set('password')}
               error={errors.password}
+              maxLength={128}
             />
 
             <Field

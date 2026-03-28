@@ -17,3 +17,6 @@ Lateral_raises_video.mp4
 supabase/.temp/
 build_output/
 gym-app/
+
+# Firebase credentials (should not be committed)
+android/app/google-services.json

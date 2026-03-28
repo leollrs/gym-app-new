@@ -1,10 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Search, X, ChevronDown, ChevronRight, Dumbbell, Info, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Search, X, ChevronDown, ChevronRight, Dumbbell, Info, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil } from 'lucide-react';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
 import BodyDiagram from '../components/BodyDiagram';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
+import { useTranslation } from 'react-i18next';
+import { exName, exInstructions } from '../lib/exerciseName';
 
 /* ── Resolve a video path to a full public URL ──────────────────────────────── */
 const resolveVideoUrl = (path) => {
@@ -34,22 +37,23 @@ const getMuscleColor = (muscle) => MUSCLE_TINTS[muscle] || '#C9A84C';
 
 /* ── Sort options ───────────────────────────────────────────────────────────── */
 const SORT_OPTIONS = [
-  { key: 'name-asc',   label: 'Name A-Z' },
-  { key: 'name-desc',  label: 'Name Z-A' },
-  { key: 'muscle',     label: 'Muscle Group' },
-  { key: 'equipment',  label: 'Equipment' },
+  { key: 'name-asc',   i18nKey: 'name_asc' },
+  { key: 'name-desc',  i18nKey: 'name_desc' },
+  { key: 'muscle',     i18nKey: 'muscle' },
+  { key: 'equipment',  i18nKey: 'equipment' },
 ];
 
 /* ── Stat Pill ──────────────────────────────────────────────────────────────── */
 const StatPill = ({ label, value }) => (
   <div className="flex flex-col items-center px-4 py-2">
-    <span className="text-[15px] font-bold text-[#E5E7EB] tracking-[-0.01em]">{value}</span>
+    <span className="text-[15px] font-bold tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>{value}</span>
     <span className="text-[10.5px] font-medium text-[#5B6276] uppercase tracking-[0.06em] mt-0.5">{label}</span>
   </div>
 );
 
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
-const ExerciseCard = ({ exercise, onSelect, selectable }) => {
+const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavorite }) => {
+  const { t } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -57,14 +61,15 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
 
   const hasVideo = !!exercise.videoUrl;
   const hasMuscles = exercise.primaryRegions?.length > 0;
-  const longDescription = (exercise.instructions?.length ?? 0) > 100;
+  const instrText = exInstructions(exercise);
+  const longDescription = (instrText?.length ?? 0) > 100;
 
   return (
     <div
       className="group rounded-2xl border overflow-hidden transition-all duration-200"
       style={{
-        background: 'rgba(15,23,42,0.6)',
-        borderColor: expanded ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)',
+        background: 'var(--color-bg-card)',
+        borderColor: expanded ? 'var(--color-border-default)' : 'var(--color-border-subtle)',
         boxShadow: expanded ? '0 6px 32px rgba(0,0,0,0.35)' : '0 1px 3px rgba(0,0,0,0.15)',
       }}
     >
@@ -81,24 +86,34 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug text-[#F1F3F5] tracking-[-0.01em]">
-            {exercise.name}
+          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>
+            {exName(exercise)}
           </p>
           <p className="text-[12.5px] mt-0.5 text-[#6B7280]">
-            {exercise.muscle}
+            {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
             <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
-            {exercise.equipment}
+            {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
           </p>
         </div>
+
+        {onToggleFavorite && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
+          >
+            <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
+          </button>
+        )}
 
         {selectable && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(exercise); }}
             className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
-            style={{ background: 'rgba(212,175,55,0.12)', border: '1.5px solid rgba(212,175,55,0.35)' }}
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
           >
-            <Plus size={14} strokeWidth={2.5} style={{ color: '#D4AF37' }} />
+            <Plus size={14} strokeWidth={2.5} style={{ color: 'var(--color-accent)' }} />
           </button>
         )}
 
@@ -113,7 +128,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
         <div>
           {/* Video section */}
           {hasVideo && (
-            <div className="mx-3 mb-2 rounded-xl overflow-hidden" style={{ aspectRatio: '16/9', background: '#080B12' }}>
+            <div className="mx-3 mb-2 rounded-xl overflow-hidden" style={{ aspectRatio: '16/9', background: 'var(--color-bg-primary)' }}>
               <video
                 src={resolveVideoUrl(exercise.videoUrl)}
                 autoPlay
@@ -129,21 +144,21 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
           <div className="px-4 pt-3 pb-4">
             {/* Title + metadata (reinforced in expanded) */}
             <div className="mb-3">
-              <h3 className="text-[17px] font-bold text-[#F1F3F5] tracking-[-0.015em] leading-tight">
-                {exercise.name}
+              <h3 className="text-[17px] font-bold tracking-[-0.015em] leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                {exName(exercise)}
               </h3>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[12.5px] text-[#6B7280]">
-                  {exercise.muscle}
+                  {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
                   <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
-                  {exercise.equipment}
+                  {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
                 </span>
                 {exercise.category && (
                   <span
                     className="text-[10.5px] font-semibold px-2 py-[3px] rounded-md"
                     style={{ background: `${tint}0C`, color: tint, border: `1px solid ${tint}18` }}
                   >
-                    {exercise.category}
+                    {t(`exerciseLibrary.categoryNames.${exercise.category}`, exercise.category)}
                   </span>
                 )}
               </div>
@@ -152,32 +167,32 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
             {/* Stats row */}
             <div
               className="flex items-center justify-center rounded-[12px] mb-4 divide-x"
-              style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'transparent', '--tw-divide-opacity': '0.05', '--tw-divide-color': 'rgba(255,255,255,var(--tw-divide-opacity))' }}
+              style={{ background: 'var(--color-surface-hover)', borderColor: 'transparent', '--tw-divide-opacity': '0.05', '--tw-divide-color': 'var(--color-border-subtle)' }}
             >
-              <StatPill label="Sets" value={exercise.defaultSets} />
-              <StatPill label="Reps" value={exercise.defaultReps} />
-              <StatPill label="Type" value={exercise.category || 'Strength'} />
+              <StatPill label={t('exerciseLibrary.sets')} value={exercise.defaultSets} />
+              <StatPill label={t('exerciseLibrary.reps')} value={exercise.defaultReps} />
+              <StatPill label={t('exerciseLibrary.type')} value={t(`exerciseLibrary.categoryNames.${exercise.category || 'Compound'}`, exercise.category || 'Strength')} />
             </div>
 
             {/* Detail tabs */}
-            {(exercise.instructions || hasMuscles) && (
+            {(instrText || hasMuscles) && (
               <>
-                <div className="flex gap-0 mb-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="flex gap-0 mb-3.5" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
                   {[
-                    { key: 'overview', label: 'Overview', show: !!exercise.instructions },
-                    { key: 'muscles', label: 'Muscles', show: hasMuscles },
+                    { key: 'overview', label: t('exerciseLibrary.tabs.overview'), show: !!instrText },
+                    { key: 'muscles', label: t('exerciseLibrary.tabs.muscles'), show: hasMuscles },
                   ].filter(t => t.show).map(t => (
                     <button
                       key={t.key}
                       onClick={() => setDetailTab(t.key)}
                       className="relative px-4 pb-2.5 text-[12.5px] font-semibold transition-colors"
-                      style={{ color: detailTab === t.key ? '#E5E7EB' : '#4B5563' }}
+                      style={{ color: detailTab === t.key ? 'var(--color-text-primary)' : 'var(--color-text-subtle)' }}
                     >
                       {t.label}
                       {detailTab === t.key && (
                         <span
                           className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full"
-                          style={{ background: '#D4AF37' }}
+                          style={{ background: 'var(--color-accent)' }}
                         />
                       )}
                     </button>
@@ -185,10 +200,10 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
                 </div>
 
                 {/* Overview tab */}
-                {detailTab === 'overview' && exercise.instructions && (
+                {detailTab === 'overview' && instrText && (
                   <div>
                     <p className={`text-[13px] leading-[1.65] text-[#8B95A5] ${!showFullDescription && longDescription ? 'line-clamp-2' : ''}`}>
-                      {exercise.instructions}
+                      {instrText}
                     </p>
                     {longDescription && (
                       <button
@@ -196,7 +211,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
                         className="text-[12px] font-medium mt-1 transition-colors"
                         style={{ color: '#C9A84C' }}
                       >
-                        {showFullDescription ? 'Show less' : 'Read more'}
+                        {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
                       </button>
                     )}
                   </div>
@@ -208,7 +223,7 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
                     <BodyDiagram
                       compact
                       inline
-                      title="Muscles worked"
+                      title={t('exerciseLibrary.musclesWorked')}
                       primaryRegions={exercise.primaryRegions}
                       secondaryRegions={exercise.secondaryRegions ?? []}
                     />
@@ -226,12 +241,22 @@ const ExerciseCard = ({ exercise, onSelect, selectable }) => {
 };
 
 /* ── Exercise Library (browseable list with search + filters) ────────────────── */
-const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extraExercises = [] }) => {
+const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extraExercises = [], favoriteIds = new Set(), onToggleFavorite }) => {
+  const { t } = useTranslation('pages');
   const [query, setQuery] = useState('');
   const [activeMuscle, setActiveMuscle] = useState('All');
   const [activeEquipment, setActiveEquipment] = useState('All');
   const [activeCategory, setActiveCategory] = useState('All');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Scroll locking for advanced filters modal
+  useEffect(() => {
+    if (showAdvancedFilters) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [showAdvancedFilters]);
+
   const [sortBy, setSortBy] = useState('name-asc');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortRef = useRef(null);
@@ -261,6 +286,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
     return allExercises.filter(e => {
       const matchesQuery = !q ||
         e.name.toLowerCase().includes(q) ||
+        (e.name_es && e.name_es.toLowerCase().includes(q)) ||
         e.muscle.toLowerCase().includes(q) ||
         e.equipment.toLowerCase().includes(q);
       const matchesMuscle    = activeMuscle    === 'All' || e.muscle    === activeMuscle;
@@ -273,15 +299,15 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
   const sorted = useMemo(() => {
     const arr = [...filtered];
     switch (sortBy) {
-      case 'name-asc':  return arr.sort((a, b) => a.name.localeCompare(b.name));
-      case 'name-desc': return arr.sort((a, b) => b.name.localeCompare(a.name));
-      case 'muscle':    return arr.sort((a, b) => a.muscle.localeCompare(b.muscle) || a.name.localeCompare(b.name));
-      case 'equipment': return arr.sort((a, b) => a.equipment.localeCompare(b.equipment) || a.name.localeCompare(b.name));
+      case 'name-asc':  return arr.sort((a, b) => exName(a).localeCompare(exName(b)));
+      case 'name-desc': return arr.sort((a, b) => exName(b).localeCompare(exName(a)));
+      case 'muscle':    return arr.sort((a, b) => a.muscle.localeCompare(b.muscle) || exName(a).localeCompare(exName(b)));
+      case 'equipment': return arr.sort((a, b) => a.equipment.localeCompare(b.equipment) || exName(a).localeCompare(exName(b)));
       default:          return arr;
     }
   }, [filtered, sortBy]);
 
-  const activeFilterCount = [activeEquipment !== 'All', activeCategory !== 'All'].filter(Boolean).length;
+  const activeFilterCount = [activeMuscle !== 'All', activeEquipment !== 'All', activeCategory !== 'All'].filter(Boolean).length;
 
   return (
     <div className="animate-fade-in">
@@ -292,8 +318,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search exercises..."
-          aria-label="Search exercises"
+          placeholder={t('exerciseLibrary.searchPlaceholder')}
+          aria-label={t('exerciseLibrary.searchPlaceholder')}
           className="w-full rounded-xl pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all bg-[#111827]/80 border border-white/[0.06] text-[#E5E7EB] placeholder-[#3B4252] focus:border-white/[0.12] focus:bg-[#111827]"
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -309,8 +335,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             onClick={() => setShowAdvancedFilters(true)}
             className="relative p-2 rounded-xl transition-all active:scale-95"
             style={{
-              background: activeFilterCount > 0 ? 'rgba(212,175,55,0.1)' : 'transparent',
-              color: activeFilterCount > 0 ? '#D4AF37' : '#6B7280',
+              background: activeFilterCount > 0 ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+              color: activeFilterCount > 0 ? 'var(--color-accent)' : '#6B7280',
             }}
           >
             <SlidersHorizontal size={16} />
@@ -323,33 +349,11 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         </div>
       </div>
 
-      {/* Quick muscle-group filter chips */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none mb-4">
-        {['All', ...MUSCLE_GROUPS].map(m => {
-          const active = activeMuscle === m;
-          return (
-            <button
-              key={m}
-              onClick={() => setActiveMuscle(m)}
-              className="flex-shrink-0 text-[12px] font-medium px-3 py-[6px] rounded-[10px] transition-all active:scale-95"
-              style={{
-                background: active ? '#D4AF37' : 'rgba(255,255,255,0.04)',
-                color: active ? '#0A0D14' : '#7B8494',
-                border: `1px solid ${active ? '#D4AF37' : 'rgba(255,255,255,0.06)'}`,
-                fontWeight: active ? 700 : 500,
-              }}
-            >
-              {m}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Results + Sort row */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-[12.5px] font-medium text-[#5B6276]">
-          {sorted.length} result{sorted.length !== 1 ? 's' : ''}
-          {query && <span className="text-[#4B5563]"> for "{query}"</span>}
+          {t('exerciseLibrary.resultCount', { count: sorted.length })}
+          {query && <span className="text-[#4B5563]"> {t('exerciseLibrary.forQuery', { query })}</span>}
         </p>
         <div ref={sortRef} className="relative">
           <button
@@ -357,19 +361,19 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg transition-colors text-[#6B7280] hover:text-[#9CA3AF] active:scale-95"
           >
             <ArrowUpDown size={13} />
-            Sort
+            {t('exerciseLibrary.sort')}
           </button>
           {showSortMenu && (
             <div className="absolute right-0 top-full mt-1.5 w-40 rounded-xl border border-white/[0.08] overflow-hidden z-20"
-                 style={{ background: '#141B2D', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                 style={{ background: 'var(--color-bg-card)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
               {SORT_OPTIONS.map(opt => (
                 <button
                   key={opt.key}
                   onClick={() => { setSortBy(opt.key); setShowSortMenu(false); }}
                   className="w-full px-3.5 py-2.5 text-left text-[13px] transition-colors hover:bg-white/[0.04]"
-                  style={{ color: sortBy === opt.key ? '#D4AF37' : '#9CA3AF' }}
+                  style={{ color: sortBy === opt.key ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
                 >
-                  {opt.label}
+                  {t(`exerciseLibrary.sortOptions.${opt.i18nKey}`)}
                 </button>
               ))}
             </div>
@@ -385,23 +389,25 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             exercise={ex}
             selectable={selectable && !selectedIds.includes(ex.id)}
             onSelect={onSelect}
+            isFavorite={favoriteIds.has(ex.id)}
+            onToggleFavorite={onToggleFavorite}
           />
         ))}
 
         {sorted.length === 0 && (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
               <Dumbbell size={28} className="text-[#3B4252]" />
             </div>
-            <p className="text-[15px] font-medium text-[#6B7280]">No exercises found</p>
-            <p className="text-[13px] mt-1 text-[#4B5563]">Try a different search or filter</p>
+            <p className="text-[15px] font-medium text-[#6B7280]">{t('exerciseLibrary.noExercisesFound')}</p>
+            <p className="text-[13px] mt-1 text-[#4B5563]">{t('exerciseLibrary.tryDifferentSearch')}</p>
           </div>
         )}
       </div>
 
       {/* Advanced Filters Bottom Sheet */}
-      {showAdvancedFilters && (
+      {showAdvancedFilters && createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-end justify-center"
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
@@ -409,28 +415,54 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         >
           <div
             className="w-full max-w-[520px] rounded-t-[24px] pb-8 pt-3 animate-slide-up"
-            style={{ background: '#111827', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+            style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-subtle)' }}
           >
             {/* Handle */}
             <div className="w-10 h-1 rounded-full bg-white/10 mx-auto mb-5" />
 
             <div className="px-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-[17px] font-bold text-[#F1F3F5]">Filters</h3>
+                <h3 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.filters')}</h3>
                 <button
                   onClick={() => {
+                    setActiveMuscle('All');
                     setActiveEquipment('All');
                     setActiveCategory('All');
                   }}
                   className="text-[13px] font-medium text-[#D4AF37] active:opacity-70"
                 >
-                  Reset
+                  {t('exerciseLibrary.reset')}
                 </button>
+              </div>
+
+              {/* Muscle Group */}
+              <div className="mb-6">
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.muscleGroup')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {['All', ...MUSCLE_GROUPS].map(m => {
+                    const active = activeMuscle === m;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => setActiveMuscle(m)}
+                        className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
+                        style={{
+                          background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+                          fontWeight: active ? 700 : 500,
+                        }}
+                      >
+                        {t(`muscleGroups.${m}`, m)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Equipment */}
               <div className="mb-6">
-                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">Equipment</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.equipment')}</p>
                 <div className="flex flex-wrap gap-2">
                   {['All', ...EQUIPMENT].map(eq => {
                     const active = activeEquipment === eq;
@@ -440,13 +472,13 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         onClick={() => setActiveEquipment(eq)}
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
-                          background: active ? '#D4AF37' : 'rgba(255,255,255,0.04)',
-                          color: active ? '#0A0D14' : '#7B8494',
-                          border: `1px solid ${active ? '#D4AF37' : 'rgba(255,255,255,0.06)'}`,
+                          background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
                       >
-                        {eq}
+                        {t(`exerciseLibrary.equipmentNames.${eq}`, eq)}
                       </button>
                     );
                   })}
@@ -455,7 +487,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
               {/* Category */}
               <div className="mb-8">
-                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">Category</p>
+                <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] mb-3 text-[#5B6276]">{t('exerciseLibrary.category')}</p>
                 <div className="flex flex-wrap gap-2">
                   {['All', ...CATEGORIES].map(cat => {
                     const active = activeCategory === cat;
@@ -465,13 +497,13 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         onClick={() => setActiveCategory(cat)}
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
-                          background: active ? '#D4AF37' : 'rgba(255,255,255,0.04)',
-                          color: active ? '#0A0D14' : '#7B8494',
-                          border: `1px solid ${active ? '#D4AF37' : 'rgba(255,255,255,0.06)'}`,
+                          background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
                       >
-                        {cat}
+                        {t(`exerciseLibrary.categoryNames.${cat}`, cat)}
                       </button>
                     );
                   })}
@@ -482,18 +514,20 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                 onClick={() => setShowAdvancedFilters(false)}
                 className="w-full py-3.5 rounded-xl font-bold text-[14px] active:scale-[0.98] transition-all bg-[#D4AF37] text-[#0A0D14]"
               >
-                Show {filtered.length} exercise{filtered.length !== 1 ? 's' : ''}
+                {t('exerciseLibrary.showExercises', { count: filtered.length })}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 };
 
 /* ── Custom Exercise Card (Mine / Friends tabs) ─────────────────────────────── */
-const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
+const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUnsave, onEdit, isFavorite, onToggleFavorite }) => {
+  const { t } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const tint = getMuscleColor(exercise.muscle);
 
@@ -501,8 +535,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
     <div
       className="rounded-2xl border overflow-hidden transition-all duration-200"
       style={{
-        background: 'rgba(15,23,42,0.6)',
-        borderColor: expanded ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)',
+        background: 'var(--color-bg-card)',
+        borderColor: expanded ? 'var(--color-border-default)' : 'var(--color-border-subtle)',
         boxShadow: expanded ? '0 4px 24px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.15)',
       }}
     >
@@ -518,14 +552,14 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug text-[#F1F3F5] tracking-[-0.01em]">
-            {exercise.name}
+          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>
+            {exName(exercise)}
           </p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="text-[12.5px] text-[#6B7280]">
-              {exercise.muscle}
+              {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
               <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
-              {exercise.equipment}
+              {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
             </span>
             {!isMine && exercise.createdByName && (
               <span className="text-[11px] text-[#4B5563] ml-1">
@@ -534,32 +568,48 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
             )}
             {isMine && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md ml-1"
-                    style={{ background: 'rgba(212,175,55,0.08)', color: '#C9A84C' }}>
-                Yours
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', color: 'var(--color-accent)' }}>
+                {t('exerciseLibrary.yours')}
               </span>
             )}
           </div>
         </div>
 
-        {!isMine && !isSaved && onSave && (
-          <button
-            onClick={e => { e.stopPropagation(); onSave(); }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold active:scale-95 transition-all flex-shrink-0"
-            style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)', color: '#D4AF37' }}
-          >
-            <Bookmark size={12} /> Save
-          </button>
-        )}
-        {isSaved && !isMine && (
-          <span className="flex items-center gap-1 text-[11px] font-medium flex-shrink-0 text-[#10B981]">
-            <Check size={12} /> Saved
-          </span>
-        )}
+        {/* Action icons — grouped tight */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onToggleFavorite && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
+              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all"
+            >
+              <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
+            </button>
+          )}
 
-        <ChevronRight
-          size={16}
-          className={`flex-shrink-0 transition-transform duration-200 text-[#4B5563] ${expanded ? 'rotate-90' : ''}`}
-        />
+          {!isMine && !isSaved && onSave && (
+            <button
+              onClick={e => { e.stopPropagation(); onSave(); }}
+              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+            >
+              <Bookmark size={14} style={{ color: 'var(--color-accent)' }} />
+            </button>
+          )}
+          {isSaved && !isMine && onUnsave && (
+            <button
+              onClick={e => { e.stopPropagation(); onUnsave(); }}
+              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 bg-[#10B981]/10 hover:bg-red-500/10 transition-colors"
+            >
+              <Bookmark size={14} className="text-[#10B981] fill-[#10B981]" />
+            </button>
+          )}
+
+          <ChevronRight
+            size={16}
+            className={`transition-transform duration-200 text-[#4B5563] ${expanded ? 'rotate-90' : ''}`}
+          />
+        </div>
       </div>
 
       {expanded && (
@@ -567,15 +617,49 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave }) => {
           {/* Stats row */}
           <div
             className="flex items-center justify-center rounded-[12px] mb-3.5 divide-x"
-            style={{ background: 'rgba(255,255,255,0.025)', '--tw-divide-opacity': '0.05', '--tw-divide-color': 'rgba(255,255,255,var(--tw-divide-opacity))' }}
+            style={{ background: 'var(--color-surface-hover)', '--tw-divide-opacity': '0.05', '--tw-divide-color': 'var(--color-border-subtle)' }}
           >
-            <StatPill label="Sets" value={exercise.defaultSets} />
-            <StatPill label="Reps" value={exercise.defaultReps} />
+            <StatPill label={t('exerciseLibrary.sets')} value={exercise.defaultSets} />
+            <StatPill label={t('exerciseLibrary.reps')} value={exercise.defaultReps} />
           </div>
-          {exercise.instructions && (
-            <p className="text-[13px] leading-[1.65] text-[#8B95A5]">
-              {exercise.instructions}
+          {exInstructions(exercise) && (
+            <p className="text-[13px] leading-[1.65] text-[#8B95A5] mb-3">
+              {exInstructions(exercise)}
             </p>
+          )}
+
+          {/* Actions for own exercises */}
+          {isMine && (
+            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(exercise)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                >
+                  <Pencil size={11} /> {t('exerciseLibrary.edit')}
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(exercise.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#4B5563] hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                >
+                  <X size={11} /> {t('exerciseLibrary.delete')}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Unsave for friend exercises */}
+          {!isMine && isSaved && onUnsave && (
+            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+              <button
+                onClick={() => onUnsave()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#4B5563] hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+              >
+                <X size={11} /> {t('exerciseLibrary.removeFromSaved')}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -588,6 +672,7 @@ const normalizeDbExercise = (row) => {
   return {
     id:               row.id,
     name:             row.name,
+    name_es:          row.name_es || null,
     muscle:           row.muscle_group,
     equipment:        row.equipment,
     category:         row.category,
@@ -595,6 +680,7 @@ const normalizeDbExercise = (row) => {
     defaultReps:      row.default_reps,
     restSeconds:      row.rest_seconds,
     instructions:     row.instructions ?? '',
+    instructions_es:  row.instructions_es || null,
     primaryRegions:   row.primary_regions   ?? [],
     secondaryRegions: row.secondary_regions ?? [],
     videoUrl:         row.video_url || null,
@@ -606,7 +692,8 @@ const normalizeDbExercise = (row) => {
 };
 
 /* ── Custom dropdown for Add Exercise modal ─────────────────────────────────── */
-const DropdownSelect = ({ value, options, onChange, placeholder, label }) => {
+const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOption }) => {
+  const display = renderOption || ((v) => v);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -616,32 +703,29 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label }) => {
   }, []);
   return (
     <div ref={ref} className="relative">
-      <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#5B6276]">
+      <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">
         {label}
       </label>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full rounded-[12px] px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none transition-all text-[#E5E7EB]"
-        style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+        className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none focus:border-[#D4AF37]/40 transition-all text-[#E5E7EB]"
       >
-        <span>{value || placeholder}</span>
-        <ChevronDown size={15} className={`flex-shrink-0 transition-transform text-[#4B5563] ${open ? 'rotate-180' : ''}`} />
+        <span>{value ? display(value) : placeholder}</span>
+        <ChevronDown size={15} className={`flex-shrink-0 transition-transform text-[#6B7280] ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div
-          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto"
-          style={{ background: '#141B2D', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto bg-[#0A0F1A] border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
         >
           {options.map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => { onChange(opt); setOpen(false); }}
-              className="w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-white/[0.04] transition-colors"
-              style={{ color: value === opt ? '#D4AF37' : '#D1D5DB' }}
+              className={`w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-white/[0.04] transition-colors ${value === opt ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}
             >
-              {opt}
+              {display(opt)}
             </button>
           ))}
         </div>
@@ -651,18 +735,31 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label }) => {
 };
 
 /* ── Add Exercise Modal ─────────────────────────────────────────────────────── */
+const SECONDARY_MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Core', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Traps', 'Lats'];
+
 const AddExerciseModal = ({ onSave, onClose }) => {
+  const { t } = useTranslation('pages');
   const [form, setForm] = useState({
     name: '', muscle: MUSCLE_GROUPS[0], equipment: EQUIPMENT[0],
     category: CATEGORIES[0], defaultSets: '3', defaultReps: '8-12', instructions: '',
+    secondaryMuscles: [], shareWithFriends: false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const toggleSecondary = (muscle) => {
+    setForm(f => ({
+      ...f,
+      secondaryMuscles: f.secondaryMuscles.includes(muscle)
+        ? f.secondaryMuscles.filter(m => m !== muscle)
+        : [...f.secondaryMuscles, muscle],
+    }));
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim()) { setError('Name is required.'); return; }
+    if (!form.name.trim()) { setError(t('exerciseLibrary.nameRequired')); return; }
     setSaving(true);
     setError('');
     const result = await onSave({
@@ -685,87 +782,120 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-[480px] rounded-[24px] p-6 max-h-[80vh] overflow-y-auto animate-slide-up"
-        style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        {/* Handle (mobile) */}
-        <div className="w-10 h-1 rounded-full bg-white/10 mx-auto mb-4 sm:hidden" />
+    <div className="fixed inset-0 z-[110] flex flex-col bg-[#05070B] animate-fade-in">
+      {/* Header */}
+      <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 bg-[#05070B]" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}>
+        <button onClick={onClose} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
+          <X size={18} className="text-[#9CA3AF]" />
+        </button>
+        <h2 className="text-[18px] font-bold text-[#E5E7EB]">{t('exerciseLibrary.newExercise')}</h2>
+      </header>
 
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-bold text-[18px] text-[#F1F3F5]">New Exercise</h2>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/[0.04] transition-colors">
-            <X size={18} className="text-[#6B7280]" />
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-4">
+      {/* Scrollable body — save button is inline at the bottom */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 pb-[calc(2rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
+        <div className="flex flex-col gap-5">
+          {/* Name */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#5B6276]">
-              Exercise Name *
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">
+              {t('exerciseLibrary.exerciseNameLabel')}
             </label>
             <input
               autoFocus
               value={form.name}
               onChange={e => set('name', e.target.value)}
-              placeholder="e.g. Bulgarian Split Squat"
-              className="w-full rounded-[12px] px-3.5 py-2.5 text-[14px] focus:outline-none transition-all text-[#E5E7EB] placeholder-[#3B4252]"
-              style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+              placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
+              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
             />
           </div>
 
+          {/* Primary Muscle + Equipment */}
           <div className="grid grid-cols-2 gap-3">
-            <DropdownSelect label="Muscle Group" value={form.muscle} options={MUSCLE_GROUPS} onChange={(v) => set('muscle', v)} />
-            <DropdownSelect label="Equipment" value={form.equipment} options={EQUIPMENT} onChange={(v) => set('equipment', v)} />
+            <DropdownSelect label={t('exerciseLibrary.primaryMuscleLabel')} value={form.muscle} options={MUSCLE_GROUPS} onChange={(v) => set('muscle', v)} renderOption={(v) => t(`muscleGroups.${v}`, v)} />
+            <DropdownSelect label={t('exerciseLibrary.equipmentLabel')} value={form.equipment} options={EQUIPMENT} onChange={(v) => set('equipment', v)} renderOption={(v) => t(`exerciseLibrary.equipmentNames.${v}`, v)} />
           </div>
 
+          {/* Secondary Muscles (optional multi-select chips) */}
+          <div>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-2 text-[#9CA3AF]">
+              {t('exerciseLibrary.secondaryMusclesLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {SECONDARY_MUSCLES.filter(m => m !== form.muscle).map(muscle => {
+                const selected = form.secondaryMuscles.includes(muscle);
+                return (
+                  <button
+                    key={muscle}
+                    type="button"
+                    onClick={() => toggleSecondary(muscle)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+                      selected
+                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
+                        : 'bg-white/[0.04] text-[#6B7280] border border-white/[0.06] hover:text-[#9CA3AF]'
+                    }`}
+                  >
+                    {t(`muscleGroups.${muscle}`, muscle)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sets + Reps */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#5B6276]">Default Sets</label>
+              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultSetsLabel')}</label>
               <input type="number" min="1" max="10" value={form.defaultSets}
                 onChange={e => set('defaultSets', e.target.value)}
-                className="w-full rounded-[12px] px-3.5 py-2.5 text-[13px] focus:outline-none text-[#E5E7EB]"
-                style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#5B6276]">Default Reps</label>
-              <input type="number" inputMode="numeric" min={0} value={form.defaultReps}
-                onChange={e => {
-                  const v = e.target.value;
-                  if (v === '' || v === '-') return set('defaultReps', v);
-                  const n = parseInt(v, 10);
-                  set('defaultReps', (!isNaN(n) && n < 0) ? '0' : v);
-                }}
+              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultRepsLabel')}</label>
+              <input inputMode="numeric" value={form.defaultReps}
+                onChange={e => set('defaultReps', e.target.value)}
                 placeholder="8-12"
-                className="w-full rounded-[12px] px-3.5 py-2.5 text-[13px] focus:outline-none text-[#E5E7EB] placeholder-[#3B4252]"
-                style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
               />
             </div>
           </div>
 
+          {/* Instructions */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#5B6276]">Instructions (optional)</label>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.instructionsLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span></label>
             <textarea
               value={form.instructions}
               onChange={e => set('instructions', e.target.value)}
-              placeholder="How to perform this exercise..."
+              placeholder={t('exerciseLibrary.instructionsPlaceholder')}
               rows={3}
-              className="w-full rounded-[12px] px-3.5 py-2.5 text-[13px] focus:outline-none resize-none text-[#E5E7EB] placeholder-[#3B4252]"
-              style={{ background: 'rgba(17,24,39,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all"
             />
           </div>
 
+          {/* Share with friends toggle */}
+          <div className="flex items-center justify-between py-3 border-t border-white/[0.06]">
+            <div>
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('exerciseLibrary.shareWithFriends')}</p>
+              <p className="text-[11px] text-[#4B5563] mt-0.5">{t('exerciseLibrary.shareWithFriendsHint')}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => set('shareWithFriends', !form.shareWithFriends)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${form.shareWithFriends ? 'bg-[#D4AF37]' : 'bg-white/[0.10]'}`}
+            >
+              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.shareWithFriends ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {/* Error */}
           {error && <p className="text-[12px] text-red-400">{error}</p>}
 
-          <button onClick={handleSave} disabled={saving}
-            className="w-full py-3.5 rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98] transition-all bg-[#D4AF37] text-[#0A0D14]">
-            {saving ? 'Saving...' : 'Add Exercise'}
+          {/* Save button — inline, right after the form */}
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.name.trim()}
+            className="w-full py-3.5 rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+          >
+            {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveExercise')}
           </button>
         </div>
       </div>
@@ -773,8 +903,72 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   );
 };
 
+/* ── Edit Exercise Form (used inside the edit modal) ─────────────────────────── */
+const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
+  const { t } = useTranslation('pages');
+  const [form, setForm] = useState({
+    name: exercise.name || '',
+    muscle: exercise.muscle || MUSCLE_GROUPS[0],
+    equipment: exercise.equipment || EQUIPMENT[0],
+    defaultSets: String(exercise.defaultSets || 3),
+    defaultReps: String(exercise.defaultReps || '8-12'),
+    instructions: exercise.instructions || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-5 pb-[calc(2rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
+      <div className="flex flex-col gap-5">
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.exerciseNameLabel')}</label>
+          <input autoFocus value={form.name} onChange={e => set('name', e.target.value)} placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
+            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <DropdownSelect label={t('exerciseLibrary.primaryMuscleLabel')} value={form.muscle} options={MUSCLE_GROUPS} onChange={v => set('muscle', v)} renderOption={(v) => t(`muscleGroups.${v}`, v)} />
+          <DropdownSelect label={t('exerciseLibrary.equipmentLabel')} value={form.equipment} options={EQUIPMENT} onChange={v => set('equipment', v)} renderOption={(v) => t(`exerciseLibrary.equipmentNames.${v}`, v)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultSetsLabel')}</label>
+            <input type="number" min="1" max="10" value={form.defaultSets} onChange={e => set('defaultSets', e.target.value)}
+              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultRepsLabel')}</label>
+            <input inputMode="numeric" value={form.defaultReps} onChange={e => set('defaultReps', e.target.value)} placeholder="8-12"
+              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.instructionsLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span></label>
+          <textarea value={form.instructions} onChange={e => set('instructions', e.target.value)} placeholder={t('exerciseLibrary.instructionsPlaceholder')} rows={3}
+            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" />
+        </div>
+        {error && <p className="text-[12px] text-red-400">{error}</p>}
+        <button
+          onClick={async () => {
+            if (!form.name.trim()) { setError(t('exerciseLibrary.nameRequired')); return; }
+            setSaving(true); setError('');
+            const result = await onSave(exercise, form);
+            if (result?.error) setError(result.error);
+            setSaving(false);
+          }}
+          disabled={saving || !form.name.trim()}
+          className="w-full py-3.5 rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+        >
+          {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveChanges')}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 /* ── Full-page wrapper ──────────────────────────────────────────────────────── */
 export const ExerciseLibraryPage = () => {
+  const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const [tab, setTab]               = useState('all');
   const [customExercises, setCustom] = useState([]);
@@ -783,6 +977,8 @@ export const ExerciseLibraryPage = () => {
   const [friendIds, setFriendIds]    = useState(new Set());
   const [loading, setLoading]        = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [editingExercise, setEditingExercise] = useState(null);
 
   const load = useCallback(async () => {
     if (!user || !profile) return;
@@ -790,7 +986,7 @@ export const ExerciseLibraryPage = () => {
 
     try {
       // Fetch global exercises (video_url included via *)
-      const [globalsRes, customsRes, savedRes, fshipsRes] = await Promise.all([
+      const [globalsRes, customsRes, savedRes, fshipsRes, favsRes] = await Promise.all([
         supabase.from('exercises').select('*').is('gym_id', null).eq('is_active', true),
         profile.gym_id
           ? supabase.from('exercises').select('*').eq('gym_id', profile.gym_id).eq('is_active', true)
@@ -800,16 +996,19 @@ export const ExerciseLibraryPage = () => {
           .select('requester_id, addressee_id, status')
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
           .eq('status', 'accepted'),
+        supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
       ]);
 
       const globals = globalsRes.data ?? [];
       const customs = customsRes.data ?? [];
       const saved   = savedRes.data ?? [];
       const fships  = fshipsRes.data ?? [];
+      const favs    = favsRes.data ?? [];
 
       const fIds = new Set(fships.map(f =>
         f.requester_id === user.id ? f.addressee_id : f.requester_id
       ));
+      setFavoriteIds(new Set(favs.map(f => f.exercise_id)));
 
       // Separately fetch profile names for custom exercises that have a created_by
       const creatorIds = [...new Set(customs.map(e => e.created_by).filter(Boolean))];
@@ -898,16 +1097,55 @@ export const ExerciseLibraryPage = () => {
     await supabase.from('user_saved_exercises').insert({ user_id: user.id, exercise_id: exerciseId });
   };
 
+  const handleUnsave = async (exerciseId) => {
+    setSavedIds(prev => { const s = new Set(prev); s.delete(exerciseId); return s; });
+    await supabase.from('user_saved_exercises').delete().eq('user_id', user.id).eq('exercise_id', exerciseId);
+  };
+
+  const handleDeleteExercise = async (exerciseId) => {
+    if (!confirm(t('exerciseLibrary.deleteConfirm'))) return;
+    await supabase.from('exercises').update({ is_active: false }).eq('id', exerciseId);
+    setCustom(prev => prev.filter(e => e.id !== exerciseId));
+    setSavedIds(prev => { const s = new Set(prev); s.delete(exerciseId); return s; });
+  };
+
+  const handleToggleFavorite = async (exerciseId) => {
+    if (favoriteIds.has(exerciseId)) {
+      setFavoriteIds(prev => { const s = new Set(prev); s.delete(exerciseId); return s; });
+      await supabase.from('exercise_favorites').delete().eq('user_id', user.id).eq('exercise_id', exerciseId);
+    } else {
+      setFavoriteIds(prev => new Set([...prev, exerciseId]));
+      await supabase.from('exercise_favorites').insert({ user_id: user.id, exercise_id: exerciseId });
+    }
+  };
+
+  const handleEditExercise = async (exercise, updates) => {
+    const { error } = await supabase.from('exercises').update({
+      name: updates.name,
+      muscle_group: updates.muscle,
+      equipment: updates.equipment,
+      default_sets: parseInt(updates.defaultSets) || 3,
+      default_reps: updates.defaultReps,
+      instructions: updates.instructions || null,
+    }).eq('id', exercise.id);
+    if (error) { logger.error('Edit exercise error:', error); return { error: error.message }; }
+    setCustom(prev => prev.map(e => e.id === exercise.id ? { ...e, name: updates.name, muscle: updates.muscle, equipment: updates.equipment, defaultSets: parseInt(updates.defaultSets) || 3, defaultReps: updates.defaultReps, instructions: updates.instructions || '' } : e));
+    setEditingExercise(null);
+    return {};
+  };
+
   const mineExercises   = customExercises.filter(e => e.createdBy === user?.id || savedIds.has(e.id));
   const friendExercises = customExercises.filter(e => friendIds.has(e.createdBy) && !savedIds.has(e.id));
   const extraForAll     = [...globalDbExercises, ...customExercises];
 
-  const totalCount = localExercises.length + globalDbExercises.length + customExercises.length;
+  // Deduplicated count: locals not in DB + all DB exercises
+  const dbIds = new Set([...globalDbExercises, ...customExercises].map(e => e.id));
+  const totalCount = localExercises.filter(e => !dbIds.has(e.id)).length + dbIds.size;
 
   const tabs = [
-    { key: 'all',     label: 'All' },
-    { key: 'mine',    label: 'Mine', count: mineExercises.length || null },
-    { key: 'friends', label: 'Friends', count: friendExercises.length || null },
+    { key: 'all',     label: t('exerciseLibrary.tabAll') },
+    { key: 'mine',    label: t('exerciseLibrary.tabMine'), count: mineExercises.length || null },
+    { key: 'friends', label: t('exerciseLibrary.tabFriends'), count: friendExercises.length || null },
   ];
 
   return (
@@ -917,32 +1155,32 @@ export const ExerciseLibraryPage = () => {
       <header className="mb-7 flex items-start justify-between gap-4">
         <div>
           <h1
-            className="text-[28px] md:text-[32px] font-extrabold text-[#F1F3F5] tracking-[-0.02em] leading-none"
-            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            className="text-[28px] md:text-[32px] font-extrabold tracking-[-0.02em] leading-none"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
           >
-            Exercises
+            {t('exerciseLibrary.title')}
           </h1>
           <p className="text-[13px] mt-1.5 font-medium text-[#5B6276]">
-            {totalCount} exercises available
+            {t('exerciseLibrary.exercisesAvailable', { count: totalCount })}
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all"
           style={{
-            background: 'linear-gradient(135deg, #D4AF37 0%, #C49B2F 100%)',
+            background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 85%, black) 100%)',
             color: '#0A0D14',
-            boxShadow: '0 2px 12px rgba(212,175,55,0.2)',
+            boxShadow: '0 2px 12px color-mix(in srgb, var(--color-accent) 20%, transparent)',
           }}
         >
-          <Plus size={15} strokeWidth={2.5} /> New Exercise
+          <Plus size={15} strokeWidth={2.5} /> {t('exerciseLibrary.newExercise')}
         </button>
       </header>
 
       {/* ── Segmented Control ───────────────────────────────────────────────── */}
       <div
         className="flex gap-0.5 mb-5 rounded-[12px] p-[3px]"
-        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+        style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
       >
         {tabs.map(t => {
           const active = tab === t.key;
@@ -952,8 +1190,8 @@ export const ExerciseLibraryPage = () => {
               onClick={() => setTab(t.key)}
               className="flex-1 py-2 rounded-[10px] text-[13px] font-semibold transition-all relative"
               style={{
-                background: active ? 'rgba(15,23,42,0.9)' : 'transparent',
-                color: active ? '#F1F3F5' : '#5B6276',
+                background: active ? 'var(--color-bg-card)' : 'transparent',
+                color: active ? 'var(--color-text-primary)' : 'var(--color-text-subtle)',
                 boxShadow: active ? '0 1px 4px rgba(0,0,0,0.25)' : 'none',
               }}
             >
@@ -962,8 +1200,8 @@ export const ExerciseLibraryPage = () => {
                 <span
                   className="ml-1.5 text-[10.5px] font-bold px-1.5 py-0.5 rounded-md"
                   style={{
-                    background: active ? 'rgba(212,175,55,0.12)' : 'rgba(255,255,255,0.04)',
-                    color: active ? '#D4AF37' : '#4B5563',
+                    background: active ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'rgba(255,255,255,0.04)',
+                    color: active ? 'var(--color-accent)' : 'var(--color-text-subtle)',
                   }}
                 >
                   {t.count}
@@ -978,7 +1216,7 @@ export const ExerciseLibraryPage = () => {
 
       {/* All tab */}
       {tab === 'all' && (
-        <ExerciseLibrary extraExercises={extraForAll} />
+        <ExerciseLibrary extraExercises={extraForAll} favoriteIds={favoriteIds} onToggleFavorite={handleToggleFavorite} />
       )}
 
       {/* Mine tab */}
@@ -986,22 +1224,27 @@ export const ExerciseLibraryPage = () => {
         mineExercises.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
               <Dumbbell size={28} className="text-[#3B4252]" />
             </div>
-            <p className="font-semibold text-[16px] text-[#D1D5DB]">No custom exercises yet</p>
+            <p className="font-semibold text-[16px] text-[#D1D5DB]">{t('exerciseLibrary.noCustomYet')}</p>
             <p className="text-[13px] mt-1.5 text-[#5B6276]">
-              Create your own or save exercises from friends.
+              {t('exerciseLibrary.noCustomHint')}
             </p>
             <button onClick={() => setShowAddModal(true)}
               className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all bg-[#D4AF37] text-[#0A0D14]">
-              <Plus size={14} /> New Exercise
+              <Plus size={14} /> {t('exerciseLibrary.newExercise')}
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             {mineExercises.map(ex => (
-              <CustomExerciseCard key={ex.id} exercise={ex} isMine={ex.createdBy === user?.id} isSaved />
+              <CustomExerciseCard key={ex.id} exercise={ex} isMine={ex.createdBy === user?.id} isSaved
+                onDelete={ex.createdBy === user?.id ? handleDeleteExercise : undefined}
+                onEdit={ex.createdBy === user?.id ? (e) => setEditingExercise(e) : undefined}
+                onUnsave={ex.createdBy !== user?.id ? () => handleUnsave(ex.id) : undefined}
+                isFavorite={favoriteIds.has(ex.id)}
+                onToggleFavorite={handleToggleFavorite} />
             ))}
           </div>
         )
@@ -1012,26 +1255,44 @@ export const ExerciseLibraryPage = () => {
         friendExercises.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
               <Users size={28} className="text-[#3B4252]" />
             </div>
-            <p className="font-semibold text-[16px] text-[#D1D5DB]">No friend exercises yet</p>
+            <p className="font-semibold text-[16px] text-[#D1D5DB]">{t('exerciseLibrary.noFriendExercises')}</p>
             <p className="text-[13px] mt-1.5 text-[#5B6276]">
-              When friends add custom exercises, they'll appear here.
+              {t('exerciseLibrary.noFriendExercisesHint')}
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             {friendExercises.map(ex => (
               <CustomExerciseCard key={ex.id} exercise={ex} isMine={false} isSaved={savedIds.has(ex.id)}
-                onSave={() => handleSave(ex.id)} />
+                onSave={() => handleSave(ex.id)}
+                onUnsave={() => handleUnsave(ex.id)}
+                isFavorite={favoriteIds.has(ex.id)}
+                onToggleFavorite={handleToggleFavorite} />
             ))}
           </div>
         )
       )}
 
-      {showAddModal && (
-        <AddExerciseModal onSave={handleCreateExercise} onClose={() => setShowAddModal(false)} />
+      {showAddModal && createPortal(
+        <AddExerciseModal onSave={handleCreateExercise} onClose={() => setShowAddModal(false)} />,
+        document.body
+      )}
+
+      {/* Edit Exercise Modal */}
+      {editingExercise && createPortal(
+        <div className="fixed inset-0 z-[110] flex flex-col bg-[#05070B] animate-fade-in">
+          <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 bg-[#05070B]" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}>
+            <button onClick={() => setEditingExercise(null)} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
+              <X size={18} className="text-[#9CA3AF]" />
+            </button>
+            <h2 className="text-[18px] font-bold text-[#E5E7EB]">{t('exerciseLibrary.editExercise')}</h2>
+          </header>
+          <EditExerciseForm exercise={editingExercise} onSave={handleEditExercise} onCancel={() => setEditingExercise(null)} />
+        </div>,
+        document.body
       )}
     </div>
   );

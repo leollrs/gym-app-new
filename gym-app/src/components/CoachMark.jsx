@@ -53,16 +53,16 @@ export default function CoachMark({ id, title, description, position = 'bottom',
       {children}
       {visible && (
         <div className={`absolute z-[100] ${positionClasses[position]}`}>
-          <div className="relative bg-[#1a1f2e] border border-[#D4AF37]/30 rounded-xl px-4 py-3 shadow-xl shadow-black/40 w-[220px]">
+          <div className="relative bg-[var(--color-bg-card)] border border-[#D4AF37]/30 rounded-xl px-4 py-3 shadow-xl shadow-black/40 w-[220px]">
             <div className={`absolute w-0 h-0 ${arrowClasses[position]}`} />
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 {title && <p className="text-[13px] font-bold text-[#D4AF37] mb-1">{title}</p>}
-                <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{description}</p>
+                <p className="text-[12px] text-[var(--color-text-muted)] leading-relaxed">{description}</p>
               </div>
               <button
                 onClick={dismiss}
-                className="flex-shrink-0 w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[#6B7280] hover:text-white transition-colors"
+                className="flex-shrink-0 w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[var(--color-text-subtle)] hover:text-white transition-colors"
                 aria-label="Dismiss tip"
               >
                 <X size={10} />

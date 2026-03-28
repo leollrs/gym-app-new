@@ -31,13 +31,13 @@
 
 :root {
   /* ── Backgrounds ─────────────────────────── */
-  --color-bg-primary:    #F8FAFC;
-  --color-bg-secondary:  #F1F5F9;
+  --color-bg-primary:    #FAFAFA;
+  --color-bg-secondary:  #F5F5F7;
   --color-bg-card:       #FFFFFF;
-  --color-bg-input:      #F1F5F9;
-  --color-bg-elevated:   #EFF6FF;
-  --color-bg-inset:      #E2E8F0;
-  --color-bg-deep:       #F9FAFB;
+  --color-bg-input:      #F5F5F7;
+  --color-bg-elevated:   #F0F0F2;
+  --color-bg-inset:      #E5E5EA;
+  --color-bg-deep:       #FAFAFA;
 
   /* Translucent surfaces (nav bars, sticky headers, overlays) */
   --color-bg-nav:        rgba(255, 255, 255, 0.92);
@@ -46,27 +46,27 @@
   --color-bg-active:     rgba(0, 0, 0, 0.06);
   --color-bg-subtle:     rgba(0, 0, 0, 0.03);
 
-  /* ── Gold accent (same both themes) ──────── */
-  --color-accent:        #D4AF37;
-  --color-accent-soft:   #E6C766;
-  --color-accent-dark:   #9F7F1D;
-  --color-accent-glow:   rgba(212, 175, 55, 0.2);
+  /* ── Gold accent (light-mode optimized) ──── */
+  --color-accent:        #B8860B;
+  --color-accent-soft:   #D4A017;
+  --color-accent-dark:   #8B6914;
+  --color-accent-glow:   rgba(184, 134, 11, 0.15);
 
   /* ── Blue (charts / secondary) ───────────── */
   --color-blue:          #3B82F6;
   --color-blue-soft:     #60A5FA;
 
   /* ── Text ────────────────────────────────── */
-  --color-text-primary:   #0F172A;
-  --color-text-secondary: #1E293B;
-  --color-text-muted:     #475569;
-  --color-text-subtle:    #64748B;
-  --color-text-faint:     #94A3B8;
+  --color-text-primary:   #1D1D1F;
+  --color-text-secondary: #3A3A3C;
+  --color-text-muted:     #6E6E73;
+  --color-text-subtle:    #86868B;
+  --color-text-faint:     #AEAEB2;
 
   /* ── Borders ─────────────────────────────── */
-  --color-border-subtle:  rgba(0, 0, 0, 0.08);
-  --color-border-default: rgba(0, 0, 0, 0.12);
-  --color-border-strong:  rgba(0, 0, 0, 0.18);
+  --color-border-subtle:  rgba(0, 0, 0, 0.06);
+  --color-border-default: rgba(0, 0, 0, 0.10);
+  --color-border-strong:  rgba(0, 0, 0, 0.16);
 
   /* ── Status ──────────────────────────────── */
   --color-success: #10B981;
@@ -103,7 +103,7 @@
   --accent-primary:   var(--color-accent);
   --accent-secondary: var(--color-accent-soft);
   --accent-glow:      var(--color-accent-glow);
-  --accent-gold-hover: #f2d36b;
+  --accent-gold-hover: var(--color-accent-soft);
   --accent-blue:      var(--color-blue);
   --accent-blue-soft: var(--color-blue-soft);
   --border-subtle:    var(--color-border-subtle);
@@ -165,6 +165,7 @@ html.dark {
 .bg-\[\#05070B\]   { background-color: var(--color-bg-primary)   !important; }
 .bg-\[\#03050A\]   { background-color: var(--color-bg-primary)   !important; }
 .bg-\[\#0A0D14\]   { background-color: var(--color-bg-secondary) !important; }
+.bg-\[\#0A0F1A\]   { background-color: var(--color-bg-card)      !important; }
 .bg-\[\#0B1220\]   { background-color: var(--color-bg-elevated)  !important; }
 .bg-\[\#0F172A\]   { background-color: var(--color-bg-card)      !important; }
 .bg-\[\#111827\]   { background-color: var(--color-bg-deep)      !important; }
@@ -196,6 +197,26 @@ html.dark {
 .bg-\[\#0F172A\]\/97  { background-color: var(--color-bg-overlay)  !important; }
 .bg-\[\#0F172A\]\/50  { background-color: color-mix(in srgb, var(--color-bg-card) 50%, transparent) !important; }
 .bg-\[\#0A0D14\]\/50  { background-color: color-mix(in srgb, var(--color-bg-secondary) 50%, transparent) !important; }
+.bg-\[\#111827\]\/40  { background-color: color-mix(in srgb, var(--color-bg-deep) 40%, transparent) !important; }
+.bg-\[\#111827\]\/50  { background-color: color-mix(in srgb, var(--color-bg-deep) 50%, transparent) !important; }
+.bg-\[\#111827\]\/60  { background-color: color-mix(in srgb, var(--color-bg-deep) 60%, transparent) !important; }
+.bg-\[\#111827\]\/80  { background-color: color-mix(in srgb, var(--color-bg-deep) 80%, transparent) !important; }
+
+/* Hover / focus / state variant remapping for dark hex backgrounds */
+.hover\:bg-\[\#111827\]:hover         { background-color: var(--color-bg-deep)      !important; }
+.hover\:bg-\[\#111827\]\/80\:hover    { background-color: color-mix(in srgb, var(--color-bg-deep) 80%, transparent) !important; }
+.hover\:bg-\[\#0F172A\]:hover         { background-color: var(--color-bg-card)      !important; }
+.hover\:bg-\[\#0f172a\]:hover         { background-color: var(--color-bg-card)      !important; }
+.hover\:bg-\[\#1e293b\]:hover         { background-color: var(--color-bg-inset)     !important; }
+.hover\:bg-\[\#1E293B\]:hover         { background-color: var(--color-bg-inset)     !important; }
+.focus\:bg-\[\#111827\]:focus         { background-color: var(--color-bg-deep)      !important; }
+.disabled\:hover\:bg-\[\#111827\]:hover:disabled { background-color: var(--color-bg-deep) !important; }
+
+/* Responsive variant remapping for dark hex backgrounds */
+@media (min-width: 768px) {
+  .md\:bg-\[\#05070B\]     { background-color: var(--color-bg-primary)  !important; }
+  .md\:bg-\[\#05070B\]\/95 { background-color: var(--color-bg-overlay)  !important; }
+}
 
 /* white/N alpha backgrounds → theme-aware surfaces */
 .bg-white\/3           { background-color: var(--color-bg-subtle) !important; }
@@ -207,6 +228,13 @@ html.dark {
 .bg-white\/\[0\.02\]   { background-color: var(--color-bg-subtle) !important; }
 .bg-white\/\[0\.03\]   { background-color: var(--color-bg-subtle) !important; }
 .bg-white\/\[0\.04\]   { background-color: var(--color-bg-hover)  !important; }
+
+/* Hover white/N alpha background variants */
+.hover\:bg-white\/\[0\.02\]:hover { background-color: var(--color-bg-subtle) !important; }
+.hover\:bg-white\/\[0\.03\]:hover { background-color: var(--color-bg-subtle) !important; }
+.hover\:bg-white\/\[0\.04\]:hover { background-color: var(--color-bg-hover)  !important; }
+.hover\:bg-white\/4:hover         { background-color: var(--color-bg-hover)  !important; }
+.hover\:bg-white\/5:hover         { background-color: var(--color-bg-hover)  !important; }
 
 /* ── Text remapping ────────────────────────────────────────────────────── */
 .text-\[\#E5E7EB\]    { color: var(--color-text-primary)   !important; }
@@ -220,6 +248,11 @@ html.dark {
 .text-\[\#05070B\]    { color: var(--color-text-primary)   !important; }
 .text-\[\#64748B\]    { color: var(--color-text-subtle)    !important; }
 .text-\[\#64748b\]    { color: var(--color-text-subtle)    !important; }
+.text-\[\#D1D5DB\]    { color: var(--color-text-secondary) !important; }
+.group-hover\:text-\[\#D1D5DB\]:is(.group:hover *) { color: var(--color-text-secondary) !important; }
+.hover\:text-\[\#E5E7EB\]:hover { color: var(--color-text-primary) !important; }
+.hover\:text-\[\#D1D5DB\]:hover { color: var(--color-text-secondary) !important; }
+.hover\:text-\[\#9CA3AF\]:hover { color: var(--color-text-muted) !important; }
 
 /* Slate utility remapping */
 .text-slate-200 { color: var(--color-text-primary)   !important; }
@@ -246,7 +279,15 @@ html.dark {
 .border-black\/10 { border-color: var(--color-border-default) !important; }
 .border-black\/20 { border-color: var(--color-border-strong)  !important; }
 
+/* Hover / focus border variant remapping */
+.hover\:border-white\/10:hover  { border-color: var(--color-border-default) !important; }
+.hover\:border-white\/12:hover  { border-color: var(--color-border-strong)  !important; }
+.hover\:border-white\/15:hover  { border-color: var(--color-border-strong)  !important; }
+.hover\:border-white\/20:hover  { border-color: var(--color-border-strong)  !important; }
+.focus\:border-white\/12:focus  { border-color: var(--color-border-strong)  !important; }
+
 /* ── Divide remapping ──────────────────────────────────────────────────── */
+.divide-white\/4 > :not(:first-child)  { border-color: var(--color-border-subtle)  !important; }
 .divide-white\/6 > :not(:first-child)  { border-color: var(--color-border-subtle)  !important; }
 .divide-white\/8 > :not(:first-child)  { border-color: var(--color-border-default) !important; }
 
@@ -258,13 +299,149 @@ input::placeholder  { color: var(--color-text-subtle); }
 .placeholder-\[\#6B7280\]::placeholder { color: var(--color-text-subtle) !important; }
 .placeholder-\[\#4B5563\]::placeholder { color: var(--color-text-faint)  !important; }
 
+/* ── Gold accent remapping ───────────────────────────────────────────────
+   Intercept all hardcoded #D4AF37 / #E6C766 / #C4A030 / #f2d36b usages
+   and route them through CSS variables so light mode uses the refined gold.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Text gold */
+.text-\[\#D4AF37\]   { color: var(--color-accent) !important; }
+.text-\[\#d4af37\]   { color: var(--color-accent) !important; }
+.text-\[\#E6C766\]   { color: var(--color-accent-soft) !important; }
+.text-\[\#e6c766\]   { color: var(--color-accent-soft) !important; }
+.text-\[\#C4A030\]   { color: var(--color-accent-dark) !important; }
+.text-\[\#f2d36b\]   { color: var(--color-accent-soft) !important; }
+.text-\[\#F2D36B\]   { color: var(--color-accent-soft) !important; }
+
+/* Hover text gold */
+.hover\:text-\[\#D4AF37\]:hover { color: var(--color-accent) !important; }
+.hover\:text-\[\#E6C766\]:hover { color: var(--color-accent-soft) !important; }
+.hover\:text-\[\#f2d36b\]:hover { color: var(--color-accent-soft) !important; }
+.hover\:text-\[\#C4A030\]:hover { color: var(--color-accent-dark) !important; }
+.group-hover\:text-\[\#D4AF37\]:is(.group:hover *) { color: var(--color-accent) !important; }
+
+/* Background gold */
+.bg-\[\#D4AF37\]     { background-color: var(--color-accent) !important; }
+.bg-\[\#d4af37\]     { background-color: var(--color-accent) !important; }
+.bg-\[\#E6C766\]     { background-color: var(--color-accent-soft) !important; }
+.bg-\[\#C4A030\]     { background-color: var(--color-accent-dark) !important; }
+.hover\:bg-\[\#D4AF37\]:hover { background-color: var(--color-accent) !important; }
+.hover\:bg-\[\#C4A030\]:hover { background-color: var(--color-accent-dark) !important; }
+.hover\:bg-\[\#E6C766\]:hover { background-color: var(--color-accent-soft) !important; }
+
+/* Gold alpha backgrounds */
+.bg-\[\#D4AF37\]\/5  { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent) !important; }
+.bg-\[\#D4AF37\]\/6  { background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important; }
+.bg-\[\#D4AF37\]\/8  { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
+.bg-\[\#D4AF37\]\/10 { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.bg-\[\#D4AF37\]\/15 { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.bg-\[\#D4AF37\]\/20 { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/10:hover { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/15:hover { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/20:hover { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+
+/* Gold gradient stops */
+.from-\[\#D4AF37\]   { --tw-gradient-from: var(--color-accent) !important; }
+.to-\[\#D4AF37\]     { --tw-gradient-to: var(--color-accent) !important; }
+.via-\[\#D4AF37\]    { --tw-gradient-via: var(--color-accent) !important; }
+.from-\[\#C4A030\]   { --tw-gradient-from: var(--color-accent-dark) !important; }
+.to-\[\#C4A030\]     { --tw-gradient-to: var(--color-accent-dark) !important; }
+.from-\[\#E6C766\]   { --tw-gradient-from: var(--color-accent-soft) !important; }
+.to-\[\#E6C766\]     { --tw-gradient-to: var(--color-accent-soft) !important; }
+.from-\[\#f2d36b\]   { --tw-gradient-from: var(--color-accent-soft) !important; }
+.to-\[\#f2d36b\]     { --tw-gradient-to: var(--color-accent-soft) !important; }
+
+/* Border gold */
+.border-\[\#D4AF37\] { border-color: var(--color-accent) !important; }
+.border-\[\#D4AF37\]\/20 { border-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.border-\[\#D4AF37\]\/30 { border-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
+.hover\:border-\[\#D4AF37\]:hover { border-color: var(--color-accent) !important; }
+.hover\:border-\[\#D4AF37\]\/40:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important; }
+.hover\:border-\[\#D4AF37\]\/50:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, transparent) !important; }
+.focus\:border-\[\#D4AF37\]:focus { border-color: var(--color-accent) !important; }
+
+/* Ring gold */
+.ring-\[\#D4AF37\]     { --tw-ring-color: var(--color-accent) !important; }
+.ring-\[\#D4AF37\]\/20 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.ring-\[\#D4AF37\]\/30 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
+.focus\:ring-\[\#D4AF37\]:focus { --tw-ring-color: var(--color-accent) !important; }
+.focus\:ring-\[\#D4AF37\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+
+/* Shadow gold */
+.shadow-\[\#D4AF37\]     { --tw-shadow-color: var(--color-accent) !important; }
+
+/* Divide gold */
+.divide-\[\#D4AF37\] > :not(:first-child) { border-color: var(--color-accent) !important; }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    text-white / text-black
    We do NOT remap text-white globally because it's legitimately used on
    colored backgrounds (emerald badges, red buttons, gold CTAs, etc.).
    Components that need theme-aware "primary" text should use text-[#E5E7EB]
    (which IS remapped above) or the CSS variable directly.
+
+   However, text-white INSIDE containers whose backgrounds have been remapped
+   to light colors needs to become dark text in light mode.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* In light mode, remap text-white to dark text when inside remapped dark backgrounds */
+html:not(.dark) .bg-\[\#05070B\] > .text-white,
+html:not(.dark) .bg-\[\#0A0D14\] > .text-white,
+html:not(.dark) .bg-\[\#0F172A\] > .text-white,
+html:not(.dark) .bg-\[\#111827\] > .text-white,
+html:not(.dark) .bg-\[\#0B1220\] > .text-white,
+html:not(.dark) .bg-\[\#131929\] > .text-white,
+html:not(.dark) .bg-\[\#1E293B\] > .text-white,
+html:not(.dark) .app-wrapper .text-white:not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-\[\#D4AF37\]"]):not(button > .text-white) {
+  color: var(--color-text-primary) !important;
+}
+
+/* Preserve text-white on accent/status colored backgrounds in light mode */
+html:not(.dark) .bg-\[\#D4AF37\] .text-white,
+html:not(.dark) .bg-emerald-500 .text-white,
+html:not(.dark) .bg-emerald-600 .text-white,
+html:not(.dark) .bg-red-500 .text-white,
+html:not(.dark) .bg-red-600 .text-white,
+html:not(.dark) .bg-blue-500 .text-white,
+html:not(.dark) .bg-blue-600 .text-white,
+html:not(.dark) .bg-orange-500 .text-white,
+html:not(.dark) .bg-amber-500 .text-white,
+html:not(.dark) [class*="bg-gradient"] .text-white {
+  color: #FFFFFF !important;
+}
+
+/* ── text-slate-400 → muted text ─────────────────────────────────────── */
+html.dark .text-slate-400 { color: var(--color-text-muted) !important; }
+html:not(.dark) .text-slate-400 { color: var(--color-text-muted) !important; }
+
+/* ── Status/semantic color adjustments for light mode ─────────────────── */
+html:not(.dark) .text-red-400 { color: #dc2626 !important; }
+html:not(.dark) .text-emerald-400 { color: #059669 !important; }
+html:not(.dark) .text-amber-400 { color: #d97706 !important; }
+html:not(.dark) .text-orange-400 { color: #ea580c !important; }
+html:not(.dark) .text-purple-400 { color: #7c3aed !important; }
+html:not(.dark) .text-indigo-400 { color: #4f46e5 !important; }
+html:not(.dark) .text-blue-400 { color: #2563eb !important; }
+
+html:not(.dark) .bg-red-500\/10 { background-color: rgba(239, 68, 68, 0.08) !important; }
+html:not(.dark) .bg-emerald-500\/10 { background-color: rgba(16, 185, 129, 0.08) !important; }
+html:not(.dark) .bg-amber-500\/10 { background-color: rgba(245, 158, 11, 0.08) !important; }
+html:not(.dark) .bg-orange-500\/10 { background-color: rgba(249, 115, 22, 0.08) !important; }
+html:not(.dark) .bg-purple-500\/10 { background-color: rgba(139, 92, 246, 0.08) !important; }
+html:not(.dark) .bg-indigo-500\/10 { background-color: rgba(99, 102, 241, 0.08) !important; }
+html:not(.dark) .bg-blue-500\/10 { background-color: rgba(59, 130, 246, 0.08) !important; }
+
+html:not(.dark) .border-red-500\/20 { border-color: rgba(239, 68, 68, 0.15) !important; }
+html:not(.dark) .border-emerald-500\/20 { border-color: rgba(16, 185, 129, 0.15) !important; }
+html:not(.dark) .border-amber-500\/20 { border-color: rgba(245, 158, 11, 0.15) !important; }
+html:not(.dark) .border-orange-500\/20 { border-color: rgba(249, 115, 22, 0.15) !important; }
+html:not(.dark) .border-purple-500\/20 { border-color: rgba(139, 92, 246, 0.15) !important; }
+html:not(.dark) .border-indigo-500\/20 { border-color: rgba(99, 102, 241, 0.15) !important; }
+html:not(.dark) .border-blue-500\/20 { border-color: rgba(59, 130, 246, 0.15) !important; }
+
+/* ── bg-black overlay adjustments for light mode ─────────────────────── */
+html:not(.dark) .bg-black\/40 { background-color: rgba(0, 0, 0, 0.2) !important; }
+html:not(.dark) .bg-black\/50 { background-color: rgba(0, 0, 0, 0.3) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BASE STYLES
@@ -393,7 +570,7 @@ button {
   overflow-x: hidden;
   background-color: var(--color-bg-primary);
   /* Header is fixed with its own safe-area padding; only offset by header height */
-  padding-top: calc(52px + env(safe-area-inset-top));
+  padding-top: calc(52px + var(--safe-area-top, env(safe-area-inset-top)));
 }
 
 @media (min-width: 768px) {
@@ -591,6 +768,46 @@ button {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Android platform safe area fallbacks */
+html.android-platform {
+  --safe-area-top: 40px;
+  --safe-area-bottom: 48px;
+}
+
+html.ios-platform {
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+}
+
+/* Default for web */
+html:not(.android-platform):not(.ios-platform) {
+  --safe-area-top: 0px;
+  --safe-area-bottom: 0px;
+}
+
+/* Android backdrop-blur fallback - use higher opacity backgrounds */
+html.android-platform .backdrop-blur-2xl,
+html.android-platform .backdrop-blur-xl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.android-platform.dark .bg-\[\#05070B\]\/90 {
+  background-color: rgba(5, 7, 11, 0.97) !important;
+}
+
+html.android-platform.dark .bg-\[\#05070B\]\/95 {
+  background-color: rgba(5, 7, 11, 0.98) !important;
+}
+
+html.android-platform:not(.dark) .bg-\[\#05070B\]\/90 {
+  background-color: rgba(255, 255, 255, 0.97) !important;
+}
+
+html.android-platform:not(.dark) .bg-\[\#05070B\]\/95 {
+  background-color: rgba(255, 255, 255, 0.98) !important;
 }
 
 /* ── Safe area utility classes ───────────────────────────────────── */

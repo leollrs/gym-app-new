@@ -19,7 +19,7 @@ const PASS_KEY_B64 = Deno.env.get('APPLE_PASS_KEY_BASE64') || '';
 const WWDR_CERT_B64 = Deno.env.get('APPLE_WWDR_CERT_BASE64') || '';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -44,7 +44,8 @@ serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: ' + (authError?.message || 'no user') }), {
+      console.error('Auth failed:', authError?.message || 'no user');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -71,11 +72,16 @@ serve(async (req: Request) => {
     let passAuthToken = profile?.wallet_auth_token;
     if (!passSerial || !passAuthToken) {
       passSerial = `pass-${user.id}`;
-      passAuthToken = crypto.randomUUID() + crypto.randomUUID();
+      const rawToken = crypto.randomUUID() + crypto.randomUUID();
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(rawToken));
+      const hashedToken = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
       await supabase
         .from('profiles')
-        .update({ wallet_pass_serial: passSerial, wallet_auth_token: passAuthToken })
+        .update({ wallet_pass_serial: passSerial, wallet_auth_token: hashedToken })
         .eq('id', user.id);
+      // Use the raw (unhashed) token in the pass so Apple Wallet can authenticate
+      passAuthToken = rawToken;
     }
 
     const { data: branding } = await supabase
@@ -296,9 +302,9 @@ serve(async (req: Request) => {
         signature[i] = derString.charCodeAt(i);
       }
     } catch (signErr: any) {
+      console.error('Pass signing failed:', signErr?.message, signErr?.stack);
       return new Response(JSON.stringify({
-        error: 'Signing failed: ' + (signErr?.message || String(signErr)),
-        stack: (signErr?.stack || '').substring(0, 500),
+        error: 'Pass generation failed',
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -319,8 +325,7 @@ serve(async (req: Request) => {
   } catch (err: any) {
     console.error('generate-apple-pass error:', err?.message, err?.stack);
     return new Response(JSON.stringify({
-      error: err?.message || String(err),
-      stack: (err?.stack || '').substring(0, 500)
+      error: 'Pass generation failed',
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

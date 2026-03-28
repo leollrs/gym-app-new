@@ -55,7 +55,7 @@ const SessionHeader = ({
       )}
 
       {/* ── Top bar ────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-[#05070B]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="flex-shrink-0 bg-[#05070B]" style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
         <div className="relative flex items-center justify-between px-4 h-12">
           {/* Back */}
           <button

@@ -1,18 +1,20 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RotateCcw, CheckCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
 
 const OFFERS = [
-  { value: '', label: 'No offer' },
-  { value: 'Free PT session', label: 'Free PT session' },
-  { value: '1 month discount', label: '1 month discount' },
-  { value: 'Free class pass', label: 'Free class pass' },
-  { value: 'Custom…', label: 'Custom…' },
+  { value: '', key: 'none' },
+  { value: 'Free PT session', key: 'pt_session' },
+  { value: '1 month discount', key: 'discount' },
+  { value: 'Free class pass', key: 'class_pass' },
+  { value: 'Custom…', key: 'custom' },
 ];
 
 export default function WinBackModal({ member, gymId, adminId, onClose, onSent }) {
+  const { t } = useTranslation('pages');
   const defaultMsg = `Hey ${member.full_name.split(' ')[0]}! We miss you at the gym. We'd love to have you back — come in this week and let's pick up where you left off. Your spot is waiting!`;
   const [msg, setMsg] = useState(defaultMsg);
   const [offer, setOffer] = useState('');
@@ -74,7 +76,7 @@ export default function WinBackModal({ member, gymId, adminId, onClose, onSent }
             {OFFERS.map(o => (
               <button key={o.value} onClick={() => setOffer(o.value)}
                 className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${offer === o.value ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'}`}>
-                {o.label}
+                {t(`admin.winBackOffers.${o.key}`)}
               </button>
             ))}
           </div>

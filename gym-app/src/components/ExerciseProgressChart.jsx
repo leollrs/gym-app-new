@@ -34,16 +34,16 @@ function CustomTooltip({ active, payload, label }) {
   const real   = payload.find(p => p.dataKey === 'orm');
   if (proj?.value != null) {
     return (
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
-        <p className="text-[#6B7280] text-[11px] mb-1">{label}</p>
+      <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
+        <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{label}</p>
         <p className="font-semibold text-[#D4AF37]">Projected: {proj.value} lbs</p>
       </div>
     );
   }
   if (real?.value != null) {
     return (
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
-        <p className="text-[#6B7280] text-[11px] mb-1">{label}</p>
+      <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
+        <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{label}</p>
         <p className="font-semibold text-[#D4AF37]">Est. 1RM: {real.value} lbs</p>
       </div>
     );
@@ -115,23 +115,23 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
       className="fixed inset-0 z-[160] flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="exercise-progress-title" className="w-full max-w-lg rounded-t-3xl bg-slate-900 px-5 pt-4 pb-10 shadow-2xl animate-fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="exercise-progress-title" className="w-full max-w-lg rounded-t-3xl bg-[var(--color-bg-card)] px-5 pt-4 pb-10 shadow-2xl animate-fade-in">
         {/* Drag handle */}
         <div className="w-10 h-1 rounded-full mx-auto mb-4 bg-white/20" />
 
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-slate-400 mb-0.5">
+            <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-[var(--color-text-muted)] mb-0.5">
               Estimated 1RM Progress
             </p>
-            <h3 id="exercise-progress-title" className="font-bold text-[18px] leading-tight text-slate-100">
+            <h3 id="exercise-progress-title" className="font-bold text-[18px] leading-tight text-[var(--color-text-primary)]">
               {exerciseName}
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center mt-0.5 bg-slate-700 text-slate-300"
+            className="w-8 h-8 rounded-full flex items-center justify-center mt-0.5 bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]"
           >
             <X size={16} />
           </button>
@@ -146,12 +146,12 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
             </div>
           )}
           {trendPoints.length >= 3 && slope > 0 && projectedOrm != null && (
-            <div className="inline-flex items-center gap-1 bg-[#0F172A] border border-[#D4AF37]/30 text-[#D4AF37] text-[12px] rounded-full px-2.5 py-1">
+            <div className="inline-flex items-center gap-1 bg-[var(--color-bg-card)] border border-[#D4AF37]/30 text-[#D4AF37] text-[12px] rounded-full px-2.5 py-1">
               On track for ~{projectedOrm} lbs 1RM in 4 weeks
             </div>
           )}
           {trendPoints.length >= 3 && slope <= 0 && (
-            <div className="inline-flex items-center gap-1 bg-[#0F172A] border border-white/10 text-slate-400 text-[12px] rounded-full px-2.5 py-1">
+            <div className="inline-flex items-center gap-1 bg-[var(--color-bg-card)] border border-white/10 text-[var(--color-text-muted)] text-[12px] rounded-full px-2.5 py-1">
               Holding steady — focus on consistency
             </div>
           )}
@@ -160,7 +160,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
         {loading ? (
           <Skeleton variant="chart" />
         ) : data.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-44 gap-2 text-slate-500">
+          <div className="flex flex-col items-center justify-center h-44 gap-2 text-[var(--color-text-subtle)]">
             <TrendingUp size={32} className="opacity-25" />
             <p className="text-[13px] font-medium">No PR history yet</p>
             <p className="text-[12px] opacity-70 text-center">Hit a new personal record to start tracking your progress on this exercise.</p>
@@ -172,12 +172,12 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                  tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                  tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
                   axisLine={false}
                   tickLine={false}
                   domain={['auto', 'auto']}
@@ -223,8 +223,8 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
             <div className="mt-4 space-y-0">
               {[...data].reverse().slice(0, 4).map((d, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.06] last:border-0">
-                  <span className="text-[12px] text-slate-400">{d.date}</span>
-                  <span className="text-[13px] font-semibold text-slate-200">
+                  <span className="text-[12px] text-[var(--color-text-muted)]">{d.date}</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
                     {d.weight} lbs x {d.reps}
                     <span className="text-[11px] text-amber-400 font-normal ml-1.5">
                       ({d.orm} lbs 1RM)

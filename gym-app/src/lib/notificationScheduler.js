@@ -2,33 +2,18 @@ import { supabase } from './supabase';
 import logger from './logger';
 import {
   NOTIFICATION_TYPES,
+  createNotification,
   sendStreakWarning,
   sendMilestoneApproach,
   sendFriendActivityNotif,
   sendWinBackNotif,
   sendHabitCheckIn,
   sendWeeklySummary,
+  sendNotification,
 } from './notifications';
+import { REWARDS_CATALOG, getUserPoints } from './rewardsEngine';
 
 // ── HELPERS ──────────────────────────────────────────────────
-
-/** Get notification preferences from localStorage (defaults all ON). */
-function getPreferences(userId) {
-  const key = `notification_prefs_${userId}`;
-  const defaults = {
-    workout_reminders: true,
-    streak_alerts: true,
-    weekly_summary: true,
-    friend_activity: true,
-    milestone_alerts: true,
-  };
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? { ...defaults, ...JSON.parse(stored) } : defaults;
-  } catch {
-    return defaults;
-  }
-}
 
 /** Start of today (UTC). */
 function todayStart() {
@@ -57,6 +42,18 @@ async function wasNotificationSentSince(userId, type, sinceISO) {
   return data && data.length > 0;
 }
 
+/** Check if any notification with a matching title substring was sent since a time. */
+async function wasNotificationWithTitleSince(userId, titlePattern, sinceISO) {
+  const { data } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('profile_id', userId)
+    .ilike('title', `%${titlePattern}%`)
+    .gte('created_at', sinceISO)
+    .limit(1);
+  return data && data.length > 0;
+}
+
 /** Count notifications of a given type sent since a timestamp. */
 async function notificationCountSince(userId, type, sinceISO) {
   const { data } = await supabase
@@ -71,9 +68,9 @@ async function notificationCountSince(userId, type, sinceISO) {
 /** Map preferred_training_time label to an approximate hour threshold. */
 function timeWindowHourThreshold(preferredTime) {
   switch (preferredTime) {
-    case 'morning':   return 10; // after 10 AM
-    case 'afternoon': return 15; // after 3 PM
-    case 'evening':   return 19; // after 7 PM
+    case 'morning':   return 10;
+    case 'afternoon': return 15;
+    case 'evening':   return 19;
     default:          return 12;
   }
 }
@@ -89,20 +86,16 @@ function currentDayName() {
  * Streak Protection
  * If user trained yesterday but NOT today, and it's past their preferred time -> warn.
  */
-export async function checkStreakProtection(userId, gymId, profile) {
-  const prefs = getPreferences(userId);
-  if (!prefs.streak_alerts) return;
+async function checkStreakProtection(userId, gymId, profile) {
+  if (!profile.notif_streak_alerts) return;
 
-  // Already sent today?
   const alreadySent = await wasNotificationSentSince(userId, NOTIFICATION_TYPES.STREAK_WARNING, todayStart());
   if (alreadySent) return;
 
-  // Check if it's past user's preferred training window
   const currentHour = new Date().getHours();
   const threshold = timeWindowHourThreshold(profile?.preferred_training_time);
   if (currentHour < threshold) return;
 
-  // Did the user train yesterday?
   const yesterdayStart = daysAgoStart(1);
   const { data: yesterdaySessions } = await supabase
     .from('workout_sessions')
@@ -113,9 +106,8 @@ export async function checkStreakProtection(userId, gymId, profile) {
     .lt('created_at', todayStart())
     .limit(1);
 
-  if (!yesterdaySessions?.length) return; // didn't train yesterday, no streak to protect
+  if (!yesterdaySessions?.length) return;
 
-  // Did the user train today?
   const { data: todaySessions } = await supabase
     .from('workout_sessions')
     .select('id')
@@ -124,22 +116,20 @@ export async function checkStreakProtection(userId, gymId, profile) {
     .gte('created_at', todayStart())
     .limit(1);
 
-  if (todaySessions?.length) return; // already trained today
+  if (todaySessions?.length) return;
 
-  // Fetch current streak from profile or calculate
   const streak = profile?.current_streak || 1;
   await sendStreakWarning(userId, gymId, streak);
 }
 
 /**
- * Morning Workout Reminder
- * On preferred training days, remind the user if they haven't been notified today.
+ * Routine-Aware Workout Reminder
+ * On preferred training days, remind the user with their scheduled routine name.
+ * "Today is Back day — don't forget to hit it!"
  */
-export async function checkWorkoutReminder(userId, gymId, profile) {
-  const prefs = getPreferences(userId);
-  if (!prefs.workout_reminders) return;
+async function checkWorkoutReminder(userId, gymId, profile) {
+  if (!profile.notif_workout_reminders) return;
 
-  // Is today one of the user's preferred training days?
   const today = currentDayName();
   const preferredDays = profile?.preferred_training_days || [];
   if (!preferredDays.includes(today)) return;
@@ -159,31 +149,43 @@ export async function checkWorkoutReminder(userId, gymId, profile) {
 
   if (todaySessions?.length) return;
 
-  // Send reminder via the base sendNotification (it's a system-type reminder)
-  const { sendNotification } = await import('./notifications');
-  await sendNotification(userId, gymId, {
-    type: NOTIFICATION_TYPES.SYSTEM,
-    title: 'Time to train!',
-    body: `Today is ${today} — one of your training days. Let's get after it!`,
-  });
+  // Try to find the user's next scheduled routine
+  const dayIndex = preferredDays.indexOf(today);
+  const { data: routines } = await supabase
+    .from('routines')
+    .select('id, name')
+    .eq('created_by', userId)
+    .eq('is_template', false)
+    .order('created_at', { ascending: true });
+
+  let title = 'Time to train!';
+  let body = `Today is ${today} — one of your training days. Let's get after it!`;
+
+  if (routines?.length) {
+    // Rotate routines across training days
+    const routine = routines[dayIndex % routines.length];
+    if (routine?.name) {
+      title = `Today is ${routine.name} day`;
+      body = `Don't forget to hit your ${routine.name} routine. Your body's ready for it!`;
+    }
+  }
+
+  await sendNotification(userId, gymId, { type: NOTIFICATION_TYPES.SYSTEM, title, body });
 }
 
 /**
  * Weekly Progress Digest
  * On Sundays, compile the week's stats and send a summary.
  */
-export async function checkWeeklyDigest(userId, gymId) {
-  const prefs = getPreferences(userId);
-  if (!prefs.weekly_summary) return;
+async function checkWeeklyDigest(userId, gymId, profile) {
+  if (!profile.notif_weekly_summary) return;
 
-  const dayOfWeek = new Date().getDay(); // 0 = Sunday
+  const dayOfWeek = new Date().getDay();
   if (dayOfWeek !== 0) return;
 
-  // Already sent this week?
   const alreadySent = await wasNotificationSentSince(userId, NOTIFICATION_TYPES.WEEKLY_SUMMARY, todayStart());
   if (alreadySent) return;
 
-  // Fetch sessions from the past 7 days
   const weekStart = daysAgoStart(7);
   const { data: sessions } = await supabase
     .from('workout_sessions')
@@ -193,14 +195,6 @@ export async function checkWeeklyDigest(userId, gymId) {
     .gte('created_at', weekStart);
 
   const sessionsThisWeek = sessions?.length || 0;
-
-  // Fetch profile for streak and goal
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_streak, weekly_goal')
-    .eq('id', userId)
-    .maybeSingle();
-
   const streakDays = profile?.current_streak || 0;
   const weekGoal = profile?.weekly_goal || 4;
 
@@ -211,11 +205,9 @@ export async function checkWeeklyDigest(userId, gymId) {
  * Milestone Proximity
  * Check if user is within 2 workouts/days of a milestone.
  */
-export async function checkMilestoneProximity(userId, gymId, profile) {
-  const prefs = getPreferences(userId);
-  if (!prefs.milestone_alerts) return;
+async function checkMilestoneProximity(userId, gymId, profile) {
+  if (!profile.notif_milestone_alerts) return;
 
-  // Session milestones
   const sessionMilestones = [10, 25, 50, 100, 200, 500];
   const { data: allSessions } = await supabase
     .from('workout_sessions')
@@ -228,8 +220,6 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
   for (const milestone of sessionMilestones) {
     const remaining = milestone - totalSessions;
     if (remaining > 0 && remaining <= 2) {
-      // Check if we already notified for this milestone
-      const milestoneKey = `session_${milestone}`;
       const { data: existing } = await supabase
         .from('notifications')
         .select('id')
@@ -244,7 +234,7 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
           remaining,
         });
       }
-      break; // only notify for the nearest milestone
+      break;
     }
   }
 
@@ -279,16 +269,13 @@ export async function checkMilestoneProximity(userId, gymId, profile) {
  * If user hasn't trained in 3+ days, send escalating win-back messages.
  * Max one per 3 days.
  */
-export async function checkReengagement(userId, gymId) {
-  const prefs = getPreferences(userId);
-  if (!prefs.workout_reminders) return;
+async function checkReengagement(userId, gymId, profile) {
+  if (!profile.notif_workout_reminders) return;
 
-  // Rate limit: max 1 win-back per 3 days
   const threeDaysAgo = daysAgoStart(3);
   const recentWinBack = await wasNotificationSentSince(userId, NOTIFICATION_TYPES.WIN_BACK, threeDaysAgo);
   if (recentWinBack) return;
 
-  // Find the last session
   const { data: lastSession } = await supabase
     .from('workout_sessions')
     .select('created_at')
@@ -297,7 +284,7 @@ export async function checkReengagement(userId, gymId) {
     .order('created_at', { ascending: false })
     .limit(1);
 
-  if (!lastSession?.length) return; // no sessions at all — handled by new member flow
+  if (!lastSession?.length) return;
 
   const lastDate = new Date(lastSession[0].created_at);
   const now = new Date();
@@ -325,15 +312,12 @@ export async function checkReengagement(userId, gymId) {
  * Friend Activity (rate-limited)
  * Send friend workout notifications, max 3 per day.
  */
-export async function checkFriendActivity(userId, gymId) {
-  const prefs = getPreferences(userId);
-  if (!prefs.friend_activity) return;
+async function checkFriendActivity(userId, gymId, profile) {
+  if (!profile.notif_friend_activity) return;
 
-  // Check how many friend notifications were sent today
   const count = await notificationCountSince(userId, NOTIFICATION_TYPES.FRIEND_ACTIVITY, todayStart());
   if (count >= 3) return;
 
-  // Get user's friends
   const { data: friendships } = await supabase
     .from('friendships')
     .select('requester_id, addressee_id')
@@ -344,7 +328,6 @@ export async function checkFriendActivity(userId, gymId) {
 
   const friendIds = friendships.map(f => f.requester_id === userId ? f.addressee_id : f.requester_id);
 
-  // Get friend sessions from today that we haven't notified about
   const { data: friendSessions } = await supabase
     .from('workout_sessions')
     .select('id, profile_id, created_at')
@@ -357,7 +340,6 @@ export async function checkFriendActivity(userId, gymId) {
   if (!friendSessions?.length) return;
 
   for (const session of friendSessions) {
-    // Get friend name
     const { data: friendProfile } = await supabase
       .from('profiles')
       .select('full_name')
@@ -366,7 +348,6 @@ export async function checkFriendActivity(userId, gymId) {
 
     const friendName = friendProfile?.full_name || 'A friend';
 
-    // Check if we already sent a notification for this specific session
     const { data: existing } = await supabase
       .from('notifications')
       .select('id')
@@ -392,9 +373,8 @@ export async function checkFriendActivity(userId, gymId) {
  * New Member First Week
  * If member is < 7 days old and has < 3 sessions, send encouraging check-in.
  */
-export async function checkNewMemberCheckin(userId, gymId, profile) {
-  const prefs = getPreferences(userId);
-  if (!prefs.workout_reminders) return;
+async function checkNewMemberCheckin(userId, gymId, profile) {
+  if (!profile.notif_workout_reminders) return;
 
   if (!profile?.created_at) return;
 
@@ -404,15 +384,12 @@ export async function checkNewMemberCheckin(userId, gymId, profile) {
 
   if (daysSinceJoin >= 7) return;
 
-  // Already sent a habit check-in today?
   const alreadySent = await wasNotificationSentSince(userId, NOTIFICATION_TYPES.HABIT_CHECKIN, todayStart());
   if (alreadySent) return;
 
-  // Only send once during the first week (check if any were sent since signup)
   const sentSinceJoin = await wasNotificationSentSince(userId, NOTIFICATION_TYPES.HABIT_CHECKIN, createdAt.toISOString());
   if (sentSinceJoin) return;
 
-  // Count sessions since join
   const { data: sessions } = await supabase
     .from('workout_sessions')
     .select('id')
@@ -421,13 +398,131 @@ export async function checkNewMemberCheckin(userId, gymId, profile) {
     .gte('created_at', createdAt.toISOString());
 
   const sessionCount = sessions?.length || 0;
-
-  if (sessionCount >= 3) return; // already building the habit
-
-  // Only send after at least day 2
+  if (sessionCount >= 3) return;
   if (daysSinceJoin < 2) return;
 
   await sendHabitCheckIn(userId, gymId, sessionCount);
+}
+
+/**
+ * Reward Proximity
+ * If user is within 15% of affording a reward, nudge them.
+ * Max one reward nudge per week.
+ */
+async function checkRewardProximity(userId, gymId, profile) {
+  if (!profile.notif_reward_reminders) return;
+
+  // Rate limit: max 1 reward nudge per week
+  const weekAgo = daysAgoStart(7);
+  const recentRewardNudge = await wasNotificationWithTitleSince(userId, 'close to', weekAgo);
+  if (recentRewardNudge) return;
+
+  const points = await getUserPoints(userId);
+  if (!points) return;
+  const currentPoints = points.total_points ?? 0;
+
+  // Find the cheapest reward the user can't yet afford but is close to
+  const sortedRewards = [...REWARDS_CATALOG].sort((a, b) => a.cost - b.cost);
+
+  for (const reward of sortedRewards) {
+    if (currentPoints >= reward.cost) continue; // already can afford
+    const remaining = reward.cost - currentPoints;
+    const threshold = reward.cost * 0.15; // within 15%
+
+    if (remaining <= threshold && remaining > 0) {
+      await createNotification({
+        profileId: userId,
+        gymId,
+        type: NOTIFICATION_TYPES.SYSTEM,
+        title: `You're close to a ${reward.name}!`,
+        body: `Just ${remaining} more points to redeem. Keep training!`,
+      });
+      break; // only nudge for the nearest reward
+    }
+  }
+}
+
+/**
+ * Challenge Awareness
+ * - Notify about new challenges the user hasn't joined
+ * - Nudge if user joined a challenge but hasn't worked out in 2+ days
+ * Max one challenge nudge per day.
+ */
+async function checkChallengeUpdates(userId, gymId, profile) {
+  if (!profile.notif_challenge_updates) return;
+
+  const now = new Date().toISOString();
+
+  // Already sent a challenge notification today?
+  const alreadySent = await wasNotificationSentSince(userId, 'challenge_update', todayStart());
+  if (alreadySent) return;
+
+  // 1. New challenges user hasn't joined
+  const [{ data: activeChallenges }, { data: myParticipations }] = await Promise.all([
+    supabase
+      .from('challenges')
+      .select('id, name, type, end_date')
+      .eq('gym_id', gymId)
+      .eq('status', 'active')
+      .gte('end_date', now),
+    supabase
+      .from('challenge_participants')
+      .select('challenge_id')
+      .eq('profile_id', userId),
+  ]);
+
+  const joinedIds = new Set((myParticipations || []).map(p => p.challenge_id));
+  const unjoinedChallenges = (activeChallenges || []).filter(c => !joinedIds.has(c.id));
+
+  if (unjoinedChallenges.length > 0) {
+    // Check if we already notified about this challenge
+    const challenge = unjoinedChallenges[0];
+    const alreadyNotified = await wasNotificationWithTitleSince(userId, challenge.title, daysAgoStart(7));
+    if (!alreadyNotified) {
+      await createNotification({
+        profileId: userId,
+        gymId,
+        type: 'challenge_update',
+        title: `New challenge: ${challenge.title}`,
+        body: 'Join now and compete with your gym!',
+      });
+      return; // one notification per cycle
+    }
+  }
+
+  // 2. Challenge inactivity — user joined but hasn't worked out in 2+ days
+  if (!myParticipations?.length) return;
+
+  const { data: lastSession } = await supabase
+    .from('workout_sessions')
+    .select('created_at')
+    .eq('profile_id', userId)
+    .eq('gym_id', gymId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!lastSession?.length) return;
+
+  const lastDate = new Date(lastSession[0].created_at);
+  const daysSince = Math.floor((new Date() - lastDate) / (1000 * 60 * 60 * 24));
+
+  if (daysSince >= 2) {
+    // Find an active challenge they're in
+    const activeJoined = (activeChallenges || []).filter(c => joinedIds.has(c.id));
+    if (activeJoined.length > 0) {
+      const ch = activeJoined[0];
+      const daysLeft = Math.ceil((new Date(ch.end_date) - new Date()) / (1000 * 60 * 60 * 24));
+      if (daysLeft > 0) {
+        await createNotification({
+          profileId: userId,
+          gymId,
+          type: 'challenge_update',
+          title: `Don't fall behind in ${ch.name}!`,
+          body: `${daysLeft} days left — a workout today keeps you in the running.`,
+        });
+      }
+    }
+  }
 }
 
 // ── MAIN SCHEDULER ───────────────────────────────────────────
@@ -435,14 +530,11 @@ export async function checkNewMemberCheckin(userId, gymId, profile) {
 /**
  * Run all notification checks for a user.
  * Call this when the app opens or from a cron/edge function.
- *
- * @param {string} userId
- * @param {string} gymId
  */
 export async function runNotificationScheduler(userId, gymId) {
   if (!userId || !gymId) return;
 
-  // Fetch profile once for all checks
+  // Fetch profile once — includes notification preferences
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -451,21 +543,24 @@ export async function runNotificationScheduler(userId, gymId) {
 
   if (!profile) return;
 
-  // Run all checks concurrently — each handles its own deduplication
+  // If push is completely disabled, skip everything
+  if (profile.notif_push_enabled === false) return;
+
+  // Run all checks concurrently — each handles its own deduplication + pref check
   const checks = [
     checkStreakProtection(userId, gymId, profile),
     checkWorkoutReminder(userId, gymId, profile),
-    checkWeeklyDigest(userId, gymId),
+    checkWeeklyDigest(userId, gymId, profile),
     checkMilestoneProximity(userId, gymId, profile),
-    checkReengagement(userId, gymId),
-    checkFriendActivity(userId, gymId),
+    checkReengagement(userId, gymId, profile),
+    checkFriendActivity(userId, gymId, profile),
     checkNewMemberCheckin(userId, gymId, profile),
+    checkRewardProximity(userId, gymId, profile),
+    checkChallengeUpdates(userId, gymId, profile),
   ];
 
-  // Use allSettled so one failure doesn't block the rest
   const results = await Promise.allSettled(checks);
 
-  // Log any failures for debugging
   results.forEach((result, i) => {
     if (result.status === 'rejected') {
       logger.warn(`[NotificationScheduler] Check ${i} failed:`, result.reason);

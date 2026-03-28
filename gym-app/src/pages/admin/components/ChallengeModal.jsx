@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Trophy, Gift } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
@@ -7,9 +8,9 @@ import { adminKeys } from '../../../lib/adminQueryKeys';
 import { AdminModal } from '../../../components/admin';
 
 const CHALLENGE_TYPES = [
-  { value: 'consistency', label: 'Consistency',    desc: 'Most workouts logged in the period' },
-  { value: 'volume',      label: 'Total Volume',   desc: 'Most total weight lifted' },
-  { value: 'pr_count',    label: 'PR Hunter',      desc: 'Most new personal records set' },
+  { value: 'consistency' },
+  { value: 'volume' },
+  { value: 'pr_count' },
 ];
 
 const DEFAULT_REWARDS = [
@@ -23,6 +24,7 @@ const DEFAULT_REWARDS = [
  * When `challenge` is provided, operates in edit mode.
  */
 export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challenge = null }) {
+  const { t } = useTranslation('pages');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!challenge;
@@ -156,15 +158,15 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
         <div>
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
           <div className="space-y-2">
-            {CHALLENGE_TYPES.map(t => (
-              <label key={t.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                form.type === t.value ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
+            {CHALLENGE_TYPES.map(ct => (
+              <label key={ct.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                form.type === ct.value ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
               }`}>
-                <input type="radio" name="challenge-type" value={t.value} checked={form.type === t.value}
+                <input type="radio" name="challenge-type" value={ct.value} checked={form.type === ct.value}
                   onChange={e => set('type', e.target.value)} className="mt-0.5 accent-[#D4AF37]" />
                 <div>
-                  <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.label}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t.desc}</p>
+                  <p className="text-[13px] font-semibold text-[#E5E7EB]">{t(`admin.challengeTypes.${ct.value}`)}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t(`admin.challengeTypes.${ct.value}_desc`)}</p>
                 </div>
               </label>
             ))}

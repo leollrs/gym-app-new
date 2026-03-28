@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, QrCode } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useTranslation } from 'react-i18next';
 import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import QRCodeModal from '../components/QRCodeModal';
@@ -16,6 +18,7 @@ export default function CheckIn() {
   const navigate  = useNavigate();
   const { user, profile, gymName, gymConfig } = useAuth();
   const { showToast } = useToast();
+  const { t } = useTranslation('pages');
 
   const [checkins,  setCheckins]  = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -40,25 +43,22 @@ export default function CheckIn() {
   // Already checked in today?
   const todayCheckIn = checkins.find(c => isToday(new Date(c.checked_in_at)));
 
-  // ── Streak ──────────────────────────────────────────────────────────────────
-  const streak = (() => {
-    const dateSets = new Set(checkins.map(c => format(new Date(c.checked_in_at), 'yyyy-MM-dd')));
-    let s = 0;
-    const now = new Date();
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const key = format(d, 'yyyy-MM-dd');
-      if (dateSets.has(key)) s++;
-      else if (i > 0) break;
-    }
-    return s;
-  })();
+  // ── Streak (from streak_cache — same source as Navigation) ──────────────────
+  const [streak, setStreak] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('streak_cache')
+      .select('current_streak_days')
+      .eq('profile_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setStreak(data?.current_streak_days || 0));
+  }, [user]);
 
   // ── Group history by date label ──────────────────────────────────────────────
   const grouped = checkins.reduce((acc, c) => {
     const d   = new Date(c.checked_in_at);
-    const key = isToday(d) ? 'Today' : isYesterday(d) ? 'Yesterday' : format(d, 'MMMM d, yyyy');
+    const key = isToday(d) ? t('checkIn.today') : isYesterday(d) ? t('checkIn.yesterday') : format(d, 'MMMM d, yyyy');
     if (!acc[key]) acc[key] = [];
     acc[key].push(c);
     return acc;
@@ -76,8 +76,8 @@ export default function CheckIn() {
           <ArrowLeft size={18} className="text-[#9CA3AF]" />
         </button>
         <div>
-          <h1 className="text-[28px] font-bold text-[#E5E7EB]">Check In</h1>
-          <p className="text-[12px] text-[#9CA3AF]">Scan your QR code at the gym</p>
+          <h1 className="text-[28px] font-bold text-[#E5E7EB]">{t('checkIn.title')}</h1>
+          <p className="text-[12px] text-[#9CA3AF]">{t('checkIn.subtitle')}</p>
         </div>
       </div>
 
@@ -91,9 +91,9 @@ export default function CheckIn() {
               style={{ background: 'rgba(16,185,129,0.12)', border: '3px solid rgba(16,185,129,0.4)' }}
             >
               <CheckCircle size={44} style={{ color: '#10B981' }} strokeWidth={1.5} />
-              <p className="text-[13px] font-bold text-[#10B981]">Checked In</p>
+              <p className="text-[13px] font-bold text-[#10B981]">{t('checkIn.checkedIn')}</p>
             </div>
-            <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">You're in!</p>
+            <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">{t('checkIn.youreIn')}</p>
             <p className="text-[12px] text-[#9CA3AF]">
               Checked in at {format(new Date(todayCheckIn.checked_in_at), 'h:mm a')}
             </p>
@@ -105,15 +105,15 @@ export default function CheckIn() {
               onClick={() => setShowQR(true)}
               className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5 transition-all duration-300 active:scale-95"
               style={{
-                background: 'rgba(212,175,55,0.1)',
-                border: '3px solid rgba(212,175,55,0.3)',
+                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                border: '3px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
               }}
             >
-              <QrCode size={44} style={{ color: '#D4AF37' }} strokeWidth={1.5} />
-              <p className="text-[13px] font-bold text-[#D4AF37]">Show QR</p>
+              <QrCode size={44} style={{ color: 'var(--color-accent)' }} strokeWidth={1.5} />
+              <p className="text-[13px] font-bold text-[#D4AF37]">{t('checkIn.showQR')}</p>
             </button>
             <p className="text-[13px] text-[#9CA3AF]">
-              Show your QR code to check in at the gym
+              {t('checkIn.showQRInstruction')}
             </p>
           </>
         )}
@@ -121,11 +121,11 @@ export default function CheckIn() {
         {/* Streak */}
         <div
           className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-full"
-          style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.15)' }}
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 15%, transparent)' }}
         >
           <span className="text-[22px] font-black text-[#D4AF37] tabular-nums">{streak}</span>
           <span className="text-[13px] font-semibold text-[#9CA3AF]">
-            day{streak !== 1 ? 's' : ''} streak
+            {streak !== 1 ? t('checkIn.daysStreak') : t('checkIn.dayStreak')}
           </span>
         </div>
       </div>
@@ -140,11 +140,11 @@ export default function CheckIn() {
       ) : checkins.length === 0 ? (
         <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] py-12 text-center">
           <MapPin size={28} style={{ color: '#4B5563', margin: '0 auto 12px' }} strokeWidth={1.5} />
-          <p className="text-[13px] text-[#9CA3AF]">No check-ins yet</p>
+          <p className="text-[13px] text-[#9CA3AF]">{t('checkIn.noCheckInsYet')}</p>
         </div>
       ) : (
         <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
-          <p className="text-[14px] font-semibold px-5 pt-4 pb-2 text-[#9CA3AF]">History</p>
+          <p className="text-[14px] font-semibold px-5 pt-4 pb-2 text-[#9CA3AF]">{t('checkIn.history')}</p>
           <div className="divide-y divide-white/[0.06]">
             {Object.entries(grouped).map(([label, items]) => (
               <div key={label}>
@@ -164,7 +164,7 @@ export default function CheckIn() {
                         {format(new Date(c.checked_in_at), 'h:mm a')}
                       </p>
                       <p className="text-[11px] text-[#9CA3AF]">
-                        {METHOD_LABELS[c.method] ?? c.method}
+                        {t(`checkIn.methods.${c.method}`) ?? c.method}
                       </p>
                     </div>
                     <p className="text-[11px] text-[#6B7280]">
@@ -178,15 +178,16 @@ export default function CheckIn() {
         </div>
       )}
 
-      {/* QR Code Modal */}
-      {showQR && (
+      {/* QR Code Modal — portaled to body so fixed positioning isn't broken by parent transforms */}
+      {showQR && createPortal(
         <QRCodeModal
           payload={qrPayload}
           memberName={profile?.full_name}
           displayFormat={gymConfig?.qrDisplayFormat}
           gymName={gymName}
           onClose={() => setShowQR(false)}
-        />
+        />,
+        document.body
       )}
     </div>
   );

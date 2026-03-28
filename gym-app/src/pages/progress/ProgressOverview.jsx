@@ -17,11 +17,12 @@ import { getUserPoints } from '../../lib/rewardsEngine';
 import { LevelCard } from '../../components/LevelBadge';
 import { ACHIEVEMENT_DEFS } from '../../lib/achievements';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import ChartTooltip from '../../components/ChartTooltip';
 import { sanitize } from '../../lib/sanitize';
 
 export default function ProgressOverview() {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { user, lifetimePoints: ctxLifetimePoints } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
@@ -115,7 +116,7 @@ export default function ProgressOverview() {
       const volRaw = volumeData.data ?? [];
       const weeklyMap = {};
       volRaw.forEach(s => {
-        const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }), 'MMM d');
+        const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
         weeklyMap[wk] = (weeklyMap[wk] || 0) + (parseFloat(s.total_volume_lbs) || 0);
       });
       setVolumeChart(
@@ -168,7 +169,7 @@ export default function ProgressOverview() {
           onClick={() => setShowMonthlyReport(true)}
           aria-label="View monthly report"
           className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-xl transition-colors"
-          style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
         >
           <BarChart3 size={14} />
           {t('progress.overview.monthlyReport')}
@@ -223,6 +224,7 @@ export default function ProgressOverview() {
               <Area
                 type="monotone"
                 dataKey="volume"
+                name={t('progress.overview.volume')}
                 stroke="#D4AF37"
                 strokeWidth={2}
                 fill="url(#volGrad)"
@@ -251,7 +253,7 @@ export default function ProgressOverview() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_KEYS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
 
 const formatDuration = (seconds) => {
   if (!seconds) return '—';
@@ -262,6 +264,7 @@ const formatDuration = (seconds) => {
 
 // ── Compact Session Row ──────────────────────────────────────────────────
 function SessionRow({ session }) {
+  const { i18n } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const exercises = session.session_exercises ?? [];
   const allSets = exercises.flatMap(e => e.session_sets ?? []).filter(s => s.is_completed);
@@ -277,7 +280,7 @@ function SessionRow({ session }) {
       >
         <div className="flex-shrink-0 w-9 text-center pt-0.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">
-            {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
+            {new Date(session.completed_at).toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'short' })}
           </p>
           <p className="text-[22px] font-bold leading-none text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {new Date(session.completed_at).getDate()}
@@ -333,7 +336,7 @@ function SessionRow({ session }) {
                             className="rounded-lg px-2 py-0.5 text-[11px] font-semibold"
                             style={
                               set.is_pr
-                                ? { background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }
+                                ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
                                 : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.06)' }
                             }
                           >
@@ -353,6 +356,7 @@ function SessionRow({ session }) {
 
 // ── Month Block ──────────────────────────────────────────────────────────
 function MonthBlock({ monthLabel, sessions, defaultOpen }) {
+  const { t } = useTranslation('pages');
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? sessions : sessions.slice(0, 5);
@@ -372,7 +376,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
           {monthLabel}
         </p>
         <span className="text-[11px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+          {t('progress.overview.sessions_count', { count: sessions.length })}
         </span>
       </button>
       {open && (
@@ -385,7 +389,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
               onClick={() => setShowAll(true)}
               className="text-[12px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors pb-3 pl-1"
             >
-              Show {sessions.length - 5} more session{sessions.length - 5 !== 1 ? 's' : ''}
+              {t('progress.overview.showMore', { count: sessions.length - 5 })}
             </button>
           )}
           {hasMore && showAll && (
@@ -393,7 +397,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
               onClick={() => setShowAll(false)}
               className="text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors pb-3 pl-1"
             >
-              Show less
+              {t('progress.overview.showLess')}
             </button>
           )}
         </div>
@@ -404,6 +408,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
 
 // ── Year Block (for past years) ──────────────────────────────────────────
 function YearBlock({ year, monthsData }) {
+  const { t } = useTranslation('pages');
   const [open, setOpen] = useState(false);
   const totalSessions = Object.values(monthsData).reduce((sum, arr) => sum + arr.length, 0);
 
@@ -425,7 +430,7 @@ function YearBlock({ year, monthsData }) {
           {year}
         </p>
         <span className="text-[12px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {totalSessions} session{totalSessions !== 1 ? 's' : ''}
+          {t('progress.overview.sessions_count', { count: totalSessions })}
         </span>
       </button>
       {open && (
@@ -433,7 +438,7 @@ function YearBlock({ year, monthsData }) {
           {sortedMonths.map(monthIdx => (
             <MonthBlock
               key={monthIdx}
-              monthLabel={MONTH_NAMES[monthIdx]}
+              monthLabel={t(`months.${MONTH_KEYS[monthIdx]}`)}
               sessions={monthsData[monthIdx]}
               defaultOpen={false}
             />
@@ -446,6 +451,7 @@ function YearBlock({ year, monthsData }) {
 
 // ── Monthly Timeline ─────────────────────────────────────────────────────
 function MonthlyTimeline({ userId }) {
+  const { t } = useTranslation('pages');
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -519,8 +525,8 @@ function MonthlyTimeline({ userId }) {
     return (
       <EmptyState
         icon={Dumbbell}
-        title="No workouts yet"
-        description="Complete your first session to see your history"
+        title={t('progress.overview.noWorkoutsYet')}
+        description={t('progress.overview.noWorkoutsHint')}
       />
     );
   }
@@ -530,7 +536,7 @@ function MonthlyTimeline({ userId }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6B7280] mb-2">
-        {currentYear} Workout History
+        {t('progress.overview.workoutHistory', { year: currentYear })}
       </p>
 
       {/* Current year months */}
@@ -542,7 +548,7 @@ function MonthlyTimeline({ userId }) {
             <div key={monthIdx} className="flex items-center gap-2 py-2 opacity-40">
               <ChevronRight size={14} className="text-[#4B5563]" />
               <p className="text-[12px] font-semibold text-[#4B5563] uppercase tracking-[0.12em]">
-                {MONTH_NAMES[monthIdx]}
+                {t(`months.${MONTH_KEYS[monthIdx]}`)}
               </p>
               <span className="text-[11px] text-[#4B5563]">—</span>
             </div>
@@ -551,7 +557,7 @@ function MonthlyTimeline({ userId }) {
         return (
           <MonthBlock
             key={monthIdx}
-            monthLabel={MONTH_NAMES[monthIdx]}
+            monthLabel={t(`months.${MONTH_KEYS[monthIdx]}`)}
             sessions={monthSessions}
             defaultOpen={isActive}
           />

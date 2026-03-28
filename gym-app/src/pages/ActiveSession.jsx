@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Component } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Trophy } from 'lucide-react';
+import { Trophy, Dumbbell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion } from '../lib/overloadEngine';
@@ -9,6 +9,7 @@ import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotif
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
 import { syncWorkoutToWatch, syncWorkoutEnded, onWatchMessage } from '../lib/watchBridge';
 import { useTranslation } from 'react-i18next';
+import { exName } from '../lib/exerciseName';
 
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises } from '../data/exercises';
@@ -89,6 +90,96 @@ const ActiveSession = () => {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { t } = useTranslation('pages');
+
+  // ── Check for conflicting active session ──────────────────────────────────
+  const [conflictSession, setConflictSession] = useState(null);
+  const [showConflict, setShowConflict] = useState(false);
+
+  useEffect(() => {
+    try {
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith('gym_session_')) continue;
+        const otherId = key.replace('gym_session_', '');
+        if (otherId === id) continue; // same session, not a conflict
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data?.loggedSets && data?.startedAt && new Date(data.startedAt).getTime() > oneDayAgo) {
+          setConflictSession({ routineId: otherId, routineName: data.routineName || 'Workout', key });
+          setShowConflict(true);
+          break;
+        }
+      }
+    } catch { }
+  }, [id]);
+
+  const handleDiscardConflict = () => {
+    if (conflictSession) {
+      localStorage.removeItem(conflictSession.key);
+      localStorage.removeItem(`gym_rest_${conflictSession.routineId}`);
+      // Also clean up DB draft
+      if (user?.id) {
+        supabase.from('session_drafts').delete()
+          .eq('profile_id', user.id).eq('routine_id', conflictSession.routineId)
+          .then(() => {}).catch(() => {});
+      }
+    }
+    setShowConflict(false);
+    setConflictSession(null);
+  };
+
+  const handleResumeConflict = () => {
+    if (conflictSession) {
+      navigate(`/session/${conflictSession.routineId}`, { replace: true });
+    }
+  };
+
+  // ── Check if this routine is scheduled for a different day ─────────────────
+  const [wrongDayInfo, setWrongDayInfo] = useState(null);
+  const [showWrongDay, setShowWrongDay] = useState(false);
+
+  // Scroll locking for dialog overlays
+  useEffect(() => {
+    if (showConflict) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [showConflict]);
+  useEffect(() => {
+    if (showWrongDay) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [showWrongDay]);
+
+  useEffect(() => {
+    if (!user?.id || !id) return;
+    // Skip check if resuming an existing draft
+    try {
+      const existing = localStorage.getItem(`gym_session_${id}`);
+      if (existing) return; // resuming — no warning needed
+    } catch { }
+
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    supabase
+      .from('workout_schedule')
+      .select('day_of_week, routine_id')
+      .eq('profile_id', user.id)
+      .then(({ data: schedule }) => {
+        if (!schedule?.length) return;
+        const todayDow = new Date().getDay();
+        const todaysRoutineId = schedule.find(s => s.day_of_week === todayDow)?.routine_id;
+        const thisRoutineDay = schedule.find(s => s.routine_id === id);
+
+        // If this routine is scheduled for a different day (and it's not today's routine)
+        if (thisRoutineDay && thisRoutineDay.day_of_week !== todayDow && id !== todaysRoutineId) {
+          setWrongDayInfo({
+            scheduledDay: DAY_NAMES[thisRoutineDay.day_of_week],
+            todayDay: DAY_NAMES[todayDow],
+          });
+          setShowWrongDay(true);
+        }
+      });
+  }, [user?.id, id]);
 
   // ── Session persistence ─────────────────────────────────────────────────────
   const sessionKey = `gym_session_${id}`;
@@ -218,7 +309,7 @@ const ActiveSession = () => {
             return updated;
           });
           setTimeout(() => {
-            handleToggleComplete(curEx.id, idx, curEx.name, curEx.restSeconds || 90);
+            handleToggleComplete(curEx.id, idx, exName(curEx), curEx.restSeconds || 90);
           }, 50);
           break;
         }
@@ -261,7 +352,7 @@ const ActiveSession = () => {
           id, name,
           routine_exercises(
             exercise_id, position, target_sets, target_reps, rest_seconds,
-            exercises(id, name, muscle_group, equipment, video_url)
+            exercises(id, name, name_es, muscle_group, equipment, video_url, instructions, instructions_es)
           )
         `)
         .eq('id', id)
@@ -276,10 +367,13 @@ const ActiveSession = () => {
         .map(re => ({
           id:          re.exercise_id,
           name:        re.exercises?.name ?? re.exercise_id,
+          name_es:     re.exercises?.name_es || null,
           targetSets:  re.target_sets,
           targetReps:  re.target_reps,
           restSeconds: re.rest_seconds,
           videoUrl:    re.exercises?.video_url || null,
+          instructions:    re.exercises?.instructions || null,
+          instructions_es: re.exercises?.instructions_es || null,
           history:     [],
         }));
 
@@ -427,7 +521,7 @@ const ActiveSession = () => {
         routineName,
         totalSets: ts,
         completedSets: cs,
-        currentExerciseName: exercises[currentExerciseIndex]?.name ?? '',
+        currentExerciseName: exName(exercises[currentExerciseIndex]) ?? '',
         startTimestamp: sessionStartTime.current,
       });
     } catch (e) { console.warn('Workout notification start failed:', e); }
@@ -443,7 +537,7 @@ const ActiveSession = () => {
       const curExSets = curEx ? (loggedSets[curEx.id] || []) : [];
       const curExDone = curExSets.filter(s => s.completed).length;
       const curExTotal = curExSets.length;
-      const exLabel = curEx ? `${curEx.name} ${curExDone}/${curExTotal}` : '';
+      const exLabel = curEx ? `${exName(curEx)} ${curExDone}/${curExTotal}` : '';
       updateLiveActivity({
         elapsedSeconds: now,
         completedSets: cs,
@@ -461,7 +555,7 @@ const ActiveSession = () => {
         ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
         : 0;
       syncWorkoutToWatch({
-        exerciseName: curEx?.name ?? '',
+        exerciseName: exName(curEx) ?? '',
         setNumber: curExDone + 1,
         totalSets: ts,
         suggestedWeight: watchActiveSet?.weight ? Number(watchActiveSet.weight) : (curEx?.suggestedWeight ?? 0),
@@ -626,7 +720,7 @@ const ActiveSession = () => {
       restNotificationScheduled.current = true;
       if (!restStartedAt.current) restStartedAt.current = Date.now();
       scheduleRestDoneNotification(
-        exercises[currentExerciseIndex]?.name ?? 'exercise',
+        exName(exercises[currentExerciseIndex]) ?? 'exercise',
         restTimer
       );
     }
@@ -829,14 +923,16 @@ const ActiveSession = () => {
   const handleFinish = async () => {
     setSaving(true);
     setSaveError('');
-    setShowFinishModal(false); // close modal if open
 
     try {
+      const now = new Date();
+      const localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
       const payload = {
         routine_id: id,
         routine_name: routineName,
         started_at: startedAt.current,
-        completed_at: new Date().toISOString(),
+        completed_at: now.toISOString(),
+        local_date: localDate,
         duration_seconds: elapsedTime,
         total_volume_lbs: totalVolume,
         completed_sets: completedSets,
@@ -960,7 +1056,7 @@ const ActiveSession = () => {
     handleToggleComplete(
       currentExercise.id,
       activeSetIndex,
-      currentExercise.name,
+      exName(currentExercise),
       currentExercise.restSeconds || 90
     );
   };
@@ -976,6 +1072,70 @@ const ActiveSession = () => {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] flex flex-col font-sans animate-fade-in bg-[#05070B]">
+
+      {/* Conflict dialog — another workout is already running */}
+      {showConflict && conflictSession && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+          <div className="bg-[#0F172A] rounded-[20px] w-full max-w-sm p-6 border border-white/[0.06]">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+              <Dumbbell size={22} className="text-amber-400" />
+            </div>
+            <h3 className="text-[18px] font-bold text-[#E5E7EB] text-center mb-2">Workout Already Running</h3>
+            <p className="text-[13px] text-[#6B7280] text-center leading-relaxed mb-6">
+              You have <span className="text-[#E5E7EB] font-medium">{conflictSession.routineName}</span> in progress. What would you like to do?
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={handleResumeConflict}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#60A5FA] hover:bg-[#4B91E8] transition-colors"
+              >
+                Resume {conflictSession.routineName}
+              </button>
+              <button
+                onClick={handleDiscardConflict}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-red-500 hover:bg-red-600 transition-colors"
+              >
+                Discard & Start New
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="w-full py-3 rounded-2xl font-medium text-[13px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wrong day warning — this routine is scheduled for a different day */}
+      {showWrongDay && wrongDayInfo && !showConflict && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+          <div className="bg-[#0F172A] rounded-[20px] w-full max-w-sm p-6 border border-white/[0.06]">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+              <span className="text-[24px]">📅</span>
+            </div>
+            <h3 className="text-[18px] font-bold text-[#E5E7EB] text-center mb-2">Different Day's Workout</h3>
+            <p className="text-[13px] text-[#6B7280] text-center leading-relaxed mb-6">
+              This routine is scheduled for <span className="text-[#D4AF37] font-semibold">{wrongDayInfo.scheduledDay}</span>, but today is <span className="text-[#E5E7EB] font-medium">{wrongDayInfo.todayDay}</span>. Do you want to proceed anyway?
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => setShowWrongDay(false)}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
+              >
+                Yes, Start Anyway
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="w-full py-3 rounded-2xl font-medium text-[13px] text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PR Banner */}
       {activePRBanner && (

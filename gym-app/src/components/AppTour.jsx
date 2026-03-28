@@ -2,89 +2,19 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-/*
-  Interactive app tour that highlights real UI elements and navigates
-  between pages. Each step specifies a route + target DOM element.
-*/
-const TOUR_STEPS = [
-  // ── HOME ──
-  {
-    route: '/',
-    target: 'tour-my-plan',
-    title: 'Your Daily Plan',
-    text: 'This is your home screen. We pick the best workout for each day based on your schedule. Swipe the day strip to see upcoming days.',
-    position: 'below',
-  },
-  {
-    route: '/',
-    target: 'tour-quick-buttons',
-    title: 'Quick Access',
-    text: 'Nutrition tracks your calories and macros. QR opens your check-in code to scan at the gym.',
-    position: 'below',
-  },
-  {
-    route: '/',
-    target: 'tour-hero-card',
-    title: 'Start Your Workout',
-    text: 'Tap here to begin today\'s session. We\'ll suggest weights and reps based on your history — just follow along.',
-    position: 'above',
-  },
-  {
-    route: '/',
-    target: 'tour-level',
-    title: 'Level & Challenge',
-    text: 'Earn XP from workouts, PRs, and check-ins to level up. Complete the daily challenge for bonus points!',
-    position: 'above',
-  },
-  // ── WORKOUTS ──
-  {
-    route: '/workouts',
-    target: 'tour-workouts-page',
-    title: 'Your Routines',
-    text: 'All your workout routines and gym programs live here. Create custom routines or follow a structured program.',
-    position: 'below',
-  },
-  // ── QUICK START ──
-  {
-    route: '/record',
-    target: 'tour-quickstart-page',
-    title: 'Quick Start',
-    text: 'The fastest way to begin. Shows today\'s workout with a big start button. Tap it when you\'re ready to train.',
-    position: 'below',
-  },
-  // ── PROGRESS ──
-  {
-    route: '/progress',
-    target: 'tour-progress-page',
-    title: 'Track Progress',
-    text: 'Your workout history, body measurements, weight chart, and personal records — all in one place.',
-    position: 'below',
-  },
-  // ── COMMUNITY ──
-  {
-    route: '/community',
-    target: 'tour-community-page',
-    title: 'Community',
-    text: 'See friends\' activity, join gym challenges, and compete on leaderboards. Invite friends to earn bonus points!',
-    position: 'below',
-  },
-  // ── PROFILE ──
-  {
-    route: '/profile',
-    target: 'tour-profile-page',
-    title: 'Your Profile',
-    text: 'View your stats, achievements, goals, and gym info. Level up and unlock new achievement badges as you train.',
-    position: 'below',
-  },
-  // ── BACK TO NAV ──
-  {
-    route: '/',
-    target: 'tour-nav-record',
-    title: 'You\'re All Set!',
-    text: 'Hit this button anytime to start training. The app learns from every session to make your next one even better. Let\'s go!',
-    position: 'above',
-  },
+const TOUR_STEP_KEYS = [
+  { route: '/', target: 'tour-my-plan', titleKey: 'appTour.step1Title', textKey: 'appTour.step1Text', position: 'below' },
+  { route: '/', target: 'tour-quick-buttons', titleKey: 'appTour.step2Title', textKey: 'appTour.step2Text', position: 'below' },
+  { route: '/', target: 'tour-hero-card', titleKey: 'appTour.step3Title', textKey: 'appTour.step3Text', position: 'above' },
+  { route: '/', target: 'tour-level', titleKey: 'appTour.step4Title', textKey: 'appTour.step4Text', position: 'above' },
+  { route: '/workouts', target: 'tour-workouts-page', titleKey: 'appTour.step5Title', textKey: 'appTour.step5Text', position: 'below' },
+  { route: '/record', target: 'tour-quickstart-page', titleKey: 'appTour.step6Title', textKey: 'appTour.step6Text', position: 'below' },
+  { route: '/progress', target: 'tour-progress-page', titleKey: 'appTour.step7Title', textKey: 'appTour.step7Text', position: 'below' },
+  { route: '/community', target: 'tour-community-page', titleKey: 'appTour.step8Title', textKey: 'appTour.step8Text', position: 'below' },
+  { route: '/profile', target: 'tour-profile-page', titleKey: 'appTour.step9Title', textKey: 'appTour.step9Text', position: 'below' },
+  { route: '/', target: 'tour-nav-record', titleKey: 'appTour.step10Title', textKey: 'appTour.step10Text', position: 'above' },
 ];
 
 const STORAGE_PREFIX = 'app_tour_completed_';
@@ -95,10 +25,12 @@ function getTargetRect(key) {
   const el = document.querySelector(`[data-tour="${key}"]`);
   if (!el) return null;
   const r = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
   return { top: r.top, left: r.left, width: r.width, height: r.height, el };
 }
 
 export default function AppTour({ userId }) {
+  const { t } = useTranslation('pages');
   const [step, setStep] = useState(0);
   const [show, setShow] = useState(false);
   const [rect, setRect] = useState(null);
@@ -116,14 +48,14 @@ export default function AppTour({ userId }) {
     return () => clearTimeout(timer);
   }, [userId, storageKey]);
 
-  // Find and highlight the target element
   const findTarget = useCallback(() => {
     if (!show || navigating) return;
-    const current = TOUR_STEPS[step];
+    const current = TOUR_STEP_KEYS[step];
     if (!current) return;
 
-    // Navigate if we're not on the right page
-    if (current.route && location.pathname !== current.route) {
+    const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
+    const normalizedRoute = (current.route || '/').replace(/\/$/, '') || '/';
+    if (current.route && normalizedPath !== normalizedRoute) {
       setNavigating(true);
       setRect(null);
       navigate(current.route);
@@ -135,43 +67,50 @@ export default function AppTour({ userId }) {
     const tryFind = () => {
       const r = getTargetRect(current.target);
       if (r) {
-        // Scroll into view first
         r.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Re-measure after scroll settles
         findRef.current = setTimeout(() => {
           const updated = getTargetRect(current.target);
-          if (updated) setRect(updated);
-          else setRect(r);
+          setRect(updated || r);
         }, 400);
-      } else if (attempts < 15) {
+      } else if (attempts < 30) {
+        // More attempts (30 × 300ms = 9s) to handle lazy-loaded pages
         attempts++;
-        findRef.current = setTimeout(tryFind, 250);
+        findRef.current = setTimeout(tryFind, 300);
       } else {
-        // Target not found — skip to next step
-        setRect(null);
+        // Target truly not found — auto-advance to next step instead of getting stuck
+        if (step < TOUR_STEP_KEYS.length - 1) {
+          setStep(s => s + 1);
+        } else {
+          dismiss();
+        }
       }
     };
     tryFind();
+
+    return () => clearTimeout(findRef.current);
   }, [step, show, navigating, location.pathname, navigate]);
 
-  // When navigating completes (location changes), stop navigating flag
   useEffect(() => {
     if (!navigating) return;
-    const current = TOUR_STEPS[step];
-    if (current?.route && location.pathname === current.route) {
-      // Wait for page to render
-      const timer = setTimeout(() => setNavigating(false), 500);
+    const current = TOUR_STEP_KEYS[step];
+    // Check if we've arrived (flexible match — ignore trailing slash)
+    const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
+    const normalizedRoute = (current?.route || '/').replace(/\/$/, '') || '/';
+    if (normalizedPath === normalizedRoute) {
+      const timer = setTimeout(() => setNavigating(false), 600);
       return () => clearTimeout(timer);
     }
+    // Safety timeout — if navigation takes too long, force un-stuck
+    const safety = setTimeout(() => setNavigating(false), 3000);
+    return () => clearTimeout(safety);
   }, [location.pathname, navigating, step]);
 
   useEffect(() => { findTarget(); }, [findTarget]);
 
-  // Re-measure on scroll
   useEffect(() => {
     if (!show || !rect) return;
     const handler = () => {
-      const current = TOUR_STEPS[step];
+      const current = TOUR_STEP_KEYS[step];
       if (current) {
         const r = getTargetRect(current.target);
         if (r) setRect(r);
@@ -181,14 +120,14 @@ export default function AppTour({ userId }) {
     return () => window.removeEventListener('scroll', handler, true);
   }, [show, step, rect]);
 
-  const dismiss = () => {
+  const dismiss = useCallback(() => {
     setShow(false);
     localStorage.setItem(storageKey, 'true');
     navigate('/');
-  };
+  }, [storageKey, navigate]);
 
   const next = () => {
-    if (step < TOUR_STEPS.length - 1) {
+    if (step < TOUR_STEP_KEYS.length - 1) {
       setRect(null);
       setStep(step + 1);
     } else {
@@ -205,39 +144,37 @@ export default function AppTour({ userId }) {
 
   if (!show) return null;
 
-  const current = TOUR_STEPS[step];
+  const current = TOUR_STEP_KEYS[step];
   const vh = window.innerHeight;
   const vw = window.innerWidth;
 
-  // Clamp tooltip to viewport
+  // Position tooltip so it NEVER overlaps the highlighted element
   let tooltipStyle = { left: Math.max(12, (vw - TOOLTIP_W) / 2) };
+  const TOOLTIP_H_ESTIMATE = 160;
+  const GAP = 16; // minimum gap between highlight and tooltip
+
   if (rect) {
-    // Horizontal: center on element, clamp to screen
     const idealLeft = rect.left + rect.width / 2 - TOOLTIP_W / 2;
     tooltipStyle.left = Math.max(12, Math.min(idealLeft, vw - TOOLTIP_W - 12));
 
-    if (current.position === 'below') {
-      const top = rect.top + rect.height + PAD + 10;
-      // If tooltip would go off bottom, put it above instead
-      if (top + 200 > vh) {
-        tooltipStyle.top = Math.max(12, rect.top - PAD - 10);
-        tooltipStyle.transform = 'translateY(-100%)';
-      } else {
-        tooltipStyle.top = top;
-      }
+    const spaceBelow = vh - (rect.top + rect.height + GAP);
+    const spaceAbove = rect.top - GAP;
+
+    if (current.position === 'below' && spaceBelow >= TOOLTIP_H_ESTIMATE) {
+      // Place below
+      tooltipStyle.top = rect.top + rect.height + GAP;
+    } else if (current.position === 'above' && spaceAbove >= TOOLTIP_H_ESTIMATE) {
+      // Place above
+      tooltipStyle.bottom = vh - rect.top + GAP;
+    } else if (spaceBelow >= spaceAbove) {
+      // More space below
+      tooltipStyle.top = rect.top + rect.height + GAP;
     } else {
-      const top = rect.top - PAD - 10;
-      // If tooltip would go off top, put it below instead
-      if (top < 200) {
-        tooltipStyle.top = rect.top + rect.height + PAD + 10;
-      } else {
-        tooltipStyle.top = top;
-        tooltipStyle.transform = 'translateY(-100%)';
-      }
+      // More space above
+      tooltipStyle.bottom = vh - rect.top + GAP;
     }
   } else {
-    // No target found — center tooltip
-    tooltipStyle.top = vh / 2 - 100;
+    tooltipStyle.top = vh / 2 - 80;
   }
 
   return (
@@ -277,7 +214,7 @@ export default function AppTour({ userId }) {
         />
       )}
 
-      {/* Click anywhere to advance */}
+      {/* Click overlay to advance */}
       <div className="absolute inset-0" onClick={next} />
 
       {/* Tooltip */}
@@ -293,10 +230,10 @@ export default function AppTour({ userId }) {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="bg-[#0A0F1A] border border-[#D4AF37]/30 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
-            {/* Progress */}
+            {/* Progress dots */}
             <div className="flex items-center justify-between px-4 pt-3.5">
               <div className="flex items-center gap-1">
-                {TOUR_STEPS.map((_, i) => (
+                {TOUR_STEP_KEYS.map((_, i) => (
                   <div
                     key={i}
                     className={`h-[3px] rounded-full transition-all duration-300 ${
@@ -305,33 +242,33 @@ export default function AppTour({ userId }) {
                   />
                 ))}
               </div>
-              <span className="text-[10px] text-[#4B5563]">{step + 1}/{TOUR_STEPS.length}</span>
+              <span className="text-[10px] text-[#4B5563]">{step + 1}/{TOUR_STEP_KEYS.length}</span>
             </div>
 
             {/* Content */}
             <div className="px-4 pt-2.5 pb-2">
-              <h3 className="text-[15px] font-black text-[#E5E7EB] mb-1">{current.title}</h3>
-              <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{current.text}</p>
+              <h3 className="text-[15px] font-black text-[#E5E7EB] mb-1">{t(current.titleKey)}</h3>
+              <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{t(current.textKey)}</p>
             </div>
 
             {/* Buttons */}
             <div className="px-4 pb-3.5 flex gap-2 mt-0.5">
               {step > 0 && (
                 <button onClick={back} className="flex-1 py-2.5 rounded-xl bg-white/5 text-[#9CA3AF] font-semibold text-[12px]">
-                  Back
+                  {t('appTour.back')}
                 </button>
               )}
               <button
                 onClick={next}
                 className="flex-1 py-2.5 rounded-xl bg-[#D4AF37] text-black font-bold text-[12px] flex items-center justify-center gap-1"
               >
-                {step < TOUR_STEPS.length - 1 ? (
-                  <>Next <ChevronRight size={14} /></>
-                ) : "Let's go!"}
+                {step < TOUR_STEP_KEYS.length - 1 ? (
+                  <>{t('appTour.next')} <ChevronRight size={14} /></>
+                ) : t('appTour.letsGo')}
               </button>
               {step === 0 && (
                 <button onClick={dismiss} className="py-2.5 px-3 rounded-xl bg-white/5 text-[#4B5563] font-semibold text-[11px]">
-                  Skip
+                  {t('appTour.skip')}
                 </button>
               )}
             </div>

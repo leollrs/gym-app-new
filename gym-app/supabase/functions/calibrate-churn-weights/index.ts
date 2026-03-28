@@ -28,7 +28,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -166,6 +166,20 @@ function coefficientsToWeights(coefficients: number[]): Record<string, number> {
   return weights;
 }
 
+// ── Timing-safe string comparison (prevents timing attacks) ──
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    result |= bufA[i] ^ bufB[i];
+  }
+  return result === 0;
+}
+
 // ── Main handler ─────────────────────────────────────────────
 
 serve(async (req) => {
@@ -174,6 +188,24 @@ serve(async (req) => {
   }
 
   try {
+    // ── Auth: only allow calls with a valid cron secret or service-role token ──
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
+
+    const isCronAuth = !!(cronSecret && incomingSecret && timingSafeEqual(cronSecret, incomingSecret));
+
+    if (!isCronAuth) {
+      const token = authHeader.replace('Bearer ', '');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      if (!token || !serviceKey || !timingSafeEqual(token, serviceKey)) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const now = new Date();
 

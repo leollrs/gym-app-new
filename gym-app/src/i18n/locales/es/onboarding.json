@@ -2,6 +2,21 @@
   "title": "Vamos a configurarte",
   "subtitle": "Unas preguntas rápidas para crear tu plan perfecto",
 
+  "inviteCode": {
+    "title": "\u00bfTienes un c\u00f3digo de invitaci\u00f3n?",
+    "subtitle": "Si tu gym te dio un c\u00f3digo, ingr\u00e9salo para vincular tu cuenta.",
+    "verify": "Verificar C\u00f3digo",
+    "verifying": "Verificando...",
+    "success": "\u00a1Cuenta vinculada!",
+    "skip": "Saltar \u2014 no tengo un c\u00f3digo",
+    "errors": {
+      "invalidCode": "C\u00f3digo inv\u00e1lido. Revisa e intenta de nuevo.",
+      "alreadyUsed": "Este c\u00f3digo ya fue utilizado.",
+      "expired": "Este c\u00f3digo ha expirado. Pide uno nuevo en tu gym.",
+      "wrongGym": "Este c\u00f3digo es para otro gym."
+    }
+  },
+
   "langStep": {
     "title": "Elige tu idioma",
     "subtitle": "Puedes cambiarlo en cualquier momento en ajustes"
@@ -25,6 +40,15 @@
       "label": "Sé lo que hago",
       "desc": "3+ años de entrenamiento estructurado, cómodo con ejercicios complejos",
       "badge": "Avanzado"
+    },
+    "maxes": {
+      "title": "¡Genial, tienes experiencia! 💪",
+      "subtitle": "Ingresa tus 1RM conocidos (opcional)",
+      "bench": "Press de Banca",
+      "squat": "Sentadilla",
+      "deadlift": "Peso Muerto",
+      "ohp": "Press Militar",
+      "hint": "Déjalo en blanco si no estás seguro — lo estimaremos con tus entrenamientos"
     }
   },
 
@@ -101,7 +125,32 @@
     "elbows": "Codos",
     "hips": "Caderas",
     "neck": "Cuello",
-    "ankles": "Tobillos"
+    "ankles": "Tobillos",
+    "sex": "Sexo Biológico",
+    "male": "Masculino",
+    "female": "Femenino",
+    "sexHint": "Se usa para cálculos precisos de calorías",
+    "age": "Edad",
+    "height": "Estatura"
+  },
+
+  "health": {
+    "title": "Conecta Tus Datos de Salud",
+    "subtitle": "Sincroniza pasos, ritmo cardíaco y más para tener una imagen completa de tu fitness.",
+    "hint": "Vincular tus datos de salud nos ayuda a rastrear recuperación, calorías quemadas y actividad general — incluso fuera del gimnasio.",
+    "webTitle": "Integración de Salud",
+    "webDesc": "Descarga la app en tu teléfono para sincronizar con Apple Health o Health Connect.",
+    "nativeDesc": "Leeremos pasos, ritmo cardíaco, peso y calorías. Puedes cambiar esto en cualquier momento en ajustes.",
+    "steps": "Pasos",
+    "heartRate": "Ritmo Cardíaco",
+    "calories": "Calorías",
+    "weight": "Peso",
+    "connecting": "Conectando...",
+    "connect": "Conectar {{healthPlatformName}}",
+    "connected": "{{healthPlatformName}} Conectado",
+    "unavailable": "{{healthPlatformName}} no está disponible en este dispositivo. Puedes configurarlo después en ajustes.",
+    "error": "No se pudo conectar. Puedes intentarlo después en ajustes.",
+    "skip": "Configurar después"
   },
 
   "social": {

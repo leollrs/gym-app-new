@@ -21,7 +21,7 @@ async function fetchChallengeData(gymId) {
 
   const { data: challenges, error: chalError } = await supabase
     .from('challenges')
-    .select('id, title, starts_at')
+    .select('id, name, starts_at')
     .eq('gym_id', gymId)
     .gte('starts_at', from)
     .order('starts_at', { ascending: false })
@@ -42,8 +42,8 @@ async function fetchChallengeData(gymId) {
   });
 
   const data = challenges.map(c => ({
-    name:     c.title.length > 18 ? c.title.slice(0, 16) + '\u2026' : c.title,
-    fullName: c.title,
+    name:     c.name.length > 18 ? c.name.slice(0, 16) + '\u2026' : c.name,
+    fullName: c.name,
     count:    countMap[c.id] || 0,
     pct:      totalMembers > 0 ? Math.round(((countMap[c.id] || 0) / totalMembers) * 100) : 0,
   }));
@@ -63,11 +63,11 @@ export default function ChallengeStats({ gymId }) {
 
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
-      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">Challenge Participation</p>
+      <p className="text-[13px] font-semibold text-[var(--color-text-primary)] mb-4">Challenge Participation</p>
       {challengeData.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-32 text-center">
-          <p className="text-[13px] text-[#6B7280]">No challenges in the last 6 months</p>
-          <p className="text-[10px] text-[#4B5563] mt-1">Create a challenge to see data here</p>
+          <p className="text-[13px] text-[var(--color-text-muted)]">No challenges in the last 6 months</p>
+          <p className="text-[10px] text-[var(--color-text-subtle)] mt-1">Create a challenge to see data here</p>
         </div>
       ) : (
         <>
@@ -75,12 +75,12 @@ export default function ChallengeStats({ gymId }) {
             <BarChart data={challengeData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <XAxis
                 dataKey="name"
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
                 tickLine={false}
                 axisLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
                 tickLine={false}
                 axisLine={false}
                 domain={[0, 100]}
@@ -91,8 +91,8 @@ export default function ChallengeStats({ gymId }) {
                   if (!active || !payload?.length) return null;
                   const d = payload[0].payload;
                   return (
-                    <div className="bg-[#1a1f2e] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
-                      <p className="text-[#6B7280] text-[11px] mb-1">{d.fullName}</p>
+                    <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
+                      <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{d.fullName}</p>
                       <p className="font-semibold text-[#D4AF37]">{d.pct}% ({d.count} members)</p>
                     </div>
                   );
@@ -102,7 +102,7 @@ export default function ChallengeStats({ gymId }) {
               <Bar dataKey="pct" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
             </BarChart>
           </ResponsiveContainer>
-          <p className="text-[10px] text-[#4B5563] mt-2">% of total members who joined each challenge</p>
+          <p className="text-[10px] text-[var(--color-text-subtle)] mt-2">% of total members who joined each challenge</p>
         </>
       )}
     </AdminCard>

@@ -22,7 +22,9 @@ export const programTemplates = [
 {
   id: 'tmpl_starting_strength', image: '/programs/starting-strength.jpg',
   name: 'Starting Strength',
+  name_es: 'Fuerza Inicial',
   description: 'The classic linear progression program by Mark Rippetoe. Build foundational strength with compound barbell movements, alternating between two workouts three days per week with progressive overload.',
+  description_es: 'Un programa clásico de fuerza para principiantes de Mark Rippetoe. Desarrolla fuerza base con movimientos compuestos de barra, alternando entre dos entrenamientos tres días por semana con sobrecarga progresiva.',
   category: 'Beginner',
   level: 'Beginner',
   daysPerWeek: 3,
@@ -31,55 +33,55 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell'],
   weeks: {
     '1': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
     ],
     '2': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
       ]},
     ],
     '3': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -88,21 +90,21 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -111,7 +113,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -120,7 +122,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -129,7 +131,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -140,7 +142,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -149,7 +151,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -158,7 +160,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -169,7 +171,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -178,7 +180,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -187,7 +189,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -198,7 +200,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -207,7 +209,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -216,7 +218,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -227,7 +229,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -237,7 +239,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -246,7 +248,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -257,7 +259,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -266,7 +268,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -276,7 +278,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -287,7 +289,7 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -297,7 +299,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -306,7 +308,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -318,7 +320,7 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
@@ -327,7 +329,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -337,7 +339,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
@@ -353,7 +355,9 @@ export const programTemplates = [
 {
   id: 'tmpl_stronglifts', image: '/programs/stronglifts.jpg',
   name: 'StrongLifts 5x5',
+  name_es: 'StrongLifts 5×5',
   description: 'The proven 5x5 linear progression program. Three workouts per week alternating between two sessions focused on the five core barbell lifts. Simple, effective, and designed for consistent strength gains.',
+  description_es: 'Programa icónico de fuerza basado en sentadillas con progresión lineal 5×5. Tres entrenamientos por semana alternando entre dos sesiones enfocadas en los cinco levantamientos principales de barra.',
   category: 'Beginner',
   level: 'Beginner',
   daysPerWeek: 3,
@@ -362,89 +366,89 @@ export const programTemplates = [
   equipment: ['Barbell'],
   weeks: {
     '1': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
     ],
     '2': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
     ],
     '3': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
     ],
     '4': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
     ],
     '5': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -453,7 +457,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -461,14 +465,14 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -478,7 +482,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -486,7 +490,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -494,7 +498,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -504,7 +508,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -512,7 +516,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -520,7 +524,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -530,7 +534,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -539,7 +543,7 @@ export const programTemplates = [
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -547,7 +551,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -557,7 +561,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -566,7 +570,7 @@ export const programTemplates = [
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -574,7 +578,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -584,7 +588,7 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -593,7 +597,7 @@ export const programTemplates = [
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -602,7 +606,7 @@ export const programTemplates = [
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -612,7 +616,7 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -621,7 +625,7 @@ export const programTemplates = [
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
@@ -630,7 +634,7 @@ export const programTemplates = [
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -645,7 +649,9 @@ export const programTemplates = [
 {
   id: 'tmpl_greyskull', image: '/programs/greyskull.jpg',
   name: 'Greyskull LP',
+  name_es: 'Greyskull LP',
   description: 'A beginner linear progression program that emphasizes upper body development and uses AMRAP sets on the last set of main lifts. Alternating workouts with progressive accessory additions over 12 weeks.',
+  description_es: 'Variante moderna de progresión lineal que enfatiza el desarrollo del tren superior y usa series AMRAP en la última serie de levantamientos principales. Entrenamientos alternados con accesorios progresivos durante 12 semanas.',
   category: 'Beginner',
   level: 'Beginner',
   daysPerWeek: 3,
@@ -654,53 +660,53 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable Machine'],
   weeks: {
     '1': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
       ]},
     ],
     '2': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
       ]},
     ],
     '3': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_hc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -708,19 +714,19 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_bbc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_hc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -728,21 +734,21 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -751,21 +757,21 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -774,7 +780,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -782,7 +788,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -790,7 +796,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -800,7 +806,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -808,7 +814,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -816,7 +822,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -826,7 +832,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -834,7 +840,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -842,7 +848,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -852,7 +858,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -860,7 +866,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -869,7 +875,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -879,7 +885,7 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Day 1 - Workout A', exercises: [
+      { name: 'Day 1 - Workout A', name_es: 'Día 1 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -888,7 +894,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout B', exercises: [
+      { name: 'Day 2 - Workout B', name_es: 'Día 2 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -896,7 +902,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout A', exercises: [
+      { name: 'Day 3 - Workout A', name_es: 'Día 3 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -907,7 +913,7 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Day 1 - Workout B', exercises: [
+      { name: 'Day 1 - Workout B', name_es: 'Día 1 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -916,7 +922,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 2 - Workout A', exercises: [
+      { name: 'Day 2 - Workout A', name_es: 'Día 2 - Entrenamiento A', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
@@ -925,7 +931,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Day 3 - Workout B', exercises: [
+      { name: 'Day 3 - Workout B', name_es: 'Día 3 - Entrenamiento B', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 1, rest_seconds: 180 },
@@ -942,7 +948,9 @@ export const programTemplates = [
 {
   id: 'tmpl_phul', image: '/programs/phul.jpg',
   name: 'PHUL (Power Upper Lower)',
+  name_es: 'PHUL',
   description: 'A 4-day upper/lower split blending heavy power work (3-5 reps) with hypertrophy volume (8-12 reps). Builds both strength and size with weekly exercise variation and deloads at weeks 5 and 10.',
+  description_es: 'Potencia Hipertrofia Tren Superior Inferior. División de 4 días que combina trabajo pesado de potencia (3-5 reps) con volumen de hipertrofia (8-12 reps). Construye fuerza y tamaño con variación semanal y descargas.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -951,7 +959,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
@@ -959,7 +967,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 120 },
@@ -967,7 +975,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
@@ -976,7 +984,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -987,7 +995,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
@@ -995,7 +1003,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 120 },
@@ -1003,7 +1011,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 3, rest_seconds: 60 },
@@ -1012,7 +1020,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1023,7 +1031,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 120 },
@@ -1031,7 +1039,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 120 },
@@ -1039,7 +1047,7 @@ export const programTemplates = [
         { id: 'ex_le', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
@@ -1048,7 +1056,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_btsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -1059,7 +1067,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
@@ -1067,7 +1075,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbdl', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 120 },
@@ -1075,7 +1083,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -1084,7 +1092,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_gm', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1095,7 +1103,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Upper Power (Deload)', exercises: [
+      { name: 'Upper Power (Deload)', name_es: 'Tren Superior Potencia (Descarga)', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_ohp', sets: 2, rest_seconds: 90 },
@@ -1103,7 +1111,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 2, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Power (Deload)', exercises: [
+      { name: 'Lower Power (Deload)', name_es: 'Tren Inferior Potencia (Descarga)', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 2, rest_seconds: 90 },
@@ -1111,7 +1119,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
         { id: 'ex_scr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy (Deload)', exercises: [
+      { name: 'Upper Hypertrophy (Deload)', name_es: 'Tren Superior Hipertrofia (Descarga)', exercises: [
         { id: 'ex_dbp', sets: 2, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 90 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
@@ -1119,7 +1127,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 2, rest_seconds: 60 },
         { id: 'ex_coe', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy (Deload)', exercises: [
+      { name: 'Lower Hypertrophy (Deload)', name_es: 'Tren Inferior Hipertrofia (Descarga)', exercises: [
         { id: 'ex_gsq', sets: 2, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
@@ -1129,7 +1137,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 120 },
@@ -1137,7 +1145,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 120 },
@@ -1145,7 +1153,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_smbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_mdwr', sets: 3, rest_seconds: 90 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
@@ -1154,7 +1162,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_psq', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 90 },
@@ -1165,7 +1173,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
@@ -1173,7 +1181,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 120 },
@@ -1181,7 +1189,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 60 },
@@ -1190,7 +1198,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_btsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_gm', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
@@ -1201,7 +1209,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 120 },
@@ -1209,7 +1217,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 120 },
@@ -1217,7 +1225,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 4, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -1226,7 +1234,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -1237,7 +1245,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
@@ -1245,7 +1253,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 4, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 120 },
@@ -1253,7 +1261,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 4, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy', exercises: [
+      { name: 'Upper Hypertrophy', name_es: 'Tren Superior Hipertrofia', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -1262,7 +1270,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 90 },
@@ -1273,7 +1281,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Upper Power (Deload)', exercises: [
+      { name: 'Upper Power (Deload)', name_es: 'Tren Superior Potencia (Descarga)', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_ohp', sets: 2, rest_seconds: 90 },
@@ -1281,7 +1289,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 2, rest_seconds: 60 },
         { id: 'ex_dips', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Power (Deload)', exercises: [
+      { name: 'Lower Power (Deload)', name_es: 'Tren Inferior Potencia (Descarga)', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 2, rest_seconds: 90 },
@@ -1289,7 +1297,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 2, rest_seconds: 60 },
         { id: 'ex_scr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Upper Hypertrophy (Deload)', exercises: [
+      { name: 'Upper Hypertrophy (Deload)', name_es: 'Tren Superior Hipertrofia (Descarga)', exercises: [
         { id: 'ex_idbp', sets: 2, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 90 },
         { id: 'ex_clr', sets: 2, rest_seconds: 60 },
@@ -1297,7 +1305,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 2, rest_seconds: 60 },
         { id: 'ex_oe', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy (Deload)', exercises: [
+      { name: 'Lower Hypertrophy (Deload)', name_es: 'Tren Inferior Hipertrofia (Descarga)', exercises: [
         { id: 'ex_fsq', sets: 2, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
@@ -1311,7 +1319,9 @@ export const programTemplates = [
 {
   id: 'tmpl_reddit_ppl', image: '/programs/ppl.jpg',
   name: 'Reddit PPL (Push Pull Legs)',
+  name_es: 'Reddit PPL',
   description: 'The popular 6-day push/pull/legs split. A days focus on heavy compound 5x5, B days on volume 3x8-12. Isolation work rotates weekly to prevent staleness. Great for intermediate lifters chasing size.',
+  description_es: 'Programa de empuje/jalón/piernas de 6 días. Los días A se enfocan en compuestos pesados 5×5, los días B en volumen 3×8-12. Trabajo de aislamiento rota semanalmente. Ideal para intermedios buscando tamaño.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 6,
@@ -1320,7 +1330,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
@@ -1329,7 +1339,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
@@ -1338,7 +1348,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1346,7 +1356,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
         { id: 'ex_ibp', sets: 3, rest_seconds: 90 },
@@ -1355,7 +1365,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
         { id: 'ex_tkb', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_dbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1364,7 +1374,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_idbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_hth', sets: 3, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -1374,7 +1384,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
@@ -1383,7 +1393,7 @@ export const programTemplates = [
         { id: 'ex_dips', sets: 3, rest_seconds: 60 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1392,7 +1402,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_conc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 120 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -1400,7 +1410,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
@@ -1409,7 +1419,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_csr', sets: 3, rest_seconds: 90 },
         { id: 'ex_pu', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
@@ -1418,7 +1428,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_spdc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1428,7 +1438,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
@@ -1437,7 +1447,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_sdl', sets: 3, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1446,7 +1456,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_bayc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1454,7 +1464,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_smbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dcbp', sets: 3, rest_seconds: 90 },
@@ -1463,7 +1473,7 @@ export const programTemplates = [
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
         { id: 'ex_tkb', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_mdwr', sets: 3, rest_seconds: 90 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1472,7 +1482,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbhc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 90 },
@@ -1482,7 +1492,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
@@ -1491,7 +1501,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_dips', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1500,7 +1510,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_gm', sets: 3, rest_seconds: 120 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -1508,7 +1518,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 4, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
@@ -1517,7 +1527,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 90 },
@@ -1526,7 +1536,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_idbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_psq', sets: 3, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
@@ -1536,7 +1546,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_smop', sets: 3, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
@@ -1545,7 +1555,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_tbdl', sets: 3, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1554,7 +1564,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bayc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
@@ -1562,7 +1572,7 @@ export const programTemplates = [
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smbp', sets: 3, rest_seconds: 90 },
@@ -1571,7 +1581,7 @@ export const programTemplates = [
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_chu', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1580,7 +1590,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_spdc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -1590,7 +1600,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
@@ -1599,7 +1609,7 @@ export const programTemplates = [
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -1608,7 +1618,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_conc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_gm', sets: 4, rest_seconds: 120 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 90 },
@@ -1616,7 +1626,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 4, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_dcbp', sets: 3, rest_seconds: 90 },
@@ -1625,7 +1635,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1634,7 +1644,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbhc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 90 },
@@ -1644,7 +1654,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
@@ -1653,7 +1663,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_oe', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_sdl', sets: 4, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1662,7 +1672,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_idbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
@@ -1670,7 +1680,7 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 4, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
         { id: 'ex_smbp', sets: 3, rest_seconds: 90 },
@@ -1679,7 +1689,7 @@ export const programTemplates = [
         { id: 'ex_cgp', sets: 4, rest_seconds: 60 },
         { id: 'ex_tkb', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_mdwr', sets: 4, rest_seconds: 90 },
         { id: 'ex_chu', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 90 },
@@ -1688,7 +1698,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_spdc', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -1698,7 +1708,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Push A', exercises: [
+      { name: 'Push A', name_es: 'Empuje A', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
@@ -1707,7 +1717,7 @@ export const programTemplates = [
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
         { id: 'ex_ske', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Pull A', exercises: [
+      { name: 'Pull A', name_es: 'Jalón A', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -1716,7 +1726,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bayc', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Legs A', exercises: [
+      { name: 'Legs A', name_es: 'Piernas A', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -1724,7 +1734,7 @@ export const programTemplates = [
         { id: 'ex_nhc', sets: 4, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Push B', exercises: [
+      { name: 'Push B', name_es: 'Empuje B', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dcbp', sets: 4, rest_seconds: 90 },
@@ -1733,7 +1743,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Pull B', exercises: [
+      { name: 'Pull B', name_es: 'Jalón B', exercises: [
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -1742,7 +1752,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_conc', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Legs B', exercises: [
+      { name: 'Legs B', name_es: 'Piernas B', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 90 },
@@ -1756,7 +1766,9 @@ export const programTemplates = [
 {
   id: 'tmpl_bro_split', image: '/programs/bro-split.jpg',
   name: 'Classic Bro Split',
+  name_es: 'División Bro',
   description: 'The traditional 5-day bodypart split: Chest, Back, Shoulders, Legs, Arms. Exercise selection rotates every 2 weeks — barbell phase, dumbbell phase, cable/machine phase, then a best-of mix.',
+  description_es: 'División clásica de culturismo por grupo muscular de 5 días: Pecho, Espalda, Hombros, Piernas, Brazos. La selección de ejercicios rota cada 2 semanas entre fases de barra, mancuerna, cables y combinación.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 5,
@@ -1766,7 +1778,7 @@ export const programTemplates = [
   weeks: {
     // ── WEEKS 1-2: BARBELL HEAVY ──
     '1': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_ibp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dcbp', sets: 3, rest_seconds: 90 },
@@ -1775,7 +1787,7 @@ export const programTemplates = [
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
@@ -1784,7 +1796,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 60 },
@@ -1792,7 +1804,7 @@ export const programTemplates = [
         { id: 'ex_upr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -1802,7 +1814,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
@@ -1814,7 +1826,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_ibp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dcbp', sets: 3, rest_seconds: 90 },
@@ -1823,7 +1835,7 @@ export const programTemplates = [
         { id: 'ex_svp', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 120 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1832,7 +1844,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -1840,7 +1852,7 @@ export const programTemplates = [
         { id: 'ex_lur', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -1850,7 +1862,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_bbc', sets: 4, rest_seconds: 90 },
         { id: 'ex_ske', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
@@ -1863,7 +1875,7 @@ export const programTemplates = [
     ],
     // ── WEEKS 3-4: DUMBBELL HEAVY ──
     '3': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -1872,7 +1884,7 @@ export const programTemplates = [
         { id: 'ex_svp', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_chu', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
@@ -1881,7 +1893,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 60 },
@@ -1889,7 +1901,7 @@ export const programTemplates = [
         { id: 'ex_lur', sets: 3, rest_seconds: 60 },
         { id: 'ex_upr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
@@ -1899,7 +1911,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_dbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_oe', sets: 4, rest_seconds: 60 },
         { id: 'ex_idbc', sets: 3, rest_seconds: 60 },
@@ -1911,7 +1923,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 4, rest_seconds: 60 },
@@ -1920,7 +1932,7 @@ export const programTemplates = [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -1929,7 +1941,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -1937,7 +1949,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
         { id: 'ex_lur', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 90 },
@@ -1947,7 +1959,7 @@ export const programTemplates = [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_dbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbc', sets: 3, rest_seconds: 60 },
@@ -1960,7 +1972,7 @@ export const programTemplates = [
     ],
     // ── WEEKS 5-6: CABLE/MACHINE FOCUS ──
     '5': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 4, rest_seconds: 60 },
@@ -1969,7 +1981,7 @@ export const programTemplates = [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 90 },
@@ -1978,7 +1990,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smop', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -1986,7 +1998,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
         { id: 'ex_upr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_smsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -1996,7 +2008,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_bayc', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_mbc', sets: 3, rest_seconds: 60 },
@@ -2008,7 +2020,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_pdk', sets: 4, rest_seconds: 60 },
@@ -2017,7 +2029,7 @@ export const programTemplates = [
         { id: 'ex_lcf', sets: 3, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 90 },
@@ -2026,7 +2038,7 @@ export const programTemplates = [
         { id: 'ex_rkp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -2034,7 +2046,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 4, rest_seconds: 60 },
         { id: 'ex_lur', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2044,7 +2056,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_mbc', sets: 4, rest_seconds: 60 },
         { id: 'ex_tdm', sets: 4, rest_seconds: 60 },
         { id: 'ex_bayc', sets: 3, rest_seconds: 60 },
@@ -2057,7 +2069,7 @@ export const programTemplates = [
     ],
     // ── WEEKS 7-8: MIX OF ALL ──
     '7': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
@@ -2066,7 +2078,7 @@ export const programTemplates = [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -2075,7 +2087,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
@@ -2083,7 +2095,7 @@ export const programTemplates = [
         { id: 'ex_lur', sets: 3, rest_seconds: 60 },
         { id: 'ex_upr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -2093,7 +2105,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_bbc', sets: 4, rest_seconds: 90 },
         { id: 'ex_ske', sets: 4, rest_seconds: 90 },
         { id: 'ex_bayc', sets: 3, rest_seconds: 60 },
@@ -2105,7 +2117,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Chest', exercises: [
+      { name: 'Chest', name_es: 'Pecho', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smbp', sets: 3, rest_seconds: 90 },
@@ -2114,7 +2126,7 @@ export const programTemplates = [
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_svp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back', exercises: [
+      { name: 'Back', name_es: 'Espalda', exercises: [
         { id: 'ex_tbdl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -2123,7 +2135,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders', exercises: [
+      { name: 'Shoulders', name_es: 'Hombros', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_smop', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 60 },
@@ -2131,7 +2143,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Legs', exercises: [
+      { name: 'Legs', name_es: 'Piernas', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_gm', sets: 3, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
@@ -2141,7 +2153,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Arms', exercises: [
+      { name: 'Arms', name_es: 'Brazos', exercises: [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
@@ -2157,7 +2169,9 @@ export const programTemplates = [
 {
   id: 'tmpl_phat', image: '/programs/phat.jpg',
   name: 'PHAT (Layne Norton)',
+  name_es: 'PHAT',
   description: 'Power Hypertrophy Adaptive Training — 5 days combining heavy power work (3-5 reps) with hypertrophy volume including speed sets (6x3). Upper and lower power days fuel strength; three hypertrophy days drive growth. Deloads at weeks 5 and 10.',
+  description_es: 'Entrenamiento Adaptativo de Potencia e Hipertrofia — 5 días combinando trabajo pesado de potencia (3-5 reps) con volumen de hipertrofia incluyendo series de velocidad (6×3). Días de potencia para fuerza; tres días de hipertrofia para crecimiento.',
   category: 'Muscle Growth',
   level: 'Advanced',
   daysPerWeek: 5,
@@ -2166,7 +2180,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_pu', sets: 3, rest_seconds: 120 },
         { id: 'ex_rkp', sets: 3, rest_seconds: 180 },
@@ -2175,7 +2189,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 90 },
@@ -2184,7 +2198,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_bbr', sets: 6, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
@@ -2193,7 +2207,7 @@ export const programTemplates = [
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_sq', sets: 6, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -2202,7 +2216,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 3, rest_seconds: 90 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_bp', sets: 6, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -2214,7 +2228,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_rkp', sets: 3, rest_seconds: 180 },
@@ -2223,7 +2237,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 90 },
@@ -2232,7 +2246,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_pdr', sets: 6, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
@@ -2241,7 +2255,7 @@ export const programTemplates = [
         { id: 'ex_clr', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 6, rest_seconds: 60 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2250,7 +2264,7 @@ export const programTemplates = [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_ibp', sets: 6, rest_seconds: 60 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
@@ -2262,7 +2276,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_tbr', sets: 3, rest_seconds: 180 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
@@ -2271,7 +2285,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 90 },
@@ -2280,7 +2294,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_bbr', sets: 6, rest_seconds: 60 },
         { id: 'ex_mdwr', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -2289,7 +2303,7 @@ export const programTemplates = [
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_sq', sets: 6, rest_seconds: 60 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2298,7 +2312,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_bp', sets: 6, rest_seconds: 60 },
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 4, rest_seconds: 60 },
@@ -2310,7 +2324,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_chu', sets: 4, rest_seconds: 120 },
         { id: 'ex_rkp', sets: 3, rest_seconds: 180 },
@@ -2319,7 +2333,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 90 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 120 },
         { id: 'ex_le', sets: 4, rest_seconds: 90 },
@@ -2328,7 +2342,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_tbr', sets: 6, rest_seconds: 60 },
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -2337,7 +2351,7 @@ export const programTemplates = [
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 6, rest_seconds: 60 },
         { id: 'ex_psq', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2346,7 +2360,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_ibp', sets: 6, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -2358,7 +2372,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Upper Power (Deload)', exercises: [
+      { name: 'Upper Power (Deload)', name_es: 'Tren Superior Potencia (Descarga)', exercises: [
         { id: 'ex_bbr', sets: 2, rest_seconds: 120 },
         { id: 'ex_pu', sets: 2, rest_seconds: 90 },
         { id: 'ex_bp', sets: 2, rest_seconds: 120 },
@@ -2366,7 +2380,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 2, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Power (Deload)', exercises: [
+      { name: 'Lower Power (Deload)', name_es: 'Tren Inferior Potencia (Descarga)', exercises: [
         { id: 'ex_sq', sets: 2, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 2, rest_seconds: 90 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
@@ -2374,14 +2388,14 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
         { id: 'ex_scr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders (Deload)', exercises: [
+      { name: 'Back & Shoulders (Deload)', name_es: 'Espalda y Hombros (Descarga)', exercises: [
         { id: 'ex_cbr', sets: 2, rest_seconds: 60 },
         { id: 'ex_lp', sets: 2, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 60 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower (Deload)', exercises: [
+      { name: 'Lower (Deload)', name_es: 'Inferior (Descarga)', exercises: [
         { id: 'ex_gsq', sets: 2, rest_seconds: 60 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 2, rest_seconds: 60 },
@@ -2389,7 +2403,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 2, rest_seconds: 60 },
         { id: 'ex_secr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms (Deload)', exercises: [
+      { name: 'Chest & Arms (Deload)', name_es: 'Pecho y Brazos (Descarga)', exercises: [
         { id: 'ex_dbp', sets: 2, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 2, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 2, rest_seconds: 60 },
@@ -2399,7 +2413,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
@@ -2408,7 +2422,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 90 },
@@ -2417,7 +2431,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 4, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_pdr', sets: 6, rest_seconds: 60 },
         { id: 'ex_mdwr', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -2426,7 +2440,7 @@ export const programTemplates = [
         { id: 'ex_clr', sets: 4, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_sq', sets: 6, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2435,7 +2449,7 @@ export const programTemplates = [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_bp', sets: 6, rest_seconds: 60 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 60 },
@@ -2447,7 +2461,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_tbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_chu', sets: 4, rest_seconds: 120 },
         { id: 'ex_rkp', sets: 4, rest_seconds: 180 },
@@ -2456,7 +2470,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 4, rest_seconds: 90 },
         { id: 'ex_dips', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 120 },
         { id: 'ex_le', sets: 4, rest_seconds: 90 },
@@ -2465,7 +2479,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_bbr', sets: 6, rest_seconds: 60 },
         { id: 'ex_csr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -2474,7 +2488,7 @@ export const programTemplates = [
         { id: 'ex_lmp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 6, rest_seconds: 60 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2483,7 +2497,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_ibp', sets: 6, rest_seconds: 60 },
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 4, rest_seconds: 60 },
@@ -2495,7 +2509,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
@@ -2504,7 +2518,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 90 },
         { id: 'ex_ske', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_le', sets: 4, rest_seconds: 90 },
@@ -2513,7 +2527,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_tbr', sets: 6, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
@@ -2522,7 +2536,7 @@ export const programTemplates = [
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_sq', sets: 6, rest_seconds: 60 },
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2531,7 +2545,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_bp', sets: 6, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_hcf', sets: 4, rest_seconds: 60 },
@@ -2543,7 +2557,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Upper Power', exercises: [
+      { name: 'Upper Power', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_chu', sets: 4, rest_seconds: 120 },
         { id: 'ex_rkp', sets: 4, rest_seconds: 180 },
@@ -2552,7 +2566,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 4, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Lower Power', exercises: [
+      { name: 'Lower Power', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 5, rest_seconds: 120 },
         { id: 'ex_le', sets: 4, rest_seconds: 90 },
@@ -2561,7 +2575,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders Hypertrophy', exercises: [
+      { name: 'Back & Shoulders Hypertrophy', name_es: 'Espalda y Hombros Hipertrofia', exercises: [
         { id: 'ex_pdr', sets: 6, rest_seconds: 60 },
         { id: 'ex_mdwr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
@@ -2571,7 +2585,7 @@ export const programTemplates = [
         { id: 'ex_mrdf', sets: 4, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Lower Hypertrophy', exercises: [
+      { name: 'Lower Hypertrophy', name_es: 'Tren Inferior Hipertrofia', exercises: [
         { id: 'ex_fsq', sets: 6, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -2580,7 +2594,7 @@ export const programTemplates = [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_scr', sets: 5, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms Hypertrophy', exercises: [
+      { name: 'Chest & Arms Hypertrophy', name_es: 'Pecho y Brazos Hipertrofia', exercises: [
         { id: 'ex_ibp', sets: 6, rest_seconds: 60 },
         { id: 'ex_smbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 4, rest_seconds: 60 },
@@ -2592,7 +2606,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Upper Power (Deload)', exercises: [
+      { name: 'Upper Power (Deload)', name_es: 'Tren Superior Potencia (Descarga)', exercises: [
         { id: 'ex_bbr', sets: 2, rest_seconds: 120 },
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_bp', sets: 2, rest_seconds: 120 },
@@ -2600,7 +2614,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 2, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower Power (Deload)', exercises: [
+      { name: 'Lower Power (Deload)', name_es: 'Tren Inferior Potencia (Descarga)', exercises: [
         { id: 'ex_sq', sets: 2, rest_seconds: 120 },
         { id: 'ex_hsq', sets: 2, rest_seconds: 90 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
@@ -2608,14 +2622,14 @@ export const programTemplates = [
         { id: 'ex_slc', sets: 2, rest_seconds: 60 },
         { id: 'ex_scr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Back & Shoulders (Deload)', exercises: [
+      { name: 'Back & Shoulders (Deload)', name_es: 'Espalda y Hombros (Descarga)', exercises: [
         { id: 'ex_cbr', sets: 2, rest_seconds: 60 },
         { id: 'ex_cglp', sets: 2, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 60 },
         { id: 'ex_clr', sets: 2, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Lower (Deload)', exercises: [
+      { name: 'Lower (Deload)', name_es: 'Inferior (Descarga)', exercises: [
         { id: 'ex_fsq', sets: 2, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 2, rest_seconds: 60 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
@@ -2623,7 +2637,7 @@ export const programTemplates = [
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
         { id: 'ex_hth', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Chest & Arms (Deload)', exercises: [
+      { name: 'Chest & Arms (Deload)', name_es: 'Pecho y Brazos (Descarga)', exercises: [
         { id: 'ex_dbp', sets: 2, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 2, rest_seconds: 60 },
         { id: 'ex_ezc', sets: 2, rest_seconds: 60 },
@@ -2640,7 +2654,9 @@ export const programTemplates = [
 {
   id: 'tmpl_531', image: '/programs/531.jpg',
   name: 'Wendler 5/3/1',
+  name_es: '5/3/1',
   description: 'Jim Wendler\'s proven 5/3/1 program. 3 complete 4-week cycles with BBB, FSL, and joker set variations. Four training days built around the squat, bench, deadlift, and overhead press with rotating accessories each cycle.',
+  description_es: 'Sistema de periodización de Jim Wendler. 3 ciclos completos de 4 semanas con variaciones BBB, FSL y joker sets. Cuatro días de entrenamiento centrados en sentadilla, press de banca, peso muerto y press militar con accesorios rotativos.',
   category: 'Strength',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -2655,28 +2671,28 @@ export const programTemplates = [
 
     // Week 1: 5s Week + BBB (5x10)
     '1': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
@@ -2687,28 +2703,28 @@ export const programTemplates = [
 
     // Week 2: 3s Week + FSL (5x5)
     '2': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
@@ -2719,25 +2735,25 @@ export const programTemplates = [
 
     // Week 3: 5/3/1 Week + Joker Sets (4 total sets on main lift)
     '3': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 180 },
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
@@ -2747,22 +2763,22 @@ export const programTemplates = [
 
     // Week 4: Deload — light main lifts, light accessories only
     '4': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dips', sets: 2, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 120 },
         { id: 'ex_chu', sets: 2, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dips', sets: 2, rest_seconds: 60 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
@@ -2776,28 +2792,28 @@ export const programTemplates = [
 
     // Week 5: 5s Week + BBB (5x10)
     '5': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
@@ -2808,28 +2824,28 @@ export const programTemplates = [
 
     // Week 6: 3s Week + FSL (5x5)
     '6': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
@@ -2840,25 +2856,25 @@ export const programTemplates = [
 
     // Week 7: 5/3/1 Week + Joker Sets
     '7': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 60 },
@@ -2868,22 +2884,22 @@ export const programTemplates = [
 
     // Week 8: Deload
     '8': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_llr', sets: 2, rest_seconds: 60 },
         { id: 'ex_stup', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 2, rest_seconds: 60 },
         { id: 'ex_llr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 60 },
         { id: 'ex_stup', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 2, rest_seconds: 60 },
         { id: 'ex_llr', sets: 2, rest_seconds: 60 },
@@ -2897,28 +2913,28 @@ export const programTemplates = [
 
     // Week 9: 5s Week + BBB (5x10)
     '9': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_palp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
@@ -2929,28 +2945,28 @@ export const programTemplates = [
 
     // Week 10: 3s Week + FSL (5x5)
     '10': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_palp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 5, rest_seconds: 90 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
@@ -2961,25 +2977,25 @@ export const programTemplates = [
 
     // Week 11: 5/3/1 Week + Joker Sets
     '11': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_palp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 180 },
         { id: 'ex_pup', sets: 5, rest_seconds: 60 },
         { id: 'ex_lp', sets: 5, rest_seconds: 60 },
@@ -2989,22 +3005,22 @@ export const programTemplates = [
 
     // Week 12: Deload
     '12': [
-      { name: 'Squat Day', exercises: [
+      { name: 'Squat Day', name_es: 'Día de Sentadilla', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_palp', sets: 2, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Bench Day', exercises: [
+      { name: 'Bench Day', name_es: 'Día de Press de Banca', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_pup', sets: 2, rest_seconds: 60 },
         { id: 'ex_palp', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift Day', exercises: [
+      { name: 'Deadlift Day', name_es: 'Día de Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp', sets: 2, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'OHP Day', exercises: [
+      { name: 'OHP Day', name_es: 'Día de Press Militar', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
         { id: 'ex_pup', sets: 2, rest_seconds: 60 },
         { id: 'ex_palp', sets: 2, rest_seconds: 60 },
@@ -3016,7 +3032,9 @@ export const programTemplates = [
 {
   id: 'tmpl_nsuns', image: '/programs/nsuns.jpg',
   name: 'nSuns 5/3/1 LP',
+  name_es: 'nSuns 5/3/1',
   description: 'nSuns\' high-volume linear progression variant of 5/3/1. Four training days with T1/T2 compound pairings and rotating accessories. Aggressive progression for intermediate lifters looking to push through plateaus.',
+  description_es: 'Variante de alto volumen del 5/3/1 con progresión lineal. Cuatro días de entrenamiento con pares de compuestos T1/T2 y accesorios rotativos. Progresión agresiva para intermedios que buscan superar mesetas.',
   category: 'Strength',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -3029,28 +3047,28 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '1': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
@@ -3060,28 +3078,28 @@ export const programTemplates = [
     ],
 
     '2': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
@@ -3095,7 +3113,7 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '3': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -3103,7 +3121,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
@@ -3111,7 +3129,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_chu', sets: 3, rest_seconds: 60 },
@@ -3119,7 +3137,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -3129,7 +3147,7 @@ export const programTemplates = [
     ],
 
     '4': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -3137,7 +3155,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
@@ -3145,7 +3163,7 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_chu', sets: 3, rest_seconds: 60 },
@@ -3153,7 +3171,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -3167,7 +3185,7 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '5': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
@@ -3175,7 +3193,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 60 },
@@ -3183,14 +3201,14 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 60 },
@@ -3200,7 +3218,7 @@ export const programTemplates = [
     ],
 
     '6': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
@@ -3208,7 +3226,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 60 },
@@ -3216,14 +3234,14 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 60 },
@@ -3237,7 +3255,7 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '7': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -3245,7 +3263,7 @@ export const programTemplates = [
         { id: 'ex_spdc', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
@@ -3253,14 +3271,14 @@ export const programTemplates = [
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_pdr', sets: 3, rest_seconds: 90 },
@@ -3270,7 +3288,7 @@ export const programTemplates = [
     ],
 
     '8': [
-      { name: 'Bench + OHP', exercises: [
+      { name: 'Bench + OHP', name_es: 'Press de Banca + Press Militar', exercises: [
         { id: 'ex_bp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ohp', sets: 8, rest_seconds: 120 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -3278,7 +3296,7 @@ export const programTemplates = [
         { id: 'ex_spdc', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Squat + Sumo DL', exercises: [
+      { name: 'Squat + Sumo DL', name_es: 'Sentadilla + Peso Muerto Sumo', exercises: [
         { id: 'ex_sq', sets: 9, rest_seconds: 150 },
         { id: 'ex_sdl', sets: 8, rest_seconds: 120 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
@@ -3286,14 +3304,14 @@ export const programTemplates = [
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'OHP + Incline Bench', exercises: [
+      { name: 'OHP + Incline Bench', name_es: 'Press Militar + Press Inclinado', exercises: [
         { id: 'ex_ohp', sets: 9, rest_seconds: 150 },
         { id: 'ex_ibp', sets: 8, rest_seconds: 120 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Front Squat', exercises: [
+      { name: 'Deadlift + Front Squat', name_es: 'Peso Muerto + Sentadilla Frontal', exercises: [
         { id: 'ex_dl', sets: 9, rest_seconds: 150 },
         { id: 'ex_fsq', sets: 8, rest_seconds: 120 },
         { id: 'ex_pdr', sets: 3, rest_seconds: 90 },
@@ -3307,7 +3325,9 @@ export const programTemplates = [
 {
   id: 'tmpl_powerbuilding', image: '/programs/powerbuilding.jpg',
   name: 'Powerbuilding',
+  name_es: 'Potencia y Construcción',
   description: 'A 10-week hybrid program combining powerlifting and bodybuilding. Heavy compound days for strength with hypertrophy sessions for size. Three distinct phases: building, intensification, and peaking, followed by a deload.',
+  description_es: 'Combina entrenamiento de fuerza y hipertrofia en un programa híbrido de 10 semanas. Días pesados de compuestos para fuerza con sesiones de hipertrofia para tamaño. Tres fases: construcción, intensificación y pico.',
   category: 'Strength',
   level: 'Intermediate',
   daysPerWeek: 5,
@@ -3320,20 +3340,20 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '1': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 150 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -3341,7 +3361,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
@@ -3349,7 +3369,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -3360,20 +3380,20 @@ export const programTemplates = [
     ],
 
     '2': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 150 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -3381,7 +3401,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
@@ -3389,7 +3409,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -3400,20 +3420,20 @@ export const programTemplates = [
     ],
 
     '3': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 150 },
         { id: 'ex_chu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -3421,7 +3441,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 4, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
@@ -3429,7 +3449,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 4, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -3445,20 +3465,20 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '4': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 150 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 150 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 60 },
@@ -3466,7 +3486,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
@@ -3474,7 +3494,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -3485,20 +3505,20 @@ export const programTemplates = [
     ],
 
     '5': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 150 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 150 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 4, rest_seconds: 60 },
@@ -3506,7 +3526,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
@@ -3514,7 +3534,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -3525,20 +3545,20 @@ export const programTemplates = [
     ],
 
     '6': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 5, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 4, rest_seconds: 150 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 150 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 4, rest_seconds: 60 },
@@ -3546,7 +3566,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
@@ -3554,7 +3574,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -3565,20 +3585,20 @@ export const programTemplates = [
     ],
 
     '7': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 5, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 5, rest_seconds: 150 },
         { id: 'ex_pu', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 4, rest_seconds: 90 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 150 },
         { id: 'ex_rtwt', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 4, rest_seconds: 60 },
@@ -3586,7 +3606,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 4, rest_seconds: 60 },
         { id: 'ex_coe', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 4, rest_seconds: 60 },
@@ -3594,7 +3614,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -3610,30 +3630,30 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '8': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 180 },
         { id: 'ex_chu', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_gm', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -3642,30 +3662,30 @@ export const programTemplates = [
     ],
 
     '9': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 5, rest_seconds: 180 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 180 },
         { id: 'ex_pu', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_gm', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -3678,26 +3698,26 @@ export const programTemplates = [
     // ═══════════════════════════════════════════════════════
 
     '10': [
-      { name: 'Heavy Upper', exercises: [
+      { name: 'Heavy Upper', name_es: 'Tren Superior Pesado', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Heavy Lower', exercises: [
+      { name: 'Heavy Lower', name_es: 'Tren Inferior Pesado', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_dl', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Push Hypertrophy', exercises: [
+      { name: 'Push Hypertrophy', name_es: 'Empuje Hipertrofia', exercises: [
         { id: 'ex_idbp', sets: 2, rest_seconds: 90 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Pull Hypertrophy', exercises: [
+      { name: 'Pull Hypertrophy', name_es: 'Jalón Hipertrofia', exercises: [
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
         { id: 'ex_dbc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Legs Hypertrophy', exercises: [
+      { name: 'Legs Hypertrophy', name_es: 'Piernas Hipertrofia', exercises: [
         { id: 'ex_lp_l', sets: 2, rest_seconds: 90 },
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
         { id: 'ex_scr', sets: 2, rest_seconds: 60 },
@@ -3710,7 +3730,9 @@ export const programTemplates = [
 {
   id: 'tmpl_strong_curves', image: '/programs/strong-curves.avif',
   name: 'Strong Curves',
+  name_es: 'Curvas Fuertes',
   description: 'A 12-week glute-focused program designed to build a strong, shapely posterior chain. Three phases progress from foundational movement patterns to advanced single-leg and banded work, with hip thrusts programmed every glute session.',
+  description_es: 'Programa enfocado en glúteos de 12 semanas diseñado para construir una cadena posterior fuerte y definida. Tres fases progresan desde patrones de movimiento fundamentales hasta trabajo avanzado unilateral y con bandas.',
   category: 'Glute Building',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -3719,28 +3741,28 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable Machine', 'Smith Machine', 'Resistance Band'],
   weeks: {
     '1': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -3749,28 +3771,28 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_slc', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
@@ -3779,28 +3801,28 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -3809,28 +3831,28 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
@@ -3839,28 +3861,28 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_ghr', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -3869,28 +3891,28 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_slc', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_bp', sets: 3, rest_seconds: 60 },
@@ -3899,28 +3921,28 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_ghr', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
@@ -3929,28 +3951,28 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
@@ -3959,28 +3981,28 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_nhc', sets: 4, rest_seconds: 60 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 60 },
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -3989,28 +4011,28 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_ghr', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_slc', sets: 4, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_cpt', sets: 5, rest_seconds: 60 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
@@ -4019,28 +4041,28 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_nhc', sets: 4, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_chu', sets: 4, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 60 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_sisq', sets: 4, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
@@ -4049,28 +4071,28 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Glutes & Hamstrings', exercises: [
+      { name: 'Glutes & Hamstrings', name_es: 'Glúteos e Isquiotibiales', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_ghr', sets: 4, rest_seconds: 60 },
         { id: 'ex_ckb', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 5, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes & Quads', exercises: [
+      { name: 'Glutes & Quads', name_es: 'Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 5, rest_seconds: 90 },
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_psq', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 60 },
@@ -4083,7 +4105,9 @@ export const programTemplates = [
 {
   id: 'tmpl_bodyweight', image: '/programs/bodyweight.jpg',
   name: 'Bodyweight Only',
+  name_es: 'Peso Corporal',
   description: 'An 8-week progressive bodyweight program requiring zero equipment. Each two-week phase introduces harder movement variations, building from basic push-ups and squats to advanced single-arm work and plyometrics.',
+  description_es: 'Programa de calistenia sin equipo de 8 semanas. Cada fase de dos semanas introduce variaciones más difíciles, desde flexiones y sentadillas básicas hasta trabajo unilateral avanzado y pliometría.',
   category: 'Bodyweight',
   level: 'Beginner',
   daysPerWeek: 4,
@@ -4092,28 +4116,28 @@ export const programTemplates = [
   equipment: ['Bodyweight', 'Pull-Up Bar'],
   weeks: {
     '1': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_dips', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_cr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbug', sets: 3, rest_seconds: 45 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
         { id: 'ex_splk', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
@@ -4122,28 +4146,28 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 3, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_splk', sets: 3, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbug', sets: 3, rest_seconds: 45 },
         { id: 'ex_vup', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
@@ -4152,28 +4176,28 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dmpu', sets: 4, rest_seconds: 60 },
         { id: 'ex_dips', sets: 3, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_psq', sets: 3, rest_seconds: 60 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 3, rest_seconds: 60 },
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbug', sets: 3, rest_seconds: 45 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 4, rest_seconds: 60 },
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 3, rest_seconds: 60 },
@@ -4182,28 +4206,28 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dmpu', sets: 4, rest_seconds: 60 },
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_splk', sets: 3, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 60 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 4, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_vup', sets: 3, rest_seconds: 45 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
         { id: 'ex_pup', sets: 4, rest_seconds: 60 },
@@ -4212,28 +4236,28 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 4, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 4, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
         { id: 'ex_cpplk', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 4, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 4, rest_seconds: 60 },
         { id: 'ex_llr', sets: 4, rest_seconds: 45 },
         { id: 'ex_dbug', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 4, rest_seconds: 45 },
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
         { id: 'ex_psq', sets: 4, rest_seconds: 60 },
@@ -4242,28 +4266,28 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 4, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 4, rest_seconds: 60 },
         { id: 'ex_splk', sets: 4, rest_seconds: 45 },
         { id: 'ex_dgfl', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_sisq', sets: 4, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 4, rest_seconds: 60 },
         { id: 'ex_gsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_stup', sets: 4, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 4, rest_seconds: 60 },
         { id: 'ex_vup', sets: 4, rest_seconds: 45 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 5, rest_seconds: 45 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
         { id: 'ex_pup', sets: 4, rest_seconds: 45 },
@@ -4272,28 +4296,28 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 5, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 4, rest_seconds: 60 },
         { id: 'ex_dgfl', sets: 4, rest_seconds: 45 },
         { id: 'ex_cpplk', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_psq', sets: 5, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 4, rest_seconds: 60 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 60 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_pu', sets: 5, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 4, rest_seconds: 60 },
         { id: 'ex_llr', sets: 4, rest_seconds: 45 },
         { id: 'ex_hbh', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 5, rest_seconds: 45 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 60 },
         { id: 'ex_dips', sets: 4, rest_seconds: 60 },
@@ -4302,28 +4326,28 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Upper Push', exercises: [
+      { name: 'Upper Push', name_es: 'Tren Superior Empuje', exercises: [
         { id: 'ex_dips', sets: 5, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 5, rest_seconds: 60 },
         { id: 'ex_pdk', sets: 5, rest_seconds: 60 },
         { id: 'ex_dgfl', sets: 4, rest_seconds: 45 },
         { id: 'ex_splk', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body', exercises: [
+      { name: 'Lower Body', name_es: 'Tren Inferior', exercises: [
         { id: 'ex_sisq', sets: 5, rest_seconds: 60 },
         { id: 'ex_nhc', sets: 5, rest_seconds: 60 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 60 },
         { id: 'ex_stup', sets: 4, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull', exercises: [
+      { name: 'Upper Pull', name_es: 'Tren Superior Jalón', exercises: [
         { id: 'ex_chu', sets: 5, rest_seconds: 60 },
         { id: 'ex_pu', sets: 5, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 5, rest_seconds: 60 },
         { id: 'ex_vup', sets: 5, rest_seconds: 45 },
         { id: 'ex_hbh', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_burp', sets: 5, rest_seconds: 45 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 60 },
         { id: 'ex_dmpu', sets: 5, rest_seconds: 45 },
@@ -4336,7 +4360,9 @@ export const programTemplates = [
 {
   id: 'tmpl_fat_loss', image: '/programs/fat-loss.jpg',
   name: 'Fat Loss Circuit',
+  name_es: 'Pérdida de Grasa',
   description: 'A 6-week high-intensity circuit training program designed to maximize calorie burn and fat loss. Four unique circuit workouts per week using compound movements with short rest periods, progressing from moderate pace to maximum intensity.',
+  description_es: 'Circuito metabólico para quemar grasa de 6 semanas. Cuatro circuitos únicos por semana usando movimientos compuestos con periodos de descanso cortos, progresando de ritmo moderado a intensidad máxima.',
   category: 'Fat Loss',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -4345,28 +4371,28 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Kettlebell', 'Pull-Up Bar'],
   weeks: {
     '1': [
-      { name: 'Circuit A - Total Body Blast', exercises: [
+      { name: 'Circuit A - Total Body Blast', name_es: 'Circuito A - Explosión Total', exercises: [
         { id: 'ex_thrst', sets: 3, rest_seconds: 45 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
         { id: 'ex_kg', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit B - Lower Body Burn', exercises: [
+      { name: 'Circuit B - Lower Body Burn', name_es: 'Circuito B - Quema Tren Inferior', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 45 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 45 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_bxjp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit C - Upper Body Scorcher', exercises: [
+      { name: 'Circuit C - Upper Body Scorcher', name_es: 'Circuito C - Abrasador Tren Superior', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 45 },
         { id: 'ex_pu', sets: 3, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit D - Metabolic Meltdown', exercises: [
+      { name: 'Circuit D - Metabolic Meltdown', name_es: 'Circuito D - Fusión Metabólica', exercises: [
         { id: 'ex_burp', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbth', sets: 3, rest_seconds: 45 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 45 },
@@ -4375,14 +4401,14 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Circuit A - Power Surge', exercises: [
+      { name: 'Circuit A - Power Surge', name_es: 'Circuito A - Oleada de Potencia', exercises: [
         { id: 'ex_clnp', sets: 3, rest_seconds: 45 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 45 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
         { id: 'ex_mnmk', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit B - Leg Inferno', exercises: [
+      { name: 'Circuit B - Leg Inferno', name_es: 'Circuito B - Infierno de Piernas', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 45 },
         { id: 'ex_stup', sets: 3, rest_seconds: 45 },
         { id: 'ex_hth', sets: 3, rest_seconds: 45 },
@@ -4390,14 +4416,14 @@ export const programTemplates = [
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
         { id: 'ex_bxjp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit C - Push Pull Fury', exercises: [
+      { name: 'Circuit C - Push Pull Fury', name_es: 'Circuito C - Furia Empuje Jalón', exercises: [
         { id: 'ex_ibp', sets: 3, rest_seconds: 45 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 45 },
         { id: 'ex_chu', sets: 3, rest_seconds: 45 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Circuit D - Kettlebell Chaos', exercises: [
+      { name: 'Circuit D - Kettlebell Chaos', name_es: 'Circuito D - Caos de Kettlebell', exercises: [
         { id: 'ex_kg', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
@@ -4406,14 +4432,14 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Circuit A - Barbell Complex', exercises: [
+      { name: 'Circuit A - Barbell Complex', name_es: 'Circuito A - Complejo de Barra', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 45 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 45 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 45 },
         { id: 'ex_bcr', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Circuit B - Dumbbell Destroyer', exercises: [
+      { name: 'Circuit B - Dumbbell Destroyer', name_es: 'Circuito B - Destructor de Mancuernas', exercises: [
         { id: 'ex_dbth', sets: 4, rest_seconds: 45 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 45 },
@@ -4421,14 +4447,14 @@ export const programTemplates = [
         { id: 'ex_arnp', sets: 4, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Circuit C - Compound Carnage', exercises: [
+      { name: 'Circuit C - Compound Carnage', name_es: 'Circuito C - Carnicería Compuesta', exercises: [
         { id: 'ex_thrst', sets: 4, rest_seconds: 45 },
         { id: 'ex_pu', sets: 4, rest_seconds: 45 },
         { id: 'ex_sq', sets: 4, rest_seconds: 45 },
         { id: 'ex_dips', sets: 4, rest_seconds: 45 },
         { id: 'ex_plank', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Circuit D - Athletic Blast', exercises: [
+      { name: 'Circuit D - Athletic Blast', name_es: 'Circuito D - Explosión Atlética', exercises: [
         { id: 'ex_pcln', sets: 4, rest_seconds: 45 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 45 },
@@ -4437,14 +4463,14 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Circuit A - Total Body Grind', exercises: [
+      { name: 'Circuit A - Total Body Grind', name_es: 'Circuito A - Molienda Total', exercises: [
         { id: 'ex_clnp', sets: 4, rest_seconds: 40 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 40 },
         { id: 'ex_gsq', sets: 4, rest_seconds: 40 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 40 },
         { id: 'ex_burp', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit B - Posterior Chain Pump', exercises: [
+      { name: 'Circuit B - Posterior Chain Pump', name_es: 'Circuito B - Bombeo Cadena Posterior', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 40 },
         { id: 'ex_hth', sets: 4, rest_seconds: 40 },
         { id: 'ex_hyp', sets: 4, rest_seconds: 40 },
@@ -4452,14 +4478,14 @@ export const programTemplates = [
         { id: 'ex_kg', sets: 4, rest_seconds: 40 },
         { id: 'ex_llr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit C - Upper Body Storm', exercises: [
+      { name: 'Circuit C - Upper Body Storm', name_es: 'Circuito C - Tormenta Tren Superior', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 40 },
         { id: 'ex_lp', sets: 4, rest_seconds: 40 },
         { id: 'ex_lr', sets: 4, rest_seconds: 40 },
         { id: 'ex_dips', sets: 4, rest_seconds: 40 },
         { id: 'ex_bbc', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit D - Full Body Finisher', exercises: [
+      { name: 'Circuit D - Full Body Finisher', name_es: 'Circuito D - Finalizador Cuerpo Completo', exercises: [
         { id: 'ex_dbth', sets: 4, rest_seconds: 40 },
         { id: 'ex_mnmk', sets: 4, rest_seconds: 40 },
         { id: 'ex_stup', sets: 4, rest_seconds: 40 },
@@ -4468,7 +4494,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Circuit A - Maximal Effort', exercises: [
+      { name: 'Circuit A - Maximal Effort', name_es: 'Circuito A - Esfuerzo Máximo', exercises: [
         { id: 'ex_thrst', sets: 4, rest_seconds: 30 },
         { id: 'ex_dl', sets: 4, rest_seconds: 30 },
         { id: 'ex_pu', sets: 4, rest_seconds: 30 },
@@ -4476,7 +4502,7 @@ export const programTemplates = [
         { id: 'ex_burp', sets: 4, rest_seconds: 30 },
         { id: 'ex_vup', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit B - Leg Annihilation', exercises: [
+      { name: 'Circuit B - Leg Annihilation', name_es: 'Circuito B - Aniquilación de Piernas', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 30 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 30 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 30 },
@@ -4484,7 +4510,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 4, rest_seconds: 30 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit C - Push Pull Inferno', exercises: [
+      { name: 'Circuit C - Push Pull Inferno', name_es: 'Circuito C - Infierno Empuje Jalón', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 30 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 30 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 30 },
@@ -4492,7 +4518,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 4, rest_seconds: 30 },
         { id: 'ex_plank', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Circuit D - Finisher Protocol', exercises: [
+      { name: 'Circuit D - Finisher Protocol', name_es: 'Circuito D - Protocolo Final', exercises: [
         { id: 'ex_pcln', sets: 4, rest_seconds: 30 },
         { id: 'ex_kg', sets: 4, rest_seconds: 30 },
         { id: 'ex_ckb', sets: 4, rest_seconds: 30 },
@@ -4501,14 +4527,14 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Circuit A - Ultimate Burn', exercises: [
+      { name: 'Circuit A - Ultimate Burn', name_es: 'Circuito A - Quema Definitiva', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 30 },
         { id: 'ex_sq', sets: 5, rest_seconds: 30 },
         { id: 'ex_dbr', sets: 5, rest_seconds: 30 },
         { id: 'ex_burp', sets: 5, rest_seconds: 30 },
         { id: 'ex_bcr', sets: 5, rest_seconds: 30 },
       ]},
-      { name: 'Circuit B - Last Legs', exercises: [
+      { name: 'Circuit B - Last Legs', name_es: 'Circuito B - Últimas Piernas', exercises: [
         { id: 'ex_thrst', sets: 5, rest_seconds: 30 },
         { id: 'ex_rdl', sets: 5, rest_seconds: 30 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 30 },
@@ -4516,7 +4542,7 @@ export const programTemplates = [
         { id: 'ex_hth', sets: 5, rest_seconds: 30 },
         { id: 'ex_slcr', sets: 5, rest_seconds: 30 },
       ]},
-      { name: 'Circuit C - Upper Armageddon', exercises: [
+      { name: 'Circuit C - Upper Armageddon', name_es: 'Circuito C - Armagedón Superior', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 30 },
         { id: 'ex_tbr', sets: 5, rest_seconds: 30 },
         { id: 'ex_mshp', sets: 5, rest_seconds: 30 },
@@ -4524,7 +4550,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 5, rest_seconds: 30 },
         { id: 'ex_llr', sets: 5, rest_seconds: 30 },
       ]},
-      { name: 'Circuit D - Grand Finale', exercises: [
+      { name: 'Circuit D - Grand Finale', name_es: 'Circuito D - Gran Final', exercises: [
         { id: 'ex_dbth', sets: 5, rest_seconds: 30 },
         { id: 'ex_mnmk', sets: 5, rest_seconds: 30 },
         { id: 'ex_lunge', sets: 5, rest_seconds: 30 },
@@ -4537,7 +4563,9 @@ export const programTemplates = [
 {
   id: 'tmpl_athletic', image: '/programs/athletic.jpg',
   name: 'Athletic Performance',
+  name_es: 'Atlético',
   description: 'An 8-week program designed for athletes seeking explosive power, speed, and functional strength. Combines Olympic lifting and plyometrics on power days with heavy compound work on strength days, progressing from base-building to peak performance.',
+  description_es: 'Entrenamiento funcional para rendimiento deportivo de 8 semanas. Combina levantamiento olímpico y pliometría en días de potencia con trabajo pesado de compuestos en días de fuerza, progresando hasta rendimiento pico.',
   category: 'Athletic',
   level: 'Advanced',
   daysPerWeek: 4,
@@ -4546,28 +4574,28 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Kettlebell', 'Pull-Up Bar', 'Box', 'Sled'],
   weeks: {
     '1': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_clnp', sets: 4, rest_seconds: 120 },
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_mbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_pcln', sets: 4, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 120 },
         { id: 'ex_kg', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 150 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_pu', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
@@ -4576,28 +4604,28 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pcln', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_brsl', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_clnp', sets: 4, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 150 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 120 },
         { id: 'ex_stup', sets: 3, rest_seconds: 90 },
@@ -4606,28 +4634,28 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_clnp', sets: 4, rest_seconds: 120 },
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_tgu', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_pcln', sets: 4, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 4, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 120 },
         { id: 'ex_sldp', sets: 3, rest_seconds: 90 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 150 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_wrc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_fsq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 90 },
@@ -4636,28 +4664,28 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
         { id: 'ex_bp', sets: 4, rest_seconds: 90 },
         { id: 'ex_brsl', sets: 4, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 90 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 90 },
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_kg', sets: 4, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp', sets: 4, rest_seconds: 120 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 120 },
         { id: 'ex_dips', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_dl', sets: 4, rest_seconds: 150 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 90 },
@@ -4666,28 +4694,28 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 120 },
         { id: 'ex_tgu', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_brsl', sets: 4, rest_seconds: 60 },
         { id: 'ex_palp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_sldp', sets: 4, rest_seconds: 90 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 150 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_ibp', sets: 4, rest_seconds: 120 },
         { id: 'ex_pu', sets: 3, rest_seconds: 90 },
         { id: 'ex_fwk', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 150 },
         { id: 'ex_stup', sets: 3, rest_seconds: 90 },
@@ -4696,28 +4724,28 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pcln', sets: 5, rest_seconds: 120 },
         { id: 'ex_tgu', sets: 4, rest_seconds: 90 },
         { id: 'ex_bp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 120 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 90 },
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_kg', sets: 4, rest_seconds: 60 },
         { id: 'ex_slcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 150 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_chu', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 120 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 90 },
@@ -4726,28 +4754,28 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 110 },
         { id: 'ex_brsl', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_pcln', sets: 5, rest_seconds: 110 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_sldp', sets: 4, rest_seconds: 90 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 150 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_bp', sets: 3, rest_seconds: 120 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_wrc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 90 },
@@ -4756,28 +4784,28 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Power Upper', exercises: [
+      { name: 'Power Upper', name_es: 'Tren Superior Potencia', exercises: [
         { id: 'ex_pcln', sets: 5, rest_seconds: 110 },
         { id: 'ex_tgu', sets: 4, rest_seconds: 90 },
         { id: 'ex_ibp', sets: 3, rest_seconds: 90 },
         { id: 'ex_brsl', sets: 5, rest_seconds: 60 },
         { id: 'ex_palp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Power Lower', exercises: [
+      { name: 'Power Lower', name_es: 'Tren Inferior Potencia', exercises: [
         { id: 'ex_clnp', sets: 5, rest_seconds: 110 },
         { id: 'ex_bxjp', sets: 5, rest_seconds: 90 },
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_kg', sets: 5, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Upper', exercises: [
+      { name: 'Strength Upper', name_es: 'Tren Superior Fuerza', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 150 },
         { id: 'ex_lp', sets: 4, rest_seconds: 120 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Strength Lower', exercises: [
+      { name: 'Strength Lower', name_es: 'Tren Inferior Fuerza', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_sq', sets: 4, rest_seconds: 150 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
@@ -4790,7 +4818,9 @@ export const programTemplates = [
 {
   id: 'tmpl_minimalist', image: '/programs/minimalist.jpg',
   name: 'Minimalist Strength',
+  name_es: 'Minimalista',
   description: 'A 12-week no-nonsense strength program with just 3 training days and 4-5 exercises per session. Rotates main lift variations across three 4-week blocks while keeping volume manageable and progression steady.',
+  description_es: 'Programa eficiente de 3 días por semana durante 12 semanas con solo 4-5 ejercicios por sesión. Rota variaciones de levantamientos principales a través de tres bloques de 4 semanas manteniendo el volumen manejable.',
   category: 'Strength',
   level: 'Intermediate',
   daysPerWeek: 3,
@@ -4799,19 +4829,19 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Trap Bar'],
   weeks: {
     '1': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
@@ -4819,19 +4849,19 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_stup', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
@@ -4839,21 +4869,21 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_pu', sets: 3, rest_seconds: 90 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
@@ -4861,20 +4891,20 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 90 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
@@ -4883,19 +4913,19 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_fsq', sets: 5, rest_seconds: 180 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_sdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
@@ -4903,20 +4933,20 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_fsq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_sdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
@@ -4924,21 +4954,21 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_fsq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_pu', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_sdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
@@ -4947,20 +4977,20 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_fsq', sets: 5, rest_seconds: 180 },
         { id: 'ex_stup', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ohp', sets: 5, rest_seconds: 180 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_sdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
@@ -4969,19 +4999,19 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
@@ -4989,21 +5019,21 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_btsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_llr', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 180 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
@@ -5011,21 +5041,21 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 90 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
         { id: 'ex_plank', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
@@ -5034,21 +5064,21 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Day A - Squat Focus', exercises: [
+      { name: 'Day A - Squat Focus', name_es: 'Día A - Enfoque Sentadilla', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 90 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 60 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day B - Press Focus', exercises: [
+      { name: 'Day B - Press Focus', name_es: 'Día B - Enfoque Press', exercises: [
         { id: 'ex_ibp', sets: 5, rest_seconds: 180 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbs', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Day C - Deadlift Focus', exercises: [
+      { name: 'Day C - Deadlift Focus', name_es: 'Día C - Enfoque Peso Muerto', exercises: [
         { id: 'ex_tbdl', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
@@ -5063,7 +5093,9 @@ export const programTemplates = [
 {
   id: 'tmpl_powerlifting_peak', image: '/programs/powerlifting.jpg',
   name: 'Powerlifting Peaking',
+  name_es: 'Pico de Powerlifting',
   description: 'A 16-week competition prep program inspired by Calgary Barbell. Four phases: hypertrophy → strength → peaking → taper. Squat/bench 2x/week, deadlift 1-2x/week. Built to peak your squat, bench, and deadlift for meet day.',
+  description_es: 'Programa de peaking para competencia de 16 semanas inspirado en Calgary Barbell. Cuatro fases: hipertrofia, fuerza, pico y taper. Sentadilla/banca 2x/semana, peso muerto 1-2x/semana. Diseñado para llegar al pico el día de competencia.',
   category: 'Powerlifting',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -5073,7 +5105,7 @@ export const programTemplates = [
   weeks: {
     // ── PHASE 1: HYPERTROPHY (Weeks 1-4) — High volume, moderate intensity ──
     '1': [
-      { name: 'Squat + Bench', exercises: [
+      { name: 'Squat + Bench', name_es: 'Sentadilla + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -5081,21 +5113,21 @@ export const programTemplates = [
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Back', exercises: [
+      { name: 'Deadlift + Back', name_es: 'Peso Muerto + Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench + Squat (Volume)', exercises: [
+      { name: 'Bench + Squat (Volume)', name_es: 'Press de Banca + Sentadilla (Volumen)', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dips', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Accessories', exercises: [
+      { name: 'Accessories', name_es: 'Accesorios', exercises: [
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
@@ -5105,7 +5137,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Squat + Bench', exercises: [
+      { name: 'Squat + Bench', name_es: 'Sentadilla + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 180 },
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -5113,21 +5145,21 @@ export const programTemplates = [
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Back', exercises: [
+      { name: 'Deadlift + Back', name_es: 'Peso Muerto + Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 180 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench + Squat (Volume)', exercises: [
+      { name: 'Bench + Squat (Volume)', name_es: 'Press de Banca + Sentadilla (Volumen)', exercises: [
         { id: 'ex_cgp', sets: 4, rest_seconds: 120 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_clr', sets: 3, rest_seconds: 60 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Accessories', exercises: [
+      { name: 'Accessories', name_es: 'Accesorios', exercises: [
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
@@ -5137,7 +5169,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Squat + Bench', exercises: [
+      { name: 'Squat + Bench', name_es: 'Sentadilla + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
@@ -5145,21 +5177,21 @@ export const programTemplates = [
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Back', exercises: [
+      { name: 'Deadlift + Back', name_es: 'Peso Muerto + Espalda', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_ezc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench + Squat (Volume)', exercises: [
+      { name: 'Bench + Squat (Volume)', name_es: 'Press de Banca + Sentadilla (Volumen)', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 120 },
         { id: 'ex_sq', sets: 3, rest_seconds: 120 },
         { id: 'ex_mcp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dips', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Accessories', exercises: [
+      { name: 'Accessories', name_es: 'Accesorios', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
@@ -5169,7 +5201,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Squat + Bench', exercises: [
+      { name: 'Squat + Bench', name_es: 'Sentadilla + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 180 },
         { id: 'ex_bp', sets: 5, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
@@ -5177,21 +5209,21 @@ export const programTemplates = [
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_coe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift + Back', exercises: [
+      { name: 'Deadlift + Back', name_es: 'Peso Muerto + Espalda', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 180 },
         { id: 'ex_pdr', sets: 4, rest_seconds: 120 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench + Squat (Volume)', exercises: [
+      { name: 'Bench + Squat (Volume)', name_es: 'Press de Banca + Sentadilla (Volumen)', exercises: [
         { id: 'ex_cgp', sets: 4, rest_seconds: 120 },
         { id: 'ex_fsq', sets: 3, rest_seconds: 120 },
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 60 },
         { id: 'ex_ske', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Accessories', exercises: [
+      { name: 'Accessories', name_es: 'Accesorios', exercises: [
         { id: 'ex_gm', sets: 3, rest_seconds: 90 },
         { id: 'ex_mdwr', sets: 3, rest_seconds: 90 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 90 },
@@ -5202,25 +5234,25 @@ export const programTemplates = [
     ],
     // ── PHASE 2: STRENGTH (Weeks 5-10) — Increasing intensity, reducing volume ──
     '5': [
-      { name: 'Squat (Heavy) + Bench', exercises: [
+      { name: 'Squat (Heavy) + Bench', name_es: 'Sentadilla (Pesada) + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 240 },
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift (Heavy) + Back', exercises: [
+      { name: 'Deadlift (Heavy) + Back', name_es: 'Peso Muerto (Pesado) + Espalda', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 240 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_bbc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench (Heavy) + Squat', exercises: [
+      { name: 'Bench (Heavy) + Squat', name_es: 'Press de Banca (Pesado) + Sentadilla', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 240 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
@@ -5228,25 +5260,25 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Squat (Heavy) + Bench', exercises: [
+      { name: 'Squat (Heavy) + Bench', name_es: 'Sentadilla (Pesada) + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 240 },
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_hsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_oe', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift (Heavy) + Back', exercises: [
+      { name: 'Deadlift (Heavy) + Back', name_es: 'Peso Muerto (Pesado) + Espalda', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 240 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 120 },
         { id: 'ex_cglp', sets: 3, rest_seconds: 90 },
         { id: 'ex_hc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Bench (Heavy) + Squat', exercises: [
+      { name: 'Bench (Heavy) + Squat', name_es: 'Press de Banca (Pesado) + Sentadilla', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 240 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 90 },
@@ -5254,187 +5286,187 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Squat (Heavy) + Bench', exercises: [
+      { name: 'Squat (Heavy) + Bench', name_es: 'Sentadilla (Pesada) + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 240 },
         { id: 'ex_bp', sets: 4, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 90 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift (Heavy) + Back', exercises: [
+      { name: 'Deadlift (Heavy) + Back', name_es: 'Peso Muerto (Pesado) + Espalda', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 240 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
         { id: 'ex_ezc', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Bench (Heavy) + Squat', exercises: [
+      { name: 'Bench (Heavy) + Squat', name_es: 'Press de Banca (Pesado) + Sentadilla', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 240 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
     ],
     '8': [
-      { name: 'Squat (Heavy) + Bench', exercises: [
+      { name: 'Squat (Heavy) + Bench', name_es: 'Sentadilla (Pesada) + Press de Banca', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 240 },
         { id: 'ex_bp', sets: 4, rest_seconds: 240 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
         { id: 'ex_dips', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift (Heavy)', exercises: [
+      { name: 'Deadlift (Heavy)', name_es: 'Peso Muerto (Pesado)', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 240 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_lp', sets: 3, rest_seconds: 90 },
       ]},
-      { name: 'Bench (Heavy) + Squat', exercises: [
+      { name: 'Bench (Heavy) + Squat', name_es: 'Press de Banca (Pesado) + Sentadilla', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 240 },
         { id: 'ex_sq', sets: 3, rest_seconds: 180 },
         { id: 'ex_dbp', sets: 2, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_gm', sets: 3, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 2, rest_seconds: 90 },
       ]},
     ],
     '9': [
-      { name: 'Squat (Heavy)', exercises: [
+      { name: 'Squat (Heavy)', name_es: 'Sentadilla (Pesada)', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 300 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_lp_l', sets: 2, rest_seconds: 90 },
       ]},
-      { name: 'Deadlift (Heavy)', exercises: [
+      { name: 'Deadlift (Heavy)', name_es: 'Peso Muerto (Pesado)', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 300 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 120 },
         { id: 'ex_hyp', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Bench (Heavy)', exercises: [
+      { name: 'Bench (Heavy)', name_es: 'Press de Banca (Pesado)', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 300 },
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_rdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
     ],
     '10': [
-      { name: 'Squat (Heavy)', exercises: [
+      { name: 'Squat (Heavy)', name_es: 'Sentadilla (Pesada)', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 300 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
         { id: 'ex_le', sets: 2, rest_seconds: 60 },
       ]},
-      { name: 'Deadlift (Heavy)', exercises: [
+      { name: 'Deadlift (Heavy)', name_es: 'Peso Muerto (Pesado)', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 300 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 120 },
       ]},
-      { name: 'Bench (Heavy)', exercises: [
+      { name: 'Bench (Heavy)', name_es: 'Press de Banca (Pesado)', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 300 },
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
         { id: 'ex_cgp', sets: 2, rest_seconds: 90 },
       ]},
-      { name: 'Light Accessories', exercises: [
+      { name: 'Light Accessories', name_es: 'Accesorios Ligeros', exercises: [
         { id: 'ex_dbrdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 90 },
       ]},
     ],
     // ── PHASE 3: PEAKING (Weeks 11-14) — Heavy singles/doubles, minimal volume ──
     '11': [
-      { name: 'Squat (Peak)', exercises: [
+      { name: 'Squat (Peak)', name_es: 'Sentadilla (Pico)', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 300 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
       ]},
-      { name: 'Deadlift (Peak)', exercises: [
+      { name: 'Deadlift (Peak)', name_es: 'Peso Muerto (Pico)', exercises: [
         { id: 'ex_dl', sets: 5, rest_seconds: 300 },
         { id: 'ex_bbr', sets: 2, rest_seconds: 120 },
       ]},
-      { name: 'Bench (Peak)', exercises: [
+      { name: 'Bench (Peak)', name_es: 'Press de Banca (Pico)', exercises: [
         { id: 'ex_bp', sets: 5, rest_seconds: 300 },
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Light Movement', exercises: [
+      { name: 'Light Movement', name_es: 'Movimiento Ligero', exercises: [
         { id: 'ex_rdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
     ],
     '12': [
-      { name: 'Squat (Peak)', exercises: [
+      { name: 'Squat (Peak)', name_es: 'Sentadilla (Pico)', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 300 },
         { id: 'ex_bp', sets: 3, rest_seconds: 180 },
       ]},
-      { name: 'Deadlift (Peak)', exercises: [
+      { name: 'Deadlift (Peak)', name_es: 'Peso Muerto (Pico)', exercises: [
         { id: 'ex_dl', sets: 4, rest_seconds: 300 },
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
       ]},
-      { name: 'Bench (Peak)', exercises: [
+      { name: 'Bench (Peak)', name_es: 'Press de Banca (Pico)', exercises: [
         { id: 'ex_bp', sets: 4, rest_seconds: 300 },
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Light Movement', exercises: [
+      { name: 'Light Movement', name_es: 'Movimiento Ligero', exercises: [
         { id: 'ex_hyp', sets: 2, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 90 },
       ]},
     ],
     '13': [
-      { name: 'Squat (Peak)', exercises: [
+      { name: 'Squat (Peak)', name_es: 'Sentadilla (Pico)', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 300 },
         { id: 'ex_bp', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Deadlift (Peak)', exercises: [
+      { name: 'Deadlift (Peak)', name_es: 'Peso Muerto (Pico)', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 300 },
       ]},
-      { name: 'Bench (Peak)', exercises: [
+      { name: 'Bench (Peak)', name_es: 'Press de Banca (Pico)', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 300 },
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Light Movement', exercises: [
+      { name: 'Light Movement', name_es: 'Movimiento Ligero', exercises: [
         { id: 'ex_rdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_plank', sets: 2, rest_seconds: 60 },
       ]},
     ],
     '14': [
-      { name: 'Squat (Openers)', exercises: [
+      { name: 'Squat (Openers)', name_es: 'Sentadilla (Aperturas)', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 300 },
       ]},
-      { name: 'Deadlift (Openers)', exercises: [
+      { name: 'Deadlift (Openers)', name_es: 'Peso Muerto (Aperturas)', exercises: [
         { id: 'ex_dl', sets: 3, rest_seconds: 300 },
       ]},
-      { name: 'Bench (Openers)', exercises: [
+      { name: 'Bench (Openers)', name_es: 'Press de Banca (Aperturas)', exercises: [
         { id: 'ex_bp', sets: 3, rest_seconds: 300 },
       ]},
-      { name: 'Light Movement', exercises: [
+      { name: 'Light Movement', name_es: 'Movimiento Ligero', exercises: [
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 90 },
       ]},
     ],
     // ── PHASE 4: TAPER (Weeks 15-16) — Minimal work, stay fresh ──
     '15': [
-      { name: 'Squat (Light)', exercises: [
+      { name: 'Squat (Light)', name_es: 'Sentadilla (Ligera)', exercises: [
         { id: 'ex_sq', sets: 2, rest_seconds: 180 },
         { id: 'ex_bp', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Deadlift (Light)', exercises: [
+      { name: 'Deadlift (Light)', name_es: 'Peso Muerto (Ligero)', exercises: [
         { id: 'ex_dl', sets: 2, rest_seconds: 180 },
       ]},
-      { name: 'Bench (Light)', exercises: [
+      { name: 'Bench (Light)', name_es: 'Press de Banca (Ligero)', exercises: [
         { id: 'ex_bp', sets: 2, rest_seconds: 180 },
       ]},
     ],
     '16': [
-      { name: 'Openers Only', exercises: [
+      { name: 'Openers Only', name_es: 'Solo Aperturas', exercises: [
         { id: 'ex_sq', sets: 1, rest_seconds: 300 },
         { id: 'ex_bp', sets: 1, rest_seconds: 300 },
         { id: 'ex_dl', sets: 1, rest_seconds: 300 },
       ]},
-      { name: 'Rest', exercises: [] },
-      { name: 'Meet Day', exercises: [] },
+      { name: 'Rest', name_es: 'Descanso', exercises: [] },
+      { name: 'Meet Day', name_es: 'Día de Competencia', exercises: [] },
     ],
   },
 },
@@ -5444,7 +5476,9 @@ export const programTemplates = [
 {
   id: 'tmpl_tls', image: '/programs/tls.jpg',
   name: 'Thinner Leaner Stronger',
+  name_es: 'Más Delgado Más Fuerte',
   description: "Michael Matthews' evidence-based program for women. Compound-focused with progressive overload. 4 days per week targeting the full body with emphasis on glutes, legs, and back.",
+  description_es: 'Programa basado en fuerza de Michael Matthews para mujeres. Enfocado en compuestos con sobrecarga progresiva. 4 días por semana dirigido al cuerpo completo con énfasis en glúteos, piernas y espalda.',
   category: 'Muscle Growth',
   level: 'Beginner',
   daysPerWeek: 4,
@@ -5453,7 +5487,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
@@ -5461,7 +5495,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -5469,7 +5503,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -5477,7 +5511,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -5487,7 +5521,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
@@ -5495,7 +5529,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -5503,7 +5537,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -5511,7 +5545,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -5521,7 +5555,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 60 },
@@ -5530,7 +5564,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -5538,7 +5572,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
@@ -5546,7 +5580,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5556,7 +5590,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_btsq', sets: 3, rest_seconds: 60 },
@@ -5565,7 +5599,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -5573,7 +5607,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
@@ -5581,7 +5615,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5591,7 +5625,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Lower Body - Glute & Quad Focus (Deload)', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus (Deload)', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps (Descarga)', exercises: [
         { id: 'ex_smht', sets: 2, rest_seconds: 90 },
         { id: 'ex_sq', sets: 2, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 2, rest_seconds: 60 },
@@ -5599,7 +5633,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 2, rest_seconds: 45 },
         { id: 'ex_scr', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders (Deload)', exercises: [
+      { name: 'Upper Push & Shoulders (Deload)', name_es: 'Tren Superior Empuje y Hombros (Descarga)', exercises: [
         { id: 'ex_dbp', sets: 2, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 2, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 2, rest_seconds: 60 },
@@ -5607,7 +5641,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 2, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus (Deload)', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus (Deload)', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos (Descarga)', exercises: [
         { id: 'ex_rdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_smht', sets: 2, rest_seconds: 90 },
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
@@ -5615,7 +5649,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 2, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms (Deload)', exercises: [
+      { name: 'Upper Pull & Arms (Deload)', name_es: 'Tren Superior Jalón y Brazos (Descarga)', exercises: [
         { id: 'ex_lp', sets: 2, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 2, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 60 },
@@ -5625,7 +5659,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smsq', sets: 3, rest_seconds: 60 },
@@ -5634,7 +5668,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_secr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -5642,7 +5676,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
@@ -5650,7 +5684,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -5660,7 +5694,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smsq', sets: 3, rest_seconds: 60 },
@@ -5669,7 +5703,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_secr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -5677,7 +5711,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
@@ -5685,7 +5719,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -5695,7 +5729,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
@@ -5704,7 +5738,7 @@ export const programTemplates = [
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 60 },
@@ -5712,7 +5746,7 @@ export const programTemplates = [
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -5720,7 +5754,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5730,7 +5764,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Lower Body - Glute & Quad Focus', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
@@ -5739,7 +5773,7 @@ export const programTemplates = [
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders', exercises: [
+      { name: 'Upper Push & Shoulders', name_es: 'Tren Superior Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 60 },
@@ -5747,7 +5781,7 @@ export const programTemplates = [
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -5755,7 +5789,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms', exercises: [
+      { name: 'Upper Pull & Arms', name_es: 'Tren Superior Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5765,7 +5799,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Lower Body - Glute & Quad Focus (Deload)', exercises: [
+      { name: 'Lower Body - Glute & Quad Focus (Deload)', name_es: 'Tren Inferior - Enfoque Glúteos y Cuádriceps (Descarga)', exercises: [
         { id: 'ex_hth', sets: 2, rest_seconds: 90 },
         { id: 'ex_sq', sets: 2, rest_seconds: 90 },
         { id: 'ex_lunge', sets: 2, rest_seconds: 60 },
@@ -5773,7 +5807,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 2, rest_seconds: 45 },
         { id: 'ex_scr', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Upper Push & Shoulders (Deload)', exercises: [
+      { name: 'Upper Push & Shoulders (Deload)', name_es: 'Tren Superior Empuje y Hombros (Descarga)', exercises: [
         { id: 'ex_mcp', sets: 2, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 2, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 2, rest_seconds: 60 },
@@ -5781,7 +5815,7 @@ export const programTemplates = [
         { id: 'ex_rfly', sets: 2, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Lower Body - Hamstring & Glute Focus (Deload)', exercises: [
+      { name: 'Lower Body - Hamstring & Glute Focus (Deload)', name_es: 'Tren Inferior - Enfoque Isquiotibiales y Glúteos (Descarga)', exercises: [
         { id: 'ex_dbrdl', sets: 2, rest_seconds: 90 },
         { id: 'ex_hth', sets: 2, rest_seconds: 90 },
         { id: 'ex_lc', sets: 2, rest_seconds: 60 },
@@ -5789,7 +5823,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 2, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Upper Pull & Arms (Deload)', exercises: [
+      { name: 'Upper Pull & Arms (Deload)', name_es: 'Tren Superior Jalón y Brazos (Descarga)', exercises: [
         { id: 'ex_cglp', sets: 2, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 2, rest_seconds: 60 },
@@ -5803,7 +5837,9 @@ export const programTemplates = [
 {
   id: 'tmpl_women_upper_lower', image: '/programs/women_upper_lower.png',
   name: "Women's Upper/Lower Split",
+  name_es: 'Tren Superior/Inferior Mujeres',
   description: "A balanced upper/lower split designed for women. Extra posterior chain and glute volume, shoulder emphasis for V-taper, and higher rep ranges that women respond well to.",
+  description_es: 'División de 4 días diseñada para mujeres. Volumen extra de cadena posterior y glúteos, énfasis en hombros para forma en V, y rangos de repeticiones más altos a los que las mujeres responden bien.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -5812,7 +5848,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -5821,7 +5857,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
@@ -5830,7 +5866,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -5839,7 +5875,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
@@ -5850,7 +5886,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -5859,7 +5895,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_plank', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
@@ -5868,7 +5904,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -5877,7 +5913,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
@@ -5888,7 +5924,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -5897,7 +5933,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_cr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
@@ -5907,7 +5943,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5916,7 +5952,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -5927,7 +5963,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_mcp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 60 },
@@ -5936,7 +5972,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_cr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
@@ -5946,7 +5982,7 @@ export const programTemplates = [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -5955,7 +5991,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -5966,7 +6002,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -5975,7 +6011,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_llr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
@@ -5985,7 +6021,7 @@ export const programTemplates = [
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -5994,7 +6030,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
@@ -6005,7 +6041,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 60 },
@@ -6014,7 +6050,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_llr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
@@ -6024,7 +6060,7 @@ export const programTemplates = [
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -6033,7 +6069,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
@@ -6044,7 +6080,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 60 },
@@ -6053,7 +6089,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
@@ -6063,7 +6099,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -6072,7 +6108,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -6083,7 +6119,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Upper A - Push & Shoulders', exercises: [
+      { name: 'Upper A - Push & Shoulders', name_es: 'Superior A - Empuje y Hombros', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 90 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 60 },
@@ -6092,7 +6128,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_rtwt', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower A - Quad & Glute', exercises: [
+      { name: 'Lower A - Quad & Glute', name_es: 'Inferior A - Cuádriceps y Glúteos', exercises: [
         { id: 'ex_psq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 90 },
@@ -6102,7 +6138,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper B - Pull & Arms', exercises: [
+      { name: 'Upper B - Pull & Arms', name_es: 'Superior B - Jalón y Brazos', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
@@ -6111,7 +6147,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Lower B - Hamstring & Glute', exercises: [
+      { name: 'Lower B - Hamstring & Glute', name_es: 'Inferior B - Isquiotibiales y Glúteos', exercises: [
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_slht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -6126,7 +6162,9 @@ export const programTemplates = [
 {
   id: 'tmpl_women_ppl', image: '/programs/women_ppl.avif',
   name: "Women's Push/Pull/Legs",
+  name_es: 'PPL Mujeres',
   description: "A women's Push/Pull/Legs split run twice per week. Less chest volume than men's PPL, more glute and hamstring work, shoulder emphasis for balanced aesthetics. Each muscle hit twice per week.",
+  description_es: 'Empuje/Jalón/Piernas diseñado para mujeres ejecutado dos veces por semana. Menos volumen de pecho que PPL masculino, más trabajo de glúteos e isquiotibiales, énfasis en hombros para estética equilibrada.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 6,
@@ -6135,7 +6173,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
@@ -6143,7 +6181,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
@@ -6151,7 +6189,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
@@ -6160,7 +6198,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6168,7 +6206,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
@@ -6176,7 +6214,7 @@ export const programTemplates = [
         { id: 'ex_conc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_hth', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6187,7 +6225,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
@@ -6195,7 +6233,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 90 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
@@ -6203,7 +6241,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
@@ -6212,7 +6250,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6220,7 +6258,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
@@ -6228,7 +6266,7 @@ export const programTemplates = [
         { id: 'ex_conc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_hth', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6239,7 +6277,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6247,7 +6285,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
@@ -6255,7 +6293,7 @@ export const programTemplates = [
         { id: 'ex_cbhc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
@@ -6264,7 +6302,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6272,7 +6310,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 45 },
@@ -6280,7 +6318,7 @@ export const programTemplates = [
         { id: 'ex_bayc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_smsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6291,7 +6329,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_idbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6299,7 +6337,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
@@ -6307,7 +6345,7 @@ export const programTemplates = [
         { id: 'ex_cbhc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
@@ -6316,7 +6354,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6324,7 +6362,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 45 },
@@ -6332,7 +6370,7 @@ export const programTemplates = [
         { id: 'ex_bayc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_smsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6343,7 +6381,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6351,7 +6389,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
@@ -6359,7 +6397,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
@@ -6368,7 +6406,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6376,7 +6414,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
@@ -6384,7 +6422,7 @@ export const programTemplates = [
         { id: 'ex_mbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_psq', sets: 3, rest_seconds: 60 },
         { id: 'ex_hth', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6395,7 +6433,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 90 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6403,7 +6441,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_hcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_cglp', sets: 4, rest_seconds: 90 },
         { id: 'ex_smr', sets: 4, rest_seconds: 90 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
@@ -6411,7 +6449,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_hsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
@@ -6420,7 +6458,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_mcp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lmp', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6428,7 +6466,7 @@ export const programTemplates = [
         { id: 'ex_coe', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
@@ -6436,7 +6474,7 @@ export const programTemplates = [
         { id: 'ex_mbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_psq', sets: 3, rest_seconds: 60 },
         { id: 'ex_hth', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6447,7 +6485,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6455,7 +6493,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
@@ -6463,7 +6501,7 @@ export const programTemplates = [
         { id: 'ex_cbhc', sets: 3, rest_seconds: 45 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
@@ -6472,7 +6510,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6480,7 +6518,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 45 },
@@ -6488,7 +6526,7 @@ export const programTemplates = [
         { id: 'ex_conc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6499,7 +6537,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Push A - Heavy', exercises: [
+      { name: 'Push A - Heavy', name_es: 'Empuje A - Pesado', exercises: [
         { id: 'ex_ibp', sets: 4, rest_seconds: 90 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -6507,7 +6545,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_dfly', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull A - Heavy', exercises: [
+      { name: 'Pull A - Heavy', name_es: 'Jalón A - Pesado', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 90 },
         { id: 'ex_tbr', sets: 4, rest_seconds: 90 },
         { id: 'ex_rfly', sets: 3, rest_seconds: 45 },
@@ -6515,7 +6553,7 @@ export const programTemplates = [
         { id: 'ex_cbhc', sets: 3, rest_seconds: 45 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs A - Heavy', exercises: [
+      { name: 'Legs A - Heavy', name_es: 'Piernas A - Pesado', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_hth', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
@@ -6524,7 +6562,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Push B - Volume', exercises: [
+      { name: 'Push B - Volume', name_es: 'Empuje B - Volumen', exercises: [
         { id: 'ex_pdk', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_clr', sets: 3, rest_seconds: 45 },
@@ -6532,7 +6570,7 @@ export const programTemplates = [
         { id: 'ex_tkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_lcf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Pull B - Volume', exercises: [
+      { name: 'Pull B - Volume', name_es: 'Jalón B - Volumen', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 45 },
@@ -6540,7 +6578,7 @@ export const programTemplates = [
         { id: 'ex_conc', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs B - Volume', exercises: [
+      { name: 'Legs B - Volume', name_es: 'Piernas B - Volumen', exercises: [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
@@ -6555,7 +6593,9 @@ export const programTemplates = [
 {
   id: 'tmpl_strong_curves_adv', image: '/programs/strong-curves-adv.avif',
   name: 'Strong Curves Advanced',
+  name_es: 'Curvas Fuertes Avanzado',
   description: "The advanced phase of Bret Contreras' Strong Curves. Heavier loads, single-leg work, and banded exercises. For women who completed the beginner program and want more glute development.",
+  description_es: 'Versión avanzada con más volumen de la fase avanzada de Strong Curves de Bret Contreras. Cargas más pesadas, trabajo unilateral y ejercicios con bandas para mayor desarrollo de glúteos.',
   category: 'Glute Building',
   level: 'Intermediate',
   daysPerWeek: 4,
@@ -6564,7 +6604,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine'],
   weeks: {
     '1': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -6572,7 +6612,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 60 },
@@ -6581,7 +6621,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -6589,7 +6629,7 @@ export const programTemplates = [
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -6599,7 +6639,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -6607,7 +6647,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
@@ -6616,7 +6656,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 3, rest_seconds: 60 },
@@ -6624,7 +6664,7 @@ export const programTemplates = [
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 90 },
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -6634,7 +6674,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -6642,7 +6682,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
@@ -6651,7 +6691,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -6659,7 +6699,7 @@ export const programTemplates = [
         { id: 'ex_sllp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -6669,7 +6709,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -6678,7 +6718,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 3, rest_seconds: 60 },
@@ -6687,7 +6727,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 3, rest_seconds: 60 },
@@ -6695,7 +6735,7 @@ export const programTemplates = [
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
@@ -6705,7 +6745,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6714,7 +6754,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
@@ -6723,7 +6763,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
@@ -6731,7 +6771,7 @@ export const programTemplates = [
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -6741,7 +6781,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6749,7 +6789,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -6758,7 +6798,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
@@ -6766,7 +6806,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
@@ -6776,7 +6816,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6784,7 +6824,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
@@ -6793,7 +6833,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
@@ -6801,7 +6841,7 @@ export const programTemplates = [
         { id: 'ex_stup', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
@@ -6811,7 +6851,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6820,7 +6860,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
@@ -6829,7 +6869,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
@@ -6837,7 +6877,7 @@ export const programTemplates = [
         { id: 'ex_sllp', sets: 4, rest_seconds: 60 },
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
@@ -6847,7 +6887,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 120 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6856,7 +6896,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -6865,7 +6905,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
@@ -6873,7 +6913,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 4, rest_seconds: 60 },
         { id: 'ex_stup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
@@ -6883,7 +6923,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 120 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6892,7 +6932,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
@@ -6901,7 +6941,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
@@ -6909,7 +6949,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 4, rest_seconds: 60 },
         { id: 'ex_sisq', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
@@ -6919,7 +6959,7 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 120 },
         { id: 'ex_rdl', sets: 5, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6928,7 +6968,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
@@ -6937,7 +6977,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 4, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lunge', sets: 4, rest_seconds: 60 },
@@ -6945,7 +6985,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 4, rest_seconds: 60 },
         { id: 'ex_sllp', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_gsq', sets: 5, rest_seconds: 90 },
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
@@ -6955,7 +6995,7 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Glute A - Heavy', exercises: [
+      { name: 'Glute A - Heavy', name_es: 'Glúteos A - Pesado', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 120 },
         { id: 'ex_rdl', sets: 5, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -6964,7 +7004,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_pup', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -6973,7 +7013,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 4, rest_seconds: 45 },
         { id: 'ex_ske', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Glute B - Single Leg', exercises: [
+      { name: 'Glute B - Single Leg', name_es: 'Glúteos B - Unilateral', exercises: [
         { id: 'ex_slht', sets: 5, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 5, rest_seconds: 60 },
         { id: 'ex_rlng', sets: 4, rest_seconds: 60 },
@@ -6981,7 +7021,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 4, rest_seconds: 60 },
         { id: 'ex_stup', sets: 4, rest_seconds: 60 },
       ]},
-      { name: 'Full Body', exercises: [
+      { name: 'Full Body', name_es: 'Cuerpo Completo', exercises: [
         { id: 'ex_sq', sets: 5, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
@@ -6995,7 +7035,9 @@ export const programTemplates = [
 {
   id: 'tmpl_hourglass', image: '/programs/hourglass.avif',
   name: 'Hourglass Program',
+  name_es: 'Reloj de Arena',
   description: 'Build the hourglass figure. Heavy emphasis on glutes and shoulders to create curves, with core work to tighten the waist. Minimal chest work, maximum posterior chain and delt development.',
+  description_es: 'Programa de simetría para proporciones estéticas. Énfasis en glúteos y hombros para crear curvas, con trabajo de core para definir la cintura. Mínimo trabajo de pecho, máximo desarrollo de cadena posterior y deltoides.',
   category: 'Muscle Growth',
   level: 'Intermediate',
   daysPerWeek: 5,
@@ -7004,7 +7046,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine'],
   weeks: {
     '1': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -7012,7 +7054,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
@@ -7021,7 +7063,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7029,7 +7071,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -7038,7 +7080,7 @@ export const programTemplates = [
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7050,7 +7092,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -7058,7 +7100,7 @@ export const programTemplates = [
         { id: 'ex_ckb', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
@@ -7067,7 +7109,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7075,7 +7117,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -7084,7 +7126,7 @@ export const programTemplates = [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7096,7 +7138,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -7105,7 +7147,7 @@ export const programTemplates = [
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
@@ -7115,7 +7157,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7123,7 +7165,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_pu', sets: 3, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -7132,7 +7174,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7144,7 +7186,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
@@ -7153,7 +7195,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_mshp', sets: 3, rest_seconds: 60 },
@@ -7163,7 +7205,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7171,7 +7213,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -7180,7 +7222,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7192,7 +7234,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7201,7 +7243,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
@@ -7211,7 +7253,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7219,7 +7261,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
@@ -7228,7 +7270,7 @@ export const programTemplates = [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
@@ -7240,7 +7282,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7249,7 +7291,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -7259,7 +7301,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7267,7 +7309,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
@@ -7276,7 +7318,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 3, rest_seconds: 60 },
@@ -7288,7 +7330,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7297,7 +7339,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 60 },
@@ -7307,7 +7349,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7315,7 +7357,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 60 },
@@ -7324,7 +7366,7 @@ export const programTemplates = [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7336,7 +7378,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7345,7 +7387,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_mshp', sets: 4, rest_seconds: 60 },
@@ -7355,7 +7397,7 @@ export const programTemplates = [
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7363,7 +7405,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_csr', sets: 4, rest_seconds: 60 },
@@ -7372,7 +7414,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7384,7 +7426,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7393,7 +7435,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -7403,7 +7445,7 @@ export const programTemplates = [
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7411,7 +7453,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_lp', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 60 },
@@ -7420,7 +7462,7 @@ export const programTemplates = [
         { id: 'ex_cglp', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_gkb', sets: 4, rest_seconds: 60 },
@@ -7432,7 +7474,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Glutes - Heavy', exercises: [
+      { name: 'Glutes - Heavy', name_es: 'Glúteos - Pesado', exercises: [
         { id: 'ex_smht', sets: 5, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
@@ -7441,7 +7483,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Arms', exercises: [
+      { name: 'Shoulders + Arms', name_es: 'Hombros + Brazos', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 90 },
         { id: 'ex_lr', sets: 5, rest_seconds: 45 },
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
@@ -7451,7 +7493,7 @@ export const programTemplates = [
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7459,7 +7501,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Back + Rear Delts', exercises: [
+      { name: 'Back + Rear Delts', name_es: 'Espalda + Deltoides Posterior', exercises: [
         { id: 'ex_pu', sets: 4, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 60 },
         { id: 'ex_csr', sets: 4, rest_seconds: 60 },
@@ -7468,7 +7510,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Glutes Volume + Core', exercises: [
+      { name: 'Glutes Volume + Core', name_es: 'Glúteos Volumen + Core', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 60 },
         { id: 'ex_dbrdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7484,7 +7526,9 @@ export const programTemplates = [
 {
   id: 'tmpl_bikini_prep', image: '/programs/bikini-prep.avif',
   name: 'Bikini Prep',
+  name_es: 'Preparación Bikini',
   description: 'A 12-week competition prep program for bikini competitors. Progressive volume into a peak week taper. Maintains muscle while cutting, with emphasis on glutes, hamstrings, shoulders, and back — the four judging criteria areas.',
+  description_es: 'Programa de competición para división bikini de 12 semanas. Volumen progresivo hacia una semana pico con taper. Mantiene músculo mientras se corta, con énfasis en glúteos, isquiotibiales, hombros y espalda.',
   category: 'Fat Loss',
   level: 'Advanced',
   daysPerWeek: 5,
@@ -7493,7 +7537,7 @@ export const programTemplates = [
   equipment: ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine'],
   weeks: {
     '1': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -7502,7 +7546,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
@@ -7511,7 +7555,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7519,7 +7563,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
@@ -7528,7 +7572,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7538,7 +7582,7 @@ export const programTemplates = [
       ]},
     ],
     '2': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -7547,7 +7591,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
@@ -7556,7 +7600,7 @@ export const programTemplates = [
         { id: 'ex_csr', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7564,7 +7608,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_arnp', sets: 3, rest_seconds: 60 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -7573,7 +7617,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7583,7 +7627,7 @@ export const programTemplates = [
       ]},
     ],
     '3': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 90 },
         { id: 'ex_slc', sets: 3, rest_seconds: 60 },
@@ -7592,7 +7636,7 @@ export const programTemplates = [
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_dbop', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7601,7 +7645,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 60 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 3, rest_seconds: 60 },
@@ -7609,7 +7653,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 60 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_pup', sets: 3, rest_seconds: 60 },
@@ -7618,7 +7662,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7628,7 +7672,7 @@ export const programTemplates = [
       ]},
     ],
     '4': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 90 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 90 },
         { id: 'ex_lc', sets: 3, rest_seconds: 60 },
@@ -7637,7 +7681,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp', sets: 3, rest_seconds: 60 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7646,7 +7690,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 3, rest_seconds: 60 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 90 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 60 },
         { id: 'ex_le', sets: 4, rest_seconds: 60 },
@@ -7654,7 +7698,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lpcr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_arnp', sets: 4, rest_seconds: 60 },
         { id: 'ex_bbr', sets: 3, rest_seconds: 60 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 60 },
@@ -7663,7 +7707,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 60 },
         { id: 'ex_slht', sets: 3, rest_seconds: 60 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7673,7 +7717,7 @@ export const programTemplates = [
       ]},
     ],
     '5': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lc', sets: 4, rest_seconds: 45 },
@@ -7682,7 +7726,7 @@ export const programTemplates = [
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7692,7 +7736,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 45 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
@@ -7700,7 +7744,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 45 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
@@ -7709,7 +7753,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 4, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7719,7 +7763,7 @@ export const programTemplates = [
       ]},
     ],
     '6': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_slc', sets: 4, rest_seconds: 45 },
@@ -7728,7 +7772,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7738,7 +7782,7 @@ export const programTemplates = [
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
         { id: 'ex_smr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 45 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
@@ -7746,7 +7790,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 60 },
         { id: 'ex_secr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_arnp', sets: 4, rest_seconds: 45 },
         { id: 'ex_dbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 45 },
@@ -7755,7 +7799,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 45 },
         { id: 'ex_slht', sets: 4, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7765,7 +7809,7 @@ export const programTemplates = [
       ]},
     ],
     '7': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lc', sets: 4, rest_seconds: 45 },
@@ -7775,7 +7819,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
         { id: 'ex_slc', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7785,7 +7829,7 @@ export const programTemplates = [
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
         { id: 'ex_tbr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 45 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
@@ -7793,7 +7837,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 4, rest_seconds: 45 },
         { id: 'ex_scr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 45 },
         { id: 'ex_bbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
@@ -7802,7 +7846,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_slht', sets: 4, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 4, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7813,7 +7857,7 @@ export const programTemplates = [
       ]},
     ],
     '8': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_sdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_slc', sets: 4, rest_seconds: 45 },
@@ -7823,7 +7867,7 @@ export const programTemplates = [
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7833,7 +7877,7 @@ export const programTemplates = [
         { id: 'ex_smr', sets: 4, rest_seconds: 45 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 4, rest_seconds: 45 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
@@ -7841,7 +7885,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 4, rest_seconds: 45 },
         { id: 'ex_lpcr', sets: 4, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_arnp', sets: 4, rest_seconds: 45 },
         { id: 'ex_cbr', sets: 4, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 45 },
@@ -7850,7 +7894,7 @@ export const programTemplates = [
         { id: 'ex_ezc', sets: 3, rest_seconds: 45 },
         { id: 'ex_ske', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 4, rest_seconds: 45 },
         { id: 'ex_slht', sets: 4, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7861,7 +7905,7 @@ export const programTemplates = [
       ]},
     ],
     '9': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 4, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 45 },
@@ -7870,7 +7914,7 @@ export const programTemplates = [
         { id: 'ex_nhc', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 4, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7879,7 +7923,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 45 },
         { id: 'ex_le', sets: 4, rest_seconds: 45 },
@@ -7887,7 +7931,7 @@ export const programTemplates = [
         { id: 'ex_gsq', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_dbop', sets: 4, rest_seconds: 45 },
         { id: 'ex_dbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
@@ -7896,7 +7940,7 @@ export const programTemplates = [
         { id: 'ex_bbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 4, rest_seconds: 45 },
@@ -7906,7 +7950,7 @@ export const programTemplates = [
       ]},
     ],
     '10': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 4, rest_seconds: 60 },
         { id: 'ex_sdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_slc', sets: 3, rest_seconds: 45 },
@@ -7915,7 +7959,7 @@ export const programTemplates = [
         { id: 'ex_ghr', sets: 3, rest_seconds: 60 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_ohp', sets: 4, rest_seconds: 60 },
         { id: 'ex_lp', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 4, rest_seconds: 45 },
@@ -7924,7 +7968,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
         { id: 'ex_mrdf', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_sq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 45 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
@@ -7932,7 +7976,7 @@ export const programTemplates = [
         { id: 'ex_sisq', sets: 3, rest_seconds: 45 },
         { id: 'ex_secr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_arnp', sets: 3, rest_seconds: 45 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_idbp', sets: 3, rest_seconds: 45 },
@@ -7941,7 +7985,7 @@ export const programTemplates = [
         { id: 'ex_dbc', sets: 3, rest_seconds: 45 },
         { id: 'ex_oe', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7951,7 +7995,7 @@ export const programTemplates = [
       ]},
     ],
     '11': [
-      { name: 'Glutes + Hamstrings', exercises: [
+      { name: 'Glutes + Hamstrings', name_es: 'Glúteos + Isquiotibiales', exercises: [
         { id: 'ex_smht', sets: 3, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 3, rest_seconds: 60 },
         { id: 'ex_lc', sets: 3, rest_seconds: 45 },
@@ -7959,7 +8003,7 @@ export const programTemplates = [
         { id: 'ex_gkb', sets: 3, rest_seconds: 45 },
         { id: 'ex_hyp', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back', exercises: [
+      { name: 'Shoulders + Back', name_es: 'Hombros + Espalda', exercises: [
         { id: 'ex_dbop', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp', sets: 3, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
@@ -7968,7 +8012,7 @@ export const programTemplates = [
         { id: 'ex_sap', sets: 3, rest_seconds: 45 },
         { id: 'ex_cfr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Quad Focus', exercises: [
+      { name: 'Legs - Quad Focus', name_es: 'Piernas - Enfoque Cuádriceps', exercises: [
         { id: 'ex_fsq', sets: 3, rest_seconds: 60 },
         { id: 'ex_lp_l', sets: 3, rest_seconds: 45 },
         { id: 'ex_le', sets: 3, rest_seconds: 45 },
@@ -7976,7 +8020,7 @@ export const programTemplates = [
         { id: 'ex_hsq', sets: 3, rest_seconds: 45 },
         { id: 'ex_scr', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body', exercises: [
+      { name: 'Upper Body', name_es: 'Tren Superior', exercises: [
         { id: 'ex_ohp', sets: 3, rest_seconds: 45 },
         { id: 'ex_cbr', sets: 3, rest_seconds: 45 },
         { id: 'ex_pup', sets: 3, rest_seconds: 45 },
@@ -7985,7 +8029,7 @@ export const programTemplates = [
         { id: 'ex_hc', sets: 3, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 3, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Pump', exercises: [
+      { name: 'Glutes - Pump', name_es: 'Glúteos - Bombeo', exercises: [
         { id: 'ex_slht', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
@@ -7995,34 +8039,34 @@ export const programTemplates = [
       ]},
     ],
     '12': [
-      { name: 'Glutes + Hamstrings - Peak', exercises: [
+      { name: 'Glutes + Hamstrings - Peak', name_es: 'Glúteos + Isquiotibiales - Pico', exercises: [
         { id: 'ex_smht', sets: 2, rest_seconds: 60 },
         { id: 'ex_rdl', sets: 2, rest_seconds: 60 },
         { id: 'ex_cpt', sets: 2, rest_seconds: 45 },
         { id: 'ex_gkb', sets: 2, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Shoulders + Back - Peak', exercises: [
+      { name: 'Shoulders + Back - Peak', name_es: 'Hombros + Espalda - Pico', exercises: [
         { id: 'ex_ohp', sets: 2, rest_seconds: 60 },
         { id: 'ex_lp', sets: 2, rest_seconds: 45 },
         { id: 'ex_lr', sets: 3, rest_seconds: 45 },
         { id: 'ex_rfly', sets: 2, rest_seconds: 45 },
         { id: 'ex_sap', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Legs - Peak', exercises: [
+      { name: 'Legs - Peak', name_es: 'Piernas - Pico', exercises: [
         { id: 'ex_sq', sets: 2, rest_seconds: 60 },
         { id: 'ex_le', sets: 2, rest_seconds: 45 },
         { id: 'ex_lunge', sets: 2, rest_seconds: 45 },
         { id: 'ex_scr', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Upper Body - Peak', exercises: [
+      { name: 'Upper Body - Peak', name_es: 'Tren Superior - Pico', exercises: [
         { id: 'ex_dbop', sets: 2, rest_seconds: 45 },
         { id: 'ex_dbr', sets: 2, rest_seconds: 45 },
         { id: 'ex_lr', sets: 2, rest_seconds: 45 },
         { id: 'ex_bbc', sets: 2, rest_seconds: 45 },
         { id: 'ex_tpd', sets: 2, rest_seconds: 45 },
       ]},
-      { name: 'Glutes - Peak Pump', exercises: [
+      { name: 'Glutes - Peak Pump', name_es: 'Glúteos - Bombeo Pico', exercises: [
         { id: 'ex_cpt', sets: 3, rest_seconds: 45 },
         { id: 'ex_frgp', sets: 3, rest_seconds: 45 },
         { id: 'ex_ckb', sets: 2, rest_seconds: 45 },

@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link } from 'lucide-react';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { createNotification } from '../../lib/notifications';
-import { format, subDays, formatDistanceToNow } from 'date-fns';
+import { format, subDays, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { getRiskTier } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { useQuery } from '@tanstack/react-query';
@@ -100,10 +100,27 @@ async function fetchMembers(gymId) {
   });
 }
 
+// ── Pending invites fetcher ──────────────────────────────
+async function fetchPendingInvites(gymId) {
+  const { data, error } = await supabase
+    .from('gym_invites')
+    .select('id, member_name, phone, email, invite_code, created_at, expires_at, used_by, used_at')
+    .eq('gym_id', gymId)
+    .is('used_by', null)
+    .order('created_at', { ascending: false });
+
+  if (error) logger.error('AdminMembers: pending invites:', error);
+  return data || [];
+}
+
 export default function AdminMembers() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+
+  // SECURITY: Always derive gymId from the authenticated user's profile.
+  // Never accept gymId from URL params, query strings, or other user input.
   const gymId = profile?.gym_id;
+  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -120,6 +137,31 @@ export default function AdminMembers() {
     enabled: !!gymId,
     staleTime: 30_000,
   });
+
+  const { data: pendingInvites = [], isLoading: pendingLoading, refetch: refetchPending } = useQuery({
+    queryKey: [...adminKeys.members.all(gymId), 'pending-invites'],
+    queryFn: () => fetchPendingInvites(gymId),
+    enabled: !!gymId,
+    staleTime: 30_000,
+  });
+
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyCode = async (invite) => {
+    try {
+      await navigator.clipboard.writeText(invite.invite_code);
+      setCopiedId(invite.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      logger.error('Failed to copy invite code:', err);
+    }
+  };
+
+  const handleRevokeInvite = async (inviteId) => {
+    const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId);
+    if (error) logger.error('Failed to revoke invite:', error);
+    else refetchPending();
+  };
 
   // Auto-trigger server-side churn scoring once when most members lack DB scores
   const churnComputeTriggered = useRef(false);
@@ -189,18 +231,30 @@ export default function AdminMembers() {
     });
   };
 
+  const pendingCount = pendingInvites.length;
+
   const filterOptions = [
     { key: 'all', label: 'All', count: members.length },
     { key: 'at-risk', label: 'At Risk', count: atRiskCount },
     { key: 'watch', label: 'Watch', count: watchCount },
     { key: 'healthy', label: 'Healthy', count: healthyCount },
+    { key: 'pending', label: 'Pending', count: pendingCount },
   ];
+
+  // Guard: only admins/super_admins with a valid gym_id may access this page
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied. You are not authorized to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
       <PageHeader
         title="Members"
-        subtitle={`${members.length} total · ${atRiskCount} at risk`}
+        subtitle={`${members.length} total · ${atRiskCount} at risk${pendingCount > 0 ? ` · ${pendingCount} pending` : ''}`}
         actions={
           <>
             {filter === 'at-risk' && atRiskFiltered.length > 0 && (
@@ -225,7 +279,7 @@ export default function AdminMembers() {
             )}
             <button onClick={() => setShowInvite(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
-              <Link size={13} /> Invite Member
+              <Link size={13} /> Add Member
             </button>
           </>
         }
@@ -245,55 +299,119 @@ export default function AdminMembers() {
         <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
       </div>
 
-      {/* Member list */}
-      {isLoading ? (
-        <TableSkeleton rows={8} />
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-[#6B7280] text-[14px]">No members found</p>
-        </div>
-      ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-          <div className="divide-y divide-white/4">
-            {filtered.map(m => {
-              const tier = getRiskTier(m.score);
-              return (
-                <button key={m.id} onClick={() => setSelected(m)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all text-left group">
-                  <Avatar name={m.full_name} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
-                      <StatusBadge status={m.membership_status} />
-                      <ChurnRiskBadge member={m} navigate={navigate} />
-                      {m.admin_note && <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 flex-shrink-0" title="Has note" />}
-                    </div>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {(m.last_active_at || m.lastSessionAt)
-                        ? `Active ${formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })}`
-                        : 'Never active'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <div className="text-right hidden md:block">
-                      <p className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</p>
-                      <p className="text-[10px] text-[#4B5563]">joined</p>
-                    </div>
-                    <div className="text-right hidden sm:block">
-                      <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
-                    </div>
-                    <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
-                      style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
-                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
-                      {m.score}%
-                    </span>
-                    <ChevronRight size={14} className="text-[#4B5563]" />
-                  </div>
-                </button>
-              );
-            })}
+      {/* Pending invites list */}
+      {filter === 'pending' ? (
+        pendingLoading ? (
+          <TableSkeleton rows={6} />
+        ) : pendingInvites.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-[#6B7280] text-[14px]">No pending invites</p>
           </div>
-        </div>
+        ) : (
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+            <div className="divide-y divide-white/4">
+              {pendingInvites.map(inv => {
+                const now = new Date();
+                const expiresAt = inv.expires_at ? new Date(inv.expires_at) : null;
+                const isExpired = expiresAt && expiresAt < now;
+                const daysLeft = expiresAt && !isExpired ? differenceInDays(expiresAt, now) : null;
+
+                return (
+                  <div key={inv.id}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all">
+                    <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
+                      <Clock size={15} className="text-[#D4AF37]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{inv.member_name || 'Unnamed'}</p>
+                        {isExpired ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EF4444]/12 text-[#EF4444] border border-[#EF4444]/25">
+                            Expired
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25">
+                            Active{daysLeft !== null ? ` · ${daysLeft}d left` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#6B7280]">
+                        {inv.email || inv.phone || 'No contact'} · Created {format(new Date(inv.created_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <code className="text-[12px] font-mono text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-1 rounded-lg border border-[#D4AF37]/15 hidden sm:block">
+                        {inv.invite_code}
+                      </code>
+                      <button onClick={() => handleCopyCode(inv)}
+                        title="Copy invite code"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+                        <Copy size={12} />
+                        {copiedId === inv.id ? 'Copied!' : 'Copy'}
+                      </button>
+                      <button onClick={() => handleRevokeInvite(inv.id)}
+                        title="Revoke invite"
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[#EF4444]/8 border border-[#EF4444]/15 text-[#EF4444]/70 hover:text-[#EF4444] hover:border-[#EF4444]/30 transition-colors">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
+      ) : (
+        /* Member list */
+        isLoading ? (
+          <TableSkeleton rows={8} />
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-[#6B7280] text-[14px]">No members found</p>
+          </div>
+        ) : (
+          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+            <div className="divide-y divide-white/4">
+              {filtered.map(m => {
+                const tier = getRiskTier(m.score);
+                return (
+                  <button key={m.id} onClick={() => setSelected(m)}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all text-left group">
+                    <Avatar name={m.full_name} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
+                        <StatusBadge status={m.membership_status} />
+                        <ChurnRiskBadge member={m} navigate={navigate} />
+                        {m.admin_note && <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 flex-shrink-0" title="Has note" />}
+                      </div>
+                      <p className="text-[11px] text-[#6B7280]">
+                        {(m.last_active_at || m.lastSessionAt)
+                          ? `Active ${formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })}`
+                          : 'Never active'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      <div className="text-right hidden md:block">
+                        <p className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</p>
+                        <p className="text-[10px] text-[#4B5563]">joined</p>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
+                      </div>
+                      <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+                        style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+                        {m.score}%
+                      </span>
+                      <ChevronRight size={14} className="text-[#4B5563]" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )
       )}
 
       {selected && (

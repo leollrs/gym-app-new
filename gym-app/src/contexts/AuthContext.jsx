@@ -20,12 +20,13 @@ export const AuthProvider = ({ children }) => {
   const [gymConfig, setGymConfig] = useState({});
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
   const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
+  const [mfaRequired, setMfaRequired] = useState(false);
 
   // Fetch unread notification count for the current profile
   const fetchUnreadNotifications = async (profileId) => {
     const { count, error } = await supabase
       .from('notifications')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('profile_id', profileId)
       .is('read_at', null);
     if (!error) setUnreadNotifications(count || 0);
@@ -39,7 +40,7 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = async (userId) => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload')
+      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);
@@ -136,6 +137,25 @@ export const AuthProvider = ({ children }) => {
       setGymLogoUrl('');
       setGymDeactivated(false);
       setErrorTrackerAuth({ id: userId }, data, '');
+    }
+
+    // Enforce MFA for privileged roles
+    if (['admin', 'super_admin', 'trainer'].includes(data?.role)) {
+      try {
+        const { data: mfaData } = await supabase.auth.mfa.listFactors();
+        const hasVerifiedFactor = mfaData?.totp?.some(f => f.status === 'verified');
+        if (!hasVerifiedFactor) {
+          console.warn('MFA not enabled for privileged account:', data.role);
+          setMfaRequired(true);
+        } else {
+          setMfaRequired(false);
+        }
+      } catch {
+        // MFA check failed — don't block login, but flag it
+        setMfaRequired(false);
+      }
+    } else {
+      setMfaRequired(false);
     }
 
     setLoading(false);
@@ -286,9 +306,7 @@ export const AuthProvider = ({ children }) => {
   }, [profile?.id]);
 
   // ── SIGN UP ────────────────────────────────────────────────
-  // Creates the Supabase auth user then immediately inserts
-  // a profiles row. Email confirmation must be DISABLED in
-  // Supabase Auth settings for this to work without extra steps.
+  // Creates the Supabase auth user then immediately inserts a profiles row.
   const signUp = async ({ email, password, fullName, username, gymSlug }) => {
     // 1. Look up the gym by slug
     const { data: gym, error: gymError } = await supabase
@@ -305,7 +323,7 @@ export const AuthProvider = ({ children }) => {
     // 2. Check if username is already taken (scoped to this gym)
     const { count, error: usernameError } = await supabase
       .from('profiles')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('username', username.toLowerCase().trim())
       .eq('gym_id', gym.id);
 
@@ -349,7 +367,7 @@ export const AuthProvider = ({ children }) => {
 
   // ── SIGN IN ────────────────────────────────────────────────
   const signIn = async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
@@ -358,17 +376,35 @@ export const AuthProvider = ({ children }) => {
     // Remove push tokens so the device stops receiving notifications
     if (user?.id) await removePushTokens(user.id);
 
-    // Clear session drafts and preferences from localStorage to prevent data leakage
+    // Clear ALL user-related data from localStorage to prevent data leakage
     try {
+      const sensitiveKeyPrefixes = [
+        'gym_session_',
+        'notification_prefs_',
+        'saved_recipes',
+        'grocery_list',
+        'tugympr_health_',
+        'health_sync_',
+        'churn_contacted_',
+        'challenge_joined_',
+        'streak_freeze_',
+        'app_tour_',
+        'coachmark_',
+        'watchPendingNav',
+        'sb-',             // Supabase auth tokens
+      ];
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('gym_session_') || key.startsWith('notification_prefs_'))) {
+        if (key && sensitiveKeyPrefixes.some(prefix => key.startsWith(prefix))) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach(k => localStorage.removeItem(k));
     } catch { /* localStorage may be unavailable */ }
+
+    // Also clear sessionStorage
+    try { sessionStorage.clear(); } catch {}
 
     await supabase.auth.signOut();
   };
@@ -379,17 +415,35 @@ export const AuthProvider = ({ children }) => {
     const { error } = await supabase.rpc('delete_user_account');
     if (error) throw new Error(error.message || 'Failed to delete account. Please try again.');
 
-    // Clear local data
+    // Clear ALL user-related data from localStorage to prevent data leakage
     try {
+      const sensitiveKeyPrefixes = [
+        'gym_session_',
+        'notification_prefs_',
+        'saved_recipes',
+        'grocery_list',
+        'tugympr_health_',
+        'health_sync_',
+        'churn_contacted_',
+        'challenge_joined_',
+        'streak_freeze_',
+        'app_tour_',
+        'coachmark_',
+        'watchPendingNav',
+        'sb-',             // Supabase auth tokens
+      ];
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('gym_session_') || key.startsWith('notification_prefs_'))) {
+        if (key && sensitiveKeyPrefixes.some(prefix => key.startsWith(prefix))) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach(k => localStorage.removeItem(k));
     } catch { /* localStorage may be unavailable */ }
+
+    // Also clear sessionStorage
+    try { sessionStorage.clear(); } catch {}
 
     await supabase.auth.signOut();
   };
@@ -424,6 +478,7 @@ export const AuthProvider = ({ children }) => {
       refreshProfile,
       unreadNotifications,
       refreshNotifications,
+      mfaRequired,
     }}>
       {children}
     </AuthContext.Provider>
