@@ -13,7 +13,7 @@ async function fetchSmsData() {
 
   const [gymsRes, configRes, usageRes, ratesRes] = await Promise.all([
     supabase.from('gyms').select('id, name, has_number_bundle').order('name'),
-    supabase.from('gym_twilio_config').select('*'),
+    supabase.from('gym_twilio_config').select('gym_id, twilio_phone_number, twilio_account_sid, is_enabled, updated_at'),
     supabase.from('sms_usage_monthly').select('*').gte('month', sixMonthsAgo).order('month', { ascending: false }),
     supabase.from('platform_sms_rates').select('*').order('effective_from', { ascending: false }).limit(1),
   ]);
@@ -40,7 +40,8 @@ async function fetchSmsData() {
 function TwilioConfigModal({ gym, existing, onClose, onSaved }) {
   const [phone, setPhone] = useState(existing?.twilio_phone_number || '');
   const [sid, setSid] = useState(existing?.twilio_account_sid || '');
-  const [token, setToken] = useState(existing?.twilio_auth_token || '');
+  const [changingToken, setChangingToken] = useState(!existing);
+  const [token, setToken] = useState('');
   const [enabled, setEnabled] = useState(existing?.is_enabled ?? true);
   const [saving, setSaving] = useState(false);
 
@@ -50,10 +51,13 @@ function TwilioConfigModal({ gym, existing, onClose, onSaved }) {
       gym_id: gym.id,
       twilio_phone_number: phone.trim(),
       twilio_account_sid: sid.trim(),
-      twilio_auth_token: token.trim(),
       is_enabled: enabled,
       updated_at: new Date().toISOString(),
     };
+
+    if (changingToken && token.trim()) {
+      row.twilio_auth_token = token.trim();
+    }
 
     if (existing) {
       await supabase.from('gym_twilio_config').update(row).eq('gym_id', gym.id);
@@ -65,6 +69,8 @@ function TwilioConfigModal({ gym, existing, onClose, onSaved }) {
     setSaving(false);
     onSaved();
   };
+
+  const canSave = phone.trim() && sid.trim() && (!changingToken || token.trim()) && (existing || token.trim());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -90,8 +96,21 @@ function TwilioConfigModal({ gym, existing, onClose, onSaved }) {
           </div>
           <div>
             <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">Auth Token</label>
-            <input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="••••••••"
-              className="mt-1 w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+            {existing && !changingToken ? (
+              <div className="mt-1 flex items-center gap-2">
+                <div className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#6B7280] tracking-widest">
+                  ••••••••••••••••
+                </div>
+                <button onClick={() => setChangingToken(true)}
+                  className="px-3 py-2.5 rounded-xl text-[11px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
+                  Change token
+                </button>
+              </div>
+            ) : (
+              <input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder={existing ? 'Enter new token' : 'Enter auth token'}
+                autoFocus={existing && changingToken}
+                className="mt-1 w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+            )}
           </div>
           <div className="flex items-center justify-between">
             <p className="text-[12px] text-[#9CA3AF]">Enabled</p>
@@ -106,7 +125,7 @@ function TwilioConfigModal({ gym, existing, onClose, onSaved }) {
             className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving || !phone.trim() || !sid.trim() || !token.trim()}
+          <button onClick={handleSave} disabled={saving || !canSave}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors disabled:opacity-40">
             <Save size={13} /> {saving ? 'Saving…' : 'Save'}
           </button>
@@ -186,18 +205,18 @@ export default function SmsManagement() {
   const activeGyms = gymStats.filter(g => g.has_number_bundle).length;
 
   if (loading) return (
-    <div className="px-6 py-8 max-w-6xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       <div className="h-7 bg-white/6 rounded-lg w-52 animate-pulse mb-6" />
       <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-white/4 rounded-xl animate-pulse" />)}</div>
     </div>
   );
 
   return (
-    <div className="px-6 py-8 max-w-6xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">SMS Management</h1>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">SMS Management</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">{activeGyms} gym{activeGyms !== 1 ? 's' : ''} with number bundle · {totalSent} messages this month</p>
         </div>
       </div>
@@ -210,12 +229,12 @@ export default function SmsManagement() {
           { label: 'Revenue (mo)', value: `$${totalCost.toFixed(2)}`, icon: DollarSign, color: '#10B981' },
           { label: 'Avg per Gym', value: activeGyms > 0 ? `$${(totalCost / activeGyms).toFixed(2)}` : '$0', icon: TrendingUp, color: '#F59E0B' },
         ].map(card => (
-          <div key={card.label} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4">
+          <div key={card.label} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 overflow-hidden">
             <div className="flex items-center gap-2 mb-2">
-              <card.icon size={14} style={{ color: card.color }} />
-              <p className="text-[11px] text-[#6B7280] font-medium">{card.label}</p>
+              <card.icon size={14} style={{ color: card.color }} className="flex-shrink-0" />
+              <p className="text-[11px] text-[#6B7280] font-medium truncate">{card.label}</p>
             </div>
-            <p className="text-[22px] font-bold text-[#E5E7EB]">{card.value}</p>
+            <p className="text-[24px] font-bold text-[#E5E7EB] truncate">{card.value}</p>
           </div>
         ))}
       </div>
@@ -240,7 +259,7 @@ export default function SmsManagement() {
       {tab === 'gyms' && (
         <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
           <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-2.5 border-b border-white/6">
-            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">Gym</p>
+            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider truncate">Gym</p>
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">Bundle</p>
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider hidden md:block">Phone</p>
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider hidden sm:block">Sent (mo)</p>

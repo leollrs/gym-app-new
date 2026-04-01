@@ -15,13 +15,13 @@ export default function ConfirmDemoteModal({ isOpen, onClose, trainer, clientCou
         <>
           <button
             onClick={onClose}
-            className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+            className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(trainer.id)}
-            className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors"
+            className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap"
           >
             Remove Trainer
           </button>

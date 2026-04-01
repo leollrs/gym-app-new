@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import logger from './logger';
+import i18n from 'i18next';
 import {
   NOTIFICATION_TYPES,
   createNotification,
@@ -10,6 +11,7 @@ import {
   sendHabitCheckIn,
   sendWeeklySummary,
   sendNotification,
+  isQuietHours,
 } from './notifications';
 import { REWARDS_CATALOG, getUserPoints } from './rewardsEngine';
 
@@ -75,9 +77,15 @@ function timeWindowHourThreshold(preferredTime) {
   }
 }
 
-/** Get the current day name (e.g. "Monday"). */
+/** Get the current day name in English (e.g. "Monday") — used for preference matching. */
 function currentDayName() {
   return new Date().toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+/** Get the localized day name for display in notifications. */
+function localizedDayName(englishDay) {
+  const key = `days.${englishDay.toLowerCase()}`;
+  return i18n.t(key, { ns: 'common', defaultValue: englishDay });
 }
 
 // ── INDIVIDUAL CHECK FUNCTIONS ───────────────────────────────
@@ -158,15 +166,16 @@ async function checkWorkoutReminder(userId, gymId, profile) {
     .eq('is_template', false)
     .order('created_at', { ascending: true });
 
-  let title = 'Time to train!';
-  let body = `Today is ${today} — one of your training days. Let's get after it!`;
+  const localDay = localizedDayName(today);
+  let title = i18n.t('notifications.timeToTrain', { ns: 'common', defaultValue: 'Time to train!' });
+  let body = i18n.t('notifications.todayIsTrainingDay', { ns: 'common', day: localDay, defaultValue: `Today is ${localDay} — one of your training days. Let's get after it!` });
 
   if (routines?.length) {
     // Rotate routines across training days
     const routine = routines[dayIndex % routines.length];
     if (routine?.name) {
-      title = `Today is ${routine.name} day`;
-      body = `Don't forget to hit your ${routine.name} routine. Your body's ready for it!`;
+      title = i18n.t('notifications.todayIsRoutineDay', { ns: 'common', routine: routine.name, defaultValue: `Today is ${routine.name} day` });
+      body = i18n.t('notifications.dontForgetRoutine', { ns: 'common', routine: routine.name, defaultValue: `Don't forget to hit your ${routine.name} routine. Your body's ready for it!` });
     }
   }
 
@@ -230,7 +239,7 @@ async function checkMilestoneProximity(userId, gymId, profile) {
 
       if (!existing?.length) {
         await sendMilestoneApproach(userId, gymId, {
-          milestoneName: `${milestone} Workouts`,
+          milestoneName: i18n.t('notifications.nWorkouts', { ns: 'common', count: milestone, defaultValue: `${milestone} Workouts` }),
           remaining,
         });
       }
@@ -255,7 +264,7 @@ async function checkMilestoneProximity(userId, gymId, profile) {
 
       if (!existing?.length) {
         await sendMilestoneApproach(userId, gymId, {
-          milestoneName: `${milestone}-Day Streak`,
+          milestoneName: i18n.t('notifications.nDayStreak', { ns: 'common', count: milestone, defaultValue: `${milestone}-Day Streak` }),
           remaining,
         });
       }
@@ -296,13 +305,13 @@ async function checkReengagement(userId, gymId, profile) {
   let offer = null;
 
   if (daysSince >= 7) {
-    message = "It's been over a week since your last workout. Your body is ready — let's get back on track.";
-    offer = 'A fresh start is just one session away';
+    message = i18n.t('notifications.reengageWeek', { ns: 'common', defaultValue: "It's been over a week since your last workout. Your body is ready — let's get back on track." });
+    offer = i18n.t('notifications.freshStart', { ns: 'common', defaultValue: 'A fresh start is just one session away' });
   } else if (daysSince >= 5) {
-    message = "You've been away for a few days. Don't lose the progress you've built!";
-    offer = 'Even a quick session counts';
+    message = i18n.t('notifications.reengageFiveDays', { ns: 'common', defaultValue: "You've been away for a few days. Don't lose the progress you've built!" });
+    offer = i18n.t('notifications.quickSessionCounts', { ns: 'common', defaultValue: 'Even a quick session counts' });
   } else {
-    message = "It's been a few days since your last session. A quick workout can reignite your momentum!";
+    message = i18n.t('notifications.reengageThreeDays', { ns: 'common', defaultValue: "It's been a few days since your last session. A quick workout can reignite your momentum!" });
   }
 
   await sendWinBackNotif(userId, gymId, { message, offer });
@@ -346,7 +355,7 @@ async function checkFriendActivity(userId, gymId, profile) {
       .eq('id', session.profile_id)
       .maybeSingle();
 
-    const friendName = friendProfile?.full_name || 'A friend';
+    const friendName = friendProfile?.full_name || i18n.t('notifications.aFriend', { ns: 'common', defaultValue: 'A friend' });
 
     const { data: existing } = await supabase
       .from('notifications')
@@ -364,7 +373,7 @@ async function checkFriendActivity(userId, gymId, profile) {
 
     await sendFriendActivityNotif(userId, gymId, {
       friendName,
-      activityDesc: `${friendName} completed a workout today. Time to match their energy!`,
+      activityDesc: i18n.t('notifications.friendCompletedWorkout', { ns: 'common', name: friendName, defaultValue: `${friendName} completed a workout today. Time to match their energy!` }),
     });
   }
 }
@@ -434,8 +443,8 @@ async function checkRewardProximity(userId, gymId, profile) {
         profileId: userId,
         gymId,
         type: NOTIFICATION_TYPES.SYSTEM,
-        title: `You're close to a ${reward.name}!`,
-        body: `Just ${remaining} more points to redeem. Keep training!`,
+        title: i18n.t('notifications.closeToReward', { ns: 'common', reward: reward.name, defaultValue: `You're close to a ${reward.name}!` }),
+        body: i18n.t('notifications.closeToRewardBody', { ns: 'common', points: remaining, defaultValue: `Just ${remaining} more points to redeem. Keep training!` }),
       });
       break; // only nudge for the nearest reward
     }
@@ -483,8 +492,8 @@ async function checkChallengeUpdates(userId, gymId, profile) {
         profileId: userId,
         gymId,
         type: 'challenge_update',
-        title: `New challenge: ${challenge.title}`,
-        body: 'Join now and compete with your gym!',
+        title: i18n.t('notifications.newChallenge', { ns: 'common', name: challenge.title, defaultValue: `New challenge: ${challenge.title}` }),
+        body: i18n.t('notifications.joinNowCompete', { ns: 'common', defaultValue: 'Join now and compete with your gym!' }),
       });
       return; // one notification per cycle
     }
@@ -517,10 +526,116 @@ async function checkChallengeUpdates(userId, gymId, profile) {
           profileId: userId,
           gymId,
           type: 'challenge_update',
-          title: `Don't fall behind in ${ch.name}!`,
-          body: `${daysLeft} days left — a workout today keeps you in the running.`,
+          title: i18n.t('notifications.dontFallBehind', { ns: 'common', name: ch.name, defaultValue: `Don't fall behind in ${ch.name}!` }),
+          body: i18n.t('notifications.challengeDaysLeft', { ns: 'common', days: daysLeft, defaultValue: `${daysLeft} days left — a workout today keeps you in the running.` }),
         });
       }
+    }
+  }
+}
+
+/**
+ * Nutrition Reminder
+ * If user has nutrition targets but hasn't logged any food today and it's past 2pm -> remind.
+ */
+async function checkNutritionReminder(userId, gymId, profile) {
+  const currentHour = new Date().getHours();
+  if (currentHour < 14) return;
+
+  const alreadySent = await wasNotificationSentSince(userId, 'overload_suggestion', todayStart());
+  if (alreadySent) return;
+
+  // Check if user has nutrition targets set
+  const { data: targets } = await supabase
+    .from('nutrition_targets')
+    .select('daily_calories')
+    .eq('profile_id', userId)
+    .maybeSingle();
+
+  if (!targets?.daily_calories) return;
+
+  // Check today's food logs
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: logs } = await supabase
+    .from('food_logs')
+    .select('calories')
+    .eq('profile_id', userId)
+    .eq('log_date', today);
+
+  if (logs?.length) return; // user has logged food today
+
+  const consumed = 0;
+  const target = targets.daily_calories;
+
+  await sendNotification(userId, gymId, {
+    type: 'overload_suggestion',
+    title: i18n.t('notifications.nutritionReminderTitle', { ns: 'common', defaultValue: "Don't forget your meals!" }),
+    body: i18n.t('notifications.nutritionReminderBody', { ns: 'common', consumed, target, defaultValue: `You've logged ${consumed} of ${target} calories today. Keep tracking!` }),
+  });
+}
+
+/**
+ * Weight Log Reminder
+ * If user's most recent body_weight_logs entry is older than 7 days -> remind.
+ */
+async function checkWeightLogReminder(userId, gymId, profile) {
+  const alreadySent = await wasNotificationSentSince(userId, 'overload_suggestion', daysAgoStart(7));
+  if (alreadySent) return;
+
+  const { data: lastLog } = await supabase
+    .from('body_weight_logs')
+    .select('created_at')
+    .eq('profile_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  // If user has never logged weight, don't nag
+  if (!lastLog?.length) return;
+
+  const lastDate = new Date(lastLog[0].created_at);
+  const now = new Date();
+  const days = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+
+  if (days < 7) return;
+
+  await sendNotification(userId, gymId, {
+    type: 'overload_suggestion',
+    title: i18n.t('notifications.weightReminderTitle', { ns: 'common', defaultValue: 'Time to log your weight!' }),
+    body: i18n.t('notifications.weightReminderBody', { ns: 'common', days, defaultValue: `It's been ${days} days since your last weigh-in. Stay on track!` }),
+  });
+}
+
+/**
+ * Punch Card Proximity
+ * If user has a punch card within 2 punches of the target -> nudge.
+ */
+async function checkPunchCardProximity(userId, gymId, profile) {
+  const { data: cards } = await supabase
+    .from('member_punch_cards')
+    .select('punches, gym_products!inner(name, punch_card_target, punch_card_enabled)')
+    .eq('member_id', userId)
+    .eq('gym_products.punch_card_enabled', true);
+
+  if (!cards?.length) return;
+
+  const lang = i18n.language || 'en';
+
+  for (const card of cards) {
+    const punches = card.punches ?? 0;
+    const target = card.gym_products?.punch_card_target ?? 10;
+    const productName = card.gym_products?.name || 'reward';
+
+    if (punches >= target - 2 && punches < target) {
+      const alreadySent = await wasNotificationWithTitleSince(userId, productName, todayStart());
+      if (alreadySent) continue;
+
+      const remaining = target - punches;
+
+      await sendNotification(userId, gymId, {
+        type: NOTIFICATION_TYPES.SYSTEM,
+        title: i18n.t('notifications.punchCardProximityTitle', { ns: 'common', defaultValue: 'Almost there! 🎉' }),
+        body: i18n.t('notifications.punchCardProximityBody', { ns: 'common', remaining, product: productName, defaultValue: `You're just ${remaining} away from a free ${productName}! Don't miss out!` }),
+      });
     }
   }
 }
@@ -533,6 +648,9 @@ async function checkChallengeUpdates(userId, gymId, profile) {
  */
 export async function runNotificationScheduler(userId, gymId) {
   if (!userId || !gymId) return;
+
+  // Do not run the scheduler during quiet hours (10pm–7am)
+  if (isQuietHours()) return;
 
   // Fetch profile once — includes notification preferences
   const { data: profile } = await supabase
@@ -557,6 +675,9 @@ export async function runNotificationScheduler(userId, gymId) {
     checkNewMemberCheckin(userId, gymId, profile),
     checkRewardProximity(userId, gymId, profile),
     checkChallengeUpdates(userId, gymId, profile),
+    checkNutritionReminder(userId, gymId, profile),
+    checkWeightLogReminder(userId, gymId, profile),
+    checkPunchCardProximity(userId, gymId, profile),
   ];
 
   const results = await Promise.allSettled(checks);

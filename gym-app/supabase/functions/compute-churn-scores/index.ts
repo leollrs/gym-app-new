@@ -6,14 +6,19 @@
  * and persists them to the churn_risk_scores table for historical
  * trend analysis and velocity tracking.
  *
- * Research-backed signal weights (see churnScore.js for details):
- *   1. Visit frequency        (28 pts)
- *   2. Attendance trend        (17 pts)
- *   3. Tenure risk             (15 pts)
- *   4. Social & group          (14 pts)
- *   5. Session gap pattern     (10 pts)
- *   6. Goal progress            (9 pts)
- *   7. Engagement depth         (7 pts)
+ * Research-backed signal weights (v2 — 12 signals, 100-point budget):
+ *   1. Visit frequency        (22 pts)
+ *   2. Attendance trend        (14 pts)
+ *   3. Tenure risk             (12 pts)
+ *   4. Social & group          (10 pts)
+ *   5. Anchor day adherence     (8 pts)  ← NEW
+ *   6. Session gap pattern      (7 pts)
+ *   7. Goal progress            (7 pts)
+ *   8. Engagement depth         (5 pts)
+ *   9. App engagement           (5 pts)  ← NEW
+ *  10. Comms responsiveness     (4 pts)  ← NEW
+ *  11. Referral activity        (3 pts)  ← NEW
+ *  12. Workout type shift       (3 pts)  ← NEW
  *
  * Also triggers automated follow-up notifications for gyms that
  * have enabled churn_followup_settings.
@@ -32,10 +37,10 @@ const corsHeaders = {
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-// ── Signal calculators (mirrored from churnScore.js for edge runtime) ──
+// ── Signal calculators (v2 — 12 signals, rebalanced to 100-point budget) ──
 
 function signalVisitFrequency(avgWeekly: number, goal: number) {
-  const MAX = 28;
+  const MAX = 22;
   const target = Math.max(goal || 3, 2);
   const ratio = target > 0 ? avgWeekly / target : 0;
 
@@ -48,7 +53,7 @@ function signalVisitFrequency(avgWeekly: number, goal: number) {
 }
 
 function signalAttendanceTrend(avg: number, prev: number) {
-  const MAX = 17;
+  const MAX = 14;
   if (prev <= 0.2) return { score: avg === 0 ? 8 : 0, maxPts: MAX, label: avg === 0 ? 'No visit pattern' : 'Building baseline' };
   const drop = (prev - avg) / prev;
   if (drop >= 0.75)  return { score: MAX, maxPts: MAX, label: `Visits crashed ${Math.round(drop * 100)}%` };
@@ -60,7 +65,7 @@ function signalAttendanceTrend(avg: number, prev: number) {
 }
 
 function signalTenureRisk(months: number, first90Sessions: number | null) {
-  const MAX = 15;
+  const MAX = 12;
   if (months < 1)        return { score: Math.round(MAX * 0.55), maxPts: MAX, label: 'Brand new (< 1 month)' };
   if (months <= 3) {
     if (first90Sessions !== null && first90Sessions >= 24)
@@ -73,18 +78,18 @@ function signalTenureRisk(months: number, first90Sessions: number | null) {
 }
 
 function signalSocial(friends: number, inChallenge: boolean, hasTrainer: boolean) {
-  const MAX = 14;
+  const MAX = 10;
   let score = 0;
   const parts: string[] = [];
-  if (friends === 0) { score += 6; parts.push('No connections'); }
-  else if (friends === 1) { score += 3; parts.push('1 connection'); }
-  if (!inChallenge) { score += 5; parts.push('No challenges'); }
-  if (!hasTrainer) { score += 3; parts.push('No trainer'); }
-  return { score, maxPts: MAX, label: parts.length ? parts.join('; ') : 'Socially engaged' };
+  if (friends === 0) { score += 4; parts.push('No connections'); }
+  else if (friends === 1) { score += 2; parts.push('1 connection'); }
+  if (!inChallenge) { score += 4; parts.push('No challenges'); }
+  if (!hasTrainer) { score += 2; parts.push('No trainer'); }
+  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Socially engaged' };
 }
 
 function signalSessionGaps(gaps: number[]) {
-  const MAX = 10;
+  const MAX = 7;
   if (!gaps || gaps.length < 4) return { score: 0, maxPts: MAX, label: 'Not enough gap data' };
   const mid = Math.floor(gaps.length / 2);
   const recentAvg = gaps.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
@@ -99,7 +104,7 @@ function signalSessionGaps(gaps: number[]) {
 }
 
 function signalGoalProgress(hasPRs: boolean, hasBody: boolean, tenureMonths: number) {
-  const MAX = 9;
+  const MAX = 7;
   if (tenureMonths > 6) {
     return (!hasPRs && !hasBody)
       ? { score: 3, maxPts: MAX, label: 'No recent milestones' }
@@ -107,32 +112,157 @@ function signalGoalProgress(hasPRs: boolean, hasBody: boolean, tenureMonths: num
   }
   let score = 0;
   const parts: string[] = [];
-  if (!hasPRs) { score += 4; parts.push('No recent PRs'); }
-  if (!hasBody) { score += 3; parts.push('No body tracking'); }
+  if (!hasPRs) { score += 3; parts.push('No recent PRs'); }
+  if (!hasBody) { score += 2; parts.push('No body tracking'); }
   return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'On track' };
 }
 
 function signalEngagement(completed: number, abandoned: number, durLast: number, durPrior: number) {
-  const MAX = 7;
+  const MAX = 5;
   let score = 0;
   const parts: string[] = [];
   const total = completed + abandoned;
   if (total >= 3) {
     const rate = abandoned / total;
-    if (rate >= 0.4) { score += 4; parts.push(`${Math.round(rate * 100)}% abandoned`); }
-    else if (rate >= 0.2) { score += 2; parts.push('Some incomplete'); }
+    if (rate >= 0.4) { score += 3; parts.push(`${Math.round(rate * 100)}% abandoned`); }
+    else if (rate >= 0.2) { score += 1; parts.push('Some incomplete'); }
   }
   if (durPrior > 0 && durLast > 0) {
     const change = (durLast - durPrior) / durPrior;
-    if (change <= -0.35) { score += 3; parts.push('Sessions much shorter'); }
+    if (change <= -0.35) { score += 2; parts.push('Sessions much shorter'); }
     else if (change <= -0.2) { score += 1; parts.push('Sessions slightly shorter'); }
   }
   return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Good depth' };
 }
 
+// ── NEW SIGNAL: Anchor Day Adherence ──────────────────────────
+// Check if member misses their habitual workout day(s).
+// Compare workout_schedule preferred days to actual sessions in last 3 weeks.
+// Missing anchor day 3 consecutive weeks = max risk.
+function signalAnchorDay(
+  scheduledDays: number[],          // 0=Sun..6=Sat from workout_schedule
+  recentSessionDays: number[][],    // array of 3 arrays (one per week), each containing day_of_week values
+) {
+  const MAX = 8;
+  if (!scheduledDays.length) return { score: 0, maxPts: MAX, label: 'No schedule set' };
+
+  // For each scheduled day, check how many of the last 3 weeks it was missed
+  let totalMissedWeeks = 0;
+  let totalChecked = 0;
+  let consecutiveMissAll = true; // all anchor days missed all 3 weeks
+
+  for (const day of scheduledDays) {
+    let missedConsecutive = 0;
+    for (let w = 0; w < recentSessionDays.length; w++) {
+      if (!recentSessionDays[w].includes(day)) {
+        missedConsecutive++;
+        totalMissedWeeks++;
+      }
+    }
+    totalChecked += recentSessionDays.length;
+    if (missedConsecutive < 3) consecutiveMissAll = false;
+  }
+
+  if (totalChecked === 0) return { score: 0, maxPts: MAX, label: 'Insufficient data' };
+
+  const missRate = totalMissedWeeks / totalChecked;
+
+  if (consecutiveMissAll && scheduledDays.length >= 2)
+    return { score: MAX, maxPts: MAX, label: 'Missed ALL anchor days 3 weeks straight' };
+  if (missRate >= 0.8)
+    return { score: Math.round(MAX * 0.85), maxPts: MAX, label: 'Missed most anchor days recently' };
+  if (missRate >= 0.5)
+    return { score: Math.round(MAX * 0.5), maxPts: MAX, label: 'Missing anchor days frequently' };
+  if (missRate >= 0.3)
+    return { score: Math.round(MAX * 0.25), maxPts: MAX, label: 'Occasionally missing anchor days' };
+  return { score: 0, maxPts: MAX, label: 'Hitting anchor days' };
+}
+
+// ── NEW SIGNAL: App Engagement ────────────────────────────────
+// Notification open rate + days since last app-driven action.
+function signalAppEngagement(
+  notifTotal: number,
+  notifRead: number,
+  daysSinceLastAction: number,
+) {
+  const MAX = 5;
+  let score = 0;
+  const parts: string[] = [];
+
+  // Notification open rate (last 30 days)
+  if (notifTotal >= 5) {
+    const openRate = notifRead / notifTotal;
+    if (openRate < 0.1) { score += 3; parts.push(`${Math.round(openRate * 100)}% notif open rate`); }
+    else if (openRate < 0.2) { score += 2; parts.push('Low notification engagement'); }
+    else if (openRate < 0.35) { score += 1; parts.push('Below-avg notification engagement'); }
+  }
+
+  // Days since last app-driven action
+  if (daysSinceLastAction >= 14) { score += 2; parts.push(`${daysSinceLastAction}d since last action`); }
+  else if (daysSinceLastAction >= 7) { score += 1; parts.push('Quiet in app recently'); }
+
+  return { score: Math.min(MAX, score), maxPts: MAX, label: parts.length ? parts.join('; ') : 'Engaged with app' };
+}
+
+// ── NEW SIGNAL: Comms Responsiveness ──────────────────────────
+// After receiving a churn_followup / admin_message / win_back notification,
+// did the member have any activity within 7 days?
+function signalCommsResponsiveness(
+  outreachCount: number,         // total churn_followup/admin_message/win_back notifications received
+  respondedCount: number,        // how many had activity within 7 days after
+) {
+  const MAX = 4;
+  if (outreachCount === 0) return { score: 0, maxPts: MAX, label: 'No outreach sent' };
+
+  const responseRate = respondedCount / outreachCount;
+  const unresponsive = outreachCount - respondedCount;
+
+  if (unresponsive >= 3)
+    return { score: MAX, maxPts: MAX, label: `Ignored ${unresponsive} outreach attempts` };
+  if (unresponsive >= 2)
+    return { score: Math.round(MAX * 0.75), maxPts: MAX, label: 'No response to 2+ outreach' };
+  if (responseRate < 0.5)
+    return { score: Math.round(MAX * 0.5), maxPts: MAX, label: 'Low outreach response rate' };
+  return { score: 0, maxPts: MAX, label: 'Responsive to outreach' };
+}
+
+// ── NEW SIGNAL: Referral Activity ─────────────────────────────
+// Members who refer others are invested and less likely to churn.
+function signalReferralActivity(referralCount: number) {
+  const MAX = 3;
+  if (referralCount >= 2)  return { score: 0, maxPts: MAX, label: 'Active referrer' };
+  if (referralCount === 1) return { score: 0, maxPts: MAX, label: '1 referral — engaged' };
+  return { score: MAX, maxPts: MAX, label: 'No referrals' };
+}
+
+// ── NEW SIGNAL: Workout Type Shift ────────────────────────────
+// Detect if exercise variety is declining. Compare distinct muscle groups
+// in last 30 days vs previous 30 days. Significant narrowing = disengagement.
+function signalWorkoutTypeShift(
+  muscleGroupsLast30: number,
+  muscleGroupsPrev30: number,
+) {
+  const MAX = 3;
+  if (muscleGroupsPrev30 <= 1) return { score: 0, maxPts: MAX, label: 'Not enough history' };
+
+  const drop = (muscleGroupsPrev30 - muscleGroupsLast30) / muscleGroupsPrev30;
+
+  if (muscleGroupsLast30 === 0)
+    return { score: MAX, maxPts: MAX, label: 'No exercises logged recently' };
+  if (drop >= 0.5)
+    return { score: MAX, maxPts: MAX, label: `Training variety dropped ${Math.round(drop * 100)}%` };
+  if (drop >= 0.3)
+    return { score: Math.round(MAX * 0.6), maxPts: MAX, label: 'Narrowing exercise variety' };
+  if (drop < -0.2)
+    return { score: -1, maxPts: MAX, label: 'Expanding variety' };
+  return { score: 0, maxPts: MAX, label: 'Stable variety' };
+}
+
 const DEFAULT_WEIGHTS: Record<string, number> = {
   visit_frequency: 1.0, attendance_trend: 1.0, tenure_risk: 1.0,
   social_engagement: 1.0, session_gaps: 1.0, goal_progress: 1.0, engagement_depth: 1.0,
+  anchor_day: 1.0, app_engagement: 1.0, comms_responsiveness: 1.0,
+  referral_activity: 1.0, workout_type_shift: 1.0,
 };
 
 function computeScore(
@@ -155,6 +285,11 @@ function getRiskTier(score: number): string {
   if (score >= 55) return 'high';
   if (score >= 30) return 'medium';
   return 'low';
+}
+
+// ── Helper: get day_of_week (0=Sun..6=Sat) for a date string ──
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr).getUTCDay();
 }
 
 // ── Main handler ─────────────────────────────────────────────
@@ -202,6 +337,7 @@ serve(async (req) => {
     const ninetyDaysAgo = new Date(now.getTime() - 90 * MS_PER_DAY).toISOString();
     const sixtyDaysAgo = new Date(now.getTime() - 60 * MS_PER_DAY).toISOString();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_PER_DAY).toISOString();
+    const twentyOneDaysAgo = new Date(now.getTime() - 21 * MS_PER_DAY).toISOString();
 
     // Get all gyms
     const { data: gyms } = await supabase.from('gyms').select('id');
@@ -252,11 +388,17 @@ serve(async (req) => {
 
       const memberIds = members.map((m: any) => m.id);
 
-      // Parallel data fetches
+      // Parallel data fetches (original + new signal queries)
       const [
         checkInsRes, sessionsRes, allSessionsRes, friendsRes,
         challengesRes, bodyRes, trainerRes, prsRes,
+        // New signal data fetches
+        scheduleRes, recentSessionDaysRes, notificationsRes,
+        outreachNotifsRes, referralsRes,
+        muscleGroupsLast30Res, muscleGroupsPrev30Res,
+        socialActionsRes,
       ] = await Promise.all([
+        // ── Original queries ──
         supabase.from('check_ins').select('profile_id, checked_in_at')
           .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds)
           .limit(5000),
@@ -285,9 +427,126 @@ serve(async (req) => {
           .eq('gym_id', gymId).eq('type', 'pr_hit').gte('created_at', thirtyDaysAgo)
           .in('actor_id', memberIds)
           .limit(2000),
+
+        // ── New signal queries ──
+
+        // Anchor Day: member workout schedules
+        supabase.from('workout_schedule').select('profile_id, day_of_week')
+          .in('profile_id', memberIds)
+          .limit(5000),
+
+        // Anchor Day: actual sessions in last 3 weeks (for day_of_week comparison)
+        supabase.from('workout_sessions').select('profile_id, started_at')
+          .eq('gym_id', gymId).eq('status', 'completed')
+          .gte('started_at', twentyOneDaysAgo).in('profile_id', memberIds)
+          .limit(5000),
+
+        // App Engagement: notifications (total + read) in last 30 days
+        supabase.from('notifications').select('profile_id, read_at, created_at')
+          .gte('created_at', thirtyDaysAgo).in('profile_id', memberIds)
+          .limit(10000),
+
+        // Comms Responsiveness: outreach notifications (all time, recent ones)
+        supabase.from('notifications').select('profile_id, created_at, type')
+          .in('type', ['churn_followup', 'admin_message', 'win_back'])
+          .in('profile_id', memberIds)
+          .limit(5000),
+
+        // Referral Activity: referrals per member
+        supabase.from('referrals').select('referrer_id')
+          .in('referrer_id', memberIds)
+          .limit(5000),
+
+        // Workout Type Shift: muscle groups last 30 days
+        supabase.from('session_exercises').select('session_id, muscle_group')
+          .in('session_id',
+            // We'll filter by session IDs from sessions in last 30 days after fetch
+            // For now, fetch broadly and filter in memory
+            []
+          ).limit(0), // placeholder — we'll use a different approach below
+
+        // Workout Type Shift: muscle groups previous 30 days (placeholder)
+        supabase.from('session_exercises').select('session_id, muscle_group')
+          .in('session_id', []).limit(0), // placeholder
+
+        // App Engagement: social actions (likes, comments) — days since last action
+        supabase.from('activity_feed_items').select('actor_id, created_at')
+          .eq('gym_id', gymId).gte('created_at', thirtyDaysAgo)
+          .in('actor_id', memberIds)
+          .order('created_at', { ascending: false })
+          .limit(5000),
       ]);
 
-      // Build lookup maps
+      // ── Workout Type Shift: fetch session_exercises via session IDs ──
+      // Get session IDs for last 30 days and previous 30 days
+      const sessionsLast30Ids: Record<string, string[]> = {};
+      const sessionsPrev30Ids: Record<string, string[]> = {};
+
+      // We need session IDs — fetch them from workout_sessions with IDs
+      const { data: sessionIdsLast30 } = await supabase
+        .from('workout_sessions')
+        .select('id, profile_id')
+        .eq('gym_id', gymId).eq('status', 'completed')
+        .gte('started_at', thirtyDaysAgo)
+        .in('profile_id', memberIds)
+        .limit(5000);
+
+      const { data: sessionIdsPrev30 } = await supabase
+        .from('workout_sessions')
+        .select('id, profile_id')
+        .eq('gym_id', gymId).eq('status', 'completed')
+        .gte('started_at', sixtyDaysAgo).lt('started_at', thirtyDaysAgo)
+        .in('profile_id', memberIds)
+        .limit(5000);
+
+      // Map session IDs to profiles
+      const allSessionIdsLast30 = (sessionIdsLast30 || []).map((s: any) => s.id);
+      const allSessionIdsPrev30 = (sessionIdsPrev30 || []).map((s: any) => s.id);
+      const sessionToProfile: Record<string, string> = {};
+      (sessionIdsLast30 || []).forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
+      (sessionIdsPrev30 || []).forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
+
+      // Fetch session_exercises for muscle groups (batch in chunks if needed)
+      let muscleGroupDataLast30: any[] = [];
+      let muscleGroupDataPrev30: any[] = [];
+
+      if (allSessionIdsLast30.length > 0) {
+        const { data } = await supabase
+          .from('session_exercises')
+          .select('session_id, muscle_group')
+          .in('session_id', allSessionIdsLast30.slice(0, 2000))
+          .limit(10000);
+        muscleGroupDataLast30 = data || [];
+      }
+
+      if (allSessionIdsPrev30.length > 0) {
+        const { data } = await supabase
+          .from('session_exercises')
+          .select('session_id, muscle_group')
+          .in('session_id', allSessionIdsPrev30.slice(0, 2000))
+          .limit(10000);
+        muscleGroupDataPrev30 = data || [];
+      }
+
+      // Build muscle group counts per member
+      const muscleGroupsL30: Record<string, Set<string>> = {};
+      const muscleGroupsP30: Record<string, Set<string>> = {};
+
+      muscleGroupDataLast30.forEach((r: any) => {
+        const pid = sessionToProfile[r.session_id];
+        if (!pid || !r.muscle_group) return;
+        if (!muscleGroupsL30[pid]) muscleGroupsL30[pid] = new Set();
+        muscleGroupsL30[pid].add(r.muscle_group);
+      });
+
+      muscleGroupDataPrev30.forEach((r: any) => {
+        const pid = sessionToProfile[r.session_id];
+        if (!pid || !r.muscle_group) return;
+        if (!muscleGroupsP30[pid]) muscleGroupsP30[pid] = new Set();
+        muscleGroupsP30[pid].add(r.muscle_group);
+      });
+
+      // Build lookup maps (original)
       const checkIns = checkInsRes.data || [];
       const sessions = sessionsRes.data || [];
       const allSessions = allSessionsRes.data || [];
@@ -344,9 +603,88 @@ serve(async (req) => {
         ).length;
       });
 
+      // ── Build new signal lookup maps ──
+
+      // Anchor Day: scheduled days per member
+      const scheduledDays: Record<string, number[]> = {};
+      (scheduleRes.data || []).forEach((r: any) => {
+        if (!scheduledDays[r.profile_id]) scheduledDays[r.profile_id] = [];
+        if (!scheduledDays[r.profile_id].includes(r.day_of_week)) {
+          scheduledDays[r.profile_id].push(r.day_of_week);
+        }
+      });
+
+      // Anchor Day: actual session days per week for last 3 weeks
+      const recentSessionWeeks: Record<string, number[][]> = {};
+      const nowTime = now.getTime();
+      (recentSessionDaysRes.data || []).forEach((r: any) => {
+        if (!recentSessionWeeks[r.profile_id]) recentSessionWeeks[r.profile_id] = [[], [], []];
+        const daysAgo = (nowTime - new Date(r.started_at).getTime()) / MS_PER_DAY;
+        const weekIdx = Math.min(2, Math.floor(daysAgo / 7)); // 0=this week, 1=last week, 2=two weeks ago
+        const dow = getDayOfWeek(r.started_at);
+        if (!recentSessionWeeks[r.profile_id][weekIdx].includes(dow)) {
+          recentSessionWeeks[r.profile_id][weekIdx].push(dow);
+        }
+      });
+
+      // App Engagement: notification counts per member
+      const notifTotal: Record<string, number> = {};
+      const notifRead: Record<string, number> = {};
+      (notificationsRes.data || []).forEach((r: any) => {
+        notifTotal[r.profile_id] = (notifTotal[r.profile_id] || 0) + 1;
+        if (r.read_at) notifRead[r.profile_id] = (notifRead[r.profile_id] || 0) + 1;
+      });
+
+      // App Engagement: days since last app action (session, check-in, social)
+      const lastActionDate: Record<string, Date> = {};
+      // From check-ins
+      checkIns.forEach((r: any) => {
+        const d = new Date(r.checked_in_at);
+        if (!lastActionDate[r.profile_id] || d > lastActionDate[r.profile_id]) {
+          lastActionDate[r.profile_id] = d;
+        }
+      });
+      // From sessions
+      sessions.forEach((r: any) => {
+        const d = new Date(r.started_at);
+        if (!lastActionDate[r.profile_id] || d > lastActionDate[r.profile_id]) {
+          lastActionDate[r.profile_id] = d;
+        }
+      });
+      // From social actions
+      (socialActionsRes.data || []).forEach((r: any) => {
+        const d = new Date(r.created_at);
+        if (!lastActionDate[r.actor_id] || d > lastActionDate[r.actor_id]) {
+          lastActionDate[r.actor_id] = d;
+        }
+      });
+
+      // Comms Responsiveness: outreach notifications and activity response
+      const outreachByMember: Record<string, { created_at: string }[]> = {};
+      (outreachNotifsRes.data || []).forEach((r: any) => {
+        if (!outreachByMember[r.profile_id]) outreachByMember[r.profile_id] = [];
+        outreachByMember[r.profile_id].push({ created_at: r.created_at });
+      });
+
+      // Pre-compute member activity dates for responsiveness check
+      const memberActivityDates: Record<string, Date[]> = {};
+      sessions.forEach((r: any) => {
+        if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
+        memberActivityDates[r.profile_id].push(new Date(r.started_at));
+      });
+      checkIns.forEach((r: any) => {
+        if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
+        memberActivityDates[r.profile_id].push(new Date(r.checked_in_at));
+      });
+
+      // Referral Activity: count per member
+      const referralCount: Record<string, number> = {};
+      (referralsRes.data || []).forEach((r: any) => {
+        referralCount[r.referrer_id] = (referralCount[r.referrer_id] || 0) + 1;
+      });
+
       // Score each member
       const rows: any[] = [];
-      // Keep full signals in memory for calibration model, but don't persist PII
       const memberSignals: Record<string, Record<string, { score: number; maxPts: number; label: string }>> = {};
 
       for (const m of members) {
@@ -357,6 +695,25 @@ serve(async (req) => {
         const avgDurL = sd.durL30.length ? sd.durL30.reduce((a: number, b: number) => a + b, 0) / sd.durL30.length : 0;
         const avgDurP = sd.durP30.length ? sd.durP30.reduce((a: number, b: number) => a + b, 0) / sd.durP30.length : 0;
 
+        // Comms responsiveness: check each outreach for activity within 7 days
+        const outreach = outreachByMember[m.id] || [];
+        let respondedCount = 0;
+        const activityDates = memberActivityDates[m.id] || [];
+        for (const o of outreach) {
+          const outreachDate = new Date(o.created_at);
+          const sevenDaysAfter = new Date(outreachDate.getTime() + 7 * MS_PER_DAY);
+          const hadResponse = activityDates.some(
+            (d: Date) => d > outreachDate && d <= sevenDaysAfter
+          );
+          if (hadResponse) respondedCount++;
+        }
+
+        // Days since last app action
+        const lastAction = lastActionDate[m.id];
+        const daysSinceLastAction = lastAction
+          ? Math.floor((nowTime - lastAction.getTime()) / MS_PER_DAY)
+          : 999;
+
         const signals = {
           visit_frequency: signalVisitFrequency(avgWeekly, m.training_frequency || 3),
           attendance_trend: signalAttendanceTrend(avgWeekly, prevWeekly),
@@ -365,6 +722,22 @@ serve(async (req) => {
           session_gaps: signalSessionGaps(sd.gaps),
           goal_progress: signalGoalProgress(prSet.has(m.id), bodySet.has(m.id), tenure),
           engagement_depth: signalEngagement(sd.compL30, sd.abL30, avgDurL, avgDurP),
+          // New v2 signals
+          anchor_day: signalAnchorDay(
+            scheduledDays[m.id] || [],
+            recentSessionWeeks[m.id] || [[], [], []],
+          ),
+          app_engagement: signalAppEngagement(
+            notifTotal[m.id] || 0,
+            notifRead[m.id] || 0,
+            daysSinceLastAction,
+          ),
+          comms_responsiveness: signalCommsResponsiveness(outreach.length, respondedCount),
+          referral_activity: signalReferralActivity(referralCount[m.id] || 0),
+          workout_type_shift: signalWorkoutTypeShift(
+            muscleGroupsL30[m.id]?.size || 0,
+            muscleGroupsP30[m.id]?.size || 0,
+          ),
         };
 
         // Store full signals in memory for calibration, not in DB rows

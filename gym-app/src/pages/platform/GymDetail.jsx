@@ -5,7 +5,7 @@ import {
   UserCog, ChevronDown, ToggleLeft, ToggleRight, Copy, ExternalLink,
   Dumbbell, MapPin, Clock, Globe, Palette, Link2, RefreshCw,
   Trophy, BookOpen, Award, Gift, Plus, X, Trash2, Edit3, ChevronRight,
-  UserPlus, Eye, EyeOff, QrCode,
+  UserPlus, Eye, EyeOff, QrCode, CalendarDays,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -75,7 +75,7 @@ export default function GymDetail() {
   const [tab, setTab] = useState('members');
   const [search, setSearch] = useState('');
   const [editingTier, setEditingTier] = useState(false);
-  const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '' });
+  const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '', classes_enabled: false, multi_admin_enabled: false, max_admin_seats: 1 });
   const [savingGym, setSavingGym] = useState(false);
 
   // New tab states
@@ -110,6 +110,9 @@ export default function GymDetail() {
         qr_payload_type: data.qr_payload_type ?? 'auto_id',
         qr_display_format: data.qr_display_format ?? 'qr_code',
         qr_payload_template: data.qr_payload_template ?? '',
+        classes_enabled: data.classes_enabled ?? false,
+        multi_admin_enabled: data.multi_admin_enabled ?? false,
+        max_admin_seats: data.max_admin_seats ?? 1,
       });
     }
 
@@ -324,6 +327,9 @@ export default function GymDetail() {
       qr_payload_type: editingGym.qr_payload_type,
       qr_display_format: editingGym.qr_display_format,
       qr_payload_template: editingGym.qr_payload_template || null,
+      classes_enabled: editingGym.classes_enabled,
+      multi_admin_enabled: editingGym.multi_admin_enabled,
+      max_admin_seats: editingGym.max_admin_seats,
     };
     const { error } = await supabase
       .from('gyms')
@@ -467,7 +473,7 @@ export default function GymDetail() {
 
   return (
     <div className="min-h-screen bg-[#05070B]">
-      <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+      <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
 
         {/* ── Header ─────────────────────────────────────────── */}
         <div className="mb-6">
@@ -482,7 +488,7 @@ export default function GymDetail() {
           <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl md:text-2xl font-bold text-[#E5E7EB] truncate">{gym.name}</h1>
+                <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{gym.name}</h1>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                   gym.is_active
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -547,12 +553,12 @@ export default function GymDetail() {
             { label: 'Sessions (30d)', value: stats.recentSessions, icon: Dumbbell },
             { label: 'Avg Sessions/Member', value: stats.avgSessions, icon: Clock },
           ].map(s => (
-            <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <s.icon className="w-4 h-4 text-[#D4AF37]" />
-                <span className="text-[11px] text-[#6B7280] font-medium">{s.label}</span>
+                <s.icon className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] font-medium truncate">{s.label}</span>
               </div>
-              <p className="text-xl font-bold text-[#E5E7EB]">{s.value}</p>
+              <p className="text-[24px] font-bold text-[#E5E7EB] truncate">{s.value}</p>
             </div>
           ))}
         </div>
@@ -1229,6 +1235,56 @@ export default function GymDetail() {
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Class Booking */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-3">
+              <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-[#D4AF37]" />
+                Class Booking
+              </h3>
+              <p className="text-[11px] text-[#6B7280]">
+                Allow members to book scheduled classes at this gym
+              </p>
+              <div className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6">
+                <div>
+                  <p className="text-[13px] font-semibold text-[#E5E7EB]">Enable Class Booking</p>
+                  <p className="text-[11px] text-[#6B7280]">Members will see a Classes tab in the app</p>
+                </div>
+                <button
+                  onClick={() => setEditingGym(prev => ({ ...prev, classes_enabled: !prev.classes_enabled }))}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.classes_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.classes_enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Multi-Admin */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between py-3 border-b border-white/4">
+                <div>
+                  <p className="text-[13px] font-medium text-[#E5E7EB]">Multi-Admin</p>
+                  <p className="text-[11px] text-[#6B7280]">Allow multiple admin accounts for this gym</p>
+                </div>
+                <button onClick={() => setEditingGym(p => ({ ...p, multi_admin_enabled: !p.multi_admin_enabled }))}
+                  className="w-10 h-5.5 rounded-full relative flex-shrink-0 transition-colors"
+                  style={{ backgroundColor: editingGym.multi_admin_enabled ? '#D4AF37' : '#6B7280' }}>
+                  <span className="absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-transform"
+                    style={{ left: editingGym.multi_admin_enabled ? 'calc(100% - 20px)' : '2px' }} />
+                </button>
+              </div>
+              {editingGym.multi_admin_enabled && (
+                <div className="flex items-center justify-between py-3 border-b border-white/4">
+                  <div>
+                    <p className="text-[13px] font-medium text-[#E5E7EB]">Max Admin Seats</p>
+                    <p className="text-[11px] text-[#6B7280]">Maximum number of admin accounts</p>
+                  </div>
+                  <input type="number" min="1" max="20" value={editingGym.max_admin_seats}
+                    onChange={e => setEditingGym(p => ({ ...p, max_admin_seats: parseInt(e.target.value) || 1 }))}
+                    className="w-16 bg-[#111827] border border-white/6 rounded-lg px-2 py-1.5 text-[13px] text-[#E5E7EB] text-center outline-none focus:border-[#D4AF37]/40" />
                 </div>
               )}
             </div>

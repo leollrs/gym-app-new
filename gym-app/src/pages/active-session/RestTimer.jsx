@@ -1,63 +1,84 @@
 import React from 'react';
-import { Timer, SkipForward } from 'lucide-react';
+import { SkipForward, Plus, Minus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip }) => {
+const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip, onAdjustRest }) => {
   const { t } = useTranslation('pages');
   const progress = currentRestDuration > 0
     ? ((currentRestDuration - restTimer) / currentRestDuration) * 100
     : 100;
 
-  const circumference = 2 * Math.PI * 54; // radius 54
+  const circumference = 2 * Math.PI * 54;
   const strokeDash = (progress / 100) * circumference;
 
   return (
-    <div className="fixed inset-0 z-[115] flex flex-col items-center justify-center bg-[#05070B]/97 backdrop-blur-xl">
-
+    <div
+      className="fixed inset-0 z-[115] flex flex-col items-center justify-center"
+      style={{ backgroundColor: 'var(--color-bg-primary)' }}
+      role="dialog"
+      aria-label="Rest timer"
+    >
       {/* Label */}
-      <p className="text-[11px] font-bold text-[#D4AF37] uppercase tracking-[0.25em] mb-8">
+      <p className="text-[11px] font-bold uppercase tracking-[0.25em] mb-8" style={{ color: 'var(--color-accent)' }}>
         {t('activeSession.rest')}
       </p>
 
       {/* Circular timer */}
-      <div className="relative w-[140px] h-[140px] mb-8">
+      <div className="relative w-[140px] h-[140px] mb-6">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-          {/* Background ring */}
-          <circle
-            cx="60" cy="60" r="54"
-            fill="none"
-            stroke="rgba(255,255,255,0.06)"
-            strokeWidth="6"
-          />
-          {/* Progress ring */}
-          <circle
-            cx="60" cy="60" r="54"
-            fill="none"
-            stroke="#D4AF37"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={circumference - strokeDash}
+          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--color-border-default))" strokeWidth="6" />
+          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--color-accent)" strokeWidth="6" strokeLinecap="round"
+            strokeDasharray={circumference} strokeDashoffset={circumference - strokeDash}
             className="transition-all duration-1000 ease-linear"
           />
         </svg>
-        {/* Center text */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[36px] font-black text-[#E5E7EB] tabular-nums tracking-tight">
+          <span className="text-[36px] font-black tabular-nums tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
             {formatTime(restTimer)}
           </span>
         </div>
       </div>
 
+      {/* Adjust rest time — +/- 15s buttons */}
+      {onAdjustRest && (
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => onAdjustRest(-15)}
+            className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-90 transition-transform"
+            style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
+            aria-label="Reduce rest 15s"
+          >
+            <Minus size={16} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+          <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+            {Math.floor(currentRestDuration / 60)}:{String(currentRestDuration % 60).padStart(2, '0')} {t('activeSession.restTotal', 'total')}
+          </span>
+          <button
+            onClick={() => onAdjustRest(15)}
+            className="w-11 h-11 rounded-xl flex items-center justify-center active:scale-90 transition-transform"
+            style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
+            aria-label="Add rest 15s"
+          >
+            <Plus size={16} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+        </div>
+      )}
+
       {/* Info */}
-      <p className="text-[13px] text-[#6B7280] mb-8">
+      <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-muted)' }}>
         {t('activeSession.nextSetWhenZero')}
       </p>
 
       {/* Skip button */}
       <button
         onClick={onSkip}
-        className="flex items-center gap-2 px-6 py-3 rounded-2xl border border-[#D4AF37]/30 text-[#D4AF37] font-bold text-[14px] active:scale-[0.97] transition-all hover:bg-[#D4AF37]/10"
+        className="flex items-center gap-2 px-6 py-3 min-h-[44px] rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-all focus:ring-2 focus:outline-none"
+        style={{
+          color: 'var(--color-accent)',
+          borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)',
+          borderWidth: '1px',
+          borderStyle: 'solid',
+        }}
       >
         <SkipForward size={16} />
         {t('activeSession.skipRest')}

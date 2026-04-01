@@ -1,52 +1,40 @@
 /**
- * Churn Intelligence — Risk Scoring & Composite Score
- * ─────────────────────────────────────────────────────────────
- * Combines all signal calculators into a composite churn risk score.
- * Includes risk tier classification and weight configuration.
+ * Churn Intelligence — Risk Scoring & Composite Score (v2 — 12 signals)
+ * Matches edge function compute-churn-scores budget & normalization.
  */
 
 import {
-  signalVisitFrequency,
-  signalAttendanceTrend,
-  signalSocialEngagement,
-  signalSessionGaps,
-  signalGoalProgress,
-  signalEngagementDepth,
-} from './engagement.js';
-
-import { signalTenureRisk } from './retention.js';
-
-
-// ═══════════════════════════════════════════════════════════════
-//  DEFAULT RESEARCH-BASED WEIGHTS
-//  Each signal calculator returns a raw score out of its maxPts.
-//  These multipliers adjust how much each signal contributes.
-//  1.0 = use the research default. >1.0 = this signal matters
-//  more for this gym. <1.0 = less.
-// ═══════════════════════════════════════════════════════════════
+  signalVisitFrequencyV2,
+  signalAttendanceTrendV2,
+  signalTenureRiskV2,
+  signalSocialEngagementV2,
+  signalSessionGapsV2,
+  signalGoalProgressV2,
+  signalEngagementDepthV2,
+  signalAnchorDayV2,
+  signalAppEngagementV2,
+  signalCommsResponsivenessV2,
+  signalReferralActivityV2,
+  signalWorkoutTypeShiftV2,
+} from './churnSignalsV2.js';
 
 export const DEFAULT_WEIGHTS = {
-  visit_frequency:    1.0,
-  attendance_trend:   1.0,
-  tenure_risk:        1.0,
-  social_engagement:  1.0,
-  session_gaps:       1.0,
-  goal_progress:      1.0,
-  engagement_depth:   1.0,
+  visit_frequency: 1.0,
+  attendance_trend: 1.0,
+  tenure_risk: 1.0,
+  social_engagement: 1.0,
+  session_gaps: 1.0,
+  goal_progress: 1.0,
+  engagement_depth: 1.0,
+  anchor_day: 1.0,
+  app_engagement: 1.0,
+  comms_responsiveness: 1.0,
+  referral_activity: 1.0,
+  workout_type_shift: 1.0,
 };
-
-
-// ═══════════════════════════════════════════════════════════════
-//  RISK TIERS
-// ═══════════════════════════════════════════════════════════════
 
 /**
  * Map a churn score to a risk tier with display properties.
- * Thresholds calibrated to the 100-point weighted system:
- *   Critical >= 80  (hitting 3+ major signals hard)
- *   High     >= 55  (clear multi-signal risk)
- *   Medium   >= 30  (early warning signs)
- *   Low      < 30  (healthy engagement)
  */
 export function getRiskTier(score) {
   if (score >= 80) return {
@@ -91,33 +79,40 @@ export function getRiskTier(score) {
   };
 }
 
-
-// ═══════════════════════════════════════════════════════════════
-//  COMPOSITE SCORE
-// ═══════════════════════════════════════════════════════════════
-
 /**
- * Calculate churn risk score for a single member.
- * Returns score (0-100) + detailed signal breakdown.
- *
- * @param {Object} m       - member metrics object
- * @param {Object} [weights] - per-gym weight multipliers (defaults to 1.0)
- * @returns {{ score: number, signals: Object, keySignals: string[], riskTier: Object }}
+ * @param {Object} m - member metrics (see retention.js)
+ * @param {Object} [weights] - per-gym weight multipliers
  */
 export function calculateChurnScore(m, weights = DEFAULT_WEIGHTS) {
   const w = { ...DEFAULT_WEIGHTS, ...weights };
 
+  const weeks = m.recentSessionWeeks || [[], [], []];
+  const scheduled = m.scheduledDays || [];
+
   const signals = {
-    visit_frequency:    signalVisitFrequency(m.avgWeeklyVisits ?? 0, m.trainingFrequency ?? 3),
-    attendance_trend:   signalAttendanceTrend(m.avgWeeklyVisits ?? 0, m.prevAvgWeeklyVisits ?? 0),
-    tenure_risk:        signalTenureRisk(m.tenureMonths ?? 0, m.totalSessionsFirst90Days ?? null),
-    social_engagement:  signalSocialEngagement(m.friendCount ?? 0, m.challengeParticipation ?? false, m.hasTrainer ?? false),
-    session_gaps:       signalSessionGaps(m.sessionGaps),
-    goal_progress:      signalGoalProgress(m.hasPRsRecently ?? false, m.hasBodyProgress ?? false, m.completedProgramPct ?? null, m.tenureMonths ?? 0),
-    engagement_depth:   signalEngagementDepth(m.completedSessions ?? 0, m.abandonedSessions ?? 0, m.avgDurationLast30 ?? 0, m.avgDurationPrior30 ?? 0),
+    visit_frequency: signalVisitFrequencyV2(m.avgWeeklyVisits ?? 0, m.trainingFrequency ?? 3),
+    attendance_trend: signalAttendanceTrendV2(m.avgWeeklyVisits ?? 0, m.prevAvgWeeklyVisits ?? 0),
+    tenure_risk: signalTenureRiskV2(m.tenureMonths ?? 0, m.totalSessionsFirst90Days ?? null),
+    social_engagement: signalSocialEngagementV2(m.friendCount ?? 0, m.challengeParticipation ?? false, m.hasTrainer ?? false),
+    session_gaps: signalSessionGapsV2(m.sessionGaps),
+    goal_progress: signalGoalProgressV2(m.hasPRsRecently ?? false, m.hasBodyProgress ?? false, m.tenureMonths ?? 0),
+    engagement_depth: signalEngagementDepthV2(
+      m.completedSessions ?? 0,
+      m.abandonedSessions ?? 0,
+      m.avgDurationLast30 ?? 0,
+      m.avgDurationPrior30 ?? 0,
+    ),
+    anchor_day: signalAnchorDayV2(scheduled, weeks),
+    app_engagement: signalAppEngagementV2(
+      m.notifTotal ?? 0,
+      m.notifRead ?? 0,
+      m.daysSinceLastAction ?? 999,
+    ),
+    comms_responsiveness: signalCommsResponsivenessV2(m.outreachCount ?? 0, m.respondedCount ?? 0),
+    referral_activity: signalReferralActivityV2(m.referralCount ?? 0),
+    workout_type_shift: signalWorkoutTypeShiftV2(m.muscleGroupsLast30 ?? 0, m.muscleGroupsPrev30 ?? 0),
   };
 
-  // Apply per-gym weight multipliers and compute weighted max
   let weightedSum = 0;
   let weightedMax = 0;
 
@@ -129,17 +124,12 @@ export function calculateChurnScore(m, weights = DEFAULT_WEIGHTS) {
     weightedMax += s.weightedMax;
   });
 
-  // Normalize to 0-100% of this gym's weighted maximum
-  // This ensures the score always represents a true percentage
-  // regardless of how gym-specific weights shift the total budget
   const normalizedPct = weightedMax > 0
     ? (Math.max(0, weightedSum) / weightedMax) * 100
     : 0;
 
-  // Round to nearest tenth for clean display (e.g. 88.2%)
   const score = Math.min(100, Math.round(normalizedPct * 10) / 10);
 
-  // Build key signals — top 3 contributing signals by weighted score
   const keySignals = Object.entries(signals)
     .filter(([, s]) => s.weightedScore > 0)
     .sort((a, b) => b[1].weightedScore - a[1].weightedScore)
@@ -153,9 +143,6 @@ export function calculateChurnScore(m, weights = DEFAULT_WEIGHTS) {
   return { score, signals, keySignals, riskTier };
 }
 
-/**
- * Legacy-compatible wrapper: returns just the numeric score.
- */
 export function calculateChurnScoreSimple(m, weights) {
   return calculateChurnScore(m, weights).score;
 }

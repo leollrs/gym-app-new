@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2 } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2, Bell, BellOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
   format, addWeeks, subWeeks, startOfWeek, endOfWeek, addDays,
-  isSameDay, isToday, isBefore, setHours, setMinutes,
+  isSameDay, isToday, isBefore, setHours, setMinutes, subHours,
 } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import logger from '../../lib/logger';
 
 const STATUS_COLORS = {
   scheduled: { bg: 'bg-blue-500/12', text: 'text-blue-400', label: 'Scheduled' },
@@ -19,8 +21,9 @@ const STATUS_COLORS = {
 const DURATIONS = [30, 45, 60, 90, 120];
 
 // ── Session Modal ─────────────────────────────────────────────────────────
-const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId }) => {
+const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, trainerName }) => {
   const { showToast } = useToast();
+  const { t } = useTranslation('pages');
   const isEdit = !!session;
   const [clientId, setClientId] = useState(session?.client_id || '');
   const [title, setTitle]       = useState(session?.title || 'Training Session');
@@ -33,6 +36,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   );
   const [duration, setDuration] = useState(session?.duration_mins || 60);
   const [status, setStatus]     = useState(session?.status || 'scheduled');
+  const [sendReminder, setSendReminder] = useState(session?.send_reminder ?? true);
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -53,6 +57,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       scheduled_at: scheduledAt,
       duration_mins: Math.max(1, Math.round(duration)),
       status,
+      send_reminder: sendReminder,
       updated_at: new Date().toISOString(),
     };
 
@@ -64,6 +69,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       scheduled_at: scheduledAt,
       duration_mins: Math.max(1, Math.round(duration)),
       status,
+      send_reminder: sendReminder,
       updated_at: new Date().toISOString(),
     };
 
@@ -72,6 +78,30 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       : await supabase.from('trainer_sessions').insert(insertPayload);
 
     if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+
+    // Schedule session reminder notification (1 hour before)
+    if (sendReminder && clientId && status !== 'cancelled') {
+      const sessionTime = new Date(`${dateVal}T${timeVal}`);
+      const reminderTime = subHours(sessionTime, 1);
+      // Only schedule if reminder time is in the future
+      if (reminderTime > new Date()) {
+        const timeStr = format(sessionTime, 'h:mm a');
+        const { error: notifErr } = await supabase.from('notifications').upsert({
+          profile_id: clientId,
+          gym_id: gymId,
+          type: 'session_reminder',
+          title: t('trainer.upcomingSession', 'Upcoming Session'),
+          body: t('trainer.sessionReminderBody', 'You have a session with {{trainer}} at {{time}}', {
+            trainer: trainerName || 'your trainer',
+            time: timeStr,
+          }),
+          scheduled_at: reminderTime.toISOString(),
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (notifErr) logger.error('SessionModal: failed to schedule reminder:', notifErr);
+      }
+    }
+
     showToast(isEdit ? 'Session updated' : 'Session scheduled', 'success');
     onSaved();
   };
@@ -97,7 +127,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Client</label>
             <select value={clientId} onChange={e => setClientId(e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40">
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
               <option value="">Select client…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </select>
@@ -107,7 +137,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Title</label>
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Training Session"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
 
           {/* Date & Time */}
@@ -115,12 +145,12 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
             <div>
               <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Date</label>
               <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Time</label>
               <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
             </div>
           </div>
 
@@ -156,11 +186,30 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
             </div>
           )}
 
+          {/* Send Reminder toggle */}
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-2">
+              {sendReminder ? <Bell size={14} className="text-[#D4AF37]" /> : <BellOff size={14} className="text-[#6B7280]" />}
+              <div>
+                <p className="text-[12px] font-medium text-[#9CA3AF]">{t('trainer.sendReminder', 'Send Reminder')}</p>
+                <p className="text-[10px] text-[#6B7280]">{t('trainer.reminderHint', 'Client gets notified 1 hour before')}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSendReminder(!sendReminder)}
+              className={`relative w-10 h-[22px] rounded-full transition-colors ${sendReminder ? 'bg-[#D4AF37]' : 'bg-white/10'}`}
+              aria-label="Toggle send reminder"
+            >
+              <span className={`absolute top-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform ${sendReminder ? 'translate-x-[20px]' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
           {/* Notes */}
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Session notes…"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
 
           {error && <p className="text-[12px] text-red-400">{error}</p>}
@@ -276,16 +325,16 @@ export default function TrainerSchedule() {
   const weekLabel = `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Schedule</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Schedule</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">{weekLabel}</p>
         </div>
         <button
           onClick={() => setModal({ date: new Date() })}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] hover:bg-[#C4A030] text-black transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-bold bg-[#D4AF37] hover:bg-[#C4A030] text-black transition-colors flex-shrink-0 whitespace-nowrap"
         >
           <Plus size={16} /> New Session
         </button>
@@ -294,7 +343,8 @@ export default function TrainerSchedule() {
       {/* Week navigation */}
       <div className="flex items-center gap-2 mb-6">
         <button onClick={() => setWeekOffset(w => w - 1)}
-          className="p-2 rounded-lg hover:bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+          aria-label="Previous week"
+          className="p-2 rounded-lg hover:bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
           <ChevronLeft size={18} />
         </button>
         <button onClick={() => setWeekOffset(0)}
@@ -304,7 +354,8 @@ export default function TrainerSchedule() {
           Today
         </button>
         <button onClick={() => setWeekOffset(w => w + 1)}
-          className="p-2 rounded-lg hover:bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+          aria-label="Next week"
+          className="p-2 rounded-lg hover:bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
           <ChevronRight size={18} />
         </button>
       </div>
@@ -331,7 +382,7 @@ export default function TrainerSchedule() {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-[12px] text-[#9CA3AF]">{format(new Date(s.scheduled_at), 'h:mm a')}</p>
-                    <p className="text-[10px] text-[#4B5563]">{s.duration_mins}m</p>
+                    <p className="text-[10px] text-[#6B7280]">{s.duration_mins}m</p>
                   </div>
                 </button>
               );
@@ -365,13 +416,14 @@ export default function TrainerSchedule() {
                     <p className={`text-[11px] font-medium ${today ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>
                       {format(day, 'EEE')}
                     </p>
-                    <p className={`text-[15px] font-bold ${today ? 'text-[#D4AF37]' : past ? 'text-[#4B5563]' : 'text-[#E5E7EB]'}`}>
+                    <p className={`text-[15px] font-bold ${today ? 'text-[#D4AF37]' : past ? 'text-[#6B7280]' : 'text-[#E5E7EB]'}`}>
                       {format(day, 'd')}
                     </p>
                   </div>
                   <button
                     onClick={() => setModal({ date: day })}
-                    className="w-6 h-6 rounded-md flex items-center justify-center text-[#4B5563] hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors"
+                    aria-label="Add session"
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-[#6B7280] hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                   >
                     <Plus size={14} />
                   </button>
@@ -414,6 +466,7 @@ export default function TrainerSchedule() {
           onSaved={handleSaved}
           trainerId={profile.id}
           gymId={profile.gym_id}
+          trainerName={profile.full_name}
         />
       )}
     </div>

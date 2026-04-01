@@ -17,12 +17,12 @@ function ProjectedDot({ cx, cy, payload }) {
       <circle
         cx={cx} cy={cy} r={6}
         fill="none"
-        stroke="#D4AF37"
+        stroke="var(--color-accent)"
         strokeWidth={1.5}
         strokeDasharray="3 2"
         opacity={0.75}
       />
-      <circle cx={cx} cy={cy} r={2.5} fill="#D4AF37" opacity={0.6} />
+      <circle cx={cx} cy={cy} r={2.5} fill="var(--color-accent)" opacity={0.6} />
     </g>
   );
 }
@@ -125,7 +125,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
             <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-[var(--color-text-muted)] mb-0.5">
               Estimated 1RM Progress
             </p>
-            <h3 id="exercise-progress-title" className="font-bold text-[18px] leading-tight text-[var(--color-text-primary)]">
+            <h3 id="exercise-progress-title" className="font-bold text-[18px] leading-tight text-[var(--color-text-primary)] truncate">
               {exerciseName}
             </h3>
           </div>
@@ -182,12 +182,12 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                   tickLine={false}
                   domain={['auto', 'auto']}
                 />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
                 {/* Real 1RM line */}
                 <Line
                   type="monotone"
                   dataKey="orm"
-                  stroke="#D4AF37"
+                  stroke="var(--color-accent)"
                   strokeWidth={2.5}
                   dot={false}
                   activeDot={{ r: 6, strokeWidth: 2 }}
@@ -197,7 +197,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                 <Line
                   type="monotone"
                   dataKey="bridge"
-                  stroke="rgba(212,175,55,0.45)"
+                  stroke="color-mix(in srgb, var(--color-accent) 45%, transparent)"
                   strokeWidth={1.5}
                   strokeDasharray="4 4"
                   dot={false}
@@ -209,7 +209,7 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
                 <Line
                   type="monotone"
                   dataKey="projected"
-                  stroke="rgba(212,175,55,0.45)"
+                  stroke="color-mix(in srgb, var(--color-accent) 45%, transparent)"
                   strokeWidth={1.5}
                   strokeDasharray="4 4"
                   dot={<ProjectedDot />}

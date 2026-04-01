@@ -233,42 +233,30 @@ export function checkNewAchievements(data, earnedKeys) {
   );
 }
 
-// ── Streak freeze config ─────────────────────────────────────────────────────
-const FREEZES_PER_MONTH = 2;
-
-// Get or initialize freeze data for the current month from localStorage
-export function getStreakFreezes(userId) {
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const storageKey = `streak_freezes_${userId}_${monthKey}`;
-  const stored = localStorage.getItem(storageKey);
-  if (stored) return JSON.parse(stored);
-  return { month: monthKey, total: FREEZES_PER_MONTH, used: 0 };
-}
-
-export function useStreakFreeze(userId) {
-  const freezes = getStreakFreezes(userId);
-  if (freezes.used >= freezes.total) return false;
-  freezes.used += 1;
-  const storageKey = `streak_freezes_${userId}_${freezes.month}`;
-  localStorage.setItem(storageKey, JSON.stringify(freezes));
-  return true;
-}
-
 // ── Compute streak from an array of session objects with completed_at ─────────
 // Options:
-//   restDays: number[] — days of week with no workout scheduled (0=Sun..6=Sat)
-//   gymClosedDays: number[] — days of week the gym is closed (0=Sun..6=Sat)
-//   userId: string — for freeze tracking (1 freeze per month, resets on the 1st)
-export function computeStreakFromSessions(sessions, { restDays = [], gymClosedDays = [], userId = null } = {}) {
+//   restDays: number[]      — days of week with no workout scheduled (0=Sun..6=Sat)
+//   closureDates: string[]  — specific dates the gym is closed ('YYYY-MM-DD')
+//   gymClosedDays: number[] — recurring day-of-week closures (0=Sun..6=Sat)
+//   freezesUsed: number     — how many freezes already used this month (from DB)
+//   freezesMax: number      — max freezes allowed this month (from DB)
+export function computeStreakFromSessions(sessions, {
+  restDays = [],
+  closureDates = [],
+  gymClosedDays = [],
+  freezesUsed = 0,
+  freezesMax = 2,
+} = {}) {
   const dates = new Set(
     sessions.map((s) => new Date(s.completed_at).toDateString())
   );
 
+  // Build a Set for fast closure-date lookups
+  const closureDateSet = new Set(closureDates);
+
   // Only use freeze/rest-day logic if user has specific training days set
   const hasSchedule = restDays.length > 0;
-  const freezes = (hasSchedule && userId) ? getStreakFreezes(userId) : { total: 0, used: 0 };
-  let freezesRemaining = freezes.total - freezes.used;
+  let freezesRemaining = hasSchedule ? Math.max(0, freezesMax - freezesUsed) : 0;
 
   let streak = 0;
   const today = new Date();
@@ -276,11 +264,15 @@ export function computeStreakFromSessions(sessions, { restDays = [], gymClosedDa
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dow = d.getDay();
+    const dateStr = d.toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
     if (dates.has(d.toDateString())) {
       streak++;
     } else if (i === 0) {
       continue;
+    } else if (closureDateSet.has(dateStr)) {
+      // Specific closure date (holiday, maintenance, etc.) — counts toward streak
+      streak++;
     } else if (hasSchedule && restDays.includes(dow)) {
       // Scheduled rest day — only counts if user has specific training days
       streak++;
@@ -295,6 +287,116 @@ export function computeStreakFromSessions(sessions, { restDays = [], gymClosedDa
     }
   }
   return streak;
+}
+
+// ── Helper: fetch streak with all protections from DB ──────────────────────────
+// Fetches gym closures, freeze usage, and workout schedule, then computes streak.
+// Requires supabase client as parameter. Gracefully falls back if tables don't exist.
+export async function getStreakWithProtections(userId, gymId, sessions, supabase, prefetched = {}) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+
+  let closureDates = [];
+  let freezesUsed = 0;
+  let freezesMax = 2;
+  let restDays = [];
+  let gymClosedDays = [];
+
+  try {
+    // Build the list of queries, skipping any that have pre-fetched data
+    const closuresPromise = supabase
+      .from('gym_closures')
+      .select('closure_date')
+      .eq('gym_id', gymId)
+      .gte('closure_date', oneYearAgo);
+    const freezePromise = supabase
+      .from('streak_freezes')
+      .select('used_count, max_allowed')
+      .eq('profile_id', userId)
+      .eq('month', currentMonth)
+      .maybeSingle();
+    const schedulePromise = prefetched.scheduleData != null
+      ? Promise.resolve({ data: prefetched.scheduleData })
+      : supabase
+          .from('workout_schedule')
+          .select('day_of_week')
+          .eq('profile_id', userId);
+    const gymPromise = supabase
+      .from('gyms')
+      .select('open_days')
+      .eq('id', gymId)
+      .maybeSingle();
+
+    const [closuresRes, freezeRes, scheduleRes, gymRes] = await Promise.all([
+      closuresPromise,
+      freezePromise,
+      schedulePromise,
+      gymPromise,
+    ]);
+
+    closureDates = (closuresRes.data || []).map(c => c.closure_date);
+
+    const freeze = freezeRes.data;
+    freezesUsed = freeze?.used_count || 0;
+    freezesMax = freeze?.max_allowed || 2;
+
+    const scheduledDays = (scheduleRes.data || []).map(s => s.day_of_week);
+    restDays = scheduledDays.length > 0
+      ? [0, 1, 2, 3, 4, 5, 6].filter(d => !scheduledDays.includes(d))
+      : [];
+
+    const gymOpenDays = gymRes.data?.open_days || [];
+    gymClosedDays = gymOpenDays.length > 0
+      ? [0, 1, 2, 3, 4, 5, 6].filter(d => !gymOpenDays.includes(d))
+      : [];
+  } catch (err) {
+    // Gracefully fall back if tables don't exist yet (e.g. migration not applied)
+    console.warn('getStreakWithProtections: falling back to basic streak', err?.message);
+  }
+
+  return computeStreakFromSessions(sessions, {
+    restDays,
+    closureDates,
+    gymClosedDays,
+    freezesUsed,
+    freezesMax,
+  });
+}
+
+// ── Use a streak freeze (database-backed) ────────────────────────────────────
+// Upserts the current month's freeze row, incrementing used_count by 1.
+// Returns true if freeze was applied, false if none remaining.
+export async function useStreakFreeze(userId, supabase) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  try {
+    // Fetch current freeze data
+    const { data: existing } = await supabase
+      .from('streak_freezes')
+      .select('id, used_count, max_allowed')
+      .eq('profile_id', userId)
+      .eq('month', currentMonth)
+      .maybeSingle();
+
+    const usedCount = existing?.used_count || 0;
+    const maxAllowed = existing?.max_allowed || 2;
+
+    if (usedCount >= maxAllowed) return false;
+
+    if (existing) {
+      await supabase
+        .from('streak_freezes')
+        .update({ used_count: usedCount + 1 })
+        .eq('id', existing.id);
+    } else {
+      await supabase
+        .from('streak_freezes')
+        .insert({ profile_id: userId, month: currentMonth, used_count: 1, max_allowed: 2 });
+    }
+    return true;
+  } catch (err) {
+    console.warn('useStreakFreeze failed:', err?.message);
+    return false;
+  }
 }
 
 // ── Fetch all data needed for achievement checking ────────────────────────────
@@ -334,7 +436,7 @@ export async function fetchAchievementData(userId, gymId, supabase) {
 
   const sessions = sessionRows ?? [];
   const totalSessions = sessions.length;
-  const currentStreak = computeStreakFromSessions(sessions);
+  const currentStreak = await getStreakWithProtections(userId, gymId, sessions, supabase);
   const totalPRs = (prRows ?? []).length;
   const friendCount = (friendRows ?? []).length;
   const totalVolumeLbs = sessions.reduce(

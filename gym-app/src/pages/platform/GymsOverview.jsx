@@ -42,16 +42,16 @@ const StatCard = ({ label, value, icon: Icon, borderColor, delay = 0 }) => {
   return (
     <FadeIn delay={delay}>
       <div
-        className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 hover:border-white/10 hover:bg-[#111827] transition-all duration-300 group"
+        className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 hover:border-white/10 hover:bg-[#111827] transition-all duration-300 group overflow-hidden"
         style={{ borderLeftColor: borderColor }}
       >
         <div className="flex items-center justify-between mb-2">
           <Icon size={16} className="text-[#6B7280] group-hover:text-[#9CA3AF] transition-colors" />
         </div>
-        <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums tracking-tight">
+        <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums tracking-tight truncate">
           {animated.toLocaleString()}
         </p>
-        <p className="text-[12px] text-[#9CA3AF] mt-1 group-hover:text-[#D1D5DB] transition-colors">{label}</p>
+        <p className="text-[11px] text-[#9CA3AF] mt-1 group-hover:text-[#D1D5DB] transition-colors truncate">{label}</p>
       </div>
     </FadeIn>
   );
@@ -163,18 +163,18 @@ export default function GymsOverview() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       <FadeIn>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-[22px] font-bold text-[#E5E7EB]">Gyms</h1>
+            <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Gyms</h1>
             <span className="bg-[#D4AF37]/15 text-[#D4AF37] text-[12px] font-semibold px-2.5 py-0.5 rounded-full tabular-nums">
               {gyms.length}
             </span>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors"
+            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap"
           >
             <Plus size={14} />
             Create Gym
@@ -183,7 +183,7 @@ export default function GymsOverview() {
       </FadeIn>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Total Gyms" value={gyms.length} icon={Building2} borderColor="#D4AF37" delay={50} />
+        <StatCard label="Total Gyms" value={gyms.length} icon={Building2} borderColor="var(--color-accent)" delay={50} />
         <StatCard label="Total Members" value={totalMembers} icon={Users} borderColor="#3B82F6" delay={100} />
         <StatCard label="Active Gyms" value={activeGyms} icon={Activity} borderColor="#10B981" delay={150} />
         <StatCard label="Sessions (30d)" value={totalSessions} icon={Dumbbell} borderColor="#A855F7" delay={200} />
@@ -227,7 +227,7 @@ export default function GymsOverview() {
           </div>
         ) : (
           <div className="bg-[#0F172A] border border-white/6 rounded-xl overflow-hidden">
-            <div className="hidden md:grid grid-cols-[1fr_120px_100px_80px_110px_140px_32px_32px] gap-4 px-4 py-3 border-b border-white/6 text-[11px] text-[#6B7280] uppercase tracking-wider font-medium">
+            <div className="hidden md:grid grid-cols-[1fr_120px_100px_80px_110px_140px_32px_32px] overflow-hidden gap-4 px-4 py-3 border-b border-white/6 text-[11px] text-[#6B7280] uppercase tracking-wider font-medium">
               <span>Gym</span>
               <span>Tier</span>
               <span className="text-right">Members</span>

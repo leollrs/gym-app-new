@@ -59,10 +59,10 @@ export default function GrowthChart({ gymId }) {
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-semibold text-[#E5E7EB]">Member Growth</p>
+        <p className="text-[13px] font-semibold text-[#E5E7EB] min-w-0 flex-1 truncate">Member Growth</p>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
           Export
@@ -75,29 +75,29 @@ export default function GrowthChart({ gymId }) {
           <AreaChart data={growthData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
             <defs>
               <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#D4AF37" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                <stop offset="5%"  stopColor="var(--color-accent)" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
               dataKey="month"
-              tick={{ fontSize: 10, fill: '#6B7280' }}
+              tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
               tickLine={false}
               axisLine={false}
               interval={2}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: '#6B7280' }}
+              tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
               tickLine={false}
               axisLine={false}
               allowDecimals={false}
             />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
             <Area
               type="monotone"
               dataKey="count"
               name="New members"
-              stroke="#D4AF37"
+              stroke="var(--color-accent)"
               strokeWidth={2}
               fill="url(#growthGrad)"
               dot={false}

@@ -27,7 +27,7 @@ const PRRow = ({ pr, history }) => {
   return (
     <div>
       <button
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setOpen(o => !o)}
         aria-label={`Toggle details for ${pr.exercises?.name ?? 'exercise'}`}
       >
@@ -38,21 +38,21 @@ const PRRow = ({ pr, history }) => {
           <Trophy size={15} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold truncate text-[#E5E7EB]">
+          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
             {pr.exercises?.name}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">
+          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
             {pr.weight_lbs} lbs x {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy')}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <p className="text-[17px] font-black text-[#D4AF37]">
             {Math.round(parseFloat(pr.estimated_1rm))}
-            <span className="text-[11px] font-medium ml-0.5 text-[#9CA3AF]">lbs</span>
+            <span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
           </p>
           <ChevronDown
             size={15}
-            className="text-[#9CA3AF]"
+            style={{ color: 'var(--color-text-muted)' }}
             style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
           />
         </div>
@@ -61,25 +61,25 @@ const PRRow = ({ pr, history }) => {
       {open && (
         <div className="px-4 pb-4 border-t border-white/4">
           {chartData.length < 2 ? (
-            <p className="text-[12px] pt-3 text-[#9CA3AF]">
+            <p className="text-[12px] pt-3" style={{ color: 'var(--color-text-muted)' }}>
               Hit this lift again to see your 1RM trend
             </p>
           ) : (
             <div className="pt-3">
-              <p className="text-[12px] font-medium mb-2 text-[#9CA3AF]">Estimated 1RM over time</p>
+              <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Estimated 1RM over time</p>
               <ResponsiveContainer width="100%" height={140}>
                 <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false}
                     axisLine={false}
                     interval={Math.max(0, Math.floor(chartData.length / 4) - 1)}
                   />
                   <YAxis
                     domain={[yMin, yMax]}
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false}
                     axisLine={false}
                   />
@@ -87,7 +87,7 @@ const PRRow = ({ pr, history }) => {
                   <Line
                     type="monotone"
                     dataKey="orm"
-                    stroke="#D4AF37"
+                    stroke="var(--color-accent)"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 6, strokeWidth: 2 }}
@@ -109,13 +109,13 @@ const EmptyExerciseRow = ({ name }) => (
       className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
       style={{ background: 'rgba(255,255,255,0.04)' }}
     >
-      <Dumbbell size={15} className="text-[#4B5563]" />
+      <Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} />
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-[14px] font-semibold truncate text-[#E5E7EB]">{name}</p>
-      <p className="text-[11px] text-[#4B5563]">No data recorded yet</p>
+      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{name}</p>
+      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>No data recorded yet</p>
     </div>
-    <p className="text-[13px] text-[#4B5563] flex-shrink-0">—</p>
+    <p className="text-[13px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>—</p>
   </div>
 );
 
@@ -202,7 +202,7 @@ export default function ProgressStrength() {
     <div>
       {/* Personal Records */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[15px] font-bold text-[#E5E7EB]">
+        <p className="text-[15px] font-bold min-w-0 truncate" style={{ color: 'var(--color-text-primary)' }}>
           Personal Records
           {prs.length > 0 && (
             <span
@@ -215,20 +215,20 @@ export default function ProgressStrength() {
         </p>
         <button
           onClick={() => setShowAll(s => !s)}
-          className="text-[12px] font-semibold text-[#D4AF37]"
+          className="text-[12px] font-semibold text-[#D4AF37] flex-shrink-0 whitespace-nowrap"
         >
           {showAll ? 'Show top 5' : 'See all'}
         </button>
       </div>
 
       {prs.length === 0 && !showAll ? (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/8 py-16 flex flex-col items-center gap-3">
-          <TrendingUp size={32} className="text-[#4B5563]" strokeWidth={1.5} />
-          <p className="text-[14px] text-[#9CA3AF]">No PRs yet</p>
-          <p className="text-[12px] text-[#6B7280]">Complete workouts to start tracking</p>
+        <div className="rounded-2xl border border-white/8 py-16 flex flex-col items-center gap-3" style={{ background: 'var(--color-bg-card)' }}>
+          <TrendingUp size={32} style={{ color: 'var(--color-text-muted)' }} strokeWidth={1.5} />
+          <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>No PRs yet</p>
+          <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>Complete workouts to start tracking</p>
         </div>
       ) : (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/4">
+        <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/4" style={{ background: 'var(--color-bg-card)' }}>
           {(showAll ? prs : prs.slice(0, 5)).map(pr => (
             <PRRow key={pr.exercise_id} pr={pr} history={prHistory[pr.exercise_id] ?? []} />
           ))}

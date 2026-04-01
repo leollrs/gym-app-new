@@ -1,0 +1,26 @@
+// Lightweight name-only map extracted from programTemplates.js
+// Used by Dashboard to avoid importing the full ~396KB template file eagerly.
+export const programTemplateNames = {
+  tmpl_starting_strength: { name: 'Starting Strength', name_es: 'Fuerza Inicial' },
+  tmpl_stronglifts: { name: 'StrongLifts 5x5', name_es: 'StrongLifts 5×5' },
+  tmpl_greyskull: { name: 'Greyskull LP', name_es: 'Greyskull LP' },
+  tmpl_phul: { name: 'PHUL (Power Upper Lower)', name_es: 'PHUL' },
+  tmpl_reddit_ppl: { name: 'Reddit PPL (Push Pull Legs)', name_es: 'Reddit PPL' },
+  tmpl_bro_split: { name: 'Classic Bro Split', name_es: 'División Bro' },
+  tmpl_phat: { name: 'PHAT (Layne Norton)', name_es: 'PHAT' },
+  tmpl_531: { name: 'Wendler 5/3/1', name_es: '5/3/1' },
+  tmpl_nsuns: { name: 'nSuns 5/3/1 LP', name_es: 'nSuns 5/3/1' },
+  tmpl_powerbuilding: { name: 'Powerbuilding', name_es: 'Potencia y Construcción' },
+  tmpl_strong_curves: { name: 'Strong Curves', name_es: 'Curvas Fuertes' },
+  tmpl_bodyweight: { name: 'Bodyweight Only', name_es: 'Peso Corporal' },
+  tmpl_fat_loss: { name: 'Fat Loss Circuit', name_es: 'Pérdida de Grasa' },
+  tmpl_athletic: { name: 'Athletic Performance', name_es: 'Atlético' },
+  tmpl_minimalist: { name: 'Minimalist Strength', name_es: 'Minimalista' },
+  tmpl_powerlifting_peak: { name: 'Powerlifting Peaking', name_es: 'Pico de Powerlifting' },
+  tmpl_tls: { name: 'Thinner Leaner Stronger', name_es: 'Más Delgado Más Fuerte' },
+  tmpl_women_upper_lower: { name: "Women's Upper/Lower Split", name_es: 'Tren Superior/Inferior Mujeres' },
+  tmpl_women_ppl: { name: "Women's Push/Pull/Legs", name_es: 'PPL Mujeres' },
+  tmpl_strong_curves_adv: { name: 'Strong Curves Advanced', name_es: 'Curvas Fuertes Avanzado' },
+  tmpl_hourglass: { name: 'Hourglass Program', name_es: 'Reloj de Arena' },
+  tmpl_bikini_prep: { name: 'Bikini Prep', name_es: 'Preparación Bikini' },
+};

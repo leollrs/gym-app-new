@@ -37,13 +37,25 @@ export const fmtDuration = (seconds) => {
  * Returns 'Never' for falsy input.
  */
 export const timeAgo = (iso) => {
-  if (!iso) return 'Never';
-  const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
-  if (d === 0) return 'Today';
-  if (d === 1) return 'Yesterday';
-  if (d < 7)  return `${d}d ago`;
-  if (d < 30) return `${Math.floor(d / 7)}w ago`;
-  return `${Math.floor(d / 30)}mo ago`;
+  try {
+    const i18n = require('i18next').default;
+    const t = (key, def) => i18n?.t?.(`common:timeAgo.${key}`, def) || def;
+    if (!iso) return t('never', 'Never');
+    const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
+    if (d === 0) return t('today', 'Today');
+    if (d === 1) return t('yesterday', 'Yesterday');
+    if (d < 7)  return t('daysAgo', { defaultValue: '{{d}}d ago', d });
+    if (d < 30) return t('weeksAgo', { defaultValue: '{{w}}w ago', w: Math.floor(d / 7) });
+    return t('monthsAgo', { defaultValue: '{{m}}mo ago', m: Math.floor(d / 30) });
+  } catch {
+    if (!iso) return 'Never';
+    const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
+    if (d === 0) return 'Today';
+    if (d === 1) return 'Yesterday';
+    if (d < 7)  return `${d}d ago`;
+    if (d < 30) return `${Math.floor(d / 7)}w ago`;
+    return `${Math.floor(d / 30)}mo ago`;
+  }
 };
 
 /**

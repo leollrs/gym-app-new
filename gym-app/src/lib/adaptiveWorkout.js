@@ -318,12 +318,14 @@ function buildExerciseList(topMuscles, pool, goal, seed) {
 
 // ── Step 4: Generate reasoning ──────────────────────────────────────────────
 
-function generateReasons(exercises, recovery) {
+function generateReasons(exercises, recovery, goalExIds = new Set()) {
   return exercises.map(ex => {
     const data = recovery[ex._muscle];
     let reason;
 
-    if (!data || data.daysSinceLast === null) {
+    if (goalExIds.has(ex.exerciseId)) {
+      reason = `Active goal — prioritized for progressive overload`;
+    } else if (!data || data.daysSinceLast === null) {
       reason = `${ex._muscle} hasn't been hit recently — time to work it`;
     } else if (data.daysSinceLast >= 5) {
       reason = `${ex._muscle} is overdue (${data.daysSinceLast} days) — priority`;
@@ -379,13 +381,34 @@ function generateSummaryReasoning(musclesFocused, recovery) {
 
 // ── Estimate duration ───────────────────────────────────────────────────────
 
+// Compound IDs that take longer per set (including setup, unracking, etc.)
+const COMPOUND_IDS = new Set([
+  'ex_sq', 'ex_dl', 'ex_bp', 'ex_ohp', 'ex_bbr',
+  'ex_fsq', 'ex_rdl', 'ex_ibp', 'ex_cgp', 'ex_dips',
+]);
+
 function estimateDuration(exercises) {
-  const totalSets = exercises.reduce((sum, ex) => sum + ex.sets, 0);
-  const avgSetTime = 45; // seconds
-  const avgRest = exercises.length > 0
-    ? exercises.reduce((sum, ex) => sum + ex.restSeconds, 0) / exercises.length
-    : 60;
-  return Math.round((totalSets * (avgSetTime + avgRest)) / 60);
+  const WARMUP_MINUTES = 5;
+  const COOLDOWN_MINUTES = 3;
+  const SECS_PER_REP = 7; // midpoint of 5-10s per rep
+  const DEFAULT_REPS = 10;
+
+  let totalSeconds = 0;
+  for (const ex of exercises) {
+    // Parse reps from string like "8-12" → average, or fall back to default
+    let reps = DEFAULT_REPS;
+    if (ex.reps) {
+      const parts = String(ex.reps).split('-').map(Number).filter(n => !isNaN(n));
+      if (parts.length >= 2) reps = Math.round((parts[0] + parts[1]) / 2);
+      else if (parts.length === 1 && parts[0] > 0) reps = parts[0];
+    }
+    const isCompound = COMPOUND_IDS.has(ex.exerciseId);
+    const setupTime = isCompound ? 15 : 5; // extra setup/unracking time
+    const repTime = reps * SECS_PER_REP;
+    const restDuration = ex.restSeconds || 90;
+    totalSeconds += ex.sets * (repTime + setupTime + restDuration);
+  }
+  return Math.round((totalSeconds / 60) + WARMUP_MINUTES + COOLDOWN_MINUTES);
 }
 
 // ── Main Export ─────────────────────────────────────────────────────────────
@@ -404,12 +427,19 @@ function estimateDuration(exercises) {
  * }>}
  */
 export async function generateAdaptiveWorkout(userId, variant = 0) {
-  // ── Fetch onboarding data ───────────────────────────────────────────────
-  const { data: onboarding } = await supabase
-    .from('member_onboarding')
-    .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes')
-    .eq('profile_id', userId)
-    .maybeSingle();
+  // ── Fetch onboarding data + active goals ──────────────────────────────
+  const [{ data: onboarding }, { data: activeGoals }] = await Promise.all([
+    supabase
+      .from('member_onboarding')
+      .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes')
+      .eq('profile_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('member_goals')
+      .select('goal_type, exercise_id, target_value, current_value, target_date')
+      .eq('profile_id', userId)
+      .is('achieved_at', null),
+  ]);
 
   const {
     fitness_level = 'beginner',
@@ -417,6 +447,15 @@ export async function generateAdaptiveWorkout(userId, variant = 0) {
     available_equipment = ['Bodyweight'],
     injuries_notes = '',
   } = onboarding || {};
+
+  // ── Identify goal-targeted exercises and their muscles ────────────────
+  const liftGoals = (activeGoals ?? []).filter(g => g.goal_type === 'lift_1rm' && g.exercise_id);
+  const goalExerciseIds = new Set(liftGoals.map(g => g.exercise_id));
+  const goalMuscleLookup = new Map();
+  for (const ex of ALL_EXERCISES) {
+    if (goalExerciseIds.has(ex.id)) goalMuscleLookup.set(ex.id, ex.muscle);
+  }
+  const goalMuscles = new Set(goalMuscleLookup.values());
 
   // ── Fetch last 14 days of workout history ───────────────────────────────
   const fourteenDaysAgo = new Date();
@@ -491,6 +530,16 @@ export async function generateAdaptiveWorkout(userId, variant = 0) {
   const recovery = analyzeRecovery(recentSets);
   const rankedMuscles = scoreMuscles(recovery, primary_goal);
 
+  // Boost muscles that have active lift goals (ensure they appear in top picks)
+  if (goalMuscles.size > 0) {
+    for (const rm of rankedMuscles) {
+      if (goalMuscles.has(rm.muscle)) {
+        rm.score += 40; // significant boost to prioritize goal muscles
+      }
+    }
+    rankedMuscles.sort((a, b) => b.score - a.score);
+  }
+
   // Pick top 2-3 muscle groups that have available exercises in the pool
   const availableMuscles = new Set(pool.map(ex => ex.muscle));
   const topMuscles = rankedMuscles
@@ -510,8 +559,39 @@ export async function generateAdaptiveWorkout(userId, variant = 0) {
 
   // ── Build the workout ───────────────────────────────────────────────────
   const seed = dailySeed() + variant * 7919; // different seed per variant
-  const { exercises: rawExercises } = buildExerciseList(topMuscles, pool, primary_goal, seed);
-  const exercises = generateReasons(rawExercises, recovery);
+  const { exercises: rawExercises, goalConfig } = buildExerciseList(topMuscles, pool, primary_goal, seed);
+
+  // ── Inject goal-targeted exercises if not already included ─────────────
+  const includedIds = new Set(rawExercises.map(e => e.exerciseId));
+  for (const gExId of goalExerciseIds) {
+    if (includedIds.has(gExId)) continue;
+    const gMuscle = goalMuscleLookup.get(gExId);
+    // Only inject if the goal exercise's muscle is in our chosen muscles
+    if (!gMuscle || !topMuscles.includes(gMuscle)) continue;
+    const ex = pool.find(e => e.id === gExId);
+    if (!ex) continue;
+    const tier = META[ex.id]?.tier || 'isolation';
+    const gc = goalConfig || GOAL_CONFIG[primary_goal] || GOAL_CONFIG.general_fitness;
+    // Replace the last exercise of the same muscle group, or append
+    const replaceIdx = [...rawExercises].reverse().findIndex(e => e._muscle === gMuscle);
+    const entry = {
+      exerciseId: ex.id,
+      sets: tier === 'primary' ? gc.sets[1] : gc.sets[0],
+      reps: gc.reps,
+      restSeconds: tier === 'primary' ? gc.rest : Math.max(30, gc.rest - 15),
+      _muscle: gMuscle,
+      _tier: tier,
+      _name: ex.name,
+    };
+    if (replaceIdx !== -1) {
+      rawExercises[rawExercises.length - 1 - replaceIdx] = entry;
+    } else if (rawExercises.length < 8) {
+      rawExercises.push(entry);
+    }
+    includedIds.add(gExId);
+  }
+
+  const exercises = generateReasons(rawExercises, recovery, goalExerciseIds);
 
   // Deduce actual muscles focused from selected exercises
   const musclesFocused = [...new Set(rawExercises.map(ex => ex._muscle))];

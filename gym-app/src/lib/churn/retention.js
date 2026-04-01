@@ -6,50 +6,18 @@
  * members in a gym.
  */
 
-import { DEFAULT_WEIGHTS, calculateChurnScore, getRiskTier } from './riskScoring.js';
+import { DEFAULT_WEIGHTS, calculateChurnScore } from './riskScoring.js';
 import { calculateVelocity } from './metrics.js';
+import { signalTenureRiskV2 } from './churnSignalsV2.js';
 
-
-// ═══════════════════════════════════════════════════════════════
-//  TENURE RISK SIGNAL
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * 3. TENURE RISK (15 pts)
- * Research: Dropout probability peaks within the first 3 months
- * then declines. 50% of new members quit within 6 months.
- * "Honeymoon ending" period (1-3 months) is the danger zone.
- * 24 visits in 90 days is the survival threshold.
- */
+/** @deprecated Use churnSignalsV2 (12-signal model). Kept for callers expecting { value, score, maxPts, label }. */
 export function signalTenureRisk(tenureMonths, totalSessionsFirst90Days) {
-  const MAX = 15;
-  let score, label;
+  const r = signalTenureRiskV2(tenureMonths, totalSessionsFirst90Days);
+  return { ...r, value: tenureMonths };
+}
 
-  if (tenureMonths < 1) {
-    // Brand new — too early to tell, moderate concern
-    score = Math.round(MAX * 0.55); // 8
-    label = 'Brand new member (< 1 month)';
-  } else if (tenureMonths <= 3) {
-    // THE danger zone — check if they hit the 24-visit threshold
-    if (totalSessionsFirst90Days !== null && totalSessionsFirst90Days >= 24) {
-      score = Math.round(MAX * 0.25); // 4 — they crossed the threshold
-      label = 'In 90-day window but hit visit milestone';
-    } else {
-      score = MAX; // 15 — maximum tenure risk
-      label = 'In critical 90-day dropout window';
-    }
-  } else if (tenureMonths <= 6) {
-    score = Math.round(MAX * 0.55); // 8
-    label = 'Still in early risk period (3-6 months)';
-  } else if (tenureMonths <= 12) {
-    score = Math.round(MAX * 0.25); // 4
-    label = 'Established member (6-12 months)';
-  } else {
-    score = Math.round(MAX * 0.07); // 1
-    label = 'Long-tenure member — low base risk';
-  }
-
-  return { value: tenureMonths, score, maxPts: MAX, label };
+function getDayOfWeekUtc(dateStr) {
+  return new Date(dateStr).getUTCDay();
 }
 
 
@@ -80,17 +48,22 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .single();
 
     if (wRow && wRow.confidence > 0) {
-      // Blend learned weights with defaults based on confidence
-      // confidence = min(1, labeled_outcomes / 200)
       const c = wRow.confidence;
+      const blend = (col, key) =>
+        (wRow[col] != null ? wRow[col] : DEFAULT_WEIGHTS[key]) * c + DEFAULT_WEIGHTS[key] * (1 - c);
       gymWeights = {
-        visit_frequency:    wRow.w_visit_frequency * c + DEFAULT_WEIGHTS.visit_frequency * (1 - c),
-        attendance_trend:   wRow.w_attendance_trend * c + DEFAULT_WEIGHTS.attendance_trend * (1 - c),
-        tenure_risk:        wRow.w_tenure_risk * c + DEFAULT_WEIGHTS.tenure_risk * (1 - c),
-        social_engagement:  wRow.w_social_engagement * c + DEFAULT_WEIGHTS.social_engagement * (1 - c),
-        session_gaps:       wRow.w_session_gaps * c + DEFAULT_WEIGHTS.session_gaps * (1 - c),
-        goal_progress:      wRow.w_goal_progress * c + DEFAULT_WEIGHTS.goal_progress * (1 - c),
-        engagement_depth:   wRow.w_engagement_depth * c + DEFAULT_WEIGHTS.engagement_depth * (1 - c),
+        visit_frequency: blend('w_visit_frequency', 'visit_frequency'),
+        attendance_trend: blend('w_attendance_trend', 'attendance_trend'),
+        tenure_risk: blend('w_tenure_risk', 'tenure_risk'),
+        social_engagement: blend('w_social_engagement', 'social_engagement'),
+        session_gaps: blend('w_session_gaps', 'session_gaps'),
+        goal_progress: blend('w_goal_progress', 'goal_progress'),
+        engagement_depth: blend('w_engagement_depth', 'engagement_depth'),
+        anchor_day: blend('w_anchor_day', 'anchor_day'),
+        app_engagement: blend('w_app_engagement', 'app_engagement'),
+        comms_responsiveness: blend('w_comms_responsiveness', 'comms_responsiveness'),
+        referral_activity: blend('w_referral_activity', 'referral_activity'),
+        workout_type_shift: blend('w_workout_type_shift', 'workout_type_shift'),
       };
       gymWeightsMeta = {
         confidence: c,
@@ -106,7 +79,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // ── 1. Member profiles ───────────────────────────────────────
   const { data: memberRows, error: membersError } = await supabase
     .from('profiles')
-    .select('id, full_name, username, email, created_at, gym_id, training_frequency, membership_status, assigned_program_id')
+    .select('id, full_name, username, created_at, gym_id, training_frequency')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .order('full_name', { ascending: true });
@@ -115,7 +88,9 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
 
   const memberIds = memberRows.map(m => m.id);
 
-  // ── 2-10. Parallel data fetches ───────────────────────────────
+  const OUTREACH_TYPES_ARR = ['churn_followup', 'admin_message', 'win_back'];
+
+  // ── 2–14. Parallel data fetches ───────────────────────────────
   const [
     attendanceRes,
     sessionsRes,
@@ -126,8 +101,12 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     trainerClientsRes,
     historyRes,
     prsRes,
+    scheduleRes,
+    notifRes,
+    outreachRes,
+    referralsRes,
+    socialFeedRes,
   ] = await Promise.all([
-    // 2. Check-ins — last 60 days
     supabase
       .from('check_ins')
       .select('profile_id, checked_in_at')
@@ -136,7 +115,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .in('profile_id', memberIds)
       .order('checked_in_at', { ascending: false }),
 
-    // 3. Workout sessions — last 90 days (need more for gap analysis)
     supabase
       .from('workout_sessions')
       .select('profile_id, status, started_at, completed_at, duration_seconds, total_volume_lbs, program_enrollment_id')
@@ -145,7 +123,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .in('profile_id', memberIds)
       .order('started_at', { ascending: false }),
 
-    // 4. Total session count (all time) — for tenure/engagement ratio
     supabase
       .from('workout_sessions')
       .select('profile_id, started_at')
@@ -153,7 +130,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .eq('status', 'completed')
       .in('profile_id', memberIds),
 
-    // 5. Friendships
     supabase
       .from('friendships')
       .select('requester_id, addressee_id')
@@ -164,13 +140,11 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
         memberIds.map(id => `addressee_id.eq.${id}`).join(',')
       ),
 
-    // 6. Challenge participation
     supabase
       .from('challenge_participants')
       .select('profile_id')
       .in('profile_id', memberIds),
 
-    // 7. Body weight logs — last 60 days (goal progress signal)
     supabase
       .from('body_weight_logs')
       .select('profile_id, logged_at')
@@ -179,14 +153,12 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .in('profile_id', memberIds)
       .order('logged_at', { ascending: false }),
 
-    // 8. Trainer-client relationships
     supabase
       .from('trainer_clients')
       .select('client_id')
       .eq('gym_id', gymId)
       .in('client_id', memberIds),
 
-    // 9. Historical churn scores for velocity
     supabase
       .from('churn_risk_scores')
       .select('profile_id, score, computed_at')
@@ -194,7 +166,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .in('profile_id', memberIds)
       .order('computed_at', { ascending: false }),
 
-    // 10. Recent PRs (activity feed PR events in last 30 days)
     supabase
       .from('activity_feed_items')
       .select('actor_id')
@@ -202,6 +173,41 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .eq('type', 'pr_hit')
       .gte('created_at', thirtyDaysAgo)
       .in('actor_id', memberIds),
+
+    supabase
+      .from('workout_schedule')
+      .select('profile_id, day_of_week')
+      .in('profile_id', memberIds)
+      .limit(5000),
+
+    supabase
+      .from('notifications')
+      .select('profile_id, read_at, created_at')
+      .gte('created_at', thirtyDaysAgo)
+      .in('profile_id', memberIds)
+      .limit(10000),
+
+    supabase
+      .from('notifications')
+      .select('profile_id, created_at, type')
+      .in('type', OUTREACH_TYPES_ARR)
+      .in('profile_id', memberIds)
+      .limit(5000),
+
+    supabase
+      .from('referrals')
+      .select('referrer_id')
+      .in('referrer_id', memberIds)
+      .limit(5000),
+
+    supabase
+      .from('activity_feed_items')
+      .select('actor_id, created_at')
+      .eq('gym_id', gymId)
+      .gte('created_at', thirtyDaysAgo)
+      .in('actor_id', memberIds)
+      .order('created_at', { ascending: false })
+      .limit(5000),
   ]);
 
   const checkInRows = attendanceRes.data || [];
@@ -213,6 +219,61 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const trainerClientRows = trainerClientsRes.data || [];
   const historyRows = historyRes.data || [];
   const prRows = prsRes.data || [];
+  const scheduleRows = scheduleRes.data || [];
+  const notifRows = notifRes.data || [];
+  const outreachRows = outreachRes.data || [];
+  const referralRows = referralsRes.data || [];
+  const socialFeedRows = socialFeedRes.data || [];
+
+  const { data: sidL30 } = await supabase
+    .from('workout_sessions')
+    .select('id, profile_id')
+    .eq('gym_id', gymId)
+    .eq('status', 'completed')
+    .gte('started_at', thirtyDaysAgo)
+    .in('profile_id', memberIds)
+    .limit(5000);
+  const { data: sidP30 } = await supabase
+    .from('workout_sessions')
+    .select('id, profile_id')
+    .eq('gym_id', gymId)
+    .eq('status', 'completed')
+    .gte('started_at', sixtyDaysAgo)
+    .lt('started_at', thirtyDaysAgo)
+    .in('profile_id', memberIds)
+    .limit(5000);
+
+  const sessionToProfile = {};
+  (sidL30 || []).forEach((s) => { sessionToProfile[s.id] = s.profile_id; });
+  (sidP30 || []).forEach((s) => { sessionToProfile[s.id] = s.profile_id; });
+  const idsL = (sidL30 || []).map((s) => s.id).slice(0, 2000);
+  const idsP = (sidP30 || []).map((s) => s.id).slice(0, 2000);
+
+  let exL = [];
+  let exP = [];
+  if (idsL.length) {
+    const { data } = await supabase.from('session_exercises').select('session_id, muscle_group').in('session_id', idsL).limit(10000);
+    exL = data || [];
+  }
+  if (idsP.length) {
+    const { data } = await supabase.from('session_exercises').select('session_id, muscle_group').in('session_id', idsP).limit(10000);
+    exP = data || [];
+  }
+
+  const muscleGroupSetsL = {};
+  const muscleGroupSetsP = {};
+  exL.forEach((r) => {
+    const pid = sessionToProfile[r.session_id];
+    if (!pid || !r.muscle_group) return;
+    if (!muscleGroupSetsL[pid]) muscleGroupSetsL[pid] = new Set();
+    muscleGroupSetsL[pid].add(r.muscle_group);
+  });
+  exP.forEach((r) => {
+    const pid = sessionToProfile[r.session_id];
+    if (!pid || !r.muscle_group) return;
+    if (!muscleGroupSetsP[pid]) muscleGroupSetsP[pid] = new Set();
+    muscleGroupSetsP[pid].add(r.muscle_group);
+  });
 
   // ── Build lookup maps ──────────────────────────────────────────
 
@@ -309,6 +370,59 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // Recent PRs
   const prSet = new Set(prRows.map(r => r.actor_id));
 
+  const scheduledDays = {};
+  scheduleRows.forEach((r) => {
+    if (!scheduledDays[r.profile_id]) scheduledDays[r.profile_id] = [];
+    if (!scheduledDays[r.profile_id].includes(r.day_of_week)) scheduledDays[r.profile_id].push(r.day_of_week);
+  });
+
+  const recentSessionWeeks = {};
+  const twentyOneMs = now.getTime() - 21 * MS_PER_DAY;
+  sessionRows.forEach((r) => {
+    if (r.status !== 'completed' || !r.started_at) return;
+    if (new Date(r.started_at).getTime() < twentyOneMs) return;
+    const pid = r.profile_id;
+    if (!recentSessionWeeks[pid]) recentSessionWeeks[pid] = [[], [], []];
+    const daysAgo = (now.getTime() - new Date(r.started_at).getTime()) / MS_PER_DAY;
+    const weekIdx = Math.min(2, Math.floor(daysAgo / 7));
+    const dow = getDayOfWeekUtc(r.started_at);
+    if (!recentSessionWeeks[pid][weekIdx].includes(dow)) recentSessionWeeks[pid][weekIdx].push(dow);
+  });
+
+  const notifTotal = {};
+  const notifRead = {};
+  notifRows.forEach((r) => {
+    notifTotal[r.profile_id] = (notifTotal[r.profile_id] || 0) + 1;
+    if (r.read_at) notifRead[r.profile_id] = (notifRead[r.profile_id] || 0) + 1;
+  });
+
+  const outreachByMember = {};
+  outreachRows.forEach((r) => {
+    if (!outreachByMember[r.profile_id]) outreachByMember[r.profile_id] = [];
+    outreachByMember[r.profile_id].push({ created_at: r.created_at });
+  });
+
+  const referralCount = {};
+  referralRows.forEach((r) => {
+    referralCount[r.referrer_id] = (referralCount[r.referrer_id] || 0) + 1;
+  });
+
+  const lastSocialAt = {};
+  socialFeedRows.forEach((r) => {
+    if (!lastSocialAt[r.actor_id]) lastSocialAt[r.actor_id] = new Date(r.created_at);
+  });
+
+  const memberActivityDates = {};
+  sessionRows.forEach((r) => {
+    if (!r.started_at) return;
+    if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
+    memberActivityDates[r.profile_id].push(new Date(r.started_at));
+  });
+  checkInRows.forEach((r) => {
+    if (!memberActivityDates[r.profile_id]) memberActivityDates[r.profile_id] = [];
+    memberActivityDates[r.profile_id].push(new Date(r.checked_in_at));
+  });
+
   // Historical scores for velocity
   const historyMap = {};
   historyRows.forEach(row => {
@@ -326,10 +440,21 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       ? (now - new Date(lastCheckIn)) / MS_PER_DAY
       : null;
 
+    const sm = sessionMetrics[m.id] || {};
+
+    const checkInMs = lastCheckIn ? new Date(lastCheckIn).getTime() : 0;
+    const lastWorkoutMs = sm.sessionDates?.length
+      ? Math.max(...sm.sessionDates.map((d) => d.getTime()))
+      : 0;
+    const socialMs = lastSocialAt[m.id] ? lastSocialAt[m.id].getTime() : 0;
+    const lastActivityMs = Math.max(checkInMs, lastWorkoutMs, socialMs);
+    const daysSinceLastActivity = lastActivityMs > 0
+      ? (now - lastActivityMs) / MS_PER_DAY
+      : null;
+    const lastActivityAt = lastActivityMs > 0 ? new Date(lastActivityMs).toISOString() : null;
+
     const avgWeeklyVisits = (checkInsLast30[m.id] || 0) / 4.33;
     const prevAvgWeeklyVisits = (checkInsPrior30[m.id] || 0) / 4.33;
-
-    const sm = sessionMetrics[m.id] || {};
     const avgDurLast30 = sm.durationsLast30?.length
       ? sm.durationsLast30.reduce((a, b) => a + b, 0) / sm.durationsLast30.length
       : 0;
@@ -337,10 +462,19 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       ? sm.durationsPrior30.reduce((a, b) => a + b, 0) / sm.durationsPrior30.length
       : 0;
 
+    const outreach = outreachByMember[m.id] || [];
+    let respondedCount = 0;
+    const activityDates = memberActivityDates[m.id] || [];
+    for (const o of outreach) {
+      const outreachDate = new Date(o.created_at);
+      const sevenDaysAfter = new Date(outreachDate.getTime() + 7 * MS_PER_DAY);
+      if (activityDates.some((d) => d > outreachDate && d <= sevenDaysAfter)) respondedCount++;
+    }
+
     const memberData = {
       avgWeeklyVisits,
       prevAvgWeeklyVisits,
-      trainingFrequency: m.training_frequency || 3,
+      trainingFrequency: m.training_frequency ?? 3,
       tenureMonths,
       totalSessionsFirst90Days: tenureMonths <= 4 ? (sessionsFirst90Map[m.id] ?? null) : null,
       friendCount: friendCountMap[m.id] || 0,
@@ -349,11 +483,23 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       sessionGaps: sm.gaps || [],
       hasPRsRecently: prSet.has(m.id),
       hasBodyProgress: bodyTrackingSet.has(m.id),
-      completedProgramPct: null, // TODO: compute from program enrollment data
+      completedProgramPct: null,
       completedSessions: (sm.completedLast30 || 0),
       abandonedSessions: (sm.abandonedLast30 || 0),
       avgDurationLast30: avgDurLast30,
       avgDurationPrior30: avgDurPrior30,
+      scheduledDays: scheduledDays[m.id] || [],
+      recentSessionWeeks: recentSessionWeeks[m.id] || [[], [], []],
+      notifTotal: notifTotal[m.id] || 0,
+      notifRead: notifRead[m.id] || 0,
+      daysSinceLastAction: lastActivityMs > 0
+        ? Math.floor((now.getTime() - lastActivityMs) / MS_PER_DAY)
+        : 999,
+      outreachCount: outreach.length,
+      respondedCount,
+      referralCount: referralCount[m.id] || 0,
+      muscleGroupsLast30: muscleGroupSetsL[m.id]?.size ?? 0,
+      muscleGroupsPrev30: muscleGroupSetsP[m.id]?.size ?? 0,
     };
 
     const result = calculateChurnScore(memberData, gymWeights);
@@ -364,6 +510,8 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       username: m.username || m.full_name,
       tenureMonths,
       daysSinceLastCheckIn,
+      daysSinceLastActivity,
+      lastActivityAt,
       lastCheckInAt: lastCheckIn,
       avgWeeklyVisits,
       prevAvgWeeklyVisits,

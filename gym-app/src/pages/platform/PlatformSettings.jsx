@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   ChevronUp,
@@ -14,6 +15,22 @@ import {
   BarChart3,
   Pencil,
   Video,
+  Mail,
+  ToggleLeft,
+  ToggleRight,
+  Settings2,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+  Database,
+  HardDrive,
+  Users,
+  Zap,
+  Globe,
+  Moon,
+  Sun,
+  Save,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -401,8 +418,40 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ── Edge function names for system health display ── */
+const EDGE_FUNCTIONS = [
+  'analyze-body-photo', 'analyze-food-photo', 'apple-wallet-webhook',
+  'calibrate-churn-weights', 'compute-churn-scores', 'generate-apple-pass',
+  'generate-google-pass', 'generate-punch-card-pass', 'push-wallet-update',
+  'reset-password', 'send-push', 'send-push-user', 'send-reset-email',
+  'sign-qr', 'verify-qr',
+];
+
+const STORAGE_BUCKETS = [
+  'exercise-videos', 'progress-photos', 'avatars', 'gym-logos', 'food-images',
+];
+
+const FEATURE_FLAG_KEYS = [
+  { key: 'aiFoodScanner', descKey: 'aiFoodScannerDesc' },
+  { key: 'aiBodyAnalysis', descKey: 'aiBodyAnalysisDesc' },
+  { key: 'pushNotifications', descKey: 'pushNotificationsDesc' },
+  { key: 'referralSystem', descKey: 'referralSystemDesc' },
+  { key: 'punchCards', descKey: 'punchCardsDesc' },
+  { key: 'socialFeed', descKey: 'socialFeedDesc' },
+  { key: 'classBooking', descKey: 'classBookingDesc' },
+];
+
+const DEFAULT_GYM_CONFIG = {
+  dailyCalories: 2200,
+  trainingDays: 4,
+  defaultLanguage: 'en',
+  defaultTheme: 'dark',
+};
+
 export default function PlatformSettings() {
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
 
   /* ── section open/close ── */
   const [accountOpen, setAccountOpen] = useState(true);
@@ -410,12 +459,50 @@ export default function PlatformSettings() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [programsOpen, setProgramsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [flagsOpen, setFlagsOpen] = useState(false);
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
 
   /* ── data ── */
   const [exercises, setExercises] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [platformStats, setPlatformStats] = useState({ gyms: 0, members: 0 });
+
+  /* ── email template toggles (UI-only) ── */
+  const [emailToggles, setEmailToggles] = useState({
+    welcome: true,
+    passwordReset: true,
+    weeklyDigest: true,
+  });
+
+  /* ── feature flags (UI-only) ── */
+  const [featureFlags, setFeatureFlags] = useState({
+    aiFoodScanner: true,
+    aiBodyAnalysis: true,
+    pushNotifications: true,
+    referralSystem: true,
+    punchCards: true,
+    socialFeed: true,
+    classBooking: false,
+  });
+
+  /* ── default gym config ── */
+  const [gymDefaults, setGymDefaults] = useState(() => {
+    try {
+      const saved = localStorage.getItem('platform_gym_defaults');
+      return saved ? JSON.parse(saved) : { ...DEFAULT_GYM_CONFIG };
+    } catch { return { ...DEFAULT_GYM_CONFIG }; }
+  });
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
+
+  /* ── system health ── */
+  const [health, setHealth] = useState({
+    supabase: null, // true/false/null
+    activeUsers: null,
+    loadingHealth: false,
+  });
 
   /* ── loading flags ── */
   const [loadingExercises, setLoadingExercises] = useState(false);
@@ -483,11 +570,46 @@ export default function PlatformSettings() {
     setLoadingStats(false);
   };
 
+  /* ────────────────── system health check ────────────────── */
+
+  const fetchHealth = useCallback(async () => {
+    setHealth(h => ({ ...h, loadingHealth: true }));
+    let sbOk = false;
+    let activeCount = null;
+
+    try {
+      // Test supabase connectivity with a simple query
+      const { error } = await supabase.from('gyms').select('id', { count: 'exact', head: true });
+      sbOk = !error;
+    } catch { sbOk = false; }
+
+    try {
+      // Active users in last 24h
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .gte('last_active_at', since);
+      activeCount = count ?? 0;
+    } catch { activeCount = null; }
+
+    setHealth({ supabase: sbOk, activeUsers: activeCount, loadingHealth: false });
+  }, []);
+
+  /* ────────────────── save gym defaults ────────────────── */
+
+  const saveGymDefaults = () => {
+    localStorage.setItem('platform_gym_defaults', JSON.stringify(gymDefaults));
+    setDefaultsSaved(true);
+    setTimeout(() => setDefaultsSaved(false), 2000);
+  };
+
   useEffect(() => {
     fetchExercises();
     fetchAchievements();
     fetchPrograms();
     fetchStats();
+    fetchHealth();
   }, []);
 
   /* ────────────────── delete handler ────────────────── */
@@ -521,29 +643,29 @@ export default function PlatformSettings() {
      ═══════════════════════════════════════════════════════════════════ */
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto space-y-4">
-      <h1 className="text-[18px] font-bold text-[#E5E7EB] mb-2">Platform Settings</h1>
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl space-y-4 pb-28 md:pb-12">
+      <h1 className="text-[18px] font-bold text-[#E5E7EB] mb-2 truncate">{tp('title')}</h1>
       <p className="text-[13px] text-[#6B7280] mb-6">
-        Manage global platform configuration, exercises, achievements, and program templates.
+        {tp('subtitle')}
       </p>
 
       {/* ──────── 1. Your Account ──────── */}
       <CollapsibleSection
-        title="Your Account"
+        title={tp('yourAccount')}
         icon={<Shield className="w-4 h-4 text-[#D4AF37]" />}
         open={accountOpen}
         toggle={() => setAccountOpen(!accountOpen)}
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <InfoCard label="Name" value={profile?.full_name || profile?.username || '—'} />
-          <InfoCard label="Email" value={profile?.email || '—'} />
-          <InfoCard label="Role" value={profile?.role || '—'} />
+          <InfoCard label={tp('name')} value={profile?.full_name || profile?.username || '—'} />
+          <InfoCard label={tp('email')} value={profile?.email || '—'} />
+          <InfoCard label={tp('role')} value={profile?.role || '—'} />
         </div>
       </CollapsibleSection>
 
       {/* ──────── 2. Global Exercise Library ──────── */}
       <CollapsibleSection
-        title="Global Exercise Library"
+        title={tp('exerciseLibrary')}
         icon={<Dumbbell className="w-4 h-4 text-[#D4AF37]" />}
         badge={exercises.length}
         open={exercisesOpen}
@@ -606,7 +728,7 @@ export default function PlatformSettings() {
 
       {/* ──────── 3. Global Achievement Definitions ──────── */}
       <CollapsibleSection
-        title="Global Achievements"
+        title={tp('achievements')}
         icon={<Trophy className="w-4 h-4 text-[#D4AF37]" />}
         badge={achievements.length}
         open={achievementsOpen}
@@ -658,7 +780,7 @@ export default function PlatformSettings() {
 
       {/* ──────── 4. Global Program Templates ──────── */}
       <CollapsibleSection
-        title="Global Program Templates"
+        title={tp('programTemplates')}
         icon={<BookOpen className="w-4 h-4 text-[#D4AF37]" />}
         badge={programs.length}
         open={programsOpen}
@@ -710,7 +832,7 @@ export default function PlatformSettings() {
 
       {/* ──────── 5. Platform Info ──────── */}
       <CollapsibleSection
-        title="Platform Info"
+        title={tp('platformInfo')}
         icon={<BarChart3 className="w-4 h-4 text-[#D4AF37]" />}
         open={infoOpen}
         toggle={() => setInfoOpen(!infoOpen)}
@@ -719,9 +841,253 @@ export default function PlatformSettings() {
           <Spinner />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoCard label="Total Gyms" value={platformStats.gyms} />
-            <InfoCard label="Total Members" value={platformStats.members} />
+            <InfoCard label={tp('totalGyms')} value={platformStats.gyms} />
+            <InfoCard label={tp('totalMembers')} value={platformStats.members} />
           </div>
+        )}
+      </CollapsibleSection>
+
+      {/* ──────── 6. Email Configuration ──────── */}
+      <CollapsibleSection
+        title={tp('emailConfig')}
+        icon={<Mail className="w-4 h-4 text-[#D4AF37]" />}
+        open={emailOpen}
+        toggle={() => setEmailOpen(!emailOpen)}
+      >
+        {/* Status card */}
+        <div className="bg-[#111827] border border-emerald-500/20 rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <p className="text-[13px] font-medium text-emerald-400">{tp('emailService')}: {tp('emailServiceActive')}</p>
+          </div>
+          <p className="text-[11px] text-[#6B7280] ml-6">{tp('emailServiceDesc')}</p>
+        </div>
+        <div className="bg-[#111827] border border-white/6 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] text-[#6B7280]">{tp('smtpProvider')}</p>
+            <p className="text-[12px] text-[#E5E7EB] font-medium">{tp('supabaseBuiltIn')}</p>
+          </div>
+        </div>
+
+        {/* Email template toggles */}
+        <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">{tp('emailTemplates')}</p>
+        <div className="space-y-2 mb-3">
+          {[
+            { key: 'welcome', label: tp('welcomeEmail'), desc: tp('welcomeEmailDesc') },
+            { key: 'passwordReset', label: tp('passwordReset'), desc: tp('passwordResetDesc') },
+            { key: 'weeklyDigest', label: tp('weeklyDigest'), desc: tp('weeklyDigestDesc') },
+          ].map(({ key, label, desc }) => (
+            <div key={key} className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5 flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-[#E5E7EB]">{label}</p>
+                <p className="text-[11px] text-[#6B7280]">{desc}</p>
+              </div>
+              <button
+                onClick={() => setEmailToggles(prev => ({ ...prev, [key]: !prev[key] }))}
+                className="ml-3 shrink-0"
+              >
+                {emailToggles[key] ? (
+                  <ToggleRight className="w-6 h-6 text-emerald-400" />
+                ) : (
+                  <ToggleLeft className="w-6 h-6 text-[#4B5563]" />
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-[#4B5563] italic">{tp('perGymNote')}</p>
+      </CollapsibleSection>
+
+      {/* ──────── 7. Feature Flags ──────── */}
+      <CollapsibleSection
+        title={tp('featureFlags')}
+        icon={<Zap className="w-4 h-4 text-[#D4AF37]" />}
+        open={flagsOpen}
+        toggle={() => setFlagsOpen(!flagsOpen)}
+      >
+        <p className="text-[11px] text-[#6B7280] mb-4 bg-[#111827] border border-white/6 rounded-lg px-3 py-2">
+          {tp('featureFlagsDesc')}
+        </p>
+        <div className="space-y-2">
+          {FEATURE_FLAG_KEYS.map(({ key, descKey }) => (
+            <div key={key} className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5 flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-[#E5E7EB]">{tp(key)}</p>
+                <p className="text-[11px] text-[#6B7280]">{tp(descKey)}</p>
+              </div>
+              <div className="flex items-center gap-2 ml-3 shrink-0">
+                <span className={`text-[10px] font-medium ${featureFlags[key] ? 'text-emerald-400' : 'text-[#6B7280]'}`}>
+                  {featureFlags[key] ? tp('enabled') : tp('disabled')}
+                </span>
+                <button onClick={() => setFeatureFlags(prev => ({ ...prev, [key]: !prev[key] }))}>
+                  {featureFlags[key] ? (
+                    <ToggleRight className="w-6 h-6 text-emerald-400" />
+                  ) : (
+                    <ToggleLeft className="w-6 h-6 text-[#4B5563]" />
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CollapsibleSection>
+
+      {/* ──────── 8. Default Gym Configuration ──────── */}
+      <CollapsibleSection
+        title={tp('defaultConfig')}
+        icon={<Settings2 className="w-4 h-4 text-[#D4AF37]" />}
+        open={defaultsOpen}
+        toggle={() => setDefaultsOpen(!defaultsOpen)}
+      >
+        <p className="text-[11px] text-[#6B7280] mb-4">{tp('defaultConfigDesc')}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <Field label={tp('dailyCalories')}>
+            <input
+              className={inputCls}
+              type="number"
+              min={1000}
+              max={5000}
+              value={gymDefaults.dailyCalories}
+              onChange={(e) => setGymDefaults(prev => ({ ...prev, dailyCalories: Number(e.target.value) || 2200 }))}
+            />
+          </Field>
+          <Field label={tp('trainingDays')}>
+            <input
+              className={inputCls}
+              type="number"
+              min={1}
+              max={7}
+              value={gymDefaults.trainingDays}
+              onChange={(e) => setGymDefaults(prev => ({ ...prev, trainingDays: Number(e.target.value) || 4 }))}
+            />
+          </Field>
+          <Field label={tp('defaultLanguage')}>
+            <select
+              className={inputCls}
+              value={gymDefaults.defaultLanguage}
+              onChange={(e) => setGymDefaults(prev => ({ ...prev, defaultLanguage: e.target.value }))}
+            >
+              <option value="en">English (EN)</option>
+              <option value="es">Espanol (ES)</option>
+            </select>
+          </Field>
+          <Field label={tp('defaultTheme')}>
+            <select
+              className={inputCls}
+              value={gymDefaults.defaultTheme}
+              onChange={(e) => setGymDefaults(prev => ({ ...prev, defaultTheme: e.target.value }))}
+            >
+              <option value="dark">{tp('dark')}</option>
+              <option value="light">{tp('light')}</option>
+            </select>
+          </Field>
+        </div>
+        <div className="flex items-center justify-end gap-3">
+          {defaultsSaved && (
+            <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> {tp('saved')}
+            </span>
+          )}
+          <button
+            onClick={saveGymDefaults}
+            className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
+          >
+            <Save className="w-3.5 h-3.5" /> {tp('saveDefaults')}
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      {/* ──────── 9. System Health ──────── */}
+      <CollapsibleSection
+        title={tp('systemHealth')}
+        icon={<Activity className="w-4 h-4 text-[#D4AF37]" />}
+        open={healthOpen}
+        toggle={() => setHealthOpen(!healthOpen)}
+      >
+        {health.loadingHealth ? (
+          <Spinner />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {/* Supabase connection */}
+              <div className={`bg-[#111827] border rounded-lg px-3 py-3 ${health.supabase === true ? 'border-emerald-500/20' : health.supabase === false ? 'border-red-500/20' : 'border-white/6'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Database className="w-4 h-4 text-[#9CA3AF]" />
+                  <p className="text-[12px] text-[#9CA3AF]">{tp('supabaseConnection')}</p>
+                </div>
+                <div className="flex items-center gap-1.5 ml-6">
+                  {health.supabase === null ? (
+                    <span className="text-[13px] text-[#6B7280]">{tp('checking')}</span>
+                  ) : health.supabase ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-[13px] text-emerald-400 font-medium">{tp('connected')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-[13px] text-red-400 font-medium">{tp('disconnected')}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Active users */}
+              <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users className="w-4 h-4 text-[#9CA3AF]" />
+                  <p className="text-[12px] text-[#9CA3AF]">{tp('activeUsers24h')}</p>
+                </div>
+                <p className="text-[13px] text-[#E5E7EB] font-medium ml-6">
+                  {health.activeUsers !== null ? `${health.activeUsers} ${tp('users')}` : tp('checking')}
+                </p>
+              </div>
+            </div>
+
+            {/* Edge functions */}
+            <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-3 mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-[#9CA3AF]" />
+                  <p className="text-[12px] text-[#9CA3AF]">{tp('edgeFunctions')}</p>
+                </div>
+                <span className="bg-[#D4AF37]/15 text-[#D4AF37] text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                  {EDGE_FUNCTIONS.length} {tp('deployed')}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 ml-6">
+                {EDGE_FUNCTIONS.map(fn => (
+                  <span key={fn} className="bg-[#0F172A] text-[#9CA3AF] text-[10px] px-2 py-0.5 rounded border border-white/6">
+                    {fn}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Storage buckets */}
+            <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <HardDrive className="w-4 h-4 text-[#9CA3AF]" />
+                <p className="text-[12px] text-[#9CA3AF]">{tp('storageUsage')}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 ml-6">
+                {STORAGE_BUCKETS.map(b => (
+                  <span key={b} className="bg-[#0F172A] text-[#9CA3AF] text-[10px] px-2 py-0.5 rounded border border-white/6 flex items-center gap-1">
+                    <HardDrive className="w-2.5 h-2.5" /> {b}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={fetchHealth}
+                className="text-[12px] text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> {tp('refreshHealth')}
+              </button>
+            </div>
+          </>
         )}
       </CollapsibleSection>
 

@@ -264,12 +264,12 @@ export default function ErrorLogs() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-[20px] font-semibold text-[#E5E7EB]">Error Logs</h1>
+            <h1 className="text-[20px] font-semibold text-[#E5E7EB] truncate">Error Logs</h1>
             {!loading && totalCount > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/15 text-red-400">
                 {totalCount.toLocaleString()} error{totalCount !== 1 ? 's' : ''}
@@ -283,7 +283,7 @@ export default function ErrorLogs() {
       </div>
 
       {/* Filters */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
           <Filter size={14} className="text-[#6B7280]" />
           <span className="text-[12px] text-[#6B7280] font-medium uppercase tracking-wider">Filters</span>
@@ -358,7 +358,7 @@ export default function ErrorLogs() {
       </div>
 
       {/* Log entries */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-b-xl md:rounded-t-none rounded-xl md:rounded-xl p-4 md:border-t-0 md:rounded-t-none">
+      <div className="bg-[#0F172A] border border-white/6 rounded-b-xl md:rounded-t-none rounded-xl md:rounded-xl p-4 md:border-t-0 md:rounded-t-none overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />

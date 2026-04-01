@@ -96,13 +96,13 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-routine-title"
-        className="border rounded-[20px] w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden shadow-xl"
+        className="border rounded-[20px] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-xl"
         style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)', paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pb-4 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <h2 id="create-routine-title" className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          <h2 id="create-routine-title" className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
             {t('createRoutine.title')}
           </h2>
           <button
@@ -122,7 +122,8 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
             <p className="flex-1 text-[14px] font-medium text-red-300">{error}</p>
             <button
               onClick={() => setError('')}
-              className="flex-shrink-0 p-1 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
+              aria-label={t('createRoutine.dismissError', 'Dismiss error')}
+              className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-red-500/20 text-red-400 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               <X size={16} />
             </button>
@@ -142,7 +143,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
               onChange={e => setName(e.target.value)}
               maxLength={100}
               placeholder={t('createRoutine.namePlaceholder')}
-              className="w-full border rounded-xl px-4 py-3 text-[14px] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+              className="w-full border rounded-xl px-4 py-3 text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
               style={{ backgroundColor: 'var(--color-bg-deep)', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
             />
           </div>
@@ -249,7 +250,8 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
                       <button
                         type="button"
                         onClick={() => handleRemoveExercise(index)}
-                        className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                        aria-label={t('createRoutine.removeExercise', 'Remove exercise')}
+                        className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-red-500/10 hover:text-red-400 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
                         <Trash2 size={14} />
@@ -267,7 +269,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors"
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ color: 'var(--color-text-muted)' }}
           >
             {t('createRoutine.cancel')}
@@ -276,7 +278,7 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 py-3 rounded-xl text-[14px] font-bold disabled:opacity-50 transition-all bg-[#D4AF37] text-black"
+            className="flex-1 py-3 rounded-xl text-[14px] font-bold disabled:opacity-50 transition-all bg-[#D4AF37] text-black focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             {saving ? t('createRoutine.saving') : hasExercises ? (saveLabel || t('createRoutine.saveAndStart')) : t('createRoutine.saveAndEdit')}
           </button>

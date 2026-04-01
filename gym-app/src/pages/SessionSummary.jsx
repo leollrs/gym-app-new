@@ -11,29 +11,33 @@ import AchievementToast from '../components/AchievementToast';
 import { sanitize } from '../lib/sanitize';
 import AnimatedCounter from '../components/AnimatedCounter';
 import { formatDurationLong as formatTime } from '../lib/dateUtils';
+import { localizeRoutineName } from '../lib/exerciseName';
+import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
+import { analyzeAndAdapt, saveAdaptationSuggestions } from '../lib/programAdaptation';
+import { updateGoalsAfterWorkout } from '../lib/goalUpdater';
 
 import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 
 const MILESTONES = [1, 10, 25, 50, 100, 200, 365];
 
-const formatVolume = (lbs) => {
-  if (lbs >= 1000) return `${(lbs / 1000).toFixed(1)}k`;
-  return Math.round(lbs).toString();
+const StatCard = ({ icon: Icon, label, value, accent }) => {
+  const display = typeof value === 'number' ? formatStatNumber(value) : value;
+  const fontSize = statFontSize(display, 'text-[24px]');
+  return (
+    <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center gap-2 text-center overflow-hidden min-w-0">
+      <Icon size={18} style={{ color: accent || 'var(--color-accent)' }} strokeWidth={2} />
+      <p className={`${fontSize} font-black leading-none truncate w-full`} style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{display}</p>
+      <p className="text-[11px] uppercase tracking-wider font-semibold truncate w-full" style={{ color: 'var(--color-text-subtle)' }}>{label}</p>
+    </div>
+  );
 };
-
-const StatCard = ({ icon: Icon, label, value, accent }) => (
-  <div className="bg-white/[0.04] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center gap-2 text-center">
-    <Icon size={18} style={{ color: accent || 'var(--color-accent)' }} strokeWidth={2} />
-    <p className="text-[32px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-    <p className="text-[11px] text-[#6B7280] uppercase tracking-wider font-semibold">{label}</p>
-  </div>
-);
 
 const SessionSummary = () => {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { user, profile, gymName, gymLogoUrl } = useAuth();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const [visible, setVisible] = useState(false);
   const [newAchievements, setNewAchievements] = useState([]);
 
@@ -76,8 +80,11 @@ const SessionSummary = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Milestone + PR notifications
+  const firedRef = useRef(false);
   useEffect(() => {
+    if (firedRef.current) return;
     if (!user?.id || !profile?.gym_id) return;
+    firedRef.current = true;
     const fire = async () => {
       // Count total completed sessions
       const { count } = await supabase
@@ -91,10 +98,13 @@ const SessionSummary = () => {
           profileId: user.id,
           gymId:     profile.gym_id,
           type:      'workout_reminder',
-          title:     `${count} workout${count === 1 ? '' : 's'} completed!`,
+          title:     count === 1
+            ? i18n.t('notifications.workoutsCompletedSingular', { ns: 'common', count, defaultValue: `${count} workout completed!` })
+            : i18n.t('notifications.workoutsCompletedPlural', { ns: 'common', count, defaultValue: `${count} workouts completed!` }),
           body:      count === 1
-            ? 'Welcome to your fitness journey. Keep it up!'
-            : `You've hit ${count} workouts. Consistency is everything.`,
+            ? i18n.t('notifications.welcomeJourney', { ns: 'common', defaultValue: 'Welcome to your fitness journey. Keep it up!' })
+            : i18n.t('notifications.hitWorkoutsConsistency', { ns: 'common', count, defaultValue: `You've hit ${count} workouts. Consistency is everything.` }),
+          dedupKey:  `milestone_${count}_${user.id}`,
         });
       }
 
@@ -104,8 +114,11 @@ const SessionSummary = () => {
           profileId: user.id,
           gymId:     profile.gym_id,
           type:      'pr_beaten',
-          title:     `${sessionPRs.length} new PR${sessionPRs.length > 1 ? 's' : ''} this session!`,
-          body:      sessionPRs.slice(0, 3).map(p => p.exerciseName ?? p.exercise_name ?? 'Exercise').join(', '),
+          title:     sessionPRs.length > 1
+            ? i18n.t('notifications.newPRsPlural', { ns: 'common', count: sessionPRs.length, defaultValue: `${sessionPRs.length} new PRs this session!` })
+            : i18n.t('notifications.newPRsSingular', { ns: 'common', count: sessionPRs.length, defaultValue: `${sessionPRs.length} new PR this session!` }),
+          body:      sessionPRs.slice(0, 3).map(p => p.exerciseName ?? p.exercise_name ?? i18n.t('social.feedContent.exercise', { ns: 'pages', defaultValue: 'Exercise' })).join(', '),
+          dedupKey:  `pr_session_${completedAt}_${user.id}`,
         });
       }
 
@@ -155,17 +168,45 @@ const SessionSummary = () => {
           },
         });
 
+        const achLabel = ach.labelKey ? i18n.t(ach.labelKey, { ns: 'common', defaultValue: ach.label }) : ach.label;
+        const achDesc  = ach.descKey ? i18n.t(ach.descKey, { ns: 'common', defaultValue: ach.desc }) : ach.desc;
+        const quotedLabel = i18n.language === 'es' ? `\u00AB${achLabel}\u00BB` : `\u201C${achLabel}\u201D`;
         await createNotification({
           profileId: user.id,
           gymId:     profile.gym_id,
           type:      'achievement',
-          title:     `Achievement Unlocked: ${ach.label}`,
-          body:      ach.desc,
+          title:     i18n.t('notifications.achievementUnlocked', { ns: 'common', label: quotedLabel, defaultValue: `Achievement Unlocked: ${quotedLabel}` }),
+          body:      achDesc,
+          dedupKey:  `achievement_${ach.key}_${user.id}`,
         });
       }
 
       if (newlyEarned.length > 0) {
         setNewAchievements(newlyEarned);
+      }
+
+      // Run program adaptation analysis in the background
+      try {
+        const adaptations = await analyzeAndAdapt(user.id, profile.gym_id);
+        if (adaptations) {
+          saveAdaptationSuggestions(adaptations);
+        }
+      } catch {
+        // Non-critical — silently ignore adaptation errors
+      }
+
+      // Update goal progress after workout
+      try {
+        const prData = (sessionPRs || []).map(pr => ({
+          exerciseId: pr.exercise_id ?? pr.exerciseId ?? null,
+          estimated1RM: pr.estimated1RM ?? pr.weight ?? 0,
+        }));
+        await updateGoalsAfterWorkout(user.id, profile.gym_id, {
+          totalVolume: totalVolume ?? 0,
+          sessionPRs: prData,
+        });
+      } catch {
+        // Non-critical — silently ignore goal update errors
       }
     };
     fire();
@@ -179,12 +220,13 @@ const SessionSummary = () => {
     ? t('sessionSummary.workDone')
     : t('sessionSummary.youShowedUp');
 
-  const dateStr = new Date(completedAt).toLocaleDateString('en-US', {
+  const dateLocale = i18n.language === 'es' ? 'es-ES' : 'en-US';
+  const dateStr = new Date(completedAt).toLocaleDateString(dateLocale, {
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
   return (
-    <div className="fixed inset-0 bg-[#05070B] z-[110] overflow-y-auto">
+    <div className="fixed inset-0 z-[110] overflow-y-auto" style={{ background: 'var(--color-bg-primary)' }}>
 
       {/* ── Achievement celebration overlay ──────────────────────────────── */}
       {newAchievements.length > 0 && (
@@ -203,7 +245,7 @@ const SessionSummary = () => {
       />
 
       <div
-        className="relative min-h-screen flex flex-col items-center px-5 py-12 transition-all duration-300"
+        className="relative min-h-screen flex flex-col items-center px-4 py-12 pb-28 md:pb-12 transition-all duration-300 max-w-[480px] md:max-w-4xl mx-auto"
         style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(20px)' }}
       >
         {/* ── Checkmark ──────────────────────────────────────────── */}
@@ -219,25 +261,25 @@ const SessionSummary = () => {
         </div>
 
         {/* ── Title ──────────────────────────────────────────────── */}
-        <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-[#6B7280] mb-2">
-          {routineName}
+        <p className="text-[13px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: 'var(--color-text-subtle)' }}>
+          {localizeRoutineName(routineName)}
         </p>
         <h1
-          className="text-[28px] font-bold text-white text-center leading-tight mb-1"
-          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          className="text-[22px] font-bold text-center leading-tight mb-1 truncate max-w-full"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
         >
           {coachHeadline}
         </h1>
-        <p className="text-[13px] text-[#6B7280] mb-10">{dateStr}</p>
+        <p className="text-[13px] mb-10" style={{ color: 'var(--color-text-subtle)' }}>{dateStr}</p>
 
         {/* ── Stats grid ─────────────────────────────────────────── */}
         <div className="w-full max-w-sm md:max-w-lg grid grid-cols-2 gap-3 mb-6">
           {[
-            { icon: Clock,    label: t('sessionSummary.duration'),  value: formatTime(elapsedTime),   accent: '#60A5FA' },
-            { icon: BarChart2, label: t('sessionSummary.volume'),   value: `${formatVolume(totalVolume)} lbs`, accent: '#D4AF37' },
-            { icon: Zap,      label: t('sessionSummary.setsDone'), value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, accent: '#34D399' },
+            { icon: Clock,    label: t('sessionSummary.duration'),  value: formatTime(elapsedTime),   accent: 'var(--color-blue-soft)' },
+            { icon: BarChart2, label: t('sessionSummary.volume'),   value: `${formatStatNumber(totalVolume)} lbs`, accent: 'var(--color-accent)' },
+            { icon: Zap,      label: t('sessionSummary.setsDone'), value: totalSets > 0 ? `${completedSets}/${totalSets}` : completedSets, accent: 'var(--color-success)' },
             { icon: Dumbbell, label: t('sessionSummary.exercises'), value: totalExercises,             accent: '#A78BFA' },
-            ...(heartRate?.averageBPM ? [{ icon: Heart, label: 'Avg Heart Rate', value: `${heartRate.averageBPM} bpm`, accent: '#EF4444' }] : []),
+            ...(heartRate?.averageBPM ? [{ icon: Heart, label: t('sessionSummary.avgHeartRate'), value: `${heartRate.averageBPM} bpm`, accent: 'var(--color-danger)' }] : []),
           ].map((stat, index) => (
             <motion.div
               key={stat.label}
@@ -269,7 +311,7 @@ const SessionSummary = () => {
               >
                 <Trophy size={22} className="text-[#D4AF37]" />
               </div>
-              <p className="text-[#D4AF37] font-semibold text-[16px]">
+              <p className="text-[#D4AF37] font-semibold text-[16px] truncate">
                 {t('sessionSummary.newPRCount', { count: sessionPRs.length })}
               </p>
             </div>
@@ -281,7 +323,7 @@ const SessionSummary = () => {
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0 mr-3">
                     <Trophy size={12} className="text-[#D4AF37] shrink-0" />
-                    <p className="text-[13px] text-[#E5E7EB] font-semibold truncate">
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
                       {sanitize(pr.exercise)}
                     </p>
                   </div>
@@ -307,8 +349,8 @@ const SessionSummary = () => {
               +
             </div>
             <div>
-              <p className="text-[18px] font-black text-[#D4AF37]" style={{ fontVariantNumeric: 'tabular-nums' }}><AnimatedCounter value={xpEarned} duration={1000} /> {t('sessionSummary.xpEarned')}</p>
-              <p className="text-[11px] text-[#9CA3AF] mt-0.5">{t('sessionSummary.keepTraining')}</p>
+              <p className="text-[18px] font-black text-[#D4AF37] truncate" style={{ fontVariantNumeric: 'tabular-nums' }}><AnimatedCounter value={xpEarned} duration={1000} /> {t('sessionSummary.xpEarned')}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('sessionSummary.keepTraining')}</p>
             </div>
           </div>
         )}
@@ -318,7 +360,7 @@ const SessionSummary = () => {
           <div
             className="w-full max-w-sm md:max-w-lg rounded-2xl px-5 py-4 mb-6 text-center bg-white/[0.04] border border-white/[0.06]"
           >
-            <p className="text-[13px] text-[#9CA3AF]">
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
               {t('sessionSummary.noPRsToday')}
             </p>
           </div>
@@ -326,18 +368,19 @@ const SessionSummary = () => {
 
         {/* ── Actions ────────────────────────────────────────────── */}
         <div className="w-full max-w-sm md:max-w-lg flex flex-col gap-3 mt-auto pt-4">
-          <p className="text-center text-[13px] text-[#4B5563] mb-1">
+          <p className="text-center text-[13px] mb-1" style={{ color: 'var(--color-text-muted)' }}>
             {sessionPRs.length > 0 ? t('sessionSummary.restUp') : t('sessionSummary.seeYouNextSession')}
           </p>
           <button
             onClick={() => navigate('/')}
-            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[17px] py-4 rounded-2xl transition-colors duration-200"
+            className="w-full bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] py-4 rounded-2xl transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             {t('sessionSummary.backToTheGrind')}
           </button>
           <button
             onClick={() => navigate('/workouts')}
-            className="w-full bg-white/[0.04] hover:bg-white/[0.06] text-[#9CA3AF] font-semibold text-[15px] py-3.5 rounded-2xl transition-colors duration-200 border border-white/[0.06]"
+            className="w-full bg-white/[0.04] hover:bg-white/[0.06] font-semibold text-[14px] py-3.5 rounded-2xl transition-colors duration-200 border border-white/[0.06] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ color: 'var(--color-text-muted)' }}
           >
             {t('sessionSummary.viewWorkouts')}
           </button>

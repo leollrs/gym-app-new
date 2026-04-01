@@ -6,6 +6,19 @@
 
 import { exercises as ALL_EXERCISES } from '../data/exercises';
 import { INJURY_EXCLUSIONS } from './exerciseConstants';
+import i18n from 'i18next';
+
+// ── Spanish label map for split day names ────────────────────────────────────
+const LABEL_ES = {
+  'Full Body': 'Cuerpo Completo',
+  'Push':      'Empuje',
+  'Pull':      'Tirón',
+  'Legs':      'Piernas',
+  'Upper':     'Tren Superior',
+  'Lower':     'Tren Inferior',
+};
+const localizeLabel = (label) =>
+  i18n.language === 'es' && LABEL_ES[label] ? LABEL_ES[label] : label;
 
 // ── Exercise metadata: tier + difficulty ────────────────────────────────────
 const META = {
@@ -277,7 +290,7 @@ function pickExercise(pool, muscle, tier, variantOffset, usageMap) {
 }
 
 // ── Build a single routine from slots ──────────────────────────────────────
-function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod) {
+function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set()) {
   const buildSlots = SLOTS_BUILDERS[template.slotsKey];
   const slots = buildSlots(level, gender, priority);
 
@@ -285,7 +298,19 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
   const exercises = [];
 
   for (const slot of slots) {
-    const ex = pickExercise(pool, slot.muscle, slot.tier, variantOffset, usageMap);
+    // If there's a goal exercise for this muscle+tier, prefer it
+    let ex = null;
+    if (goalExerciseIds.size > 0) {
+      ex = pool.find(e =>
+        goalExerciseIds.has(e.id) &&
+        e.muscle === slot.muscle &&
+        (META[e.id]?.tier || 'isolation') === slot.tier &&
+        !exercises.some(picked => picked.exerciseId === e.id)
+      );
+    }
+    if (!ex) {
+      ex = pickExercise(pool, slot.muscle, slot.tier, variantOffset, usageMap);
+    }
     if (!ex) continue;
 
     // Determine sets
@@ -294,9 +319,10 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
     const bonus    = recoveryMod.setsBonus;
     const sets     = Math.min(maxSets, Math.max(1, baseSets + bonus));
 
-    // Priority muscles get +1 set
+    // Priority muscles get +1 set; goal exercises also get +1 set
     const isPriority = (priority || []).some(p => p.toLowerCase() === ex.muscle.toLowerCase());
-    const finalSets  = isPriority ? Math.min(maxSets + 1, sets + 1) : sets;
+    const isGoalExercise = goalExerciseIds.has(ex.id);
+    const finalSets  = (isPriority || isGoalExercise) ? Math.min(maxSets + 1, sets + 1) : sets;
 
     // Rest with recovery modifier
     const rest = Math.max(30, goalConfig.rest + recoveryMod.restMod);
@@ -310,7 +336,7 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
   }
 
   return {
-    name:      `Auto: ${template.label} ${variant}`,
+    name:      `Auto: ${localizeLabel(template.label)} ${variant}`,
     label:     template.label,
     muscles:   template.muscles,
     exercises,
@@ -357,19 +383,43 @@ export function generateRoutineFromMuscles(muscleGroups, length = 'standard') {
 }
 
 // ── Estimated session duration (minutes) ───────────────────────────────────
-export function estimateDuration(routine, restSeconds) {
-  const sets   = routine.exercises.reduce((sum, ex) => sum + ex.sets, 0);
-  const setTime = 45; // seconds per set (average)
-  const totalSeconds = sets * (setTime + restSeconds);
-  return Math.round(totalSeconds / 60);
+// Compound IDs that take longer per set (including setup, unracking, etc.)
+const COMPOUND_IDS = new Set([
+  'ex_sq', 'ex_dl', 'ex_bp', 'ex_ohp', 'ex_bbr',
+  'ex_fsq', 'ex_rdl', 'ex_ibp', 'ex_cgp', 'ex_dips',
+]);
+
+export function estimateDuration(routine) {
+  const WARMUP_MINUTES = 5;
+  const COOLDOWN_MINUTES = 3;
+  const SECS_PER_REP = 7; // midpoint of 5-10s per rep
+  const DEFAULT_REPS = 10;
+
+  let totalSeconds = 0;
+  for (const ex of routine.exercises) {
+    // Parse reps from string like "8-12" → average, or fall back to default
+    let reps = DEFAULT_REPS;
+    if (ex.reps) {
+      const parts = String(ex.reps).split('-').map(Number).filter(n => !isNaN(n));
+      if (parts.length >= 2) reps = Math.round((parts[0] + parts[1]) / 2);
+      else if (parts.length === 1 && parts[0] > 0) reps = parts[0];
+    }
+    const isCompound = COMPOUND_IDS.has(ex.exerciseId);
+    const setupTime = isCompound ? 15 : 5; // extra setup/unracking time
+    const repTime = reps * SECS_PER_REP;
+    const restDuration = ex.restSeconds || 90;
+    totalSeconds += ex.sets * (repTime + setupTime + restDuration);
+  }
+  return Math.round((totalSeconds / 60) + WARMUP_MINUTES + COOLDOWN_MINUTES);
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
 /**
  * @param {object} onboarding — combined onboarding + new body data
+ * @param {Array} [goals] — optional active goals from member_goals (with goal_type, exercise_id)
  * @returns {{ split, splitLabel, routinesA, routinesB, cardio, dayTemplates }}
  */
-export function generateProgram(onboarding) {
+export function generateProgram(onboarding, goals = []) {
   const {
     fitness_level        = 'beginner',
     primary_goal         = 'general_fitness',
@@ -382,6 +432,13 @@ export function generateProgram(onboarding) {
     gender               = 'other',
     priority_muscles     = [],
   } = onboarding;
+
+  // Build set of exercise IDs from active lift goals
+  const goalExerciseIds = new Set(
+    (goals ?? [])
+      .filter(g => g.goal_type === 'lift_1rm' && g.exercise_id)
+      .map(g => g.exercise_id)
+  );
 
   // 1. Body profile
   const heightM   = (height_cm || 170) / 100;
@@ -429,10 +486,10 @@ export function generateProgram(onboarding) {
 
   // 7. Generate A and B routine sets
   const routinesA = dayTemplates.map(t =>
-    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod)
+    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds)
   );
   const routinesB = dayTemplates.map(t =>
-    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod)
+    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds)
   );
 
   // 8. Cardio

@@ -36,30 +36,31 @@ export default function NotificationSettings() {
   };
 
   return (
-    <div className="min-h-screen pb-32" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
+    <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="max-w-[480px] md:max-w-4xl mx-auto flex items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => navigate(-1)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
+            aria-label="Go back"
+            className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ color: 'var(--color-text-muted)' }}>
             <ArrowLeft size={18} />
           </button>
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
             <Bell size={18} style={{ color: 'var(--color-accent)' }} />
           </div>
-          <h1 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('notificationSettings.title')}</h1>
+          <h1 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('notificationSettings.title')}</h1>
         </div>
       </div>
 
-      <div className="px-4 pt-5 max-w-lg mx-auto space-y-4">
+      <div className="px-4 pt-5 max-w-[480px] md:max-w-4xl mx-auto space-y-4">
         {/* Status Card */}
         <div className="rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
               style={{ backgroundColor: enabled ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)' }}>
               {enabled
-                ? <Bell size={24} style={{ color: '#10B981' }} />
+                ? <Bell size={24} style={{ color: 'var(--color-success)' }} />
                 : <BellOff size={24} style={{ color: 'var(--color-text-muted)' }} />
               }
             </div>
@@ -67,7 +68,7 @@ export default function NotificationSettings() {
               <p className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
                 {enabled ? t('notificationSettings.notificationsActive') : t('notificationSettings.allNotificationsOff')}
               </p>
-              <p className="text-[12px]" style={{ color: enabled ? '#10B981' : 'var(--color-text-muted)' }}>
+              <p className="text-[12px]" style={{ color: enabled ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
                 {enabled ? t('notificationSettings.receivingAll', 'Receiving all notifications') : t('notificationSettings.wontReceiveAny')}
               </p>
             </div>
@@ -76,7 +77,7 @@ export default function NotificationSettings() {
           <button type="button" onClick={toggleNotifications} disabled={saving}
             className="w-full py-3 rounded-xl text-[14px] font-bold transition-colors disabled:opacity-50"
             style={enabled
-              ? { backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.15)' }
+              ? { backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', border: '1px solid rgba(239,68,68,0.15)' }
               : { backgroundColor: 'var(--color-accent)', color: '#fff' }
             }>
             {saving

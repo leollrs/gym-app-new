@@ -4,9 +4,9 @@
 
 export default function SectionLabel({ icon: Icon, children, className = '' }) {
   return (
-    <div className={`flex items-center gap-1.5 ${className}`}>
-      {Icon && <Icon size={12} className="text-[#6B7280]" />}
-      <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">
+    <div className={`flex items-center gap-2 ${className}`}>
+      {Icon && <Icon size={14} className="text-[#9CA3AF]" />}
+      <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-[0.08em]">
         {children}
       </p>
     </div>

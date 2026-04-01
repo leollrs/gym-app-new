@@ -156,10 +156,33 @@ serve(async (req: Request) => {
 
     // ── DELETE /v1/devices/{id}/registrations/{passType}/{serial} — Unregister ──
     if (api[0] === 'devices' && req.method === 'DELETE') {
-      console.log(`[Wallet] Unregister: device=${api[1]} serial=${api[4]}`);
-      await supabase.from('wallet_pass_registrations').delete()
-        .eq('device_library_identifier', api[1]).eq('pass_type_identifier', api[3])
-        .eq('serial_number', api[4]);
+      const deviceId = api[1], passTypeId = api[3], serial = api[4];
+      const authToken = getAuthToken(req);
+      if (!authToken) return new Response('', { status: 401 });
+
+      // Verify the token matches the registration before allowing deletion
+      const { data: reg } = await supabase.from('wallet_pass_registrations')
+        .select('id, profile_id')
+        .eq('device_library_identifier', deviceId)
+        .eq('pass_type_identifier', passTypeId)
+        .eq('serial_number', serial)
+        .maybeSingle();
+
+      if (!reg) return new Response('', { status: 404 });
+
+      // Verify the auth token belongs to the profile that owns this registration
+      const { data: profile } = await supabase.from('profiles').select('id')
+        .eq('wallet_auth_token', authToken)
+        .eq('id', reg.profile_id)
+        .maybeSingle();
+
+      if (!profile) {
+        console.warn(`[Wallet] DELETE auth mismatch: device=${deviceId} serial=${serial}`);
+        return new Response('', { status: 401 });
+      }
+
+      console.log(`[Wallet] Unregister: device=${deviceId} serial=${serial} profile=${profile.id}`);
+      await supabase.from('wallet_pass_registrations').delete().eq('id', reg.id);
       return new Response('', { status: 200 });
     }
 

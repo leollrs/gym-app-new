@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2 } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, CalendarDays } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import UserAvatar from './UserAvatar';
 
 // ── Prefetch map for lazy-loaded route chunks ────────────────────────────────
 const PREFETCH_MAP = {
@@ -15,6 +16,9 @@ const PREFETCH_MAP = {
   '/notifications': () => import('../pages/Notifications'),
   '/profile': () => import('../pages/Profile'),
   '/rewards': () => import('../pages/Rewards'),
+  '/referrals': () => import('../pages/Referrals'),
+  '/messages': () => import('../pages/Messages'),
+  '/classes': () => import('../pages/Classes'),
 };
 const prefetched = new Set();
 const prefetchRoute = (to) => {
@@ -27,24 +31,32 @@ const prefetchRoute = (to) => {
 
 // ── Member nav schema (Strava-style) ──────────────────────────────────────────
 // labels resolved via t() at render time
+// Items with requiresConfig are conditionally shown based on gymConfig flags
 const MEMBER_TABS = [
   { id: 'home', to: '/', icon: Home, labelKey: 'nav.home', end: true },
   { id: 'workouts', to: '/workouts', icon: Dumbbell, labelKey: 'nav.workouts' },
   { id: 'record', to: '/record', icon: PlayCircle, labelKey: 'nav.start', isPrimary: true },
   { id: 'progress', to: '/progress', icon: BarChart2, labelKey: 'nav.progress' },
   { id: 'community', to: '/community', icon: Users, labelKey: 'nav.community' },
+  { id: 'classes', to: '/classes', icon: CalendarDays, labelKey: 'nav.classes', requiresConfig: 'classesEnabled' },
 ];
 
-const DESKTOP_TABS = MEMBER_TABS.filter(tab => tab.id !== 'record');
-
 const Navigation = () => {
-  const { gymName, gymLogoUrl, user, profile, unreadNotifications } = useAuth();
+  const { gymName, gymLogoUrl, user, profile, unreadNotifications, gymConfig } = useAuth();
+
+  // Filter tabs based on gymConfig feature flags
+  const activeTabs = MEMBER_TABS.filter(tab => {
+    if (!tab.requiresConfig) return true;
+    return !!gymConfig?.[tab.requiresConfig];
+  });
+  const desktopTabs = activeTabs.filter(tab => tab.id !== 'record');
   const { t, i18n } = useTranslation('common');
   const navigate = useNavigate();
   const location = useLocation();
   const [streak, setStreak] = useState(0);
   const [streakData, setStreakData] = useState(null);
   const [showStreakModal, setShowStreakModal] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   // Scroll locking for streak modal
   useEffect(() => {
@@ -66,6 +78,35 @@ const Navigation = () => {
         setStreakData(data);
       })
       .catch(() => {});
+  }, [user?.id, location.pathname]);
+
+  // Fetch unread DM count
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchUnread = async () => {
+      // Get conversation IDs the user is part of
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
+      if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
+      const convIds = convs.map(c => c.id);
+      const { count } = await supabase
+        .from('direct_messages')
+        .select('*', { count: 'exact', head: true })
+        .neq('sender_id', user.id)
+        .is('read_at', null)
+        .in('conversation_id', convIds);
+      setUnreadMessages(count || 0);
+    };
+    fetchUnread();
+
+    // Realtime subscription for new DMs
+    const channel = supabase
+      .channel('nav-dm-unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => { fetchUnread(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [user?.id, location.pathname]);
 
   const [streakMonths, setStreakMonths] = useState([]);
@@ -226,7 +267,7 @@ const Navigation = () => {
   return (
   <>
     {/* ── Desktop Top Navigation ──────────────────────────────────── */}
-    <nav aria-label="Main navigation" className="hidden md:block sticky top-0 z-50 border-b border-white/6 bg-[#03050A]/90 backdrop-blur-2xl">
+    <nav aria-label="Main navigation" className="hidden md:block sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
       <div className="container flex justify-between items-center py-3.5">
 
         {/* Brand */}
@@ -248,7 +289,7 @@ const Navigation = () => {
 
         {/* Links (Home / Workouts / Social / You, with prominent Start) + right actions */}
         <div className="flex items-center gap-3">
-          {DESKTOP_TABS.map(({ id, to, icon: Icon, labelKey, end }) => (
+          {desktopTabs.map(({ id, to, icon: Icon, labelKey, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -256,11 +297,12 @@ const Navigation = () => {
               aria-label={t(labelKey)}
               onMouseEnter={() => prefetchRoute(to)}
               onTouchStart={() => prefetchRoute(to)}
+              style={{ '--nav-inactive': 'var(--color-text-subtle)', '--nav-hover': 'var(--color-text-primary)' }}
               className={({ isActive }) =>
-                `relative flex items-center gap-1.5 text-[13px] font-semibold px-3 py-2 rounded-lg transition-colors ${
+                `relative flex items-center gap-1.5 text-[13px] font-semibold px-3 py-2 rounded-lg transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                   isActive
                     ? 'text-[#D4AF37]'
-                    : 'text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/4'
+                    : '[color:var(--nav-inactive)] hover:[color:var(--nav-hover)] hover:bg-white/4'
                 }`
               }
             >
@@ -282,18 +324,33 @@ const Navigation = () => {
             onMouseEnter={() => prefetchRoute('/record')}
             onTouchStart={() => prefetchRoute('/record')}
             aria-label={t('nav.start')}
-            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-black text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors"
+            className="ml-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#D4AF37] text-black text-[13px] font-semibold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <PlayCircle size={16} className="flex-shrink-0" />
             {t('nav.start')}
           </button>
 
-          {/* Desktop notifications + profile */}
+          {/* Desktop messages + notifications + profile */}
           <div className="flex items-center gap-2 ml-2">
             <button
               type="button"
+              onClick={() => navigate('/messages')}
+              className="relative w-11 h-11 rounded-full bg-white/5 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-muted)' }}
+              aria-label="Messages"
+            >
+              <MessageCircle size={16} />
+              {unreadMessages > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+                  {unreadMessages > 9 ? '9+' : unreadMessages}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => navigate('/notifications')}
-              className="relative w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-slate-300 hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors"
+              className="relative w-11 h-11 rounded-full bg-white/5 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-muted)' }}
               aria-label="Notifications"
             >
               <Bell size={16} />
@@ -305,20 +362,10 @@ const Navigation = () => {
             </button>
             <button
               onClick={() => navigate('/profile')}
-              className="w-11 h-11 rounded-full bg-white/5 border border-white/20 flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform overflow-hidden"
+              className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform overflow-hidden focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               aria-label="Profile"
             >
-              {profile?.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt="Profile"
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <span className="text-[#D4AF37] font-bold text-[12px]">
-                  {profile?.full_name?.[0]?.toUpperCase() ?? 'U'}
-                </span>
-              )}
+              <UserAvatar user={profile} size={44} />
             </button>
           </div>
         </div>
@@ -327,8 +374,8 @@ const Navigation = () => {
 
     {/* ── Mobile Top Header ───────────────────────────────────────── */}
     <header
-      className="md:hidden fixed top-0 left-0 right-0 z-50 bg-[#05070B]/90 backdrop-blur-2xl border-b border-white/6 px-4 flex items-center justify-between"
-      style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', height: 'calc(52px + var(--safe-area-top, env(safe-area-inset-top)))', transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
+      className="md:hidden fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl border-b border-white/6 px-4 flex items-center justify-between"
+      style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', height: 'calc(52px + var(--safe-area-top, env(safe-area-inset-top)))', transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
     >
       {/* Brand on the left */}
       <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
@@ -340,8 +387,8 @@ const Navigation = () => {
           />
         )}
         <span
-          className="text-[22px] font-black tracking-tight text-white truncate"
-          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          className="text-[22px] font-black tracking-tight truncate"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
         >
           {gymName || 'GymApp'}
         </span>
@@ -354,13 +401,13 @@ const Navigation = () => {
           type="button"
           onClick={() => { loadStreakDays(); setShowStreakModal(true); }}
           aria-label="View streak"
-          className={`flex items-center gap-1 px-2.5 py-1 rounded-full shrink-0 active:scale-95 transition-transform ${
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full shrink-0 active:scale-95 transition-transform min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
           streak > 0
             ? 'bg-orange-500/15 border border-orange-500/25'
             : 'bg-white/[0.04] border border-white/[0.06]'
         }`}>
-          <Flame size={14} className={streak > 0 ? 'text-orange-400' : 'text-[#6B7280]'} />
-          <span className={`text-[14px] font-black ${streak > 0 ? 'text-orange-400' : 'text-[#6B7280]'}`}>
+          <Flame size={14} className={streak > 0 ? 'text-orange-400' : ''} style={streak > 0 ? undefined : { color: 'var(--color-text-subtle)' }} />
+          <span className={`text-[14px] font-black ${streak > 0 ? 'text-orange-400' : ''}`} style={streak > 0 ? undefined : { color: 'var(--color-text-subtle)' }}>
             {streak}
           </span>
         </button>
@@ -368,16 +415,19 @@ const Navigation = () => {
           type="button"
           onClick={() => navigate('/rewards')}
           onTouchStart={() => prefetchRoute('/rewards')}
-          className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-slate-200 hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors"
+          className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-primary)' }}
           aria-label="Rewards"
         >
           <Trophy size={16} />
         </button>
+        {/* Messages moved to Community tab */}
         <button
           type="button"
           onClick={() => navigate('/notifications')}
           onTouchStart={() => prefetchRoute('/notifications')}
-          className="relative w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-slate-200 hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors"
+          className="relative w-11 h-11 rounded-full bg-white/10 flex items-center justify-center hover:text-[#D4AF37] active:scale-95 transition-transform transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-primary)' }}
           aria-label="Notifications"
         >
           <Bell size={16} />
@@ -389,20 +439,10 @@ const Navigation = () => {
         </button>
         <button
           onClick={() => navigate('/profile')}
-          className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform overflow-hidden"
+          className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform overflow-hidden focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           aria-label="Profile"
         >
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt="Profile"
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            <span className="text-[#D4AF37] font-bold text-[12px]">
-              {profile?.full_name?.[0]?.toUpperCase() ?? 'U'}
-            </span>
-          )}
+          <UserAvatar user={profile} size={44} />
         </button>
       </div>
     </header>
@@ -410,10 +450,16 @@ const Navigation = () => {
     {/* ── Mobile Bottom Navigation (Strava-style 5 tabs with center Record) ─── */}
     <nav
       aria-label="Mobile navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#05070B]/95 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
-      style={{ paddingBottom: 'calc(0.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))', paddingTop: '0.35rem', transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 backdrop-blur-2xl border-t border-white/6 flex items-end justify-around px-2"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
+        paddingBottom: 'calc(0.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom)))',
+        paddingTop: '0.35rem',
+        transform: 'translateZ(0)',
+        WebkitTransform: 'translateZ(0)',
+      }}
     >
-      {MEMBER_TABS.map(({ id, to, icon: Icon, labelKey, end, isPrimary }) => {
+      {activeTabs.map(({ id, to, icon: Icon, labelKey, end, isPrimary }) => {
         if (isPrimary) {
           return (
             <button
@@ -427,18 +473,19 @@ const Navigation = () => {
               aria-label={t(labelKey)}
             >
               <div
-                className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform -mt-5 ${
-                  isRecordActive
-                    ? 'bg-[#FF8A00] shadow-[#FF8A00]/40'
-                    : 'bg-[#FF8A00] shadow-[#FF8A00]/30'
-                }`}
+                className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform -mt-5"
+                style={{
+                  backgroundColor: 'var(--color-secondary, #8B5CF6)',
+                  boxShadow: isRecordActive
+                    ? '0 10px 15px -3px color-mix(in srgb, var(--color-secondary, #8B5CF6) 40%, transparent)'
+                    : '0 10px 15px -3px color-mix(in srgb, var(--color-secondary, #8B5CF6) 30%, transparent)',
+                }}
               >
                 <PlayCircle size={24} className="text-white" strokeWidth={2.5} />
               </div>
               <span
-                className={`text-[10px] font-semibold mt-1 tracking-wide ${
-                  isRecordActive ? 'text-[#FF8A00]' : 'text-[#9CA3AF]'
-                }`}
+                className="text-[10px] font-semibold mt-1 tracking-wide"
+                style={{ color: isRecordActive ? 'var(--color-secondary, #8B5CF6)' : 'var(--color-text-muted)' }}
               >
                 {t(labelKey)}
               </span>
@@ -455,11 +502,12 @@ const Navigation = () => {
             aria-label={t(labelKey)}
             onTouchStart={() => prefetchRoute(to)}
             onClick={() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, 100); }}
+            style={{ '--tab-active-color': 'var(--color-accent, #FF8A00)' }}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] min-h-[44px] justify-center ${
+              `flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] min-h-[44px] justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                 isActive
-                  ? 'text-[#FF8A00]'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? '[color:var(--tab-active-color)]'
+                  : '[color:var(--color-text-subtle)] hover:[color:var(--color-text-muted)]'
               }`
             }
           >
@@ -476,19 +524,19 @@ const Navigation = () => {
   {/* Streak Detail Modal */}
   {showStreakModal && createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowStreakModal(false)}>
-      <div className="rounded-[20px] w-full max-w-sm border overflow-hidden flex flex-col" style={{ maxHeight: '85vh', background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" className="rounded-[20px] w-full max-w-sm border overflow-hidden flex flex-col" style={{ maxHeight: '85vh', background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${streak > 0 ? 'bg-orange-500/15' : 'bg-white/[0.04]'}`}>
-              <Flame size={20} className={streak > 0 ? 'text-orange-400' : 'text-[#6B7280]'} />
+              <Flame size={20} className={streak > 0 ? 'text-orange-400' : ''} style={streak > 0 ? undefined : { color: 'var(--color-text-subtle)' }} />
             </div>
             <div>
-              <p className="text-[20px] font-bold text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>{t('navigation.streaks.dayStreak', { ns: 'pages', count: streak })}</p>
-              <p className="text-[11px] text-[#6B7280]">{t('navigation.streaks.longest', { ns: 'pages', count: streakData?.longest_streak_days || streak })}</p>
+              <p id="streak-modal-title" className="text-[18px] font-bold truncate" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>{t('navigation.streaks.dayStreak', { ns: 'pages', count: streak })}</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('navigation.streaks.longest', { ns: 'pages', count: streakData?.longest_streak_days || streak })}</p>
             </div>
           </div>
-          <button onClick={() => setShowStreakModal(false)} className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center text-[#6B7280]">
+          <button onClick={() => setShowStreakModal(false)} aria-label={t('nav.close', { ns: 'common', defaultValue: 'Close' })} className="w-11 h-11 rounded-lg bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-subtle)' }}>
             <X size={16} />
           </button>
         </div>
@@ -496,8 +544,8 @@ const Navigation = () => {
         {/* Freeze status */}
         <div className="px-5 pb-3 flex-shrink-0">
           <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${streakData?.streak_freeze_used ? 'bg-blue-500/10' : 'bg-white/[0.04]'}`}>
-            <Snowflake size={14} className={streakData?.streak_freeze_used ? 'text-blue-400' : 'text-[#6B7280]'} />
-            <span className="text-[11px] font-medium text-[#9CA3AF]">
+            <Snowflake size={14} className={streakData?.streak_freeze_used ? 'text-blue-400' : ''} style={streakData?.streak_freeze_used ? undefined : { color: 'var(--color-text-subtle)' }} />
+            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
               {streakData?.streak_freeze_used ? t('navigation.streaks.monthlyFreezeUsed', { ns: 'pages' }) : t('navigation.streaks.freezeAvailable', { ns: 'pages' })}
             </span>
           </div>
@@ -511,7 +559,7 @@ const Navigation = () => {
             { color: 'bg-red-500', label: t('navigation.legend.missed', { ns: 'pages' }) },
             { color: 'bg-blue-400', label: t('navigation.legend.frozen', { ns: 'pages' }) },
           ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1.5 text-[9px] text-[#6B7280]">
+            <span key={label} className="flex items-center gap-1.5 text-[9px]" style={{ color: 'var(--color-text-subtle)' }}>
               <span className={`w-2 h-2 rounded-sm ${color}`} />
               {label}
             </span>
@@ -528,11 +576,11 @@ const Navigation = () => {
             return (
               <div key={`${monthData.year}-${monthData.month}`} className={mi > 0 ? 'mt-5' : ''}>
                 {/* Month header */}
-                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-2">{monthData.label}</p>
+                <p className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>{monthData.label}</p>
                 {/* Day-of-week labels */}
                 <div className="grid grid-cols-7 gap-1 mb-1">
                   {(t('days.initials', { returnObjects: true }) || ['S','M','T','W','T','F','S']).map((d, i) => (
-                    <div key={i} className="text-center text-[8px] font-semibold text-[#4B5563]">{d}</div>
+                    <div key={i} className="text-center text-[8px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{d}</div>
                   ))}
                 </div>
                 {/* Day cells */}
@@ -541,18 +589,18 @@ const Navigation = () => {
                   {monthData.days.map(day => {
                     const dayNum = day.date.getDate();
                     let bg = 'bg-white/[0.04]';
-                    let textColor = 'text-[#4B5563]';
+                    let colorStyle = 'var(--color-text-muted)';
                     let ring = '';
 
-                    if (day.status === 'done') { bg = 'bg-[#10B981]'; textColor = 'text-white'; }
-                    else if (day.status === 'rest') { bg = 'bg-[#6B7280]/20'; textColor = 'text-[#6B7280]'; }
-                    else if (day.status === 'broken') { bg = 'bg-red-500/20'; textColor = 'text-red-400'; ring = 'ring-1 ring-red-500/40'; }
-                    else if (day.status === 'frozen') { bg = 'bg-blue-400/20'; textColor = 'text-blue-400'; }
-                    else if (day.status === 'today') { bg = 'bg-white/[0.06]'; textColor = 'text-[#E5E7EB]'; ring = 'ring-1 ring-[#D4AF37]/40'; }
-                    else if (day.status === 'missed') { bg = 'bg-red-500/10'; textColor = 'text-red-400/60'; }
+                    if (day.status === 'done') { bg = 'bg-[#10B981]'; colorStyle = '#fff'; }
+                    else if (day.status === 'rest') { bg = 'bg-[#6B7280]/20'; colorStyle = 'var(--color-text-subtle)'; }
+                    else if (day.status === 'broken') { bg = 'bg-red-500/20'; colorStyle = 'rgb(248 113 113)'; ring = 'ring-1 ring-red-500/40'; }
+                    else if (day.status === 'frozen') { bg = 'bg-blue-400/20'; colorStyle = 'rgb(96 165 250)'; }
+                    else if (day.status === 'today') { bg = 'bg-white/[0.06]'; colorStyle = 'var(--color-text-primary)'; ring = 'ring-1 ring-[#D4AF37]/40'; }
+                    else if (day.status === 'missed') { bg = 'bg-red-500/10'; colorStyle = 'rgb(248 113 113 / 0.6)'; }
 
                     return (
-                      <div key={day.key} className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${bg} ${textColor} ${ring}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <div key={day.key} className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${bg} ${ring}`} style={{ fontVariantNumeric: 'tabular-nums', color: colorStyle }}>
                         {dayNum}
                       </div>
                     );
@@ -566,7 +614,7 @@ const Navigation = () => {
         {/* Broken at info */}
         {streakData?.streak_broken_at && (
           <div className="px-5 pb-4 flex-shrink-0">
-            <p className="text-[10px] text-[#4B5563]">
+            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
               {t('navigation.streaks.lastBroken', { ns: 'pages' })}: {new Date(streakData.streak_broken_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
             </p>
           </div>

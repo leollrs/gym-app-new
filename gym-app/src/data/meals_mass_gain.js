@@ -63,7 +63,7 @@ export const MEALS_MASS_GAIN = [
     tag: 'Mass Gain', tag_es: 'Ganancia de Masa', category: 'mass_gain', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'whole_milk', 'peanut_butter', 'banana', 'honey', 'protein_powder', 'chia_seeds'],
     steps: ['Cook oats in whole milk until thick and creamy.', 'Stir in protein powder, peanut butter, and honey.', 'Top with sliced banana and chia seeds before serving.'],
-    steps_es: ['Cocinar la avena en leche entera hasta que espese y quede cremosa.', 'Incorporar la proteína en polvo, mantequilla de cacahuete y miel.', 'Cubrir con rodajas de plátano y semillas de chía antes de servir.'],
+    steps_es: ['Cocinar la avena en leche entera hasta que espese y quede cremosa.', 'Incorporar la proteína en polvo, mantequilla de cacahuete y miel.', 'Cubrir con rodajas de guineo y semillas de chía antes de servir.'],
   },
   {
     id: 'r157',
@@ -145,13 +145,13 @@ export const MEALS_MASS_GAIN = [
   {
     id: 'r164',
     title: 'Nut Butter Banana Waffle Stack',
-    title_es: 'Torre de Gofres con Mantequilla de Frutos Secos y Plátano',
+    title_es: 'Torre de Gofres con Mantequilla de Frutos Secos y Guineo',
     image: '/meals/nut_butter_banana_waffle_stack.png',
     calories: 920, protein: 35, carbs: 108, fat: 38, prepTime: 20,
     tag: 'Mass Gain', tag_es: 'Ganancia de Masa', category: 'mass_gain', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['waffle_mix', 'eggs', 'whole_milk', 'almond_butter', 'banana', 'honey', 'walnuts', 'protein_powder'],
     steps: ['Prepare waffle batter with milk, eggs, and protein powder, then cook in a waffle iron.', 'Warm almond butter until pourable.', 'Stack 3 waffles and top with sliced banana, drizzle almond butter, honey, and crushed walnuts.'],
-    steps_es: ['Preparar la masa de gofres con leche, huevos y proteína en polvo, luego cocinar en la gofrera.', 'Calentar la mantequilla de almendras hasta que sea líquida.', 'Apilar 3 gofres y cubrir con rodajas de plátano, rociar mantequilla de almendras, miel y nueces trituradas.'],
+    steps_es: ['Preparar la masa de gofres con leche, huevos y proteína en polvo, luego cocinar en la gofrera.', 'Calentar la mantequilla de almendras hasta que sea líquida.', 'Apilar 3 gofres y cubrir con rodajas de guineo, rociar mantequilla de almendras, miel y nueces trituradas.'],
   },
   {
     id: 'r165',
@@ -272,7 +272,7 @@ export const MEALS_MASS_GAIN = [
     tag: 'Mass Gain', tag_es: 'Ganancia de Masa', category: 'mass_gain', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'whole_milk', 'protein_powder', 'peanut_butter', 'banana', 'mixed_berries', 'chia_seeds', 'honey', 'greek_yogurt'],
     steps: ['Mix oats, milk, protein powder, chia seeds, and greek yogurt in a large jar and refrigerate overnight.', 'In the morning, stir in peanut butter and honey.', 'Top with sliced banana and mixed berries before serving.'],
-    steps_es: ['Mezclar avena, leche, proteína en polvo, semillas de chía y yogur griego en un tarro grande y refrigerar durante la noche.', 'Por la mañana, incorporar mantequilla de cacahuete y miel.', 'Cubrir con rodajas de plátano y frutos rojos variados antes de servir.'],
+    steps_es: ['Mezclar avena, leche, proteína en polvo, semillas de chía y yogur griego en un tarro grande y refrigerar durante la noche.', 'Por la mañana, incorporar mantequilla de cacahuete y miel.', 'Cubrir con rodajas de guineo y frutos rojos variados antes de servir.'],
   },
   {
     id: 'r176',
@@ -514,7 +514,7 @@ export const MEALS_MASS_GAIN = [
     tag: 'Mass Gain', tag_es: 'Ganancia de Masa', category: 'mass_gain', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['granola', 'whole_milk_yogurt', 'almond_butter', 'banana', 'blueberries', 'honey', 'almonds', 'protein_powder'],
     steps: ['Spoon a large serving of whole milk yogurt mixed with protein powder into a bowl.', 'Top with granola, almond butter, and sliced banana.', 'Finish with blueberries, crushed almonds, and a generous drizzle of honey.'],
-    steps_es: ['Servir una porción grande de yogur de leche entera mezclado con proteína en polvo en un bol.', 'Cubrir con granola, mantequilla de almendras y rodajas de plátano.', 'Terminar con arándanos, almendras trituradas y un generoso chorrito de miel.'],
+    steps_es: ['Servir una porción grande de yogur de leche entera mezclado con proteína en polvo en un bol.', 'Cubrir con granola, mantequilla de almendras y rodajas de guineo.', 'Terminar con arándanos, almendras trituradas y un generoso chorrito de miel.'],
   },
   {
     id: 'r198',
@@ -547,6 +547,6 @@ export const MEALS_MASS_GAIN = [
     tag: 'Mass Gain', tag_es: 'Ganancia de Masa', category: 'mass_gain', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['frozen_banana', 'whole_milk', 'protein_powder', 'peanut_butter', 'granola', 'mixed_berries', 'coconut_flakes', 'honey', 'chia_seeds', 'almonds'],
     steps: ['Blend frozen banana, whole milk, protein powder, and peanut butter until thick and smooth — add less liquid for a spoonable consistency.', 'Pour into a large bowl and top with granola, mixed berries, coconut flakes, chia seeds, and almonds.', 'Finish with a drizzle of honey and consume immediately for the best texture and nutritional benefit.'],
-    steps_es: ['Licuar el plátano congelado, leche entera, proteína en polvo y mantequilla de cacahuete hasta que quede espeso y suave — añadir menos líquido para una consistencia de cuchara.', 'Verter en un bol grande y cubrir con granola, frutos rojos variados, copos de coco, semillas de chía y almendras.', 'Terminar con un chorrito de miel y consumir inmediatamente para la mejor textura y beneficio nutricional.'],
+    steps_es: ['Licuar el guineo congelado, leche entera, proteína en polvo y mantequilla de cacahuete hasta que quede espeso y suave — añadir menos líquido para una consistencia de cuchara.', 'Verter en un bol grande y cubrir con granola, frutos rojos variados, copos de coco, semillas de chía y almendras.', 'Terminar con un chorrito de miel y consumir inmediatamente para la mejor textura y beneficio nutricional.'],
   },
 ];

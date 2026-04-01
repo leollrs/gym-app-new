@@ -5,6 +5,7 @@
  */
 
 import logger from './logger';
+import i18n from 'i18next';
 
 const REST_NOTIF_ID = 1001;
 
@@ -35,8 +36,8 @@ export const scheduleRestDoneNotification = async (exerciseName, delaySeconds) =
       await LocalNotifications.schedule({
         notifications: [{
           id: REST_NOTIF_ID,
-          title: 'Rest Complete!',
-          body: `Time for your next set of ${exerciseName}!`,
+          title: i18n.t('notifications.restComplete', { ns: 'common', defaultValue: 'Rest Complete!' }),
+          body: i18n.t('notifications.timeForNextSet', { ns: 'common', exercise: exerciseName, defaultValue: `Time for your next set of ${exerciseName}!` }),
           schedule: { at: new Date(Date.now() + delaySeconds * 1000) },
           sound: 'default',
           importance: 4,
@@ -51,8 +52,8 @@ export const scheduleRestDoneNotification = async (exerciseName, delaySeconds) =
   setTimeout(() => {
     if (document.hidden) {
       try {
-        new Notification('Rest Complete!', {
-          body: `Time for your next set of ${exerciseName}!`,
+        new Notification(i18n.t('notifications.restComplete', { ns: 'common', defaultValue: 'Rest Complete!' }), {
+          body: i18n.t('notifications.timeForNextSet', { ns: 'common', exercise: exerciseName, defaultValue: `Time for your next set of ${exerciseName}!` }),
           icon: '/favicon.ico',
         });
       } catch { }

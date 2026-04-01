@@ -14,14 +14,14 @@ const METRICS = [
   { key: 'checkins',    label: 'CHECK-INS',     unit: 'VISITS',    period: 'THIS MONTH', rpc: 'checkins' },
 ];
 
-const MEDAL_COLORS = ['#D4AF37', '#9CA3AF', '#CD7F32'];
+const MEDAL_COLORS = ['var(--color-accent)', 'var(--color-text-muted)', '#CD7F32'];
 const ROTATE_MS = 20_000; // rotate metric every 20 seconds
 
 export default function TVDisplay() {
   const [entries,    setEntries]    = useState([]);
   const [gymName,    setGymName]    = useState('');
   const [logoUrl,    setLogoUrl]    = useState('');
-  const [accentColor, setAccentColor] = useState('#D4AF37');
+  const [accentColor, setAccentColor] = useState('var(--color-accent)');
   const [gymId,      setGymId]      = useState(null);
   const [metricIdx,  setMetricIdx]  = useState(0);
   const [loading,    setLoading]    = useState(true);
@@ -77,7 +77,7 @@ export default function TVDisplay() {
       ]);
       setGymName(branding?.custom_app_name || gym?.name || 'GYM');
       setLogoUrl(branding?.logo_url || '');
-      setAccentColor(branding?.accent_color || '#D4AF37');
+      setAccentColor(branding?.accent_color || 'var(--color-accent)');
     };
     loadBranding();
   }, [gymId]);
@@ -140,7 +140,7 @@ export default function TVDisplay() {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
-        style={{ background: '#05070B', fontFamily: 'Barlow, sans-serif' }}
+        style={{ background: 'var(--color-bg-primary)', fontFamily: 'Barlow, sans-serif' }}
       >
         <div className="text-center space-y-4">
           <p className="text-[28px] font-bold text-white/30">No gym specified</p>
@@ -169,7 +169,7 @@ export default function TVDisplay() {
   return (
     <div
       className="min-h-screen flex flex-col overflow-hidden select-none"
-      style={{ background: '#05070B', fontFamily: 'Barlow, sans-serif' }}
+      style={{ background: 'var(--color-bg-primary)', fontFamily: 'Barlow, sans-serif' }}
     >
       {/* ── Header bar ──────────────────────────────────────────── */}
       <header
@@ -242,7 +242,7 @@ export default function TVDisplay() {
             {entries.map((e, i) => {
               const barWidth = Math.round((e.score / maxScore) * 100);
               const isTop3 = i < 3;
-              const rankColor = i === 0 ? '#D4AF37' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'rgba(255,255,255,0.2)';
+              const rankColor = i === 0 ? 'var(--color-accent)' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'rgba(255,255,255,0.2)';
               return (
                 <div
                   key={e.id}

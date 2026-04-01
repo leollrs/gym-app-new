@@ -176,7 +176,7 @@ export default function AdminPrograms() {
   const loading = loadingPrograms;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Programs"
         subtitle="Gym-branded workout programs for members"
@@ -195,12 +195,12 @@ export default function AdminPrograms() {
       {!loading && programs.length > 0 && (
         <FadeIn>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatCard label="Published Programs" value={programStats.totalPrograms} borderColor="#D4AF37" delay={0} />
+            <StatCard label="Published Programs" value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
             <StatCard label="Active Enrollments" value={programStats.activeEnrollments} borderColor="#3B82F6" delay={50} />
             <StatCard label="Completion Rate" value={`${programStats.completionRate}%`} borderColor="#10B981" delay={100} />
-            <AdminCard>
-              <p className="text-[22px] font-bold text-[#E5E7EB] truncate text-[16px]">{programStats.topProgram}</p>
-              <p className="text-[12px] text-[#9CA3AF]">Most Popular</p>
+            <AdminCard className="overflow-hidden">
+              <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{programStats.topProgram}</p>
+              <p className="text-[11px] text-[#9CA3AF] truncate">Most Popular</p>
             </AdminCard>
           </div>
         </FadeIn>

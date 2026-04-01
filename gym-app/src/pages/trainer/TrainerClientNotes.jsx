@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Scale, Ruler, TrendingUp, StickyNote, Calendar, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Save, Scale, Ruler, TrendingUp, StickyNote, Calendar, BarChart3, MessageSquare, Bell, Phone, Mail, UserCheck, Plus, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { format } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 
 const TABS = ['Overview', 'Notes', 'Body Metrics'];
@@ -13,6 +14,7 @@ export default function TrainerClientNotes() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
 
   const [activeTab, setActiveTab] = useState('Overview');
   const [loading, setLoading] = useState(true);
@@ -26,6 +28,13 @@ export default function TrainerClientNotes() {
   const [weights, setWeights] = useState([]);
   const [measurements, setMeasurements] = useState(null);
   const [showReport, setShowReport] = useState(false);
+  const [streak, setStreak] = useState(null);
+  const [followups, setFollowups] = useState([]);
+  const [showFollowupModal, setShowFollowupModal] = useState(false);
+  const [fuMethod, setFuMethod] = useState('call');
+  const [fuNote, setFuNote] = useState('');
+  const [fuOutcome, setFuOutcome] = useState('no_answer');
+  const [savingFollowup, setSavingFollowup] = useState(false);
 
   useEffect(() => { document.title = 'Trainer - Client Notes | TuGymPR'; }, []);
 
@@ -55,7 +64,7 @@ export default function TrainerClientNotes() {
         return;
       }
 
-      const [clientRes, statsRes, weightsRes, measRes] = await Promise.all([
+      const [clientRes, statsRes, weightsRes, measRes, streakRes, followupsRes] = await Promise.all([
         supabase
           .from('profiles')
           .select('id, full_name, username, last_active_at, created_at, assigned_program_id')
@@ -78,6 +87,18 @@ export default function TrainerClientNotes() {
           .eq('profile_id', clientId)
           .order('measured_at', { ascending: false })
           .limit(1),
+        supabase
+          .from('streak_cache')
+          .select('current_streak, last_workout_date')
+          .eq('profile_id', clientId)
+          .maybeSingle(),
+        supabase
+          .from('trainer_followups')
+          .select('id, method, note, outcome, created_at')
+          .eq('trainer_id', profile.id)
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50),
       ]);
 
       if (clientRes.data) {
@@ -101,6 +122,8 @@ export default function TrainerClientNotes() {
 
       setWeights(weightsRes.data || []);
       setMeasurements(measRes.data?.[0] || null);
+      setStreak(streakRes.data || null);
+      setFollowups(followupsRes.data || []);
     } catch (err) {
       logger.error('Error loading client data:', err);
     } finally {
@@ -128,6 +151,47 @@ export default function TrainerClientNotes() {
     }
   }
 
+  async function handleSaveFollowup() {
+    if (!profile?.id) return;
+    setSavingFollowup(true);
+    try {
+      const { data, error } = await supabase.from('trainer_followups').insert({
+        trainer_id: profile.id,
+        client_id: clientId,
+        gym_id: profile.gym_id,
+        method: fuMethod,
+        note: fuNote || null,
+        outcome: fuOutcome,
+      }).select().single();
+      if (error) throw error;
+      setFollowups(prev => [data, ...prev]);
+      setShowFollowupModal(false);
+      setFuNote('');
+      setFuMethod('call');
+      setFuOutcome('no_answer');
+    } catch (err) {
+      logger.error('Error saving followup:', err);
+    } finally {
+      setSavingFollowup(false);
+    }
+  }
+
+  const METHOD_ICONS = {
+    sms: MessageSquare,
+    push: Bell,
+    email: Mail,
+    call: Phone,
+    in_person: UserCheck,
+  };
+
+  const OUTCOME_STYLES = {
+    no_answer: { label: t('trainerNotes.followUp.outcomes.noAnswer'), color: 'text-[#6B7280]', bg: 'bg-white/[0.04]' },
+    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    coming_back: { label: t('trainerNotes.followUp.outcomes.comingBack'), color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    not_interested: { label: t('trainerNotes.followUp.outcomes.notInterested'), color: 'text-red-400', bg: 'bg-red-500/10' },
+    other: { label: t('trainerNotes.followUp.outcomes.other'), color: 'text-[#9CA3AF]', bg: 'bg-white/[0.04]' },
+  };
+
   function getDaysSince(dateStr) {
     if (!dateStr) return 0;
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -144,12 +208,12 @@ export default function TrainerClientNotes() {
 
   if (accessDenied) {
     return (
-      <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
+      <div className="min-h-screen bg-[#05070B] px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl">
         <button
           onClick={() => navigate('/trainer/clients')}
-          className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 hover:text-[#E5E7EB] transition-colors"
+          className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 flex-shrink-0" />
           Back to Clients
         </button>
         <div className="text-center py-20">
@@ -162,12 +226,12 @@ export default function TrainerClientNotes() {
 
   if (!client) {
     return (
-      <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
+      <div className="min-h-screen bg-[#05070B] px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl">
         <button
           onClick={() => navigate('/trainer/clients')}
-          className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6"
+          className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 whitespace-nowrap"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 flex-shrink-0" />
           Back to Clients
         </button>
         <p className="text-[#9CA3AF] text-[14px]">Client not found.</p>
@@ -176,19 +240,19 @@ export default function TrainerClientNotes() {
   }
 
   return (
-    <div className="min-h-screen bg-[#05070B] px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-[#05070B] px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Back button */}
       <button
         onClick={() => navigate('/trainer/clients')}
-        className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 hover:text-[#E5E7EB] transition-colors"
+        className="flex items-center gap-2 text-[#9CA3AF] text-[14px] mb-6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="w-4 h-4 flex-shrink-0" />
         Back to Clients
       </button>
 
       {/* Client header */}
       <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB]">
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">
           {client.full_name || 'Unnamed Client'}
         </h1>
         {client.username && (
@@ -232,40 +296,43 @@ export default function TrainerClientNotes() {
 
           {/* Quick stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4">
+            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-[#D4AF37]" />
-                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide">Total Workouts</span>
+                <TrendingUp className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide truncate">Total Workouts</span>
               </div>
-              <p className="text-[22px] font-bold text-[#E5E7EB]">{stats.count}</p>
+              <p className="text-[24px] font-bold text-[#E5E7EB] truncate">{stats.count}</p>
             </div>
-            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4">
+            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <Scale className="w-4 h-4 text-[#D4AF37]" />
-                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide">Total Volume</span>
+                <Scale className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide truncate">Total Volume</span>
               </div>
-              <p className="text-[22px] font-bold text-[#E5E7EB]">
+              <p className="text-[24px] font-bold text-[#E5E7EB] truncate">
                 {stats.volume >= 1000
                   ? `${(stats.volume / 1000).toFixed(1)}k`
                   : stats.volume}{' '}
                 <span className="text-[13px] font-normal text-[#6B7280]">lbs</span>
               </p>
             </div>
-            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4">
+            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <Calendar className="w-4 h-4 text-[#D4AF37]" />
-                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide">Days as Member</span>
+                <Calendar className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide truncate">Days as Member</span>
               </div>
-              <p className="text-[22px] font-bold text-[#E5E7EB]">
+              <p className="text-[24px] font-bold text-[#E5E7EB] truncate">
                 {getDaysSince(client.created_at)}
               </p>
             </div>
-            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4">
+            <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-[#10B981]" />
-                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide">Current Streak</span>
+                <TrendingUp className="w-4 h-4 text-[#10B981] flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] uppercase tracking-wide truncate">Current Streak</span>
               </div>
-              <p className="text-[22px] font-bold text-[#E5E7EB]">--</p>
+              <p className="text-[24px] font-bold text-[#E5E7EB] truncate">
+                {streak ? streak.current_streak : 0}
+                <span className="text-[13px] font-normal text-[#6B7280] ml-1">days</span>
+              </p>
             </div>
           </div>
 
@@ -290,6 +357,59 @@ export default function TrainerClientNotes() {
               <p className="text-[12px] text-[#6B7280]">View training, strength & body composition trends</p>
             </div>
           </button>
+
+          {/* Follow-Up History */}
+          <div className="bg-[#0F172A] rounded-2xl border border-white/6 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-[#D4AF37]" />
+                <span className="text-[14px] font-medium text-[#E5E7EB]">{t('trainerNotes.followUp.title')}</span>
+                {followups.length > 0 && (
+                  <span className="text-[11px] text-[#6B7280]">({followups.length})</span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowFollowupModal(true)}
+                className="flex items-center gap-1.5 text-[12px] text-[#D4AF37] hover:text-[#E5C94B] transition-colors"
+              >
+                <Plus size={14} />
+                {t('trainerNotes.followUp.logFollowUp')}
+              </button>
+            </div>
+
+            {followups.length === 0 ? (
+              <p className="text-[13px] text-[#6B7280]">{t('trainerNotes.followUp.noFollowUps')}</p>
+            ) : (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {followups.map((fu) => {
+                  const MethodIcon = METHOD_ICONS[fu.method] || Phone;
+                  const outcomeStyle = fu.outcome ? OUTCOME_STYLES[fu.outcome] : null;
+                  return (
+                    <div key={fu.id} className="flex items-start gap-3 py-3 px-3 rounded-xl bg-[#111827]/60">
+                      <div className="w-7 h-7 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0 mt-0.5">
+                        <MethodIcon size={13} className="text-[#9CA3AF]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[12px] text-[#9CA3AF]">
+                            {format(new Date(fu.created_at), 'MMM d, yyyy h:mm a')}
+                          </span>
+                          {outcomeStyle && (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${outcomeStyle.bg} ${outcomeStyle.color}`}>
+                              {outcomeStyle.label}
+                            </span>
+                          )}
+                        </div>
+                        {fu.note && (
+                          <p className="text-[13px] text-[#E5E7EB] mt-1">{fu.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -359,7 +479,7 @@ export default function TrainerClientNotes() {
                 <div className="bg-[#111827] rounded-xl p-4 mb-4 border border-[#D4AF37]/15">
                   <p className="text-[11px] text-[#6B7280] uppercase tracking-wide mb-1">Latest Weight</p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[28px] font-bold text-[#E5E7EB]">{weights[0].weight_lbs}</span>
+                    <span className="text-[24px] font-bold text-[#E5E7EB]">{weights[0].weight_lbs}</span>
                     <span className="text-[14px] text-[#6B7280]">lbs</span>
                     {weights.length >= 2 && (
                       <span className={`text-[13px] font-medium ml-2 ${
@@ -446,6 +566,94 @@ export default function TrainerClientNotes() {
                   ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Log Follow-Up Modal */}
+      {showFollowupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-[#0F172A] rounded-2xl border border-white/[0.08] w-full max-w-[400px] p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[16px] font-semibold text-[#E5E7EB]">
+                {t('trainerNotes.followUp.logFollowUp')}
+              </h3>
+              <button onClick={() => setShowFollowupModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Method selector */}
+            <label className="text-[12px] text-[#6B7280] uppercase tracking-wide mb-1.5 block">
+              {t('trainerNotes.followUp.method')}
+            </label>
+            <div className="flex gap-2 mb-4">
+              {[
+                { value: 'call', icon: Phone, label: t('trainerNotes.followUp.methods.call') },
+                { value: 'sms', icon: MessageSquare, label: t('trainerNotes.followUp.methods.sms') },
+                { value: 'push', icon: Bell, label: t('trainerNotes.followUp.methods.push') },
+                { value: 'email', icon: Mail, label: t('trainerNotes.followUp.methods.email') },
+                { value: 'in_person', icon: UserCheck, label: t('trainerNotes.followUp.methods.inPerson') },
+              ].map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setFuMethod(value)}
+                  title={label}
+                  className={`flex-1 py-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${
+                    fuMethod === value
+                      ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30'
+                      : 'bg-[#111827] text-[#6B7280] border border-white/6 hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Outcome */}
+            <label className="text-[12px] text-[#6B7280] uppercase tracking-wide mb-1.5 block">
+              {t('trainerNotes.followUp.outcomeLabel')}
+            </label>
+            <select
+              value={fuOutcome}
+              onChange={(e) => setFuOutcome(e.target.value)}
+              className="w-full bg-[#111827] border border-white/8 rounded-lg px-3 py-2.5 text-[14px] text-[#E5E7EB] mb-4 focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+            >
+              <option value="no_answer">{t('trainerNotes.followUp.outcomes.noAnswer')}</option>
+              <option value="rescheduled">{t('trainerNotes.followUp.outcomes.rescheduled')}</option>
+              <option value="coming_back">{t('trainerNotes.followUp.outcomes.comingBack')}</option>
+              <option value="not_interested">{t('trainerNotes.followUp.outcomes.notInterested')}</option>
+              <option value="other">{t('trainerNotes.followUp.outcomes.other')}</option>
+            </select>
+
+            {/* Note */}
+            <label className="text-[12px] text-[#6B7280] uppercase tracking-wide mb-1.5 block">
+              {t('trainerNotes.followUp.noteLabel')}
+            </label>
+            <textarea
+              value={fuNote}
+              onChange={(e) => setFuNote(e.target.value)}
+              placeholder={t('trainerNotes.followUp.notePlaceholder')}
+              className="w-full bg-[#111827] border border-white/8 rounded-lg p-3 text-[14px] text-[#E5E7EB] placeholder-[#6B7280] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors mb-4"
+              rows={3}
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFollowupModal(false)}
+                className="flex-1 py-2.5 rounded-lg border border-white/8 text-[13px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+              >
+                {t('trainerNotes.followUp.cancel')}
+              </button>
+              <button
+                onClick={handleSaveFollowup}
+                disabled={savingFollowup}
+                className="flex-1 py-2.5 rounded-lg bg-[#D4AF37] hover:bg-[#C4A030] text-[#05070B] text-[13px] font-semibold transition-colors disabled:opacity-50"
+              >
+                {savingFollowup ? t('trainerNotes.followUp.saving') : t('trainerNotes.followUp.save')}
+              </button>
+            </div>
           </div>
         </div>
       )}

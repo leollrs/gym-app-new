@@ -166,11 +166,11 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
     <>
       <AdminCard hover className="mb-6 hover:border-white/10 transition-colors duration-300">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">Monthly Summary</p>
-            <p className="text-[11px] text-[#6B7280]">Key metrics at a glance</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">Monthly Summary</p>
+            <p className="text-[11px] text-[#6B7280] truncate">Key metrics at a glance</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => setSummaryMonth(m => m + 1)}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
               <ChevronLeft size={14} className="text-[#9CA3AF]" />
@@ -182,7 +182,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
             </button>
             <button
               onClick={() => setShowReport(true)}
-              className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 transition-colors"
+              className="ml-2 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 transition-colors whitespace-nowrap"
             >
               <FileText size={13} />
               Generate Report
@@ -201,13 +201,13 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
             { icon: TrophyIcon, label: 'Challenge Joins', value: s.challengeJoins, sub: 'new participants', color: '#D4AF37' },
             { icon: Dumbbell, label: 'Total Time', value: s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)}h` : `${s.totalDuration}m`, sub: 'training time', color: '#14B8A6' },
           ].map((stat, i) => (
-            <div key={i} className="bg-[#111827] rounded-xl p-3 border border-white/4">
+            <div key={i} className="bg-[#111827] rounded-xl p-3 border border-white/4 overflow-hidden">
               <div className="flex items-center gap-2 mb-2">
-                <stat.icon size={13} style={{ color: stat.color }} />
-                <span className="text-[11px] text-[#6B7280] font-medium">{stat.label}</span>
+                <stat.icon size={13} style={{ color: stat.color }} className="flex-shrink-0" />
+                <span className="text-[11px] text-[#6B7280] font-medium truncate">{stat.label}</span>
               </div>
-              <p className="text-[20px] font-bold text-[#E5E7EB] leading-none tabular-nums">{stat.value}</p>
-              <p className="text-[10px] text-[#4B5563] mt-1">{stat.sub}</p>
+              <p className="text-[20px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{stat.value}</p>
+              <p className="text-[10px] text-[#4B5563] mt-1 truncate">{stat.sub}</p>
             </div>
           ))}
         </div>
@@ -226,7 +226,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
               {/* Report header */}
               <div className="bg-gradient-to-r from-[#D4AF37] to-[#B8941F] px-6 py-5 flex items-start justify-between">
                 <div>
-                  <h2 className="text-[20px] font-extrabold text-[#0A0D14] tracking-tight">Monthly Performance Report</h2>
+                  <h2 className="text-[18px] font-extrabold text-[#0A0D14] tracking-tight truncate">Monthly Performance Report</h2>
                   <p className="text-[13px] text-[#0A0D14]/70 mt-0.5">{s.label}</p>
                 </div>
                 <button onClick={() => setShowReport(false)} className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 transition-colors mt-0.5">
@@ -243,8 +243,8 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
                   { label: 'Gym Check-ins', value: s.checkIns.toLocaleString(), accent: false },
                 ].map((k, i) => (
                   <div key={i} className={`px-5 py-4 text-center ${i < 3 ? 'border-r border-[#e2e8f0]' : ''} ${k.accent ? 'bg-[#fefce8]' : ''}`}>
-                    <p className="text-[26px] font-extrabold text-[#0f172a] leading-none tabular-nums">{k.value}</p>
-                    <p className="text-[10px] text-[#64748b] uppercase tracking-wider font-semibold mt-1.5">{k.label}</p>
+                    <p className="text-[24px] font-extrabold text-[#0f172a] leading-none tabular-nums truncate">{k.value}</p>
+                    <p className="text-[10px] text-[#64748b] uppercase tracking-wider font-semibold mt-1.5 truncate">{k.label}</p>
                     {k.sub && <p className="text-[10px] text-[#92700c] font-medium mt-0.5">{k.sub}</p>}
                   </div>
                 ))}
@@ -332,7 +332,7 @@ table td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabula
                 <p className="text-[10px] text-[#94a3b8]">Generated {format(new Date(), 'MMMM d, yyyy')} \u2014 Confidential</p>
                 <button
                   onClick={handleDownloadReport}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold bg-[#0f172a] text-white hover:bg-[#1e293b] transition-colors"
+                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold bg-[#0f172a] text-white hover:bg-[#1e293b] transition-colors whitespace-nowrap"
                 >
                   <Download size={14} />
                   Download PDF

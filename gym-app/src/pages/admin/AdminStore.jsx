@@ -11,6 +11,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, SectionLabel } from '../../components/admin';
 import QRScannerModal from '../../components/admin/QRScannerModal';
+import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORY_OPTS = [
@@ -135,7 +136,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
               onChange={e => set('emoji_icon', e.target.value)}
               placeholder="🥤"
               maxLength={4}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-center text-[20px] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-center text-[20px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
           <div className="flex-1">
@@ -144,7 +145,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
               value={form.name}
               onChange={e => set('name', e.target.value)}
               placeholder="e.g. Protein Shake"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
         </div>
@@ -178,7 +179,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
               value={form.price}
               onChange={e => set('price', e.target.value)}
               placeholder="0.00"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
           <div>
@@ -189,7 +190,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
               value={form.points_per_purchase}
               onChange={e => set('points_per_purchase', e.target.value)}
               placeholder="10"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
         </div>
@@ -203,7 +204,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
             {form.punch_card_enabled ? (
               <ToggleRight size={28} className="text-[#D4AF37] flex-shrink-0" />
             ) : (
-              <ToggleLeft size={28} className="text-[#4B5563] flex-shrink-0" />
+              <ToggleLeft size={28} className="text-[#6B7280] flex-shrink-0" />
             )}
             <div className="text-left">
               <p className="text-[13px] font-medium text-[#E5E7EB]">Punch Card</p>
@@ -219,7 +220,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product }) => {
                 min="2"
                 value={form.punch_card_target}
                 onChange={e => set('punch_card_target', e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+                className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               />
             </div>
           )}
@@ -299,7 +300,7 @@ const ProductsTab = ({ gymId }) => {
         <SectionLabel>{products.length} Product{products.length !== 1 ? 's' : ''}</SectionLabel>
         <button
           onClick={() => { setEditProduct(null); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0"
         >
           <Plus size={15} /> Add Product
         </button>
@@ -307,7 +308,7 @@ const ProductsTab = ({ gymId }) => {
 
       {products.length === 0 ? (
         <div className="text-center py-20">
-          <Package size={32} className="text-[#4B5563] mx-auto mb-3" />
+          <Package size={32} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">No products yet. Add your first product above.</p>
         </div>
       ) : (
@@ -324,7 +325,7 @@ const ProductsTab = ({ gymId }) => {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <p className={`text-[14px] font-semibold ${p.is_active !== false ? 'text-[#E5E7EB]' : 'text-[#6B7280] line-through'}`}>
+                      <p className={`text-[14px] font-semibold truncate ${p.is_active !== false ? 'text-[#E5E7EB]' : 'text-[#6B7280] line-through'}`}>
                         {p.name}
                       </p>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${categoryStyle(p.category)}`}>
@@ -375,16 +376,17 @@ const ProductsTab = ({ gymId }) => {
                         <button
                           onClick={() => toggleMutation.mutate({ id: p.id, is_active: p.is_active !== false })}
                           className={`p-1 transition-colors ${
-                            p.is_active !== false ? 'text-emerald-400 hover:text-emerald-300' : 'text-[#4B5563] hover:text-[#9CA3AF]'
+                            p.is_active !== false ? 'text-emerald-400 hover:text-emerald-300' : 'text-[#6B7280] hover:text-[#9CA3AF]'
                           }`}
                           title={p.is_active !== false ? 'Deactivate' : 'Activate'}
+                          aria-label={p.is_active !== false ? 'Deactivate product' : 'Activate product'}
                         >
                           {p.is_active !== false ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                         </button>
-                        <button onClick={() => openEdit(p)} className="text-[#4B5563] hover:text-[#D4AF37] transition-colors p-1">
+                        <button onClick={() => openEdit(p)} aria-label="Edit product" className="text-[#6B7280] hover:text-[#D4AF37] transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                           <Pencil size={15} />
                         </button>
-                        <button onClick={() => setConfirmDeleteId(p.id)} className="text-[#4B5563] hover:text-red-400 transition-colors p-1">
+                        <button onClick={() => setConfirmDeleteId(p.id)} aria-label="Delete product" className="text-[#6B7280] hover:text-red-400 transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                           <Trash2 size={15} />
                         </button>
                       </>
@@ -416,6 +418,7 @@ const LogPurchaseTab = ({ gymId }) => {
   const [quantity, setQuantity] = useState(1);
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [resetApprovalId, setResetApprovalId] = useState(null);
 
   // Fetch active products
   const { data: products = [] } = useQuery({
@@ -432,26 +435,31 @@ const LogPurchaseTab = ({ gymId }) => {
     enabled: !!gymId,
   });
 
-  // Search members
-  const { data: members = [] } = useQuery({
-    queryKey: [...storeKeys.members(gymId), memberSearch],
+  // Load all gym members — include all non-admin roles so trainers can also purchase
+  const { data: allMembers = [], isLoading: membersLoading, error: membersError } = useQuery({
+    queryKey: storeKeys.members(gymId),
     queryFn: async () => {
-      const search = memberSearch.trim();
-      if (!search) return [];
-
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, username, avatar_url')
+        .select('id, full_name, username, avatar_url, role')
         .eq('gym_id', gymId)
-        .eq('role', 'member')
-        .or(`full_name.ilike.%${search}%,username.ilike.%${search}%`)
+        .in('role', ['member', 'trainer'])
         .order('full_name')
-        .limit(20);
-
+        .limit(500);
+      if (error) throw error;
       return data || [];
     },
-    enabled: !!gymId && memberSearch.trim().length > 0,
+    enabled: !!gymId,
   });
+
+  const members = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return [];
+    return allMembers.filter(m =>
+      m.full_name?.toLowerCase().includes(q) ||
+      m.username?.toLowerCase().includes(q)
+    ).slice(0, 20);
+  }, [memberSearch, allMembers]);
 
   // Fetch punch card progress for selected member + product
   const { data: punchProgress } = useQuery({
@@ -557,6 +565,9 @@ const LogPurchaseTab = ({ gymId }) => {
       setSelectedProduct(product);
       setQuantity(1);
       showToast(`${memberData.full_name} — ${product.name}`, 'success');
+    } else if (parsed.type === 'password_reset') {
+      // Password reset QR — open approval modal
+      setResetApprovalId(parsed.request_id);
     } else if (parsed.type === 'checkin') {
       // Plain check-in QR — look up member by qr_code_payload
       const { data: memberData } = await supabase
@@ -584,7 +595,7 @@ const LogPurchaseTab = ({ gymId }) => {
       {/* Scan QR button */}
       <button
         onClick={() => setShowScanner(true)}
-        className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.98] transition-all"
+        className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.98] transition-all whitespace-nowrap"
       >
         <ScanLine size={18} />
         Scan Purchase QR
@@ -597,8 +608,17 @@ const LogPurchaseTab = ({ gymId }) => {
           onScan={handleQRScan}
         />
       )}
-      {/* Member Search */}
-      <AdminCard>
+      {resetApprovalId && (
+        <PasswordResetApprovalModal
+          requestId={resetApprovalId}
+          onClose={() => setResetApprovalId(null)}
+          onComplete={() => {
+            setResetApprovalId(null);
+            showToast('Password reset handled', 'success');
+          }}
+        />
+      )}
+      <AdminCard clipContent={false} className="relative z-10">
         <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Member</label>
         {selectedMember ? (
           <div className="flex items-center gap-3 bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5">
@@ -611,22 +631,22 @@ const LogPurchaseTab = ({ gymId }) => {
               <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{selectedMember.full_name}</p>
               <p className="text-[11px] text-[#6B7280] truncate">@{selectedMember.username}</p>
             </div>
-            <button onClick={() => { setSelectedMember(null); setMemberSearch(''); }} className="text-[#4B5563] hover:text-red-400 transition-colors">
+            <button onClick={() => { setSelectedMember(null); setMemberSearch(''); }} aria-label="Remove selected member" className="text-[#6B7280] hover:text-red-400 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
               <X size={16} />
             </button>
           </div>
         ) : (
           <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
             <input
               value={memberSearch}
               onChange={e => { setMemberSearch(e.target.value); setShowMemberDropdown(true); }}
               onFocus={() => setShowMemberDropdown(true)}
               placeholder="Search member by name..."
-              className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
-            {showMemberDropdown && memberSearch.length > 0 && members.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full bg-[#0F172A] border border-white/8 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+            {showMemberDropdown && memberSearch.trim().length > 0 && members.length > 0 && (
+              <div className="absolute z-30 top-full left-0 right-0 mt-1 w-full bg-[#0F172A] border border-white/8 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
                 {members.map(m => (
                   <button
                     key={m.id}
@@ -642,6 +662,13 @@ const LogPurchaseTab = ({ gymId }) => {
                     </div>
                   </button>
                 ))}
+              </div>
+            )}
+            {showMemberDropdown && memberSearch.trim().length > 0 && !membersLoading && members.length === 0 && (
+              <div className="absolute z-30 top-full left-0 right-0 mt-1 w-full rounded-xl border border-white/8 bg-[#0F172A] px-4 py-3 text-[12px] text-[#6B7280]">
+                {allMembers.length === 0
+                  ? 'No members loaded for this gym. Check your connection or try refreshing.'
+                  : 'No member matches that search.'}
               </div>
             )}
           </div>
@@ -752,7 +779,7 @@ const LogPurchaseTab = ({ gymId }) => {
       <button
         onClick={() => recordMutation.mutate()}
         disabled={!selectedMember || !selectedProduct || recordMutation.isPending}
-        className="w-full py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C4A030] transition-colors"
+        className="w-full py-3.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C4A030] transition-colors whitespace-nowrap"
       >
         {recordMutation.isPending ? 'Recording...' : 'Record Purchase'}
       </button>
@@ -821,7 +848,7 @@ const HistoryTab = ({ gymId }) => {
             <select
               value={filterProduct}
               onChange={e => setFilterProduct(e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               <option value="all">All Products</option>
               {products.map(p => (
@@ -835,7 +862,7 @@ const HistoryTab = ({ gymId }) => {
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
           <div className="min-w-[130px]">
@@ -844,7 +871,7 @@ const HistoryTab = ({ gymId }) => {
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
           {(filterProduct !== 'all' || dateFrom || dateTo) && (
@@ -865,7 +892,7 @@ const HistoryTab = ({ gymId }) => {
         </div>
       ) : purchases.length === 0 ? (
         <div className="text-center py-16">
-          <ShoppingBag size={32} className="text-[#4B5563] mx-auto mb-3" />
+          <ShoppingBag size={32} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">No purchases found</p>
         </div>
       ) : (
@@ -882,11 +909,11 @@ const HistoryTab = ({ gymId }) => {
                   {/* Details */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[13px] font-medium text-[#E5E7EB]">
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
                         {p.profiles?.full_name ?? 'Unknown'}
                       </p>
                       <span className="text-[11px] text-[#6B7280]">bought</span>
-                      <p className="text-[13px] font-medium text-[#E5E7EB]">
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
                         {p.quantity > 1 ? `${p.quantity}x ` : ''}{p.gym_products?.name ?? 'Unknown'}
                       </p>
                       {p.is_free_reward && (
@@ -924,7 +951,7 @@ export default function AdminStore() {
   useEffect(() => { document.title = 'Admin - Store | TuGymPR'; }, []);
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Store"
         subtitle="Manage products, log purchases, and track sales"
@@ -932,7 +959,7 @@ export default function AdminStore() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-[#0F172A] border border-white/8 rounded-[14px] p-1 mb-6">
+      <div className="flex gap-1 bg-[#0F172A] border border-white/8 rounded-[14px] p-1 mb-6 overflow-hidden">
         {TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;

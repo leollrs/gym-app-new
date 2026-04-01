@@ -272,7 +272,7 @@ export const MEALS_LEAN_BULK = [
     tag: 'Lean Bulk', tag_es: 'Volumen Limpio', category: 'lean_bulk', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['egg_whites', 'oats', 'banana', 'protein_powder', 'almond_milk', 'vanilla', 'honey'],
     steps: ['Blend oats, egg whites, banana, protein powder, and almond milk into a smooth batter.', 'Cook pancakes on a non-stick pan over medium heat until golden on each side.', 'Stack and drizzle with a small amount of honey.'],
-    steps_es: ['Licuar la avena, claras de huevo, plátano, proteína en polvo y leche de almendras hasta obtener una masa suave.', 'Cocinar los panqueques en una sartén antiadherente a fuego medio hasta que estén dorados por cada lado.', 'Apilar y rociar con una pequeña cantidad de miel.'],
+    steps_es: ['Licuar la avena, claras de huevo, guineo, proteína en polvo y leche de almendras hasta obtener una masa suave.', 'Cocinar los panqueques en una sartén antiadherente a fuego medio hasta que estén dorados por cada lado.', 'Apilar y rociar con una pequeña cantidad de miel.'],
   },
   {
     id: 'r126',

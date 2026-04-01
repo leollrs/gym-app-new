@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 // ── Data helpers ──────────────────────────────────────────
 const DEFAULT_SETS = 3;
@@ -210,7 +211,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
               </p>
             )}
           </div>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
         {/* Scrollable body */}
@@ -232,7 +233,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Plan Name</label>
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="e.g. 8-Week Strength Builder"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
 
           {/* Description */}
@@ -240,7 +241,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Description</label>
             <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
               placeholder="Goals and approach for this plan…"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
 
           {/* Duration */}
@@ -277,7 +278,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                         <ChevronDown size={14} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? '' : '-rotate-90'}`} />
                         <span className="text-[13px] font-semibold text-[#E5E7EB]">Week {wk}</span>
                         {!isOpen && (
-                          <span className="text-[11px] text-[#4B5563] ml-1">
+                          <span className="text-[11px] text-[#6B7280] ml-1">
                             {days.length} day{days.length !== 1 ? 's' : ''}{totalEx > 0 ? ` · ${totalEx} ex` : ''}{wkTime > 0 ? ` · ~${fmtTime(wkTime / Math.max(days.length, 1))} avg` : ''}
                           </span>
                         )}
@@ -290,12 +291,12 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                         </button>
                         {showCopyWeek && (
                           <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[130px]">
-                            <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to…</p>
+                            <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to…</p>
                             {allWeekNums.filter(w => w !== wk).map(targetWk => (
                               <button key={targetWk} onClick={() => copyWeekTo(wk, targetWk)}
                                 className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors">
                                 Week {targetWk}
-                                {(weeks[targetWk] || []).length > 0 && <span className="text-[#4B5563] ml-1">(overwrite)</span>}
+                                {(weeks[targetWk] || []).length > 0 && <span className="text-[#6B7280] ml-1">(overwrite)</span>}
                               </button>
                             ))}
                           </div>
@@ -307,7 +308,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                     {isOpen && (
                       <div className="p-3 space-y-2">
                         {days.length === 0 && (
-                          <p className="text-[12px] text-[#4B5563] text-center py-2">No days yet — add one below</p>
+                          <p className="text-[12px] text-[#6B7280] text-center py-2">No days yet — add one below</p>
                         )}
 
                         {days.map((day, di) => {
@@ -321,21 +322,21 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                               <div className="flex items-center gap-2 px-3 py-2.5 bg-[#111827]/40 rounded-t-xl">
                                 <input value={day.name} onChange={e => updateDayName(wk, di, e.target.value)}
                                   placeholder={`Day ${di + 1}`}
-                                  className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#4B5563] outline-none" />
+                                  className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#9CA3AF] outline-none" />
                                 {dayTime > 0 && (
-                                  <span className="text-[10px] text-[#4B5563] flex items-center gap-0.5 flex-shrink-0">
+                                  <span className="text-[10px] text-[#6B7280] flex items-center gap-0.5 flex-shrink-0">
                                     <Clock size={9} /> {fmtTime(dayTime)}
                                   </span>
                                 )}
                                 <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
                                   <button
                                     onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
-                                    className="text-[#4B5563] hover:text-[#9CA3AF] transition-colors p-0.5" title="Copy day">
+                                    className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors p-0.5" title="Copy day">
                                     <Copy size={12} />
                                   </button>
                                   {showCopyDay && (
                                     <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[160px] max-h-48 overflow-y-auto">
-                                      <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to…</p>
+                                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to…</p>
                                       {dayTargets.map((t, idx) => (
                                         <button key={idx} onClick={() => copyDayTo(wk, di, t.wk, t.di)}
                                           className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors">
@@ -346,7 +347,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                                   )}
                                 </div>
                                 <button onClick={() => removeDay(wk, di)}
-                                  className="text-[#4B5563] hover:text-red-400 transition-colors flex-shrink-0">
+                                  className="text-[#6B7280] hover:text-red-400 transition-colors flex-shrink-0">
                                   <X size={14} />
                                 </button>
                               </div>
@@ -354,7 +355,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                               {/* Exercises */}
                               <div className="px-3 pb-3 pt-1 space-y-1">
                                 {day.exercises.length === 0 && (
-                                  <p className="text-[11px] text-[#4B5563] py-1">No exercises yet</p>
+                                  <p className="text-[11px] text-[#6B7280] py-1">No exercises yet</p>
                                 )}
                                 {day.exercises.map((ex, ei) => (
                                   <div key={ei} className="py-2 border-b border-white/4 last:border-0">
@@ -367,7 +368,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                                         <span className="text-[11px] text-[#E5E7EB] w-5 text-center">{ex.sets ?? DEFAULT_SETS}</span>
                                         <button onClick={() => updateExercise(wk, di, ei, 'sets', (ex.sets ?? DEFAULT_SETS) + 1)}
                                           className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center">+</button>
-                                        <span className="text-[10px] text-[#4B5563] w-5">sets</span>
+                                        <span className="text-[10px] text-[#6B7280] w-5">sets</span>
                                       </div>
                                       {/* Reps */}
                                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -375,7 +376,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                                           onChange={e => updateExercise(wk, di, ei, 'reps', e.target.value)}
                                           className="w-10 bg-white/6 rounded-md px-1.5 py-0.5 text-[11px] text-[#E5E7EB] text-center outline-none focus:bg-white/10"
                                           placeholder="8-12" />
-                                        <span className="text-[10px] text-[#4B5563] w-5">reps</span>
+                                        <span className="text-[10px] text-[#6B7280] w-5">reps</span>
                                       </div>
                                       {/* Rest */}
                                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -384,10 +385,10 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
                                         <span className="text-[11px] text-[#E5E7EB] w-7 text-center">{ex.rest_seconds ?? DEFAULT_REST}s</span>
                                         <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
                                           className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center">+</button>
-                                        <span className="text-[10px] text-[#4B5563] w-5">rest</span>
+                                        <span className="text-[10px] text-[#6B7280] w-5">rest</span>
                                       </div>
                                       <button onClick={() => removeExercise(wk, di, ei)}
-                                        className="text-[#4B5563] hover:text-red-400 transition-colors ml-1 flex-shrink-0">
+                                        className="text-[#6B7280] hover:text-red-400 transition-colors ml-1 flex-shrink-0">
                                         <Trash2 size={11} />
                                       </button>
                                     </div>
@@ -446,6 +447,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId }) => {
 // ── Main ──────────────────────────────────────────────────
 export default function TrainerWorkoutPlans() {
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
   const [plans, setPlans]       = useState([]);
   const [clients, setClients]   = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -453,6 +455,7 @@ export default function TrainerWorkoutPlans() {
   const [editing, setEditing]   = useState(null);
   const [filterClient, setFilterClient] = useState('all');
   const [expandedPlan, setExpandedPlan] = useState(null);
+  const [adherenceMap, setAdherenceMap] = useState({}); // { [planId]: { completed, expected } }
 
   useEffect(() => { document.title = 'Trainer - Workout Plans | TuGymPR'; }, []);
 
@@ -475,8 +478,45 @@ export default function TrainerWorkoutPlans() {
         .eq('trainer_id', profile.id)
         .eq('is_active', true),
     ]);
-    setPlans(plansRes.data || []);
+    const loadedPlans = plansRes.data || [];
+    setPlans(loadedPlans);
     setClients((clientsRes.data || []).map(tc => tc.profiles).filter(Boolean));
+
+    // Compute adherence for active plans with assigned clients
+    const activePlans = loadedPlans.filter(p => p.is_active && p.client_id);
+    if (activePlans.length > 0) {
+      const now = new Date();
+      const wkStart = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
+      const wkEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+      const clientIds = [...new Set(activePlans.map(p => p.client_id))];
+
+      const { data: weekSessions } = await supabase
+        .from('workout_sessions')
+        .select('profile_id')
+        .in('profile_id', clientIds)
+        .eq('status', 'completed')
+        .gte('started_at', wkStart)
+        .lte('started_at', wkEnd);
+
+      const sessionCounts = {};
+      (weekSessions || []).forEach(s => {
+        sessionCounts[s.profile_id] = (sessionCounts[s.profile_id] || 0) + 1;
+      });
+
+      const newAdherence = {};
+      activePlans.forEach(p => {
+        // Calculate expected sessions per week from plan weeks data
+        const allDays = Object.values(p.weeks || {}).flat();
+        const totalWeeks = Object.keys(p.weeks || {}).length || 1;
+        const expectedPerWeek = Math.round(allDays.length / totalWeeks) || 3;
+        newAdherence[p.id] = {
+          completed: sessionCounts[p.client_id] || 0,
+          expected: expectedPerWeek,
+        };
+      });
+      setAdherenceMap(newAdherence);
+    }
+
     setLoading(false);
   };
 
@@ -523,8 +563,8 @@ export default function TrainerWorkoutPlans() {
 
   if (loading) {
     return (
-      <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6">Workout Plans</h1>
+      <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6 truncate">Workout Plans</h1>
         <div className="flex justify-center py-20">
           <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
@@ -533,16 +573,16 @@ export default function TrainerWorkoutPlans() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Workout Plans</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Workout Plans</h1>
           <p className="text-[13px] text-[#6B7280] mt-0.5">{plans.length} plan{plans.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setShowBuilder(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] hover:bg-[#C4A030] text-black transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-bold bg-[#D4AF37] hover:bg-[#C4A030] text-black transition-colors flex-shrink-0 whitespace-nowrap"
         >
           <Plus size={16} /> New Plan
         </button>
@@ -571,12 +611,12 @@ export default function TrainerWorkoutPlans() {
       {/* Plans list */}
       {filtered.length === 0 ? (
         <div className="text-center py-20">
-          <ClipboardList size={32} className="text-[#4B5563] mx-auto mb-3" />
+          <ClipboardList size={32} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">
             {plans.length === 0 ? 'No workout plans yet' : 'No plans for this client'}
           </p>
           {plans.length === 0 && (
-            <p className="text-[12px] text-[#4B5563] mt-1">Create a custom workout plan for your clients</p>
+            <p className="text-[12px] text-[#6B7280] mt-1">Create a custom workout plan for your clients</p>
           )}
         </div>
       ) : (
@@ -595,20 +635,33 @@ export default function TrainerWorkoutPlans() {
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
                     plan.is_active ? 'bg-[#D4AF37]/12' : 'bg-white/4'
                   }`}>
-                    <Dumbbell size={18} className={plan.is_active ? 'text-[#D4AF37]' : 'text-[#4B5563]'} />
+                    <Dumbbell size={18} className={plan.is_active ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{plan.name}</p>
                       {!plan.is_active && (
-                        <span className="text-[9px] font-bold text-[#4B5563] bg-white/4 px-1.5 py-0.5 rounded-full flex-shrink-0">INACTIVE</span>
+                        <span className="text-[9px] font-bold text-[#6B7280] bg-white/4 px-1.5 py-0.5 rounded-full flex-shrink-0">INACTIVE</span>
                       )}
                     </div>
                     <p className="text-[11px] text-[#6B7280]">
                       {plan.profiles?.full_name || 'Client'} · {plan.duration_weeks}w · {totalDays} day{totalDays !== 1 ? 's' : ''} · {totalEx} exercise{totalEx !== 1 ? 's' : ''}
                     </p>
+                    {/* Adherence indicator */}
+                    {adherenceMap[plan.id] && (() => {
+                      const { completed, expected } = adherenceMap[plan.id];
+                      const pct = expected > 0 ? Math.round((completed / expected) * 100) : 0;
+                      const color = pct >= 80 ? 'text-emerald-400' : pct >= 50 ? 'text-amber-400' : 'text-red-400';
+                      const dotColor = pct >= 80 ? 'bg-emerald-400' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400';
+                      return (
+                        <p className={`text-[11px] font-medium ${color} flex items-center gap-1.5 mt-0.5`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
+                          {t('trainer.clientCompletedXOfY', '{{completed}} of {{expected}} sessions this week', { completed, expected })}
+                        </p>
+                      );
+                    })()}
                   </div>
-                  <ChevronDown size={16} className={`text-[#4B5563] transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
+                  <ChevronDown size={16} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
                 </button>
 
                 {/* Expanded details */}
@@ -627,14 +680,14 @@ export default function TrainerWorkoutPlans() {
                             {(days || []).map((d, di) => (
                               <span key={di} className="px-2.5 py-1 bg-[#111827] rounded-lg text-[11px] text-[#9CA3AF]">
                                 {d.name || `Day ${di + 1}`}
-                                <span className="text-[#4B5563] ml-1">({d.exercises?.length || 0} ex)</span>
+                                <span className="text-[#6B7280] ml-1">({d.exercises?.length || 0} ex)</span>
                               </span>
                             ))}
                           </div>
                         </div>
                       ))}
                       {Object.keys(plan.weeks || {}).length > 2 && (
-                        <p className="text-[10px] text-[#4B5563]">+ {Object.keys(plan.weeks).length - 2} more weeks</p>
+                        <p className="text-[10px] text-[#6B7280]">+ {Object.keys(plan.weeks).length - 2} more weeks</p>
                       )}
                     </div>
 

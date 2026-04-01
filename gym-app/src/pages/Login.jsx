@@ -66,7 +66,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-5">
+    <div className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[400px]">
 
         {/* Logo */}
@@ -74,16 +74,16 @@ const Login = () => {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-5">
             <Dumbbell size={26} className="text-[#D4AF37]" strokeWidth={2} />
           </div>
-          <h1 className="text-[26px] font-bold text-[#E5E7EB]">
+          <h1 className="text-[26px] font-bold" style={{ color: "var(--color-text-primary)" }}>
             {forgotMode ? t('resetPassword') : t('welcomeBack')}
           </h1>
-          <p className="text-[13px] text-[#6B7280] mt-1">
+          <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>
             {forgotMode ? t('resetSubtitle') : t('signInSubtitle')}
           </p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-2xl p-7">
+        <div className="border border-white/6 rounded-2xl p-7" style={{ backgroundColor: "var(--color-bg-card)" }}>
 
           {forgotMode ? (
             <>
@@ -106,7 +106,7 @@ const Login = () => {
               <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
                 {/* Email */}
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                     {t('email')}
                   </label>
                   <div className="relative">
@@ -117,7 +117,7 @@ const Login = () => {
                       onChange={e => setResetEmail(e.target.value)}
                       required
                       placeholder="you@example.com"
-                      className="w-full bg-[#0B1220] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
                     />
                   </div>
                 </div>
@@ -156,7 +156,7 @@ const Login = () => {
 
                 {/* Email */}
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                     {t('email')}
                   </label>
                   <div className="relative">
@@ -167,7 +167,7 @@ const Login = () => {
                       onChange={e => setEmail(e.target.value)}
                       required
                       placeholder="you@example.com"
-                      className="w-full bg-[#0B1220] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
                     />
                   </div>
                 </div>
@@ -175,7 +175,7 @@ const Login = () => {
                 {/* Password */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
                       {t('password')}
                     </label>
                     <button
@@ -194,7 +194,7 @@ const Login = () => {
                       onChange={e => setPassword(e.target.value)}
                       required
                       placeholder="••••••••"
-                      className="w-full bg-[#0B1220] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/40 transition-colors" style={{ color: "var(--color-text-primary)" }}
                     />
                   </div>
                 </div>
@@ -213,16 +213,16 @@ const Login = () => {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[13px] text-[#6B7280] mt-6">
+        <p className="text-center text-[13px] mt-6" style={{ color: "var(--color-text-subtle)" }}>
           {t('dontHaveAccount')}{' '}
           <Link to="/signup" className="text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors">
             {t('signUp')}
           </Link>
         </p>
-        <p className="text-center text-[11px] text-[#6B7280] mt-3">
-          <a href="/privacy" className="text-[#6B7280] hover:text-[#9CA3AF] hover:underline">{t('common:privacyPolicy')}</a>
+        <p className="text-center text-[11px] mt-3" style={{ color: "var(--color-text-subtle)" }}>
+          <a href="/privacy" className="hover:underline" style={{ color: "var(--color-text-muted)" }}>{t('common:privacyPolicy')}</a>
           {' · '}
-          <a href="/terms" className="text-[#6B7280] hover:text-[#9CA3AF] hover:underline">{t('common:termsOfService')}</a>
+          <a href="/terms" className="hover:underline" style={{ color: "var(--color-text-muted)" }}>{t('common:termsOfService')}</a>
         </p>
       </div>
     </div>

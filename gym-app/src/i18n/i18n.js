@@ -30,6 +30,7 @@ i18n
         pages: esPages,
       },
     },
+    compatibilityJSON: 'v3',
     fallbackLng: 'en',
     supportedLngs: ['en', 'es'],
     defaultNS: 'common',

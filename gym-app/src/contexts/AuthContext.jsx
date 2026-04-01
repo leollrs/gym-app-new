@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyBranding } from '../lib/branding';
+import { getPalette } from '../lib/palettes';
+import { resetToDefault } from '../lib/themeGenerator';
 import { setErrorTrackerAuth } from '../lib/errorTracker';
 import { syncUserContextToWatch, syncFriendsToWatch, syncRoutinesToWatch } from '../lib/watchBridge';
 import { removePushTokens } from '../lib/pushNotifications';
@@ -11,8 +13,12 @@ const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [gymName, setGymName] = useState('');
+  const [profile, setProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('offline_profile')); } catch { return null; }
+  });
+  const [gymName, setGymName] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('offline_gym'))?.name || ''; } catch { return ''; }
+  });
   const [gymLogoUrl, setGymLogoUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -38,15 +44,33 @@ export const AuthProvider = ({ children }) => {
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date')
-      .eq('id', userId)
-      .maybeSingle();
+    // Single RPC call replaces profile + branding + gym + points + notifications queries
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('get_auth_context');
+
+    // Fallback to direct query if RPC fails (e.g. migration not yet applied)
+    let data, branding, gym;
+    if (rpcError || !rpcResult) {
+      const { data: fallback } = await supabase
+        .from('profiles')
+        .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date')
+        .eq('id', userId)
+        .maybeSingle();
+      data = fallback;
+      branding = null;
+      gym = null;
+    } else {
+      data = rpcResult.profile ?? null;
+      branding = rpcResult.branding ?? null;
+      gym = rpcResult.gym ?? null;
+      // Apply lifetime points and unread count from RPC
+      setLifetimePoints(rpcResult.lifetime_points ?? 0);
+      setUnreadNotifications(rpcResult.unread_count ?? 0);
+    }
+
     setProfile(data ?? null);
 
-    // Fetch lifetime points for level calculation (non-blocking)
-    if (data?.id) {
+    // Only fetch points separately if RPC didn't provide them (fallback path)
+    if ((!rpcResult || rpcError) && data?.id) {
       supabase
         .from('reward_points')
         .select('lifetime_points')
@@ -69,18 +93,23 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (data?.gym_id) {
-      const [{ data: branding }, { data: gym }] = await Promise.all([
-        supabase
-          .from('gym_branding')
-          .select('primary_color, accent_color, custom_app_name, logo_url')
-          .eq('gym_id', data.gym_id)
-          .single(),
-        supabase
-          .from('gyms')
-          .select('name, is_active, qr_enabled, qr_display_format')
-          .eq('id', data.gym_id)
-          .maybeSingle(),
-      ]);
+      // If RPC didn't provide branding/gym, fetch them (fallback path)
+      if (!rpcResult || rpcError) {
+        const [brandingRes, gymRes] = await Promise.all([
+          supabase
+            .from('gym_branding')
+            .select('primary_color, accent_color, custom_app_name, logo_url, palette_name, surface_color')
+            .eq('gym_id', data.gym_id)
+            .single(),
+          supabase
+            .from('gyms')
+            .select('name, is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed')
+            .eq('id', data.gym_id)
+            .maybeSingle(),
+        ]);
+        branding = brandingRes.data;
+        gym = gymRes.data;
+      }
 
       // If the gym query returned null, RLS blocked it because is_active = false
       // (the policy only exposes inactive gyms to super_admins).
@@ -96,7 +125,14 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      if (branding?.primary_color || branding?.accent_color) {
+      if (branding?.palette_name) {
+        const palette = getPalette(branding.palette_name);
+        applyBranding({
+          primaryColor: branding.primary_color || palette.primary,
+          secondaryColor: branding.accent_color || palette.secondary,
+          surfaceColor: branding.surface_color || null,
+        });
+      } else if (branding?.primary_color || branding?.accent_color) {
         applyBranding({
           primaryColor: branding.primary_color,
           secondaryColor: branding.accent_color,
@@ -106,17 +142,29 @@ export const AuthProvider = ({ children }) => {
       setGymConfig({
         qrEnabled: gym?.qr_enabled ?? false,
         qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
+        classesEnabled: gym?.classes_enabled ?? false,
+        setupCompleted: gym?.setup_completed ?? true, // default true so existing gyms don't see wizard
       });
+
+      // Cache critical data for offline access
+      try {
+        localStorage.setItem('offline_profile', JSON.stringify({ ...data, gym_id: data.gym_id, role: data.role }));
+        localStorage.setItem('offline_gym', JSON.stringify({
+          name: gym?.name || branding?.custom_app_name || '',
+          qrEnabled: gym?.qr_enabled ?? false,
+          qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
+          classesEnabled: gym?.classes_enabled ?? false,
+          setupCompleted: gym?.setup_completed ?? true,
+        }));
+      } catch {}
 
       setErrorTrackerAuth({ id: userId }, data, gym?.name || branding?.custom_app_name || '');
 
       // Identify user in PostHog
       try {
         posthog.identify(userId, {
-          name: data.full_name || data.username,
           role: data.role,
           gym_id: data.gym_id,
-          gym_name: gym?.name || branding?.custom_app_name || '',
           platform: window.Capacitor?.getPlatform?.() || 'web',
         });
       } catch {}
@@ -139,19 +187,13 @@ export const AuthProvider = ({ children }) => {
       setErrorTrackerAuth({ id: userId }, data, '');
     }
 
-    // Enforce MFA for privileged roles
+    // MFA check for privileged roles (silent — does not block login)
     if (['admin', 'super_admin', 'trainer'].includes(data?.role)) {
       try {
         const { data: mfaData } = await supabase.auth.mfa.listFactors();
         const hasVerifiedFactor = mfaData?.totp?.some(f => f.status === 'verified');
-        if (!hasVerifiedFactor) {
-          console.warn('MFA not enabled for privileged account:', data.role);
-          setMfaRequired(true);
-        } else {
-          setMfaRequired(false);
-        }
+        setMfaRequired(!hasVerifiedFactor);
       } catch {
-        // MFA check failed — don't block login, but flag it
         setMfaRequired(false);
       }
     } else {
@@ -274,6 +316,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setProfile(null);
         setLoading(false);
+        resetToDefault();
         try { posthog.reset(); } catch {}
       }
     });
@@ -451,7 +494,13 @@ export const AuthProvider = ({ children }) => {
   // ── REFRESH PROFILE ────────────────────────────────────────
   // Call this after onboarding completes to pick up is_onboarded = true
   const refreshProfile = () => {
-    if (user) fetchProfile(user.id);
+    if (user) return fetchProfile(user.id);
+  };
+
+  // Optimistic patch — merges fields into the local profile immediately
+  // without a DB round-trip.  Follow up with refreshProfile() to confirm.
+  const patchProfile = (fields) => {
+    setProfile((prev) => (prev ? { ...prev, ...fields } : prev));
   };
 
   return (
@@ -476,6 +525,7 @@ export const AuthProvider = ({ children }) => {
       signOut,
       deleteAccount,
       refreshProfile,
+      patchProfile,
       unreadNotifications,
       refreshNotifications,
       mfaRequired,

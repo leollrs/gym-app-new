@@ -21,23 +21,25 @@ import {
   REWARDS_CATALOG,
 } from '../lib/rewardsEngine';
 import { formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
+import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const WalletPass = registerPlugin('WalletPass');
 
 // ── Action icon mapping ──────────────────────────────────────────────────────
 const ACTION_META = {
-  workout_completed:    { icon: Dumbbell,      color: '#D4AF37', labelKey: 'workout_completed' },
-  pr_hit:               { icon: Target,        color: '#EF4444', labelKey: 'pr_hit' },
-  check_in:             { icon: MapPin,         color: '#10B981', labelKey: 'check_in' },
+  workout_completed:    { icon: Dumbbell,      color: 'var(--color-accent)', labelKey: 'workout_completed' },
+  pr_hit:               { icon: Target,        color: 'var(--color-danger)', labelKey: 'pr_hit' },
+  check_in:             { icon: MapPin,         color: 'var(--color-success)', labelKey: 'check_in' },
   streak_day:           { icon: Flame,          color: '#F97316', labelKey: 'streak_day' },
   challenge_completed:  { icon: Trophy,         color: '#A78BFA', labelKey: 'challenge_completed' },
-  achievement_unlocked: { icon: Award,          color: '#F59E0B', labelKey: 'achievement_unlocked' },
-  weight_logged:        { icon: Scale,          color: '#60A5FA', labelKey: 'weight_logged' },
-  first_weekly_workout: { icon: CalendarCheck,  color: '#10B981', labelKey: 'first_weekly_workout' },
+  achievement_unlocked: { icon: Award,          color: 'var(--color-warning)', labelKey: 'achievement_unlocked' },
+  weight_logged:        { icon: Scale,          color: 'var(--color-blue-soft)', labelKey: 'weight_logged' },
+  first_weekly_workout: { icon: CalendarCheck,  color: 'var(--color-success)', labelKey: 'first_weekly_workout' },
   streak_7:             { icon: Zap,            color: '#F97316', labelKey: 'streak_7' },
-  streak_30:            { icon: Crown,          color: '#D4AF37', labelKey: 'streak_30' },
+  streak_30:            { icon: Crown,          color: 'var(--color-accent)', labelKey: 'streak_30' },
 };
 
 // Map reward icon names → lucide components
@@ -89,7 +91,7 @@ const AnimatedPoints = ({ value }) => {
   }, [value]);
 
   return (
-    <span className="tabular-nums">{display.toLocaleString()}</span>
+    <span className="tabular-nums">{formatStatNumber(display)}</span>
   );
 };
 
@@ -125,7 +127,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
         >
           <div className="flex items-center justify-between mb-5">
             <h3 id="redeem-reward-title" className="text-[18px] font-bold text-[var(--color-text-primary)]">{t('rewards.redeemReward')}</h3>
-            <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+            <button onClick={onClose} aria-label="Close dialog" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
               <X size={20} />
             </button>
           </div>
@@ -136,12 +138,12 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
             <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{reward.description}</p>
             <div className="flex items-center justify-center gap-1.5 mt-4">
               <Coins size={16} className="text-[#D4AF37]" />
-              <span className="text-[20px] font-bold text-[#D4AF37] tabular-nums">{reward.cost.toLocaleString()}</span>
+              <span className="text-[20px] font-bold text-[#D4AF37] tabular-nums">{formatStatNumber(reward.cost)}</span>
               <span className="text-[13px] text-[var(--color-text-muted)]">pts</span>
             </div>
             {!canAfford && (
               <p className="text-[12px] text-[#EF4444] mt-2">
-                {t('rewards.youNeedMore', { count: (reward.cost - points).toLocaleString() })}
+                {t('rewards.youNeedMore', { count: formatStatNumber(reward.cost - points) })}
               </p>
             )}
           </div>
@@ -186,12 +188,16 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
     <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 backdrop-blur-xl bg-black/60" />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reward redeemed"
         className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+          aria-label="Close redemption QR"
+          className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
         >
           <X size={18} />
         </button>
@@ -232,6 +238,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
 
 // ── Points History Tab ───────────────────────────────────────────────────────
 const HistoryTab = ({ history, loading, t }) => {
+  const { i18n } = useTranslation();
   const [showAll, setShowAll] = useState(false);
 
   if (loading) {
@@ -256,7 +263,7 @@ const HistoryTab = ({ history, loading, t }) => {
     <FadeIn>
     <div className="space-y-2">
       {visible.map((entry) => {
-        const rawMeta = ACTION_META[entry.action] || { icon: Star, color: '#6B7280', labelKey: entry.action };
+        const rawMeta = ACTION_META[entry.action] || { icon: Star, color: 'var(--color-text-subtle)', labelKey: entry.action };
         const meta = { ...rawMeta, label: t(`rewards.actionLabels.${rawMeta.labelKey}`, rawMeta.labelKey) };
         const Icon = meta.icon;
         return (
@@ -272,10 +279,10 @@ const HistoryTab = ({ history, loading, t }) => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">
-                {entry.description || meta.label}
+                {meta.label}
               </p>
               <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true, locale: i18n.language?.startsWith('es') ? esLocale : undefined })}
               </p>
             </div>
             <span className={`text-[14px] font-bold flex-shrink-0 ${entry.points >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
@@ -324,7 +331,7 @@ const RewardsTab = ({ points, onRedeem, t }) => (
           <p className="text-[11px] text-[var(--color-text-muted)] mt-1 leading-snug">{desc}</p>
           <div className="flex items-center gap-1 mt-3">
             <Coins size={12} className="text-[#D4AF37]" />
-            <span className="text-[13px] font-bold text-[#D4AF37]">{reward.cost.toLocaleString()}</span>
+            <span className="text-[13px] font-bold text-[#D4AF37]">{formatStatNumber(reward.cost)}</span>
           </div>
           <button
             onClick={() => onRedeem(displayReward)}
@@ -335,7 +342,7 @@ const RewardsTab = ({ points, onRedeem, t }) => (
                 : 'bg-white/[0.04] text-[var(--color-text-muted)] cursor-not-allowed'
             }`}
           >
-            {canAfford ? t('rewards.redeem') : t('rewards.needMore', { count: (reward.cost - points).toLocaleString() })}
+            {canAfford ? t('rewards.redeem') : t('rewards.needMore', { count: formatStatNumber(reward.cost - points) })}
           </button>
         </div>
       );
@@ -427,6 +434,7 @@ const PunchCardStamps = ({ punches, target, emoji }) => {
 
 // ── Purchases Tab ────────────────────────────────────────────────────────────
 const PurchasesList = ({ purchases, t }) => {
+  const { i18n } = useTranslation();
   const [showAll, setShowAll] = useState(false);
 
   if (purchases.length === 0) {
@@ -470,7 +478,7 @@ const PurchasesList = ({ purchases, t }) => {
               )}
             </div>
             <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-              {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(purchase.created_at), { addSuffix: true, locale: i18n.language?.startsWith('es') ? esLocale : undefined })}
             </p>
           </div>
           <div className="flex flex-col items-end flex-shrink-0">
@@ -629,8 +637,8 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-baseline gap-0.5 flex-shrink-0 pt-0.5">
-                          <span className="text-[22px] font-bold text-[#D4AF37] tracking-tight leading-none tabular-nums">
+                        <div className="flex items-baseline gap-0.5 flex-shrink-0 pt-0.5 min-w-0">
+                          <span className={`${statFontSize(card.current_punches, 'text-[22px]')} font-bold text-[#D4AF37] tracking-tight leading-none tabular-nums truncate`}>
                             {card.current_punches}
                           </span>
                           <span className="text-[13px] font-medium text-[var(--color-text-muted)]">/{card.punch_card_target}</span>
@@ -747,7 +755,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
           >
             <div className="flex items-center gap-2 bg-[#EF4444]/20 border border-[#EF4444]/40 px-4 py-2.5 rounded-2xl backdrop-blur-xl shadow-lg">
               <span className="text-[12px] font-medium text-[#EF4444]">{walletError}</span>
-              <button onClick={() => setWalletError('')} className="text-[#EF4444]/60 hover:text-[#EF4444]">
+              <button onClick={() => setWalletError('')} aria-label="Dismiss error" className="text-[#EF4444]/60 hover:text-[#EF4444] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                 <X size={14} />
               </button>
             </div>
@@ -877,31 +885,31 @@ export default function Rewards() {
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border-subtle)]">
-        <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
+        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           {/* Title row */}
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-[14px] bg-[#D4AF37]/10 flex items-center justify-center">
               <Coins size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight">{t('rewards.title')}</h1>
+              <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] tracking-tight truncate">{t('rewards.title')}</h1>
               <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('rewards.subtitle')}</p>
             </div>
           </div>
 
           {/* Points hero card */}
-          <div className="bg-white/[0.04] rounded-2xl border border-[var(--color-border-subtle)] p-5 mb-5">
+          <div className="bg-white/[0.04] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden p-5 mb-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">{t('rewards.yourPoints')}</p>
-                <p className="text-[36px] font-bold text-[#D4AF37] leading-tight mt-1 tabular-nums">
+                <p className={`${statFontSize(pointsData.total_points, 'text-[24px]')} font-bold text-[#D4AF37] leading-tight mt-1 tabular-nums truncate`}>
                   <AnimatedPoints value={pointsData.total_points} />
                 </p>
               </div>
               <div className="text-right">
                 <TierBadge tier={tier} size="lg" t={t} />
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
-                  {t('rewards.lifetime')}: {pointsData.lifetime_points?.toLocaleString() ?? 0}
+                  {t('rewards.lifetime')}: {formatStatNumber(pointsData.lifetime_points ?? 0)}
                 </p>
               </div>
             </div>
@@ -914,7 +922,7 @@ export default function Rewards() {
                     {t('rewards.progressTo', { tier: t(`rewards.tiers.${tier.nextTierKey}`, tier.nextTier) })}
                   </span>
                   <span className="text-[11px] font-semibold" style={{ color: tier.nextTierColor }}>
-                    {t('rewards.ptsToGo', { count: tier.pointsToNext.toLocaleString() })}
+                    {t('rewards.ptsToGo', { count: formatStatNumber(tier.pointsToNext) })}
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-white/[0.04] overflow-hidden">
@@ -950,7 +958,7 @@ export default function Rewards() {
       </div>
 
       {/* ── Tab Content ─────────────────────────────────────────── */}
-      <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-6">
         {tab === 'history' && (
           <HistoryTab history={history} loading={loading} t={t} />
         )}

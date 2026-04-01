@@ -120,8 +120,8 @@ export default function BodyDiagram({
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5B6276]">{resolvedTitle}</p>
           <div className="flex gap-3">
             {[
-              { label: t('exerciseLibrary.primary'),   color: '#D4AF37' },
-              { label: t('exerciseLibrary.secondary'), color: 'rgba(212,175,55,0.4)' },
+              { label: t('exerciseLibrary.primary'),   color: 'var(--color-accent)' },
+              { label: t('exerciseLibrary.secondary'), color: 'color-mix(in srgb, var(--color-accent) 40%, transparent)' },
             ].map(({ label, color }) => (
               <span key={label} className="inline-flex items-center gap-1.5 text-[10px] text-[#5B6276]">
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
@@ -182,9 +182,9 @@ export default function BodyDiagram({
                   key={regionId}
                   className="text-[10.5px] font-medium px-2.5 py-[3px] rounded-md"
                   style={{
-                    background: isPrimary ? 'rgba(212,175,55,0.08)' : 'rgba(255,255,255,0.04)',
-                    color: isPrimary ? '#C9A84C' : '#5B6276',
-                    border: `1px solid ${isPrimary ? 'rgba(212,175,55,0.15)' : 'rgba(255,255,255,0.06)'}`,
+                    background: isPrimary ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'rgba(255,255,255,0.04)',
+                    color: isPrimary ? 'var(--color-accent-soft)' : 'var(--color-text-faint)',
+                    border: `1px solid ${isPrimary ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)' : 'rgba(255,255,255,0.06)'}`,
                   }}
                 >
                   {t(`exerciseLibrary.regionNames.${regionId}`, regionMeta[regionId]?.label ?? regionId)}
@@ -208,8 +208,8 @@ export default function BodyDiagram({
         <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.12em]">{resolvedTitle}</p>
         <div className="flex gap-2 flex-wrap">
           {[
-            { label: t('exerciseLibrary.primary'),   bg: 'rgba(212,175,55,0.12)', border: 'rgba(212,175,55,0.30)', swatch: '#D4AF37' },
-            { label: t('exerciseLibrary.secondary'), bg: 'rgba(212,175,55,0.06)', border: 'rgba(212,175,55,0.16)', swatch: 'rgba(212,175,55,0.45)' },
+            { label: t('exerciseLibrary.primary'),   bg: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', swatch: 'var(--color-accent)' },
+            { label: t('exerciseLibrary.secondary'), bg: 'color-mix(in srgb, var(--color-accent) 6%, transparent)', border: 'color-mix(in srgb, var(--color-accent) 16%, transparent)', swatch: 'color-mix(in srgb, var(--color-accent) 45%, transparent)' },
           ].map(({ label, bg, border, swatch }) => (
             <span key={label} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] text-[var(--color-text-muted)]"
                   style={{ background: bg, border: `1px solid ${border}` }}>
@@ -269,7 +269,7 @@ export default function BodyDiagram({
                 key={regionId}
                 className={`text-[11px] px-2.5 py-1 rounded-full ${
                   isPrimary
-                    ? 'bg-amber-900/40 border border-amber-700 text-amber-300'
+                    ? 'bg-white/[0.06] border border-[#D4AF37]/30 text-[#D4AF37]'
                     : 'bg-white/10 border border-white/10 text-[var(--color-text-muted)]'
                 }`}
               >

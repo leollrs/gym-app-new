@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { format, isPast, isFuture, formatDistanceToNow, startOfDay } from 'date-fns';
+import { format, isPast, isFuture, formatDistanceToNow, startOfDay, differenceInDays } from 'date-fns';
 import { addPoints } from '../lib/rewardsEngine';
+import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
 import Skeleton from '../components/Skeleton';
@@ -192,9 +193,9 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
             const top = entries[0]?.score || 1;
             const barPct = Math.max((e.score / top) * 100, 2);
             const isDark = document.documentElement.classList.contains('dark');
-            const silver = isDark ? '#9CA3AF' : '#6B7280';
-            const base   = isDark ? '#4B5563' : '#374151';
-            const barColor = isMe ? '#D4AF37' : i === 0 ? '#D4AF37' : i === 1 ? silver : i === 2 ? '#CD7F32' : base;
+            const silver = isDark ? 'var(--color-text-muted)' : 'var(--color-text-subtle)';
+            const base   = isDark ? 'var(--color-text-muted)' : '#374151';
+            const barColor = isMe ? 'var(--color-accent)' : i === 0 ? 'var(--color-accent)' : i === 1 ? silver : i === 2 ? '#CD7F32' : base;
             return (
               <div key={e.id}
                 className={`relative flex items-center gap-4 px-4 py-4 rounded-2xl overflow-hidden transition-colors ${
@@ -562,6 +563,237 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   );
 };
 
+// ── Friend Duels Section ──────────────────────────────────
+const METRIC_LABELS = { volume: 'metricVolume', workouts: 'metricWorkouts', prs: 'metricPrs' };
+
+const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
+  const [duels, setDuels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(null);
+
+  useEffect(() => {
+    if (!userId || !gymId) return;
+    const load = async () => {
+      const { data } = await supabase
+        .from('friend_challenges')
+        .select('*, challenger:profiles!friend_challenges_challenger_id_fkey(full_name, avatar_url), challenged:profiles!friend_challenges_challenged_id_fkey(full_name, avatar_url)')
+        .or(`challenger_id.eq.${userId},challenged_id.eq.${userId}`)
+        .eq('gym_id', gymId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setDuels(data || []);
+      setLoading(false);
+    };
+    load();
+  }, [userId, gymId]);
+
+  const handleAccept = async (duel) => {
+    setProcessing(duel.id);
+    try {
+      await supabase.from('friend_challenges').update({ status: 'active' }).eq('id', duel.id);
+
+      // Notify both users
+      await sendNotification(duel.challenger_id, gymId, {
+        title: t('leaderboard.challengeFriend.accepted'),
+        body: t('leaderboard.challengeFriend.acceptedBody', { name: userName }),
+        type: NOTIFICATION_TYPES.FRIEND_ACTIVITY,
+        actionUrl: '/challenges',
+      });
+      await sendNotification(userId, gymId, {
+        title: t('leaderboard.challengeFriend.accepted'),
+        body: t('leaderboard.challengeFriend.acceptedBody', { name: duel.challenger?.full_name }),
+        type: NOTIFICATION_TYPES.FRIEND_ACTIVITY,
+        actionUrl: '/challenges',
+      });
+
+      setDuels(prev => prev.map(d => d.id === duel.id ? { ...d, status: 'active' } : d));
+    } catch (err) {
+      console.error('[FriendDuels] Accept error:', err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleDecline = async (duel) => {
+    setProcessing(duel.id);
+    try {
+      await supabase.from('friend_challenges').update({ status: 'declined' }).eq('id', duel.id);
+
+      await sendNotification(duel.challenger_id, gymId, {
+        title: t('leaderboard.challengeFriend.declined'),
+        body: t('leaderboard.challengeFriend.declinedBody', { name: userName }),
+        type: NOTIFICATION_TYPES.FRIEND_ACTIVITY,
+        actionUrl: '/challenges',
+      });
+
+      setDuels(prev => prev.filter(d => d.id !== duel.id));
+    } catch (err) {
+      console.error('[FriendDuels] Decline error:', err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const pending = duels.filter(d => d.status === 'pending');
+  const active  = duels.filter(d => d.status === 'active');
+  const completed = duels.filter(d => d.status === 'completed');
+
+  if (loading) return null;
+  if (duels.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Swords size={14} className="text-[#D4AF37]" />
+        <p className="text-[12px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">{t('challenges.friendDuels.title')}</p>
+      </div>
+
+      <div className="space-y-2">
+        {/* Pending duels (incoming challenges I need to respond to) */}
+        {pending.filter(d => d.challenged_id === userId).map(duel => {
+          const opponentName = duel.challenger?.full_name || 'Someone';
+          return (
+            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-[#D4AF37]/20 p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {duel.challenger?.avatar_url ? (
+                    <img src={duel.challenger.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[12px] font-bold text-[#D4AF37]">{opponentName.charAt(0)}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">
+                    {t('challenges.friendDuels.challengeFrom', { name: opponentName })}
+                  </p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">
+                    {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)} &middot; 7 {t('challenges.friendDuels.daysLeft', { count: 7 })}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDecline(duel)}
+                  disabled={processing === duel.id}
+                  className="flex-1 py-2.5 rounded-xl bg-white/[0.06] text-[12px] font-semibold text-[var(--color-text-muted)] transition-colors hover:bg-white/[0.08] min-h-[44px] flex items-center justify-center gap-1.5"
+                >
+                  <XCircle size={13} /> {t('challenges.friendDuels.decline')}
+                </button>
+                <button
+                  onClick={() => handleAccept(duel)}
+                  disabled={processing === duel.id}
+                  className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-60"
+                  style={{ background: 'var(--color-accent)' }}
+                >
+                  <CheckCircle2 size={13} /> {t('challenges.friendDuels.accept')}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Pending duels I sent (waiting for response) */}
+        {pending.filter(d => d.challenger_id === userId).map(duel => {
+          const opponentName = duel.challenged?.full_name || 'Someone';
+          return (
+            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {duel.challenged?.avatar_url ? (
+                    <img src={duel.challenged.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[12px] font-bold text-[var(--color-text-muted)]">{opponentName.charAt(0)}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">
+                    {t('challenges.friendDuels.youChallenged', { name: opponentName })}
+                  </p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">
+                    {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)} &middot; {t('challenges.friendDuels.pending')}
+                  </p>
+                </div>
+                <Clock size={14} className="text-[var(--color-text-subtle)] flex-shrink-0" />
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Active duels */}
+        {active.map(duel => {
+          const iAmChallenger = duel.challenger_id === userId;
+          const myScore = iAmChallenger ? duel.challenger_score : duel.challenged_score;
+          const theirScore = iAmChallenger ? duel.challenged_score : duel.challenger_score;
+          const opponent = iAmChallenger ? duel.challenged : duel.challenger;
+          const opponentName = opponent?.full_name || 'Someone';
+          const daysLeft = Math.max(0, differenceInDays(new Date(duel.end_date), new Date()));
+
+          return (
+            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Swords size={13} className="text-[#D4AF37]" />
+                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider">
+                    {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)}
+                  </p>
+                </div>
+                <span className="text-[10px] text-[var(--color-text-subtle)]">
+                  {t('challenges.friendDuels.daysLeft', { count: daysLeft })}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 text-center">
+                  <p className="text-[11px] text-[var(--color-text-muted)] mb-1">{t('leaderboard.you')}</p>
+                  <p className="text-[18px] font-bold text-[var(--color-text-primary)]" style={{ fontVariantNumeric: 'tabular-nums', color: Number(myScore) >= Number(theirScore) ? 'var(--color-success)' : undefined }}>
+                    {Number(myScore).toLocaleString()}
+                  </p>
+                </div>
+                <p className="text-[12px] font-bold text-[var(--color-text-subtle)]">{t('challenges.friendDuels.vs')}</p>
+                <div className="flex-1 text-center">
+                  <p className="text-[11px] text-[var(--color-text-muted)] mb-1 truncate">{opponentName}</p>
+                  <p className="text-[18px] font-bold text-[var(--color-text-primary)]" style={{ fontVariantNumeric: 'tabular-nums', color: Number(theirScore) > Number(myScore) ? 'var(--color-danger)' : undefined }}>
+                    {Number(theirScore).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Completed duels (last 5) */}
+        {completed.slice(0, 5).map(duel => {
+          const iAmChallenger = duel.challenger_id === userId;
+          const myScore = iAmChallenger ? duel.challenger_score : duel.challenged_score;
+          const theirScore = iAmChallenger ? duel.challenged_score : duel.challenger_score;
+          const opponent = iAmChallenger ? duel.challenged : duel.challenger;
+          const opponentName = opponent?.full_name || 'Someone';
+          const iWon = duel.winner_id === userId;
+          const isDraw = !duel.winner_id && duel.status === 'completed';
+
+          return (
+            <div key={duel.id} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4 opacity-70">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                  {t(`challenges.friendDuels.${METRIC_LABELS[duel.metric]}`)}
+                </p>
+                <span className={`text-[11px] font-bold ${iWon ? 'text-[#10B981]' : isDraw ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-subtle)]'}`}>
+                  {iWon ? t('challenges.friendDuels.winner') : isDraw ? t('challenges.friendDuels.draw') : opponentName}
+                  {iWon && <span className="text-[#D4AF37] ml-1">{t('challenges.friendDuels.bonusPoints')}</span>}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+                <span>{t('leaderboard.you')}: {Number(myScore).toLocaleString()}</span>
+                <span>{t('challenges.friendDuels.vs')}</span>
+                <span className="truncate">{opponentName}: {Number(theirScore).toLocaleString()}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ── Main ───────────────────────────────────────────────────
 const TABS = ['live', 'upcoming', 'ended'];
 
@@ -629,17 +861,17 @@ export default function Challenges({ embedded = false }) {
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
   return (
-    <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-32 md:pb-12'}`}>
+    <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12'}`}>
       {/* Header */}
       {!embedded && (
       <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border)]">
-        <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
+        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center">
               <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
             </div>
             <div>
-              <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight">{t('challenges.title')}</h1>
+              <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] tracking-tight truncate">{t('challenges.title')}</h1>
               <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('challenges.subtitle')}</p>
             </div>
           </div>
@@ -648,7 +880,7 @@ export default function Challenges({ embedded = false }) {
       )}
 
       {/* Tab bar — always visible */}
-      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[680px] md:max-w-4xl mx-auto px-4'}`}>
+      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[480px] md:max-w-4xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
         <UnderlineTabs
           tabs={TABS.map(tabKey => ({
@@ -661,9 +893,17 @@ export default function Challenges({ embedded = false }) {
         />
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-4xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl mx-auto px-4 py-6'}`}>
         {tab === 'live' && user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} t={t} />
+        )}
+        {user?.id && profile?.gym_id && (
+          <FriendDuelsSection
+            userId={user.id}
+            gymId={profile.gym_id}
+            userName={profile?.full_name || profile?.username || 'Someone'}
+            t={t}
+          />
         )}
         {loading ? (
           <Skeleton variant="card" count={3} height="h-[90px]" />

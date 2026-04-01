@@ -220,9 +220,9 @@ const PostsTab = ({ gymId }) => {
           { label: 'Active Posts',  value: active,  color: 'text-emerald-400' },
           { label: 'Deleted Posts', value: deleted, color: 'text-red-400' },
         ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center">
-            <p className={`text-[22px] font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">{s.label}</p>
+          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
+            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
           </div>
         ))}
       </div>
@@ -364,9 +364,9 @@ const CommentsTab = ({ gymId }) => {
           { label: 'Active Comments',  value: active,  color: 'text-emerald-400' },
           { label: 'Deleted Comments', value: deleted, color: 'text-red-400' },
         ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center">
-            <p className={`text-[22px] font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">{s.label}</p>
+          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
+            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
           </div>
         ))}
       </div>
@@ -530,9 +530,9 @@ const ReportsTab = ({ gymId }) => {
           { label: 'Pending Review',   value: pending,  color: 'text-amber-400' },
           { label: 'Resolved',         value: resolved, color: 'text-emerald-400' },
         ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center">
-            <p className={`text-[22px] font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">{s.label}</p>
+          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
+            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
           </div>
         ))}
       </div>
@@ -667,7 +667,7 @@ export default function AdminModeration() {
   ];
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Content Moderation"
         subtitle="Review and moderate feed posts, comments, and member reports across your gym"

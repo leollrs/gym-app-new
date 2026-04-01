@@ -63,7 +63,7 @@ export default function ChallengeStats({ gymId }) {
 
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
-      <p className="text-[13px] font-semibold text-[var(--color-text-primary)] mb-4">Challenge Participation</p>
+      <p className="text-[13px] font-semibold text-[var(--color-text-primary)] mb-4 truncate">Challenge Participation</p>
       {challengeData.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-32 text-center">
           <p className="text-[13px] text-[var(--color-text-muted)]">No challenges in the last 6 months</p>
@@ -97,9 +97,9 @@ export default function ChallengeStats({ gymId }) {
                     </div>
                   );
                 }}
-                cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }}
+                cursor={{ fill: 'var(--color-accent-glow)' }}
               />
-              <Bar dataKey="pct" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
+              <Bar dataKey="pct" fill="var(--color-accent)" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
             </BarChart>
           </ResponsiveContainer>
           <p className="text-[10px] text-[var(--color-text-subtle)] mt-2">% of total members who joined each challenge</p>

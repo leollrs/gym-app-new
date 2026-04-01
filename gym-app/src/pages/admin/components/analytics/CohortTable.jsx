@@ -105,10 +105,10 @@ export default function CohortTable({ gymId }) {
   return (
     <AdminCard hover className="overflow-x-auto hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-semibold text-[#E5E7EB]">Cohort Retention</p>
+        <p className="text-[13px] font-semibold text-[#E5E7EB] min-w-0 flex-1 truncate">Cohort Retention</p>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
           Export

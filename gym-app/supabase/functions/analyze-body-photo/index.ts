@@ -101,6 +101,17 @@ serve(async (req) => {
       );
     }
 
+    // ── INPUT SIZE VALIDATION (max 10MB base64) ───────────────
+    const MAX_BASE64_SIZE = 10 * 1024 * 1024; // 10MB
+    const frontSize = typeof frontImage === 'string' ? frontImage.length : 0;
+    const sideSize = typeof sideImage === 'string' ? sideImage.length : 0;
+    if (frontSize > MAX_BASE64_SIZE || sideSize > MAX_BASE64_SIZE) {
+      return new Response(
+        JSON.stringify({ error: 'Image payload too large. Maximum size is 10MB per image.' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // ── RATE LIMIT (15/hour) — fail closed ──────────────────────
     let rateLimitOk = false;
     try {
@@ -122,7 +133,7 @@ serve(async (req) => {
         );
       }
 
-      supabase.from('ai_rate_limits').insert({
+      await supabase.from('ai_rate_limits').insert({
         profile_id: user.id,
         endpoint: ENDPOINT,
       });

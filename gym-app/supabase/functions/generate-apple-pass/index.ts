@@ -2,6 +2,9 @@
  * Generate Apple Wallet Pass — Supabase Edge Function
  * Pure Deno implementation — no external signing libraries.
  * Returns pass data for the client to handle.
+ *
+ * Premium pass design with dynamic gym branding, rich strip images,
+ * proper barcode format handling, and lock-screen relevance.
  */
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -32,6 +35,43 @@ const PLACEHOLDER_PNG = new Uint8Array([
   68, 174, 66, 96, 130,
 ]);
 
+// ── Contrast color helper ────────────────────────────────────
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '');
+  return {
+    r: parseInt(h.substring(0, 2), 16) || 0,
+    g: parseInt(h.substring(2, 4), 16) || 0,
+    b: parseInt(h.substring(4, 6), 16) || 0,
+  };
+}
+
+function hexToRgbString(hex: string): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * Returns contrast-appropriate foreground, label colors and darkness flag.
+ * Uses relative luminance (sRGB) to decide light vs dark background.
+ */
+function getContrastColors(hexColor: string): { fg: string; label: string; isDark: boolean } {
+  const { r, g, b } = hexToRgb(hexColor);
+  // sRGB relative luminance
+  const toLinear = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  const isDark = luminance <= 0.5;
+
+  if (isDark) {
+    return { fg: 'rgb(255, 255, 255)', label: 'rgb(180, 180, 190)', isDark: true };
+  } else {
+    return { fg: 'rgb(20, 20, 30)', label: 'rgb(80, 80, 90)', isDark: false };
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -46,7 +86,7 @@ serve(async (req: Request) => {
     if (authError || !user) {
       console.error('Auth failed:', authError?.message || 'no user');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 200,
+        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -55,15 +95,15 @@ serve(async (req: Request) => {
     const { payload, memberName, gymName, punchCards } = await req.json();
     if (!payload) {
       return new Response(JSON.stringify({ error: 'Missing payload' }), {
-        status: 200,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // ── Fetch profile (including stable wallet pass serial) ──
+    // ── Fetch profile (including stable wallet pass serial + created_at for "member since") ──
     const { data: profile } = await supabase
       .from('profiles')
-      .select('gym_id, wallet_pass_serial, wallet_auth_token')
+      .select('gym_id, wallet_pass_serial, wallet_auth_token, created_at')
       .eq('id', user.id)
       .single();
 
@@ -96,11 +136,40 @@ serve(async (req: Request) => {
       .eq('id', profile?.gym_id)
       .single();
 
+    // ── Fetch gym hours for back fields ──
+    const { data: gymHours } = await supabase
+      .from('gym_hours')
+      .select('day_of_week, open_time, close_time, is_closed')
+      .eq('gym_id', profile?.gym_id)
+      .order('day_of_week', { ascending: true });
+
+    // ── Fetch gym location from recent check-ins (gyms table has no lat/lng) ──
+    // Use the most common check-in coordinates as the gym's approximate location
+    const { data: recentCheckin } = await supabase
+      .from('check_ins')
+      .select('latitude, longitude')
+      .eq('gym_id', profile?.gym_id)
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .order('checked_in_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     const displayFormat = gymData?.qr_display_format || 'qr_code';
     const primaryColor = branding?.primary_color || '#D4AF37';
+    const { fg, label, isDark } = getContrastColors(primaryColor);
+
+    // ── Format "Member Since" from profile.created_at ──
+    let memberSinceStr = 'N/A';
+    if (profile?.created_at) {
+      const d = new Date(profile.created_at);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      memberSinceStr = `${months[d.getMonth()]} ${d.getFullYear()}`;
+    }
 
     // ── Fetch gym logo if available ──
     let iconPng = PLACEHOLDER_PNG;
+    let hasLogo = false;
     if (branding?.logo_url) {
       try {
         const { data: signed } = await supabase.storage
@@ -110,9 +179,16 @@ serve(async (req: Request) => {
           const logoRes = await fetch(signed.signedUrl);
           if (logoRes.ok) {
             iconPng = new Uint8Array(await logoRes.arrayBuffer());
+            hasLogo = true;
           }
         }
       } catch { /* use placeholder */ }
+    }
+
+    // If no logo, generate a colored rectangle with the first letter of the gym name
+    // (simple solid-color PNG — can't do real text in raw PNG without a font renderer)
+    if (!hasLogo) {
+      iconPng = generateLetterIcon(primaryColor, gymName || 'G');
     }
 
     // ── Build pass.json ──
@@ -125,9 +201,79 @@ serve(async (req: Request) => {
       barcode_39:  { format: 'PKBarcodeFormatCode39', messageEncoding: 'iso-8859-1' },
     };
 
-    const barcodeConfig = barcodeMapping.qr_code;
+    // Use the gym's configured display format, fallback to QR if not found
+    const barcodeConfig = barcodeMapping[displayFormat] || barcodeMapping.qr_code;
 
-    const passJson = {
+    // ── Build back fields ──
+    const backFields: any[] = [];
+
+    // Loyalty summary
+    if (punchCards && punchCards.length > 0) {
+      backFields.push({
+        key: 'loyaltyInfo',
+        label: 'Your Loyalty Cards',
+        value: punchCards.map((pc: any) => {
+          const r = pc.target - pc.punches;
+          const earned = pc.completed > 0 ? ` · ${pc.completed} reward${pc.completed !== 1 ? 's' : ''} earned` : '';
+          return `${pc.name}\n${pc.punches} / ${pc.target}${r > 0 ? ` — ${r} visit${r !== 1 ? 's' : ''} left` : ' — Reward unlocked!'}${earned}`;
+        }).join('\n\n'),
+      });
+    }
+
+    // Gym hours
+    if (gymHours && gymHours.length > 0) {
+      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const hoursLines = gymHours.map((h: any) => {
+        const dayName = dayNames[h.day_of_week] || `Day ${h.day_of_week}`;
+        if (h.is_closed) return `${dayName}: Closed`;
+        const openStr = h.open_time?.substring(0, 5) || '?';
+        const closeStr = h.close_time?.substring(0, 5) || '?';
+        return `${dayName}: ${openStr} - ${closeStr}`;
+      });
+      backFields.push({
+        key: 'gymHours',
+        label: 'Gym Hours',
+        value: hoursLines.join('\n'),
+      });
+    }
+
+    // Terms
+    backFields.push({
+      key: 'terms',
+      label: 'Terms',
+      value: 'This digital membership card is for personal use only. Present at the gym entrance for check-in.',
+    });
+
+    // ── Build secondary fields ──
+    const secondaryFields: any[] = [
+      { key: 'memberId', label: 'MEMBER ID', value: payload },
+    ];
+    if (punchCards && punchCards.length > 0) {
+      secondaryFields.push({
+        key: 'loyalty',
+        label: punchCards[0].name.toUpperCase(),
+        value: `${punchCards[0].punches} / ${punchCards[0].target}`,
+        changeMessage: '%@ punches',
+      });
+    }
+
+    // ── Build auxiliary fields ──
+    const auxiliaryFields: any[] = [
+      { key: 'status', label: 'STATUS', value: 'Active' },
+      { key: 'gym', label: 'GYM', value: gymName || 'TuGymPR' },
+    ];
+
+    // ── Locations (for lock screen relevance near the gym) ──
+    const locations: any[] = [];
+    if (recentCheckin?.latitude && recentCheckin?.longitude) {
+      locations.push({
+        latitude: parseFloat(recentCheckin.latitude),
+        longitude: parseFloat(recentCheckin.longitude),
+        relevantText: `Welcome to ${gymName || 'the gym'}!`,
+      });
+    }
+
+    const passJson: any = {
       formatVersion: 1,
       passTypeIdentifier: PASS_TYPE_ID,
       teamIdentifier: TEAM_ID,
@@ -136,9 +282,11 @@ serve(async (req: Request) => {
       authenticationToken: passAuthToken,
       organizationName: gymName || 'TuGymPR',
       description: `${gymName || 'TuGymPR'} Membership`,
-      foregroundColor: 'rgb(255, 255, 255)',
-      backgroundColor: 'rgb(10, 13, 20)',
-      labelColor: 'rgb(130, 130, 140)',
+      foregroundColor: fg,
+      backgroundColor: hexToRgbString(primaryColor),
+      labelColor: label,
+      // relevantDate — surfaces pass on lock screen when recently updated
+      relevantDate: new Date().toISOString(),
       barcodes: [{
         message: payload,
         format: barcodeConfig.format,
@@ -153,58 +301,25 @@ serve(async (req: Request) => {
       },
       storeCard: {
         headerFields: [{
-          key: 'status',
-          label: 'MEMBER',
-          value: 'Active',
+          key: 'memberSince',
+          label: 'MEMBER SINCE',
+          value: memberSinceStr,
         }],
         primaryFields: [{
-          key: 'member',
+          key: 'name',
           label: gymName || 'TuGymPR',
           value: memberName || 'Member',
         }],
-        secondaryFields: [
-          ...(punchCards && punchCards.length > 0 ? [{
-            key: 'loyalty',
-            label: punchCards[0].name.toUpperCase(),
-            value: `${punchCards[0].punches} / ${punchCards[0].target}`,
-            changeMessage: '%@ punches',
-          }] : []),
-          { key: 'memberId', label: 'ID', value: payload },
-        ],
-        auxiliaryFields: [
-          ...(punchCards && punchCards.length > 0 ? [{
-            key: 'loyaltyStatus',
-            label: 'STATUS',
-            value: punchCards[0].punches >= punchCards[0].target
-              ? '🎁 Reward unlocked'
-              : `${punchCards[0].target - punchCards[0].punches} visit${punchCards[0].target - punchCards[0].punches !== 1 ? 's' : ''} left`,
-            changeMessage: '%@',
-          }] : []),
-          ...(punchCards && punchCards.length > 1 ? punchCards.slice(1, 2).map((pc: any) => ({
-            key: 'loyalty2',
-            label: pc.name.toUpperCase(),
-            value: `${pc.punches} / ${pc.target}`,
-            changeMessage: '%@ punches',
-          })) : []),
-        ],
-        backFields: [
-          ...(punchCards && punchCards.length > 0 ? [{
-            key: 'loyaltyInfo',
-            label: 'Your Loyalty Cards',
-            value: punchCards.map((pc: any) => {
-              const r = pc.target - pc.punches;
-              const earned = pc.completed > 0 ? ` · ${pc.completed} reward${pc.completed !== 1 ? 's' : ''} earned` : '';
-              return `${pc.name}\n${pc.punches} / ${pc.target}${r > 0 ? ` — ${r} visit${r !== 1 ? 's' : ''} left` : ' — Reward unlocked!'}${earned}`;
-            }).join('\n\n'),
-          }] : []),
-          {
-            key: 'terms',
-            label: 'Terms',
-            value: 'This digital membership card is for personal use only. Present at the gym entrance for check-in.',
-          },
-        ],
+        secondaryFields,
+        auxiliaryFields,
+        backFields,
       },
     };
+
+    // Add locations if available
+    if (locations.length > 0) {
+      passJson.locations = locations;
+    }
 
     const passJsonBytes = new TextEncoder().encode(JSON.stringify(passJson));
 
@@ -220,18 +335,24 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Generate strip image (dark gradient banner) ──
-    const stripPng = generateStripImage(primaryColor);
+    // ── Generate strip images at 3 sizes ──
+    const strip1x = generateStripImage(primaryColor, gymName || 'TuGymPR', 375, 123);
+    const strip2x = generateStripImage(primaryColor, gymName || 'TuGymPR', 750, 246);
+    const strip3x = generateStripImage(primaryColor, gymName || 'TuGymPR', 1125, 369);
 
     // ── Build .pkpass ZIP ──
+    // Icon and logo: use the gym logo at all sizes (can't resize in edge functions without sharp/canvas)
+    // Ideal sizes — icon: 29x29 @1x / 58x58 @2x / 87x87 @3x; logo: 160x50 @1x / 320x100 @2x
     const files: Record<string, Uint8Array> = {
       'pass.json': passJsonBytes,
       'icon.png': iconPng,
       'icon@2x.png': iconPng,
+      'icon@3x.png': iconPng,
       'logo.png': iconPng,
       'logo@2x.png': iconPng,
-      'strip.png': stripPng,
-      'strip@2x.png': stripPng,
+      'strip.png': strip1x,
+      'strip@2x.png': strip2x,
+      'strip@3x.png': strip3x,
     };
 
     // Generate manifest.json (SHA-1 hash of each file — Apple PassKit spec)
@@ -306,7 +427,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({
         error: 'Pass generation failed',
       }), {
-        status: 200,
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -327,7 +448,7 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({
       error: 'Pass generation failed',
     }), {
-      status: 200,
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -335,12 +456,27 @@ serve(async (req: Request) => {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function hexToRgbString(hex: string): string {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  return `rgb(${r}, ${g}, ${b})`;
+/**
+ * Generate a simple colored square icon with the first letter of the gym name.
+ * Since we can't render real fonts in raw PNG, we draw a solid-color square.
+ * The Apple Wallet pass will show this as the icon/logo thumbnail.
+ */
+function generateLetterIcon(hexColor: string, gymName: string): Uint8Array {
+  const size = 87; // @3x icon size, works for all scales
+  const { r, g, b } = hexToRgb(hexColor);
+  const rawData = new Uint8Array(size * size * 4);
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      rawData[idx]     = r;
+      rawData[idx + 1] = g;
+      rawData[idx + 2] = b;
+      rawData[idx + 3] = 255;
+    }
+  }
+
+  return encodePNG(size, size, rawData);
 }
 
 function buildZip(files: Record<string, Uint8Array>): Uint8Array {
@@ -433,37 +569,99 @@ function crc32(data: Uint8Array): number {
 }
 
 /**
- * Generate a dark gradient strip image as a raw PNG.
- * Strip dimensions: 375x123 for @1x (storeCard strip).
- * Creates a subtle gradient from dark with a hint of the gym's accent color.
+ * Generate a premium strip image as a raw PNG.
+ * Features:
+ *  - Rich gradient from the gym's primary color (darker at edges, lighter in center)
+ *  - Subtle radial glow in the center
+ *  - Fine dot pattern overlay (2px dots at 8% opacity, 12px grid)
+ *  - Thin gold accent line at the bottom (3px tall, #D4AF37)
  */
-function generateStripImage(accentHex: string): Uint8Array {
-  const width = 375;
-  const height = 123;
+function generateStripImage(accentHex: string, _gymName: string, width: number, height: number): Uint8Array {
+  // Parse primary/accent color
+  const { r: ar, g: ag, b: ab } = hexToRgb(accentHex);
 
-  // Parse accent color
-  const ah = accentHex.replace('#', '');
-  const ar = parseInt(ah.substring(0, 2), 16) || 0;
-  const ag = parseInt(ah.substring(2, 4), 16) || 0;
-  const ab = parseInt(ah.substring(4, 6), 16) || 0;
+  // Derive darker and lighter variants of the primary color
+  const darkerR = Math.round(ar * 0.35);
+  const darkerG = Math.round(ag * 0.35);
+  const darkerB = Math.round(ab * 0.35);
+  const lighterR = Math.min(255, Math.round(ar * 1.15));
+  const lighterG = Math.min(255, Math.round(ag * 1.15));
+  const lighterB = Math.min(255, Math.round(ab * 1.15));
+
+  // Gold accent line color
+  const goldR = 212, goldG = 175, goldB = 55; // #D4AF37
+
+  // Scale-aware sizes
+  const scale = width / 375; // 1x, 2x, or 3x
+  const dotRadius = Math.round(2 * scale);
+  const dotSpacing = Math.round(12 * scale);
+  const accentLineHeight = Math.round(3 * scale);
+  const diagonalSpacing = Math.round(20 * scale);
 
   // Generate raw pixel data (RGBA)
   const rawData = new Uint8Array(width * height * 4);
 
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+
   for (let y = 0; y < height; y++) {
-    const t = y / height; // 0 at top, 1 at bottom
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
-      // Dark gradient: top is slightly lighter with accent tint, bottom is near-black
-      // Subtle horizontal vignette
-      const hx = Math.abs(x - width / 2) / (width / 2);
-      const vignette = 1 - hx * 0.15;
 
-      // Base dark colors with subtle accent
-      const accentStrength = (1 - t) * 0.12 * vignette; // accent fades toward bottom
-      const baseR = Math.round((18 + (ar - 18) * accentStrength) * (1 - t * 0.3));
-      const baseG = Math.round((20 + (ag - 20) * accentStrength) * (1 - t * 0.3));
-      const baseB = Math.round((24 + (ab - 24) * accentStrength) * (1 - t * 0.3));
+      // ── Base gradient: radial from center (lighter) to edges (darker) ──
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy) / maxDist; // 0 at center, ~1 at corners
+      const gradientT = Math.min(1, dist * 1.2); // slightly exaggerated
+
+      // Smooth interpolation (ease-in-out)
+      const smooth = gradientT * gradientT * (3 - 2 * gradientT);
+
+      let baseR = Math.round(lighterR + (darkerR - lighterR) * smooth);
+      let baseG = Math.round(lighterG + (darkerG - lighterG) * smooth);
+      let baseB = Math.round(lighterB + (darkerB - lighterB) * smooth);
+
+      // ── Radial glow: subtle bright spot in the center ──
+      const glowDist = Math.sqrt(dx * dx + (dy * 1.5) * (dy * 1.5)) / maxDist;
+      const glow = Math.max(0, 1 - glowDist * 2.5);
+      const glowStrength = glow * glow * 0.15; // subtle
+      baseR = Math.round(baseR + (255 - baseR) * glowStrength);
+      baseG = Math.round(baseG + (255 - baseG) * glowStrength);
+      baseB = Math.round(baseB + (255 - baseB) * glowStrength);
+
+      // ── Diagonal line pattern overlay (thin white lines at 15% opacity, 45deg, 20px spacing) ──
+      // Line at 45 degrees: x + y = constant, repeating every diagonalSpacing pixels
+      const diagVal = (x + y) % diagonalSpacing;
+      const lineThickness = Math.max(1, Math.round(1 * scale));
+      if (diagVal < lineThickness) {
+        // Blend white at 15% opacity
+        baseR = Math.round(baseR + (255 - baseR) * 0.15);
+        baseG = Math.round(baseG + (255 - baseG) * 0.15);
+        baseB = Math.round(baseB + (255 - baseB) * 0.15);
+      }
+
+      // ── Dot pattern overlay (2px dots at 8% opacity, 12px grid) ──
+      const gridX = x % dotSpacing;
+      const gridY = y % dotSpacing;
+      const dotCenterX = dotSpacing / 2;
+      const dotCenterY = dotSpacing / 2;
+      const dotDx = gridX - dotCenterX;
+      const dotDy = gridY - dotCenterY;
+      const dotDist = Math.sqrt(dotDx * dotDx + dotDy * dotDy);
+      if (dotDist <= dotRadius) {
+        // Blend white at 8% opacity
+        baseR = Math.round(baseR + (255 - baseR) * 0.08);
+        baseG = Math.round(baseG + (255 - baseG) * 0.08);
+        baseB = Math.round(baseB + (255 - baseB) * 0.08);
+      }
+
+      // ── Gold accent line at the bottom ──
+      if (y >= height - accentLineHeight) {
+        baseR = goldR;
+        baseG = goldG;
+        baseB = goldB;
+      }
 
       rawData[idx]     = Math.min(255, Math.max(0, baseR));
       rawData[idx + 1] = Math.min(255, Math.max(0, baseG));

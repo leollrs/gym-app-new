@@ -25,13 +25,13 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r253',
     title: 'Overnight Oats with PB & Banana',
-    title_es: 'Avena Nocturna con Mantequilla de Maní y Plátano',
+    title_es: 'Avena Nocturna con Mantequilla de Maní y Guineo',
     image: '/meals/overnight_oats_with_pb_and_banana.png',
     calories: 440, protein: 16, carbs: 58, fat: 14, prepTime: 5,
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'almond_milk', 'peanut_butter', 'banana', 'chia_seeds', 'honey'],
     steps: ['Combine oats, almond milk, and chia seeds in a jar.', 'Refrigerate overnight.', 'Top with peanut butter, sliced banana, and a drizzle of honey before serving.'],
-    steps_es: ['Combinar la avena, la leche de almendras y las semillas de chía en un frasco.', 'Refrigerar durante toda la noche.', 'Cubrir con mantequilla de maní, plátano en rodajas y un chorrito de miel antes de servir.'],
+    steps_es: ['Combinar la avena, la leche de almendras y las semillas de chía en un frasco.', 'Refrigerar durante toda la noche.', 'Cubrir con mantequilla de maní, guineo en rodajas y un chorrito de miel antes de servir.'],
   },
   {
     id: 'r254',
@@ -102,13 +102,13 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r260',
     title: 'Banana Oat Pancakes',
-    title_es: 'Tortitas de Plátano y Avena',
+    title_es: 'Tortitas de Guineo y Avena',
     image: '/meals/banana_oat_pancakes.png',
     calories: 390, protein: 14, carbs: 58, fat: 10, prepTime: 15,
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 2,
     ingredients: ['ripe_banana', 'rolled_oats', 'eggs', 'baking_powder', 'cinnamon', 'vanilla_extract'],
     steps: ['Blend banana, oats, eggs, baking powder, cinnamon, and vanilla until smooth.', 'Cook on a greased non-stick skillet over medium heat.', 'Flip when bubbles form on the surface.', 'Serve with fresh berries or syrup.'],
-    steps_es: ['Licuar el plátano, la avena, los huevos, el polvo de hornear, la canela y la vainilla hasta obtener una mezcla suave.', 'Cocinar en una sartén antiadherente engrasada a fuego medio.', 'Voltear cuando se formen burbujas en la superficie.', 'Servir con frutos rojos frescos o sirope.'],
+    steps_es: ['Licuar el guineo, la avena, los huevos, el polvo de hornear, la canela y la vainilla hasta obtener una mezcla suave.', 'Cocinar en una sartén antiadherente engrasada a fuego medio.', 'Voltear cuando se formen burbujas en la superficie.', 'Servir con frutos rojos frescos o sirope.'],
   },
   {
     id: 'r261',
@@ -130,7 +130,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['acai_puree', 'frozen_banana', 'almond_milk', 'granola', 'fresh_berries', 'coconut_flakes', 'honey'],
     steps: ['Blend acai puree, frozen banana, and almond milk until thick and smooth.', 'Pour into a bowl.', 'Top with granola, fresh berries, coconut flakes, and a drizzle of honey.'],
-    steps_es: ['Licuar el puré de açaí, el plátano congelado y la leche de almendras hasta obtener una mezcla espesa y suave.', 'Verter en un bol.', 'Cubrir con granola, frutos rojos frescos, hojuelas de coco y un chorrito de miel.'],
+    steps_es: ['Licuar el puré de açaí, el guineo congelado y la leche de almendras hasta obtener una mezcla espesa y suave.', 'Verter en un bol.', 'Cubrir con granola, frutos rojos frescos, hojuelas de coco y un chorrito de miel.'],
   },
   {
     id: 'r263',
@@ -163,7 +163,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 2,
     ingredients: ['steel_cut_oats', 'water', 'walnuts', 'honey', 'cinnamon', 'banana', 'almond_milk'],
     steps: ['Bring water to a boil and add steel-cut oats.', 'Simmer for 20–25 minutes, stirring occasionally.', 'Serve topped with walnuts, sliced banana, a drizzle of honey, and cinnamon.'],
-    steps_es: ['Llevar el agua a ebullición y añadir la avena cortada.', 'Cocinar a fuego lento durante 20–25 minutos, revolviendo ocasionalmente.', 'Servir cubierta con nueces, plátano en rodajas, un chorrito de miel y canela.'],
+    steps_es: ['Llevar el agua a ebullición y añadir la avena cortada.', 'Cocinar a fuego lento durante 20–25 minutos, revolviendo ocasionalmente.', 'Servir cubierta con nueces, guineo en rodajas, un chorrito de miel y canela.'],
   },
   {
     id: 'r266',
@@ -174,7 +174,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'protein_powder', 'almond_milk', 'peanut_butter', 'banana', 'chia_seeds'],
     steps: ['Cook oats in almond milk over medium heat.', 'Stir in protein powder until smooth.', 'Top with peanut butter, sliced banana, and chia seeds.'],
-    steps_es: ['Cocinar la avena en leche de almendras a fuego medio.', 'Incorporar la proteína en polvo hasta que quede suave.', 'Cubrir con mantequilla de maní, plátano en rodajas y semillas de chía.'],
+    steps_es: ['Cocinar la avena en leche de almendras a fuego medio.', 'Incorporar la proteína en polvo hasta que quede suave.', 'Cubrir con mantequilla de maní, guineo en rodajas y semillas de chía.'],
   },
   {
     id: 'r267',
@@ -284,7 +284,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['granola', 'whole_milk', 'fresh_berries', 'banana', 'honey'],
     steps: ['Pour granola into a bowl.', 'Add cold milk.', 'Top with sliced banana, fresh berries, and a drizzle of honey.'],
-    steps_es: ['Verter la granola en un bol.', 'Añadir leche fría.', 'Cubrir con plátano en rodajas, frutos rojos frescos y un chorrito de miel.'],
+    steps_es: ['Verter la granola en un bol.', 'Añadir leche fría.', 'Cubrir con guineo en rodajas, frutos rojos frescos y un chorrito de miel.'],
   },
   {
     id: 'r277',
@@ -322,13 +322,13 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r280',
     title: 'Peanut Butter Banana Toast',
-    title_es: 'Tostada de Mantequilla de Maní con Plátano',
+    title_es: 'Tostada de Mantequilla de Maní con Guineo',
     image: '/meals/peanut_butter_banana_toast.png',
     calories: 420, protein: 16, carbs: 52, fat: 16, prepTime: 5,
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['whole_grain_bread', 'peanut_butter', 'banana', 'honey', 'chia_seeds', 'cinnamon'],
     steps: ['Toast bread until golden.', 'Spread peanut butter over toast.', 'Top with sliced banana, a drizzle of honey, chia seeds, and a pinch of cinnamon.'],
-    steps_es: ['Tostar el pan hasta que esté dorado.', 'Untar mantequilla de maní sobre la tostada.', 'Cubrir con plátano en rodajas, un chorrito de miel, semillas de chía y una pizca de canela.'],
+    steps_es: ['Tostar el pan hasta que esté dorado.', 'Untar mantequilla de maní sobre la tostada.', 'Cubrir con guineo en rodajas, un chorrito de miel, semillas de chía y una pizca de canela.'],
   },
   {
     id: 'r281',
@@ -361,7 +361,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Breakfast', tag_es: 'Desayuno', category: 'breakfast', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'chocolate_protein_powder', 'almond_milk', 'cocoa_powder', 'banana', 'almond_butter', 'dark_chocolate_chips'],
     steps: ['Cook oats in almond milk over medium heat.', 'Stir in chocolate protein powder and cocoa powder until smooth.', 'Transfer to bowl and top with sliced banana, almond butter, and dark chocolate chips.'],
-    steps_es: ['Cocinar la avena en leche de almendras a fuego medio.', 'Incorporar la proteína de chocolate en polvo y el cacao en polvo hasta que quede suave.', 'Pasar a un bol y cubrir con plátano en rodajas, mantequilla de almendra y chips de chocolate negro.'],
+    steps_es: ['Cocinar la avena en leche de almendras a fuego medio.', 'Incorporar la proteína de chocolate en polvo y el cacao en polvo hasta que quede suave.', 'Pasar a un bol y cubrir con guineo en rodajas, mantequilla de almendra y chips de chocolate negro.'],
   },
   {
     id: 'r284',
@@ -390,13 +390,13 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r286',
     title: 'Whey Shake & Banana',
-    title_es: 'Batido de Proteína de Suero y Plátano',
+    title_es: 'Batido de Proteína de Suero y Guineo',
     image: '/meals/whey_shake_and_banana.png',
     calories: 380, protein: 32, carbs: 44, fat: 4, prepTime: 2,
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['protein_powder', 'banana', 'almond_milk'],
     steps: ['Blend protein powder with almond milk until smooth.', 'Serve with a banana for fast carbs.'],
-    steps_es: ['Licuar la proteína en polvo con leche de almendras hasta que quede suave.', 'Servir con un plátano para carbohidratos rápidos.'],
+    steps_es: ['Licuar la proteína en polvo con leche de almendras hasta que quede suave.', 'Servir con un guineo para carbohidratos rápidos.'],
   },
   {
     id: 'r287',
@@ -418,7 +418,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rice_cakes', 'honey', 'peanut_butter', 'banana'],
     steps: ['Top rice cakes with peanut butter and a drizzle of honey.', 'Add sliced banana on top for additional fast carbs.'],
-    steps_es: ['Cubrir las tortitas de arroz con mantequilla de maní y un chorrito de miel.', 'Añadir plátano en rodajas encima para carbohidratos rápidos adicionales.'],
+    steps_es: ['Cubrir las tortitas de arroz con mantequilla de maní y un chorrito de miel.', 'Añadir guineo en rodajas encima para carbohidratos rápidos adicionales.'],
   },
   {
     id: 'r289',
@@ -473,7 +473,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['whey_protein', 'creatine_monohydrate', 'dextrose', 'water', 'banana'],
     steps: ['Combine whey protein, creatine, and dextrose in a shaker cup.', 'Add water and shake until fully mixed.', 'Consume with a banana for additional fast carbs.'],
-    steps_es: ['Combinar la proteína de suero, la creatina y la dextrosa en un vaso agitador.', 'Añadir agua y agitar hasta que esté completamente mezclado.', 'Consumir con un plátano para carbohidratos rápidos adicionales.'],
+    steps_es: ['Combinar la proteína de suero, la creatina y la dextrosa en un vaso agitador.', 'Añadir agua y agitar hasta que esté completamente mezclado.', 'Consumir con un guineo para carbohidratos rápidos adicionales.'],
   },
   {
     id: 'r294',
@@ -500,13 +500,13 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
   {
     id: 'r296',
     title: 'Banana & PB Protein Toast',
-    title_es: 'Tostada Proteica de Plátano y Mantequilla de Maní',
+    title_es: 'Tostada Proteica de Guineo y Mantequilla de Maní',
     image: '/meals/banana_and_pb_protein_toast.png',
     calories: 430, protein: 26, carbs: 48, fat: 14, prepTime: 5,
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['whole_grain_bread', 'peanut_butter', 'banana', 'protein_powder', 'honey'],
     steps: ['Toast bread until golden.', 'Mix peanut butter with a scoop of protein powder.', 'Spread protein peanut butter on toast.', 'Top with sliced banana and a drizzle of honey.'],
-    steps_es: ['Tostar el pan hasta que esté dorado.', 'Mezclar la mantequilla de maní con una cucharada de proteína en polvo.', 'Untar la mantequilla de maní con proteína sobre la tostada.', 'Cubrir con plátano en rodajas y un chorrito de miel.'],
+    steps_es: ['Tostar el pan hasta que esté dorado.', 'Mezclar la mantequilla de maní con una cucharada de proteína en polvo.', 'Untar la mantequilla de maní con proteína sobre la tostada.', 'Cubrir con guineo en rodajas y un chorrito de miel.'],
   },
   {
     id: 'r297',
@@ -517,7 +517,7 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['greek_yogurt', 'granola', 'banana', 'honey', 'protein_powder'],
     steps: ['Stir protein powder into Greek yogurt until smooth.', 'Layer in a bowl with granola and sliced banana.', 'Drizzle with honey and serve immediately.'],
-    steps_es: ['Incorporar la proteína en polvo al yogur griego hasta que quede suave.', 'Colocar en capas en un bol con granola y plátano en rodajas.', 'Rociar con miel y servir inmediatamente.'],
+    steps_es: ['Incorporar la proteína en polvo al yogur griego hasta que quede suave.', 'Colocar en capas en un bol con granola y guineo en rodajas.', 'Rociar con miel y servir inmediatamente.'],
   },
   {
     id: 'r298',
@@ -550,6 +550,6 @@ export const MEALS_BREAKFAST_POSTWORKOUT = [
     tag: 'Post-Workout', tag_es: 'Post-Entrenamiento', category: 'post_workout', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['white_rice', 'almond_milk', 'vanilla_protein_powder', 'cinnamon', 'honey', 'banana'],
     steps: ['Cook white rice in almond milk over medium heat, stirring frequently.', 'Remove from heat and stir in protein powder and cinnamon.', 'Sweeten with honey and serve topped with sliced banana.'],
-    steps_es: ['Cocinar el arroz blanco en leche de almendras a fuego medio, revolviendo frecuentemente.', 'Retirar del fuego e incorporar la proteína en polvo y la canela.', 'Endulzar con miel y servir cubierto con plátano en rodajas.'],
+    steps_es: ['Cocinar el arroz blanco en leche de almendras a fuego medio, revolviendo frecuentemente.', 'Retirar del fuego e incorporar la proteína en polvo y la canela.', 'Endulzar con miel y servir cubierto con guineo en rodajas.'],
   },
 ];

@@ -23,6 +23,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── Timing-safe comparison ──────────────────────────────────
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  // If lengths differ, still compare to avoid leaking length info
+  if (aBytes.length !== bBytes.length) {
+    // Compare b against itself so timing is constant, then return false
+    const key = await crypto.subtle.importKey(
+      'raw', aBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const sigA = await crypto.subtle.sign('HMAC', key, aBytes);
+    const sigB = await crypto.subtle.sign('HMAC', key, bBytes);
+    // This comparison result is irrelevant — we return false regardless
+    new Uint8Array(sigA).every((v, i) => v === new Uint8Array(sigB)[i]);
+    return false;
+  }
+  // Use HMAC-based comparison: HMAC(key=a, msg=a) === HMAC(key=a, msg=b)
+  // only true when a === b, and comparison is constant-time on the digests
+  const key = await crypto.subtle.importKey(
+    'raw', aBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sigA = new Uint8Array(await crypto.subtle.sign('HMAC', key, aBytes));
+  const sigB = new Uint8Array(await crypto.subtle.sign('HMAC', key, bBytes));
+  if (sigA.length !== sigB.length) return false;
+  let result = 0;
+  for (let i = 0; i < sigA.length; i++) {
+    result |= sigA[i] ^ sigB[i];
+  }
+  return result === 0;
+}
+
 function jsonResp(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -184,23 +216,13 @@ serve(async (req) => {
 
     // Check if caller is using the service role key (system/server call)
     const token = authHeader.replace('Bearer ', '');
-    // Service role: compare token to the service role key from env
-    // Also check if the JWT payload contains "role":"service_role"
-    let isServiceRole = token === SUPABASE_SERVICE_KEY;
-    if (!isServiceRole) {
-      try {
-        const payloadB64 = token.split('.')[1];
-        if (payloadB64) {
-          const payload = JSON.parse(atob(payloadB64));
-          isServiceRole = payload.role === 'service_role';
-        }
-      } catch (_) { /* not a valid JWT, ignore */ }
-    }
+    // Timing-safe comparison against the service role key
+    const isServiceRole = await timingSafeEqual(token, SUPABASE_SERVICE_KEY);
 
     let userId: string | null = null;
 
     if (!isServiceRole) {
-      // Normal user auth
+      // Normal user auth — verify JWT signature via Supabase auth.getUser()
       const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
       const authClient = createClient(SUPABASE_URL, ANON_KEY, {
         global: { headers: { Authorization: authHeader } },
@@ -220,12 +242,23 @@ serve(async (req) => {
       const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       const { data: callerProfile } = await supabaseAdmin
         .from('profiles')
-        .select('role')
+        .select('role, gym_id')
         .eq('id', userId)
         .single();
 
       if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
         return jsonResp({ error: 'Forbidden — can only push to yourself' }, 403);
+      }
+
+      // Gym boundary check: verify target profile belongs to the same gym as the caller
+      const { data: targetProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('gym_id')
+        .eq('id', profile_id)
+        .single();
+
+      if (!targetProfile || targetProfile.gym_id !== callerProfile.gym_id) {
+        return jsonResp({ error: 'Forbidden — target user is not in your gym' }, 403);
       }
     }
 
@@ -343,6 +376,6 @@ serve(async (req) => {
     });
   } catch (err) {
     console.error('send-push-user error:', err);
-    return jsonResp({ error: err.message || 'Internal error' }, 500);
+    return jsonResp({ error: 'Internal server error' }, 500);
   }
 });

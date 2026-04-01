@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode } from 'lucide-react';
+import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
 import { createNotification } from '../../../lib/notifications';
 import logger from '../../../lib/logger';
 import { getRiskTier } from '../../../lib/churnScore';
-import { Avatar, SectionLabel } from '../../../components/admin';
+import { Avatar, SectionLabel, AdminModal } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 
 const statusActionMap = {
@@ -35,6 +37,8 @@ function getStatusActions(status) {
 }
 
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
+  const { t } = useTranslation('pages');
+  const { t: tc } = useTranslation('common');
   const [sessions, setSessions] = useState([]);
   const [prs, setPrs] = useState([]);
   const [challenges, setChallenges] = useState(0);
@@ -42,6 +46,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [noteSaving, setNoteSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('workouts');
+  const [showStatusConfirm, setShowStatusConfirm] = useState(false);
+
+  // Referral state
+  const [referralCode, setReferralCode] = useState('');
+  const [referrals, setReferrals] = useState([]);
+  const [referralCount, setReferralCount] = useState(0);
 
   const [memberStatus, setMemberStatus] = useState(member.membership_status ?? 'active');
   const [statusReason, setStatusReason] = useState('');
@@ -51,8 +61,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [externalId, setExternalId] = useState(member.qr_external_id ?? '');
   const [externalIdSaving, setExternalIdSaving] = useState(false);
 
+  // Password reset state
+  const [resetCode, setResetCode] = useState(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+
   const [followupMsg, setFollowupMsg] = useState(
-    `Hey ${member.full_name.split(' ')[0]}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`
+    t('admin.memberDetail.followupDefault', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.` })
   );
   const [followupSending, setFollowupSending] = useState(false);
   const [followupSentAt, setFollowupSentAt] = useState(null);
@@ -84,6 +100,17 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
           setFollowupOutcome(churnRow.followup_outcome ?? null);
         }
       }
+
+      // Load referral data
+      const [refProfileRes, refListRes] = await Promise.all([
+        supabase.from('profiles').select('referral_code').eq('id', member.id).single(),
+        supabase.from('referrals').select('id, referred_id, status, created_at, profiles!referrals_referred_id_fkey(full_name)').eq('referrer_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(50),
+      ]);
+      if (refProfileRes.data?.referral_code) setReferralCode(refProfileRes.data.referral_code);
+      const refList = refListRes.data || [];
+      setReferrals(refList);
+      setReferralCount(refList.length);
+
       setLoading(false);
     };
     load();
@@ -106,6 +133,33 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setExternalIdSaving(false);
   };
 
+  const handleGenerateResetCode = async () => {
+    setResetLoading(true);
+    setResetError('');
+    setCodeCopied(false);
+    try {
+      const { data, error } = await supabase.rpc('admin_generate_password_reset', { p_profile_id: member.id });
+      if (error) throw error;
+      setResetCode(data);
+    } catch (err) {
+      setResetError(err.message || 'Failed to generate reset code.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!resetCode) return;
+    try {
+      await navigator.clipboard.writeText(String(resetCode));
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      // Fallback for environments without clipboard API
+      setCodeCopied(false);
+    }
+  };
+
   const handleConfirmStatusAction = async () => {
     if (!pendingAction) return;
     setStatusSaving(true);
@@ -117,6 +171,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     }).eq('id', member.id);
     setMemberStatus(nextStatus);
     setPendingAction(null);
+    setShowStatusConfirm(false);
     setStatusReason('');
     setStatusSaving(false);
     onStatusChanged?.(member.id, nextStatus);
@@ -124,7 +179,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSendFollowup = async () => {
     setFollowupSending(true);
-    await createNotification({ profileId: member.id, gymId, type: 'churn_followup', title: 'Message from your gym', body: followupMsg, data: { source: 'admin_followup' } });
+    await createNotification({ profileId: member.id, gymId, type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: followupMsg, data: { source: 'admin_followup' } });
     const now = new Date().toISOString();
     if (churnRowId) await supabase.from('churn_risk_scores').update({ followup_sent_at: now }).eq('id', churnRowId);
     setFollowupSentAt(now);
@@ -144,22 +199,22 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+      <div role="dialog" aria-modal="true" aria-labelledby="member-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-[14px] w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Avatar name={member.full_name} size="lg" />
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <p className="text-[15px] font-bold text-[#E5E7EB]">{member.full_name}</p>
+                <p id="member-detail-title" className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
                 <StatusBadge status={memberStatus} />
               </div>
-              <p className="text-[11px] text-[#6B7280]">@{member.username} · joined {format(new Date(member.created_at), 'MMM yyyy')}</p>
+              <p className="text-[11px] text-[#6B7280] truncate">@{member.username} · joined {format(new Date(member.created_at), 'MMM yyyy')}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors"><X size={20} /></button>
+          <button onClick={onClose} aria-label="Close member detail" className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
         </div>
 
         {/* Stats row */}
@@ -173,14 +228,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             <div key={label} className="py-3 px-2 text-center border-r border-white/4 last:border-0">
               <p className="text-[15px] font-bold text-[#E5E7EB] leading-none">{value}</p>
               <p className="text-[10px] text-[#6B7280] mt-0.5">{label}</p>
-              <p className="text-[10px] text-[#4B5563]">{sub}</p>
+              <p className="text-[10px] text-[#6B7280]">{sub}</p>
             </div>
           ))}
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-white/6 flex-shrink-0">
-          {[{ key: 'workouts', label: 'Workouts' }, { key: 'prs', label: 'PRs' }].map(t => (
+          {[{ key: 'workouts', label: 'Workouts' }, { key: 'prs', label: 'PRs' }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${tab === t.key ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
               {t.label}
@@ -200,12 +255,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             ) : (
               <div className="space-y-2">
                 {sessions.map(s => (
-                  <div key={s.id} className="flex items-center justify-between p-3 bg-[#111827] rounded-xl">
-                    <div>
-                      <p className="text-[13px] font-medium text-[#E5E7EB]">{s.name || 'Workout'}</p>
+                  <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || 'Workout'}</p>
                       <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy')}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
                       {s.duration_seconds > 0 && <p className="text-[11px] text-[#6B7280]">{Math.floor(s.duration_seconds / 60)}m</p>}
                     </div>
@@ -213,7 +268,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 ))}
               </div>
             )
-          ) : (
+          ) : tab === 'prs' ? (
             prs.length === 0 ? (
               <p className="text-[13px] text-[#6B7280] text-center py-6">No PRs recorded yet</p>
             ) : (
@@ -221,7 +276,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 {prs.map((pr, i) => (
                   <div key={pr.exercise_id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
-                      <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#4B5563]'} />
+                      <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
@@ -235,7 +290,63 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 ))}
               </div>
             )
-          )}
+          ) : tab === 'referrals' ? (
+            <div className="space-y-4">
+              {/* Referral code */}
+              {referralCode && (
+                <div className="bg-[#111827] border border-white/6 rounded-xl p-3">
+                  <p className="text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.referral.referralCode')}</p>
+                  <p className="text-[14px] font-mono font-bold text-[#D4AF37]">{referralCode}</p>
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#111827] border border-white/6 rounded-xl p-3 text-center">
+                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralCount}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.peopleReferred')}</p>
+                </div>
+                <div className="bg-[#111827] border border-white/6 rounded-xl p-3 text-center">
+                  <p className="text-[18px] font-bold text-[#10B981] tabular-nums">{referrals.filter(r => r.status === 'completed').length}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.completed')}</p>
+                </div>
+              </div>
+
+              {/* Referred members list */}
+              <div>
+                <SectionLabel icon={Share2} className="mb-3">{t('admin.referral.referredList')}</SectionLabel>
+                {referrals.length === 0 ? (
+                  <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.referral.noReferralsMember')}</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {referrals.map(ref => {
+                      const statusColors = {
+                        pending: 'text-[#F59E0B] bg-[#F59E0B]/10 border-[#F59E0B]/20',
+                        completed: 'text-[#10B981] bg-[#10B981]/10 border-[#10B981]/20',
+                        expired: 'text-[#6B7280] bg-white/6 border-white/10',
+                      };
+                      const statusLabel = {
+                        pending: t('admin.referral.statusPending'),
+                        completed: t('admin.referral.statusCompleted'),
+                        expired: t('admin.referral.statusExpired'),
+                      };
+                      return (
+                        <div key={ref.id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{ref.profiles?.full_name || 'Unknown'}</p>
+                            <p className="text-[11px] text-[#6B7280]">{format(new Date(ref.created_at), 'MMM d, yyyy')}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors[ref.status] || statusColors.pending}`}>
+                            {statusLabel[ref.status] || ref.status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           {/* Membership */}
           <div>
@@ -245,37 +356,18 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 <p className="text-[12px] text-[#6B7280]">Status</p>
                 <StatusBadge status={memberStatus} />
               </div>
-              {!pendingAction && (
-                <div className="flex flex-wrap gap-2">
-                  {getStatusActions(memberStatus).map(action => {
-                    const cfg = statusActionMap[action];
-                    return (
-                      <button key={action} onClick={() => setPendingAction(action)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors ${cfg.btnColor} ${cfg.btnBg}`}>
-                        {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
-                        {cfg.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {pendingAction && (
-                <div className="space-y-2">
-                  <p className="text-[12px] text-[#E5E7EB]">Are you sure you want to <span className="font-semibold">{statusActionMap[pendingAction].label.toLowerCase()}</span>?</p>
-                  <input type="text" value={statusReason} onChange={e => setStatusReason(e.target.value)} placeholder="Reason (optional)"
-                    className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
-                  <div className="flex gap-2">
-                    <button onClick={handleConfirmStatusAction} disabled={statusSaving}
-                      className="flex-1 py-1.5 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors disabled:opacity-40">
-                      {statusSaving ? 'Saving…' : 'Confirm'}
+              <div className="flex flex-wrap gap-2">
+                {getStatusActions(memberStatus).map(action => {
+                  const cfg = statusActionMap[action];
+                  return (
+                    <button key={action} onClick={() => { setPendingAction(action); setShowStatusConfirm(true); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap ${cfg.btnColor} ${cfg.btnBg}`}>
+                      {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
+                      {t(`admin.memberDetail.statusActions.${action}`, { defaultValue: cfg.label })}
                     </button>
-                    <button onClick={() => { setPendingAction(null); setStatusReason(''); }}
-                      className="flex-1 py-1.5 rounded-lg text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -285,14 +377,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
               <div>
                 <label className="block text-[11px] font-medium text-[#6B7280] mb-1">External ID</label>
-                <p className="text-[11px] text-[#4B5563] mb-1.5">The code from your gym's existing system (e.g. keypad code, barcode number)</p>
+                <p className="text-[11px] text-[#6B7280] mb-1.5">The code from your gym's existing system (e.g. keypad code, barcode number)</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={externalId}
                     onChange={e => setExternalId(e.target.value)}
                     placeholder="e.g. 4821 or MBR-0042"
-                    className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 font-mono"
+                    className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 font-mono"
                   />
                   <button
                     onClick={handleSaveExternalId}
@@ -310,6 +402,57 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                   <p className="text-[11px] text-[#6B7280]">Current QR payload</p>
                   <p className="text-[12px] font-mono font-semibold text-[#D4AF37]">{member.qr_code_payload}</p>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Password Reset */}
+          <div>
+            <SectionLabel icon={KeyRound} className="mb-3">Password Reset</SectionLabel>
+            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
+              {resetCode ? (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-[#6B7280]">Show this code to the member:</p>
+                  <div className="flex items-center justify-center py-4">
+                    <span className="text-[36px] font-mono font-bold text-[#D4AF37] tracking-[0.3em] select-all">
+                      {String(resetCode).padStart(6, '0')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#6B7280] text-center">Code expires in 15 minutes</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCopyCode}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold transition-colors"
+                      style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+                    >
+                      {codeCopied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy Code</>}
+                    </button>
+                    <button
+                      onClick={() => { setResetCode(null); setResetError(''); }}
+                      className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {resetError && (
+                    <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                      <p className="text-[11px] text-red-400">{resetError}</p>
+                    </div>
+                  )}
+                  <p className="text-[12px] text-[#6B7280]">Generate a one-time 6-digit code the member can use to set a new password.</p>
+                  <button
+                    onClick={handleGenerateResetCode}
+                    disabled={resetLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+                  >
+                    <KeyRound size={12} />
+                    {resetLoading ? 'Generating…' : 'Generate Reset Code'}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -343,7 +486,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 ) : (
                   <>
                     <textarea value={followupMsg} onChange={e => setFollowupMsg(e.target.value)} rows={3}
-                      className="w-full bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
+                      className="w-full bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
                     <button onClick={handleSendFollowup} disabled={followupSending || !followupMsg.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
                       style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
@@ -359,7 +502,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
           <div>
             <SectionLabel icon={FileText} className="mb-2">Admin Note</SectionLabel>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="e.g. Reached out Jan 5 — no response. At risk of churning."
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
             <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
               className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
@@ -367,6 +510,49 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             </button>
           </div>
         </div>
+
+        {/* Status action confirmation modal */}
+        <AdminModal
+          isOpen={showStatusConfirm && !!pendingAction}
+          onClose={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); }}
+          title={t('admin.memberDetail.confirmStatusTitle', { defaultValue: 'Confirm Action' })}
+          titleIcon={AlertTriangle}
+          size="sm"
+          footer={
+            <>
+              <button
+                onClick={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); }}
+                className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
+              >
+                {tc('cancel')}
+              </button>
+              <button
+                onClick={handleConfirmStatusAction}
+                disabled={statusSaving}
+                className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+              >
+                {statusSaving ? tc('saving', { defaultValue: 'Saving...' }) : tc('confirm')}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-[12px] text-[#9CA3AF] text-center">
+              {t('admin.memberDetail.confirmStatusMessage', {
+                action: pendingAction ? t(`admin.memberDetail.statusActions.${pendingAction}`, { defaultValue: statusActionMap[pendingAction]?.label }).toLowerCase() : '',
+                name: member.full_name,
+                defaultValue: `Are you sure you want to {{action}} for {{name}}?`,
+              })}
+            </p>
+            <input
+              type="text"
+              value={statusReason}
+              onChange={e => setStatusReason(e.target.value)}
+              placeholder={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            />
+          </div>
+        </AdminModal>
       </div>
     </div>
   );

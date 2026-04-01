@@ -25,12 +25,15 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
 
           {/* Bottom sheet */}
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="routine-picker-title"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-[61] max-h-[75vh] flex flex-col rounded-t-3xl bg-[#0F172A] border-t border-white/[0.08]"
-            style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            className="fixed bottom-0 left-0 right-0 z-[61] max-h-[75vh] flex flex-col rounded-t-3xl border-t border-white/[0.08]"
+            style={{ background: 'var(--color-bg-card)', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
@@ -43,17 +46,17 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                 <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider">
                   {t('routinePicker.assignWorkout')}
                 </p>
-                <p className="text-[18px] font-bold text-[#E5E7EB] mt-0.5">
+                <p id="routine-picker-title" className="text-[18px] font-bold mt-0.5 truncate" style={{ color: 'var(--color-text-primary)' }}>
                   {dayName}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center"
+                className="w-11 h-11 rounded-full bg-white/[0.06] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                 aria-label={t('routinePicker.close')}
               >
-                <X size={16} className="text-[#6B7280]" />
+                <X size={16} style={{ color: 'var(--color-text-subtle)' }} />
               </button>
             </div>
 
@@ -61,9 +64,9 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
             <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-2">
               {routines.length === 0 ? (
                 <div className="text-center py-8">
-                  <Dumbbell size={32} className="mx-auto text-[#4B5563] mb-3" />
-                  <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('routinePicker.noRoutinesAvailable')}</p>
-                  <p className="text-[12px] text-[#6B7280] mt-1">
+                  <Dumbbell size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
+                  <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('routinePicker.noRoutinesAvailable')}</p>
+                  <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
                     {t('routinePicker.noRoutinesHint')}
                   </p>
                 </div>
@@ -79,7 +82,7 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                         key={r.id}
                         type="button"
                         onClick={() => { onSelect(r.id); onClose(); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left active:scale-[0.98] ${
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                           isSelected
                             ? 'bg-[#D4AF37]/[0.08] border-[#D4AF37]/25'
                             : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.12]'
@@ -88,15 +91,15 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                           isSelected ? 'bg-[#D4AF37]/15' : 'bg-white/[0.04]'
                         }`}>
-                          <Dumbbell size={16} className={isSelected ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
+                          <Dumbbell size={16} className={isSelected ? 'text-[#D4AF37]' : ''} style={!isSelected ? { color: 'var(--color-text-subtle)' } : undefined} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className={`text-[14px] font-semibold truncate ${
-                            isSelected ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'
-                          }`}>
+                            isSelected ? 'text-[#D4AF37]' : ''
+                          }`} style={!isSelected ? { color: 'var(--color-text-primary)' } : undefined}>
                             {label}
                           </p>
-                          <p className="text-[11px] text-[#6B7280]">
+                          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
                             {t('routinePicker.exercises_count', { count: exerciseCount })}
                           </p>
                         </div>
@@ -114,7 +117,7 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                     <button
                       type="button"
                       onClick={() => { onClear(); onClose(); }}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:border-red-500/20 transition-all text-left active:scale-[0.98] mt-1"
+                      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:border-red-500/20 transition-all text-left active:scale-[0.98] mt-1 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     >
                       <div className="w-10 h-10 rounded-xl bg-red-500/[0.08] flex items-center justify-center shrink-0">
                         <MinusCircle size={16} className="text-red-400" />
@@ -123,7 +126,7 @@ const RoutinePickerModal = ({ open, onClose, dayOfWeek, routines = [], currentRo
                         <p className="text-[14px] font-semibold text-red-400">
                           {t('routinePicker.restDay')}
                         </p>
-                        <p className="text-[11px] text-[#6B7280]">
+                        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
                           {t('routinePicker.removeWorkoutFrom', { day: dayName })}
                         </p>
                       </div>

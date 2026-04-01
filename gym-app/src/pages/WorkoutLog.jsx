@@ -43,32 +43,33 @@ const SessionCard = ({ session }) => {
 
       {/* Main row */}
       <button
-        className="w-full text-left px-5 py-4 flex items-start gap-4"
+        className="w-full text-left px-5 py-4 flex items-start gap-4 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-t-2xl"
         onClick={() => setExpanded(e => !e)}
+        aria-expanded={expanded}
       >
         {/* Date block */}
         <div className="flex-shrink-0 w-10 text-center pt-0.5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#D4AF37]">
             {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
           </p>
-          <p className="text-[24px] font-black leading-none text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <p className="text-[24px] font-black leading-none" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-[16px] leading-tight truncate text-[#E5E7EB]">
+          <p className="font-bold text-[16px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
             {sanitize(session.name)}
           </p>
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Clock size={11} /> {formatDuration(session.duration_seconds)}
             </span>
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Zap size={11} /> {volumeStr}
             </span>
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Dumbbell size={11} /> {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
             </span>
             {prSets.length > 0 && (
@@ -82,8 +83,8 @@ const SessionCard = ({ session }) => {
         {/* Expand arrow */}
         <ChevronDown
           size={18}
-          className="flex-shrink-0 mt-1 transition-transform duration-200 text-[#9CA3AF]"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          className="flex-shrink-0 mt-1 transition-transform duration-200"
+          style={{ color: 'var(--color-text-muted)', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
 
@@ -100,30 +101,57 @@ const SessionCard = ({ session }) => {
                 return (
                   <div key={ex.id}>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <p className="font-semibold text-[14px] text-[#E5E7EB]">
+                      <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>
                         {sanitize(ex.snapshot_name)}
                       </p>
                       {hasPR && <Trophy size={13} className="text-[#D4AF37]" />}
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5">
-                      {completedSets
-                        .sort((a, b) => a.set_number - b.set_number)
-                        .map((set) => (
-                          <div
-                            key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
-                            className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
-                            style={
-                              set.is_pr
-                                ? { background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }
-                                : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.08)' }
-                            }
-                          >
-                            {set.weight_lbs} × {set.reps}
-                            {set.is_pr && ' PR'}
-                          </div>
-                        ))
-                      }
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {completedSets
+                          .sort((a, b) => a.set_number - b.set_number)
+                          .map((set) => (
+                            <div
+                              key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
+                              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                              style={
+                                set.is_pr
+                                  ? { background: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)', border: '1px solid rgba(212,175,55,0.25)' }
+                                  : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
+                              }
+                            >
+                              <span>{set.weight_lbs} × {set.reps}</span>
+                              {set.is_pr && <span>PR</span>}
+                              {set.rpe && (
+                                <span
+                                  className="text-[10px] font-bold rounded px-1 py-px ml-0.5"
+                                  style={{
+                                    background: set.rpe <= 3 ? 'rgba(16,185,129,0.15)' : set.rpe <= 6 ? 'rgba(234,179,8,0.15)' : set.rpe <= 8 ? 'rgba(249,115,22,0.15)' : 'rgba(239,68,68,0.15)',
+                                    color: set.rpe <= 3 ? '#34D399' : set.rpe <= 6 ? '#FBBF24' : set.rpe <= 8 ? '#FB923C' : '#F87171',
+                                  }}
+                                >
+                                  @{set.rpe}
+                                </span>
+                              )}
+                            </div>
+                          ))
+                        }
+                      </div>
+                      {/* Show notes for sets that have them */}
+                      {completedSets.filter(s => s.notes).length > 0 && (
+                        <div className="flex flex-col gap-0.5 pl-0.5">
+                          {completedSets
+                            .sort((a, b) => a.set_number - b.set_number)
+                            .filter(s => s.notes)
+                            .map(set => (
+                              <p key={`note-${set.set_number}`} className="text-[11px] italic truncate" style={{ color: 'var(--color-text-subtle)' }}>
+                                Set {set.set_number}: {set.notes}
+                              </p>
+                            ))
+                          }
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -159,7 +187,7 @@ const WorkoutLog = ({ embedded = false }) => {
           id, name, completed_at, duration_seconds, total_volume_lbs,
           session_exercises(
             id, snapshot_name, position,
-            session_sets(set_number, weight_lbs, reps, is_completed, is_pr)
+            session_sets(set_number, weight_lbs, reps, is_completed, is_pr, rpe, notes)
           )
         `)
         .eq('profile_id', user.id)
@@ -194,23 +222,25 @@ const WorkoutLog = ({ embedded = false }) => {
     setCollapsedMonths(prev => ({ ...prev, [month]: !prev[month] }));
 
   return (
-    <div className={embedded ? 'animate-fade-in' : 'mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in'}>
+    <div className={embedded ? 'animate-fade-in' : 'mx-auto w-full max-w-[480px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in'}>
 
       {/* Header */}
       {!embedded && (
       <div className="flex items-center gap-3 mb-8">
         <button
           onClick={() => navigate(-1)}
-          className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 bg-[#111827] text-[#9CA3AF]"
+          aria-label="Back"
+          className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors hover:opacity-70 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-muted)' }}
         >
           <ChevronLeft size={20} strokeWidth={2.5} />
         </button>
-        <div>
-          <h1 className="font-bold text-[28px] leading-tight text-[#E5E7EB]" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+        <div className="min-w-0 flex-1">
+          <h1 className="font-bold text-[22px] leading-tight truncate" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
             Workout Log
           </h1>
           {!loading && (
-            <p className="text-[12px] mt-0.5 text-[#9CA3AF]">
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
               {sessions.length} workout{sessions.length !== 1 ? 's' : ''} completed
             </p>
           )}
@@ -242,16 +272,18 @@ const WorkoutLog = ({ embedded = false }) => {
             <button
               type="button"
               onClick={() => toggleMonth(month)}
-              className="flex items-center gap-2 mb-3 group w-full text-left"
+              aria-expanded={!isCollapsed}
+              className="flex items-center gap-2 mb-3 group w-full text-left min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
             >
               <ChevronDown
                 size={14}
-                className={`text-[#6B7280] transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+                className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+                style={{ color: 'var(--color-text-subtle)' }}
               />
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9CA3AF] group-hover:text-[#E5E7EB] transition-colors">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] transition-colors" style={{ color: 'var(--color-text-muted)' }}>
                 {month}
               </p>
-              <span className="text-[10px] font-medium text-[#6B7280] ml-1">
+              <span className="text-[10px] font-medium ml-1" style={{ color: 'var(--color-text-subtle)' }}>
                 ({grouped[month].length})
               </span>
             </button>
@@ -270,7 +302,8 @@ const WorkoutLog = ({ embedded = false }) => {
       {!loading && visibleCount < sessions.length && (
         <button
           onClick={() => setVisibleCount(prev => prev + 20)}
-          className="w-full py-3 mt-4 rounded-2xl bg-white/[0.04] text-[#9CA3AF] text-[13px] font-semibold hover:bg-white/[0.06] transition-colors duration-200"
+          className="w-full py-3 mt-4 rounded-2xl bg-white/[0.04] text-[13px] font-semibold hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-muted)' }}
         >
           Load more ({sessions.length - visibleCount} remaining)
         </button>

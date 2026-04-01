@@ -140,13 +140,18 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
 
       {/* Modal */}
       <div
-        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="qr-modal-title"
+        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+          aria-label={t('qrCode.close', 'Close')}
+          className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-subtle)' }}
         >
           <X size={18} />
         </button>
@@ -181,22 +186,22 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         </div>
 
         {/* Info + actions — dark bg */}
-        <div className="bg-[#0F172A] border-t border-white/8 p-5">
-          <p className="text-[15px] font-bold text-[#E5E7EB] text-center mb-1">
+        <div className="border-t border-white/8 p-5" style={{ background: 'var(--color-bg-card)' }}>
+          <p id="qr-modal-title" className="text-[15px] font-bold text-center mb-1" style={{ color: 'var(--color-text-primary)' }}>
             {memberName || t('qrCode.yourGymPass')}
           </p>
-          <p className="text-[12px] text-[#6B7280] text-center mb-4">
+          <p className="text-[12px] text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
             {t('qrCode.showAtScanner')}
           </p>
 
           <div className="flex gap-2">
             <button
               onClick={handleDownload}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{
-                background: 'rgba(212,175,55,0.1)',
-                border: '1.5px solid rgba(212,175,55,0.3)',
-                color: '#D4AF37',
+                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                border: '1.5px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                color: 'var(--color-accent)',
               }}
             >
               <Download size={15} />
@@ -205,11 +210,11 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
             <button
               onClick={handleAddToWallet}
               disabled={walletLoading}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{
-                background: 'rgba(212,175,55,0.1)',
-                border: '1.5px solid rgba(212,175,55,0.3)',
-                color: '#D4AF37',
+                background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                border: '1.5px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                color: 'var(--color-accent)',
               }}
             >
               {walletLoading ? (

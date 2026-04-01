@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Trophy, BarChart2, Flame, Dumbbell, MapPin, TrendingUp, Target, ChevronRight, ChevronDown, Sparkles, Award, CheckCircle2, X } from 'lucide-react';
+import { Trophy, BarChart2, Flame, Dumbbell, MapPin, TrendingUp, Target, ChevronRight, ChevronDown, Sparkles, Award, CheckCircle2, X, Swords, UserPlus, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -11,16 +11,26 @@ import {
   useLeaderboardCheckins,
   useMilestoneFeed,
 } from '../hooks/useSupabaseQuery';
+import { formatStatNumber } from '../lib/formatStatValue';
+import { supabase } from '../lib/supabase';
+import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
 
 // ── Helpers ─────────────────────────────────────────────────
-const ACCENT = '#10B981';
-const GOLD   = '#D4AF37';
-const MEDAL  = [GOLD, '#9CA3AF', '#92400E'];
+const ACCENT = 'var(--color-success)';
+const GOLD   = 'var(--color-accent)';
+const MEDAL  = [GOLD, 'var(--color-text-muted)', '#92400E'];
 
 const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d.toISOString(); };
 const monthStart = () => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d.toISOString(); };
 
 const TIME_OPTIONS  = [{ key: 'weekly', label: 'This Week' }, { key: 'monthly', label: 'This Month' }, { key: 'alltime', label: 'All Time' }];
+
+// Map expanded board keys to friend_challenges metric values
+const BOARD_TO_METRIC = {
+  volume: 'volume',
+  workouts: 'workouts',
+  prs: 'prs',
+};
 
 function timeAgoShort(iso) {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -30,10 +40,153 @@ function timeAgoShort(iso) {
 }
 
 const MILESTONE_CFG = {
-  workout_count: { icon: Dumbbell, color: '#3B82F6', label: (d, t) => d?.count === 1 ? t('milestones.firstWorkout') : t('milestones.workoutCount', { count: d?.count }) },
-  streak:        { icon: Flame,    color: '#EF4444', label: (d, t) => t('milestones.dayStreak', { days: d?.days }) },
+  workout_count: { icon: Dumbbell, color: 'var(--color-blue)', label: (d, t) => d?.count === 1 ? t('milestones.firstWorkout') : t('milestones.workoutCount', { count: d?.count }) },
+  streak:        { icon: Flame,    color: 'var(--color-danger)', label: (d, t) => t('milestones.dayStreak', { days: d?.days }) },
   first_pr:      { icon: Trophy,   color: GOLD,      label: (d, t) => t('milestones.firstPR', { exercise: d?.exercise_name }) },
   pr_count:      { icon: Award,    color: '#A855F7', label: (d, t) => t('milestones.totalPRs', { count: d?.count }) },
+};
+
+// ── Challenge a Friend Modal ─────────────────────────────────
+const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, isFriend, onClose, onSendFriendRequest, t }) => {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleChallenge = async () => {
+    if (sending || sent) return;
+    setSending(true);
+    try {
+      const { error } = await supabase.from('friend_challenges').insert({
+        challenger_id: userId,
+        challenged_id: entry.id,
+        gym_id: gymId,
+        metric,
+        status: 'pending',
+      });
+      if (error) throw error;
+
+      // Notify the challenged user
+      await sendNotification(entry.id, gymId, {
+        title: t('leaderboard.challengeFriend.notifTitle', { name: userName }),
+        body: t('leaderboard.challengeFriend.notifBody', { name: userName, metric: metricLabel }),
+        type: NOTIFICATION_TYPES.FRIEND_ACTIVITY,
+        actionUrl: '/challenges',
+      });
+
+      // Confirmation notification to challenger
+      await sendNotification(userId, gymId, {
+        title: t('leaderboard.challengeFriend.sentTitle'),
+        body: t('leaderboard.challengeFriend.sentBody', { name: entry.name }),
+        type: NOTIFICATION_TYPES.FRIEND_ACTIVITY,
+        actionUrl: '/challenges',
+      });
+
+      setSent(true);
+      setTimeout(onClose, 1200);
+    } catch (err) {
+      console.error('[ChallengeModal] Error:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={e => e.stopPropagation()}
+        className="w-[85%] max-w-[380px] rounded-2xl border border-white/[0.08] overflow-hidden"
+        style={{ background: 'var(--color-bg-primary)', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 text-center">
+          <div className="w-14 h-14 rounded-full bg-white/[0.06] flex items-center justify-center mx-auto mb-3 overflow-hidden">
+            {entry.avatar ? (
+              <img src={entry.avatar} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[18px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
+            )}
+          </div>
+
+          {isFriend ? (
+            <>
+              <h3 className="text-[17px] font-bold text-[var(--color-text-primary)]">
+                {t('leaderboard.challengeFriend.title', { name: entry.name })}
+              </h3>
+              <p className="text-[12px] text-[var(--color-text-muted)] mt-1.5">
+                {t('leaderboard.challengeFriend.description', { metric: metricLabel })}
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-[17px] font-bold text-[var(--color-text-primary)]">
+                {t('leaderboard.challengeFriend.addFriendFirst', { name: entry.name })}
+              </h3>
+              <p className="text-[12px] text-[var(--color-text-muted)] mt-1.5">
+                {t('leaderboard.challengeFriend.addFriendHint')}
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Details */}
+        {isFriend && (
+          <div className="mx-5 mb-4 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider font-semibold">{t('leaderboard.challengeFriend.metricLabel')}</span>
+              <span className="text-[12px] font-bold text-[var(--color-text-primary)]">{metricLabel}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider font-semibold">{t('leaderboard.challengeFriend.duration')}</span>
+              <span className="text-[12px] font-bold text-[var(--color-text-primary)]">{t('leaderboard.challengeFriend.thisWeek')}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-[var(--color-text-subtle)] uppercase tracking-wider font-semibold">{t('leaderboard.challengeFriend.reward')}</span>
+              <span className="text-[12px] font-bold text-[#D4AF37]">+50 pts</span>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="px-5 pb-5 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-xl bg-white/[0.06] text-[13px] font-semibold text-[var(--color-text-muted)] transition-colors hover:bg-white/[0.08] min-h-[44px]"
+          >
+            {t('leaderboard.challengeFriend.cancel')}
+          </button>
+          {isFriend ? (
+            <button
+              onClick={handleChallenge}
+              disabled={sending || sent}
+              className="flex-1 py-3 rounded-xl text-[13px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: sent ? ACCENT : GOLD }}
+            >
+              {sent ? (
+                <><CheckCircle2 size={14} /> {t('leaderboard.challengeFriend.sent')}</>
+              ) : sending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <><Swords size={14} /> {t('leaderboard.challengeFriend.challenge')}</>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => { onSendFriendRequest(entry.id); onClose(); }}
+              className="flex-1 py-3 rounded-xl text-[13px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-2"
+              style={{ background: 'var(--color-blue)' }}
+            >
+              <UserPlus size={14} /> {t('leaderboard.challengeFriend.addFriend')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 };
 
 // ── Mini entry row (for preview cards) ──────────────────────
@@ -63,7 +216,7 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency, t }) 
         {isMe ? t('leaderboard.you') : entry.name}
       </p>
       <span className={`text-[12px] font-bold flex-shrink-0 ${rank === 1 ? '' : 'text-[var(--color-text-muted)]'}`} style={{ fontVariantNumeric: 'tabular-nums', ...(rank === 1 ? { color: ACCENT } : {}) }}>
-        {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : entry.score?.toLocaleString()}
+        {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : formatStatNumber(entry.score)}
         {unit && !isImproved && !isConsistency && <span className="text-[10px] font-normal text-[var(--color-text-subtle)] ml-0.5">{unit}</span>}
       </span>
     </div>
@@ -84,7 +237,7 @@ const CategoryCard = ({ icon: Icon, iconColor, title, subtitle, entries, loading
           <p className="text-[10px] text-[var(--color-text-subtle)] mt-0.5">{subtitle}</p>
         </div>
       </div>
-      <button onClick={onExpand} className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors">
+      <button onClick={onExpand} className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg px-2">
         {t('leaderboard.seeAll')} <ChevronRight size={12} />
       </button>
     </div>
@@ -116,7 +269,10 @@ const CategoryCard = ({ icon: Icon, iconColor, title, subtitle, entries, loading
 );
 
 // ── Expanded full list modal ────────────────────────────────
-const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, unit, isImproved, isConsistency, onClose, timeRange, setTimeRange, availableTimes, t }) => {
+const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, unit, isImproved, isConsistency, onClose, timeRange, setTimeRange, availableTimes, boardKey, friendIds, gymId, userName, onChallenge, onSendFriendRequest, t }) => {
+  const metric = BOARD_TO_METRIC[boardKey];
+  const canChallenge = !!metric; // Only volume, workouts, prs can be challenged
+
   // Render via portal into document.body — completely detached from page scroll
   return createPortal(
     <div
@@ -124,6 +280,9 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leaderboard-expanded-title"
         onClick={e => e.stopPropagation()}
         style={{ width: '92%', maxWidth: 500, maxHeight: '85vh', background: 'var(--color-bg-primary)', borderRadius: 20, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }}
       >
@@ -134,9 +293,9 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${iconColor}12` }}>
               <Icon size={15} style={{ color: iconColor }} />
             </div>
-            <h2 className="text-[17px] font-bold text-[var(--color-text-primary)]">{title}</h2>
+            <h2 id="leaderboard-expanded-title" className="text-[17px] font-bold text-[var(--color-text-primary)]">{title}</h2>
           </div>
-          <button onClick={onClose} className="w-11 h-11 rounded-xl bg-white/[0.06] flex items-center justify-center transition-colors duration-200 hover:bg-white/[0.08]">
+          <button onClick={onClose} aria-label="Close leaderboard" className="w-11 h-11 rounded-xl bg-white/[0.06] flex items-center justify-center transition-colors duration-200 hover:bg-white/[0.08] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
             <X size={16} className="text-[var(--color-text-muted)]" />
           </button>
         </div>
@@ -174,6 +333,7 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
                 const isMe = entry.id === userId;
                 const isFirst = rank === 1;
                 const medalColor = rank <= 3 ? MEDAL[rank - 1] : null;
+                const isFriend = friendIds.has(entry.id);
 
                 return (
                   <div
@@ -208,13 +368,28 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
                         <p className="text-[10px] text-[var(--color-text-subtle)]">{t('leaderboard.ofDays', { actual: entry.actual_days, planned: entry.planned_days })}</p>
                       )}
                       {isImproved && entry.previous_value != null && (
-                        <p className="text-[10px] text-[var(--color-text-subtle)]">{Math.round(entry.previous_value).toLocaleString()} → {Math.round(entry.current_value).toLocaleString()}</p>
+                        <p className="text-[10px] text-[var(--color-text-subtle)]">{formatStatNumber(Math.round(entry.previous_value))} → {formatStatNumber(Math.round(entry.current_value))}</p>
                       )}
                     </div>
                     <span className={`text-[13px] font-bold flex-shrink-0 ${isFirst ? '' : 'text-[var(--color-text-muted)]'}`} style={{ fontVariantNumeric: 'tabular-nums', ...(isFirst ? { color: ACCENT } : {}) }}>
-                      {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : entry.score?.toLocaleString()}
+                      {isImproved ? `+${entry.score}%` : isConsistency ? `${entry.score}%` : formatStatNumber(entry.score)}
                       {unit && !isImproved && !isConsistency && <span className="text-[10px] font-normal text-[var(--color-text-subtle)] ml-1">{unit}</span>}
                     </span>
+                    {/* Challenge / Add Friend button */}
+                    {!isMe && canChallenge && (
+                      <button
+                        onClick={() => onChallenge(entry, isFriend)}
+                        aria-label={isFriend ? t('leaderboard.challengeFriend.challenge') : t('leaderboard.challengeFriend.addFriend')}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors hover:bg-white/[0.08] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        style={{ background: isFriend ? 'color-mix(in srgb, var(--color-accent) 7%, transparent)' : 'color-mix(in srgb, var(--color-blue) 7%, transparent)' }}
+                      >
+                        {isFriend ? (
+                          <Swords size={13} style={{ color: 'var(--color-accent)' }} />
+                        ) : (
+                          <UserPlus size={13} style={{ color: 'var(--color-blue)' }} />
+                        )}
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -237,6 +412,23 @@ const Leaderboard = ({ embedded = false }) => {
 
   const [expanded, setExpanded] = useState(null); // which board is expanded
   const [exTimeRange, setExTimeRange] = useState('weekly');
+  const [challengeTarget, setChallengeTarget] = useState(null); // { entry, isFriend }
+  const [friendIds, setFriendIds] = useState(new Set());
+
+  // Fetch friend IDs for the current user
+  useEffect(() => {
+    if (!uid) return;
+    supabase
+      .from('friendships')
+      .select('requester_id, addressee_id')
+      .or(`requester_id.eq.${uid},addressee_id.eq.${uid}`)
+      .eq('status', 'accepted')
+      .then(({ data }) => {
+        if (!data) return;
+        const ids = new Set(data.map(f => f.requester_id === uid ? f.addressee_id : f.requester_id));
+        setFriendIds(ids);
+      });
+  }, [uid]);
 
   const startWeek  = weekStart();
   const startMonth = monthStart();
@@ -286,11 +478,11 @@ const Leaderboard = ({ embedded = false }) => {
 
   // Board configs for expansion
   const BOARDS = {
-    volume:      { title: t('leaderboard.categories.volume'),       icon: BarChart2,    iconColor: '#3B82F6', unit: 'lbs',       data: exVolume.data,         loading: exVolume.isLoading,      times: TIME_OPTIONS },
+    volume:      { title: t('leaderboard.categories.volume'),       icon: BarChart2,    iconColor: 'var(--color-blue)', unit: 'lbs',       data: exVolume.data,         loading: exVolume.isLoading,      times: TIME_OPTIONS },
     workouts:    { title: t('leaderboard.categories.workouts'),     icon: Dumbbell,     iconColor: '#8B5CF6', unit: 'sessions',  data: exWorkouts.data,       loading: exWorkouts.isLoading,    times: TIME_OPTIONS },
-    streak:      { title: t('leaderboard.categories.streak'),       icon: Flame,        iconColor: '#EF4444', unit: 'days',      data: exStreakEntries,        loading: exStreak.isLoading,      times: [TIME_OPTIONS[2]] },
+    streak:      { title: t('leaderboard.categories.streak'),       icon: Flame,        iconColor: 'var(--color-danger)', unit: 'days',      data: exStreakEntries,        loading: exStreak.isLoading,      times: [TIME_OPTIONS[2]] },
     improved:    { title: t('leaderboard.categories.improved'),     icon: TrendingUp,   iconColor: ACCENT,    unit: '',          data: exImproved.data,       loading: exImproved.isLoading,    times: TIME_OPTIONS.slice(0,2), isImproved: true },
-    consistency: { title: t('leaderboard.categories.consistency'),  icon: Target,       iconColor: '#F59E0B', unit: '',          data: exConsistency.data,    loading: exConsistency.isLoading, times: TIME_OPTIONS.slice(0,2), isConsistency: true },
+    consistency: { title: t('leaderboard.categories.consistency'),  icon: Target,       iconColor: 'var(--color-warning)', unit: '',          data: exConsistency.data,    loading: exConsistency.isLoading, times: TIME_OPTIONS.slice(0,2), isConsistency: true },
     prs:         { title: t('leaderboard.categories.prs'),          icon: Trophy,       iconColor: GOLD,      unit: 'PRs',       data: exPrs.data,            loading: exPrs.isLoading,         times: TIME_OPTIONS },
     checkins:    { title: t('leaderboard.categories.checkins'),     icon: MapPin,       iconColor: '#06B6D4', unit: 'check-ins', data: exCheckins.data,       loading: exCheckins.isLoading,    times: TIME_OPTIONS },
   };
@@ -300,14 +492,37 @@ const Leaderboard = ({ embedded = false }) => {
     setExpanded(key);
   };
 
+  const handleChallenge = useCallback((entry, isFriend) => {
+    setChallengeTarget({ entry, isFriend });
+  }, []);
+
+  const handleSendFriendRequest = useCallback(async (targetId) => {
+    if (!uid || !gymId) return;
+    try {
+      const { error } = await supabase.from('friendships').insert({
+        requester_id: uid,
+        addressee_id: targetId,
+        status: 'pending',
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('[Leaderboard] Friend request error:', err);
+    }
+  }, [uid, gymId]);
+
+  // Metric label for the challenge modal
+  const challengeMetricLabel = expanded && BOARD_TO_METRIC[expanded]
+    ? t(`leaderboard.challengeFriend.metrics.${BOARD_TO_METRIC[expanded]}`)
+    : '';
+
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12'} animate-fade-in`}>
-      <div className={embedded ? '' : 'mx-auto w-full max-w-[680px] md:max-w-4xl px-5 md:px-8'}>
+      <div className={embedded ? '' : 'mx-auto w-full max-w-[480px] md:max-w-4xl px-4'}>
 
         {/* Title */}
         {!embedded && (
           <div className="pt-6 pb-5">
-            <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight">
+            <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] tracking-tight truncate">
               {t('leaderboard.title')}
             </h1>
             <p className="text-[14px] text-[var(--color-text-subtle)] mt-1">{t('leaderboard.thisWeekAtYourGym')}</p>
@@ -316,7 +531,7 @@ const Leaderboard = ({ embedded = false }) => {
 
         {/* ── Your Position Hero ── */}
         {myVolume && (
-          <div className="rounded-2xl bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-card)]/60 border border-white/[0.06] p-5 mb-4" style={{ boxShadow: '0 0 30px rgba(0,0,0,0.2)' }}>
+          <div className="rounded-2xl bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-card)]/60 border border-white/[0.06] overflow-hidden p-5 mb-4" style={{ boxShadow: '0 0 30px rgba(0,0,0,0.2)' }}>
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 ring-2 ring-[#10B981]/20">
                 {profile?.avatar_url ? (
@@ -328,14 +543,14 @@ const Leaderboard = ({ embedded = false }) => {
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] text-[var(--color-text-muted)] font-medium uppercase tracking-wider">{t('leaderboard.yourRank')}</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-[28px] font-black leading-none" style={{ color: ACCENT, fontVariantNumeric: 'tabular-nums' }}>#{myVolume.rank}</span>
+                  <span className="text-[24px] font-black leading-none truncate" style={{ color: ACCENT, fontVariantNumeric: 'tabular-nums' }}>#{myVolume.rank}</span>
                   {myPct != null && (
                     <span className="text-[12px] font-semibold text-[var(--color-text-subtle)]">Top {Math.max(100 - myPct + 1, 1)}%</span>
                   )}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-[18px] font-bold text-[var(--color-text-primary)]" style={{ fontVariantNumeric: 'tabular-nums' }}>{myVolume.entry.score?.toLocaleString()}</p>
+                <p className="text-[18px] font-bold text-[var(--color-text-primary)] truncate" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatStatNumber(myVolume.entry.score)}</p>
                 <p className="text-[10px] text-[var(--color-text-subtle)] mt-0.5">{t('leaderboard.lbsThisWeek')}</p>
               </div>
             </div>
@@ -345,7 +560,7 @@ const Leaderboard = ({ embedded = false }) => {
         {/* ── Category Cards ── */}
         <div className="space-y-6">
           <CategoryCard
-            icon={BarChart2} iconColor="#3B82F6" title={t('leaderboard.categories.volume')} subtitle={t('leaderboard.categories.volume_sub')}
+            icon={BarChart2} iconColor="var(--color-blue)" title={t('leaderboard.categories.volume')} subtitle={t('leaderboard.categories.volume_sub')}
             entries={volume.data} loading={volume.isLoading} userId={uid} unit="lbs"
             myEntry={findMe(volume.data)} onExpand={() => handleExpand('volume')} t={t}
           />
@@ -360,12 +575,12 @@ const Leaderboard = ({ embedded = false }) => {
             myEntry={findMe(improved.data)} onExpand={() => handleExpand('improved')} t={t}
           />
           <CategoryCard
-            icon={Target} iconColor="#F59E0B" title={t('leaderboard.categories.consistency')} subtitle={t('leaderboard.categories.consistency_sub')}
+            icon={Target} iconColor="var(--color-warning)" title={t('leaderboard.categories.consistency')} subtitle={t('leaderboard.categories.consistency_sub')}
             entries={consistency.data} loading={consistency.isLoading} userId={uid} isConsistency
             myEntry={findMe(consistency.data)} onExpand={() => handleExpand('consistency')} t={t}
           />
           <CategoryCard
-            icon={Flame} iconColor="#EF4444" title={t('leaderboard.categories.streak')} subtitle={t('leaderboard.categories.streak_sub')}
+            icon={Flame} iconColor="var(--color-danger)" title={t('leaderboard.categories.streak')} subtitle={t('leaderboard.categories.streak_sub')}
             entries={streakEntries} loading={streak.isLoading} userId={uid} unit="days"
             myEntry={findMe(streakEntries)} onExpand={() => handleExpand('streak')} t={t}
           />
@@ -425,6 +640,28 @@ const Leaderboard = ({ embedded = false }) => {
           timeRange={exTimeRange}
           setTimeRange={setExTimeRange}
           availableTimes={BOARDS[expanded].times}
+          boardKey={expanded}
+          friendIds={friendIds}
+          gymId={gymId}
+          userName={profile?.full_name || profile?.username || 'Someone'}
+          onChallenge={handleChallenge}
+          onSendFriendRequest={handleSendFriendRequest}
+          t={t}
+        />
+      )}
+
+      {/* ── Challenge Modal ── */}
+      {challengeTarget && expanded && BOARD_TO_METRIC[expanded] && (
+        <ChallengeModal
+          entry={challengeTarget.entry}
+          metric={BOARD_TO_METRIC[expanded]}
+          metricLabel={challengeMetricLabel}
+          gymId={gymId}
+          userId={uid}
+          userName={profile?.full_name || profile?.username || 'Someone'}
+          isFriend={challengeTarget.isFriend}
+          onClose={() => setChallengeTarget(null)}
+          onSendFriendRequest={handleSendFriendRequest}
           t={t}
         />
       )}

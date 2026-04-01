@@ -10,15 +10,15 @@ export default function RecentActivity({ activity = [], delay = 0 }) {
     <FadeIn delay={delay}>
       <AdminCard hover>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">Recent Activity</p>
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">Recent Activity</p>
             {activity.length > 0 && (
               <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#6B7280]">
                 {activity.length}
               </span>
             )}
           </div>
-          <button onClick={() => setExpanded(v => !v)} className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+          <button onClick={() => setExpanded(v => !v)} className="flex-shrink-0 flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
             {expanded ? 'Hide' : 'Show'}
             <ChevronDown size={13} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </button>
@@ -47,7 +47,7 @@ export default function RecentActivity({ activity = [], delay = 0 }) {
                         <p className="text-[10px] text-[#6B7280]">{format(new Date(s.timestamp), 'MMM d, h:mm a')}</p>
                       </div>
                       {s.type === 'workout' && s.total_volume_lbs > 0 && (
-                        <span className="text-[11px] font-semibold text-[#9CA3AF] tabular-nums">
+                        <span className="text-[11px] font-semibold text-[#9CA3AF] tabular-nums flex-shrink-0 whitespace-nowrap">
                           {Math.round(s.total_volume_lbs).toLocaleString()} lbs
                         </span>
                       )}

@@ -24,31 +24,32 @@ const SessionCard = ({ session }) => {
     : `${Math.round(volumeK)} lbs`;
 
   return (
-    <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden transition-all">
+    <div className="rounded-2xl border border-white/8 overflow-hidden transition-all" style={{ background: 'var(--color-bg-card)' }}>
       <button
-        className="w-full text-left px-5 py-4 flex items-start gap-4"
+        className="w-full text-left px-5 py-4 flex items-start gap-4 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setExpanded(e => !e)}
+        aria-label={`Toggle details for ${session.name}`}
       >
         <div className="flex-shrink-0 w-10 text-center pt-0.5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#D4AF37]">
             {new Date(session.completed_at).toLocaleDateString('en-US', { month: 'short' })}
           </p>
-          <p className="text-[24px] font-black leading-none text-[#E5E7EB]">
+          <p className="text-[24px] font-black leading-none truncate" style={{ color: 'var(--color-text-primary)' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-[16px] leading-tight truncate text-[#E5E7EB]">
+          <p className="font-bold text-[16px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
             {session.name}
           </p>
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Clock size={11} /> {formatDuration(session.duration_seconds)}
             </span>
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Zap size={11} /> {volumeStr}
             </span>
-            <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Dumbbell size={11} /> {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
             </span>
             {prSets.length > 0 && (
@@ -60,7 +61,8 @@ const SessionCard = ({ session }) => {
         </div>
         <ChevronDown
           size={18}
-          className="flex-shrink-0 mt-1 transition-transform duration-200 text-[#9CA3AF]"
+          className="flex-shrink-0 mt-1 transition-transform duration-200"
+          style={{ color: 'var(--color-text-muted)' }}
           style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
@@ -76,7 +78,7 @@ const SessionCard = ({ session }) => {
                 return (
                   <div key={ex.id}>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <p className="font-semibold text-[14px] text-[#E5E7EB]">
+                      <p className="font-semibold text-[14px]" style={{ color: 'var(--color-text-primary)' }}>
                         {ex.snapshot_name}
                       </p>
                       {hasPR && <Trophy size={13} className="text-[#D4AF37]" />}
@@ -90,8 +92,8 @@ const SessionCard = ({ session }) => {
                             className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
                             style={
                               set.is_pr
-                                ? { background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.25)' }
-                                : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.08)' }
+                                ? { background: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)', border: '1px solid rgba(212,175,55,0.25)' }
+                                : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
                             }
                           >
                             {set.weight_lbs} x {set.reps}
@@ -176,7 +178,7 @@ export default function ProgressHistory() {
 
   return (
     <div>
-      <p className="text-[12px] mb-4 text-[#9CA3AF]">
+      <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
         {sessions.length} workout{sessions.length !== 1 ? 's' : ''} completed
       </p>
       {months.map(month => {
@@ -189,16 +191,17 @@ export default function ProgressHistory() {
               className="w-full flex items-center justify-between mb-3 group"
             >
               <div className="flex items-center gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9CA3AF]">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
                   {month}
                 </p>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/6 text-[#6B7280]">
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/6" style={{ color: 'var(--color-text-subtle)' }}>
                   {count}
                 </span>
               </div>
               <ChevronDown
                 size={15}
-                className="text-[#4B5563] transition-transform duration-200"
+                className="transition-transform duration-200"
+                style={{ color: 'var(--color-text-muted)' }}
                 style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
               />
             </button>
@@ -209,8 +212,8 @@ export default function ProgressHistory() {
                 ))}
               </div>
             ) : (
-              <div className="bg-[#0F172A] rounded-2xl border border-white/8 px-4 py-3">
-                <p className="text-[12px] text-[#6B7280]">
+              <div className="rounded-2xl border border-white/8 px-4 py-3" style={{ background: 'var(--color-bg-card)' }}>
+                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
                   {count} workout{count !== 1 ? 's' : ''} · Tap to expand
                 </p>
               </div>

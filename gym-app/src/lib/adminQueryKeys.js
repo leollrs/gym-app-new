@@ -40,5 +40,48 @@ export const adminKeys = {
   announcements: (gymId) => ['admin', 'announcements', gymId],
   moderation: (gymId) => ['admin', 'moderation', gymId],
   settings: (gymId) => ['admin', 'settings', gymId],
+  notificationPrefs: (gymId) => ['admin', 'notification-prefs', gymId],
   followUpSettings: (gymId) => ['admin', 'follow-up-settings', gymId],
+
+  revenue: {
+    all: (gymId) => ['admin', 'revenue', gymId],
+    points: (gymId, period) => ['admin', 'revenue', gymId, 'points', period],
+    purchases: (gymId, period) => ['admin', 'revenue', gymId, 'purchases', period],
+    products: (gymId) => ['admin', 'revenue', gymId, 'products'],
+  },
+
+  auditLog: {
+    all: (gymId) => ['admin', 'auditLog', gymId],
+    list: (gymId, action, preset, from, to) => ['admin', 'auditLog', gymId, 'list', action, preset, from, to],
+  },
+
+  reports: {
+    all: (gymId) => ['admin', 'reports', gymId],
+    history: (gymId) => ['admin', 'reports', gymId, 'history'],
+  },
+
+  segments: {
+    all: (gymId) => ['admin', 'segments', gymId],
+    detail: (gymId, segmentId) => ['admin', 'segments', gymId, 'detail', segmentId],
+    members: (gymId, segmentId) => ['admin', 'segments', gymId, 'members', segmentId],
+  },
+
+  referrals: {
+    all: (gymId) => ['admin', 'referrals', gymId],
+    stats: (gymId) => ['admin', 'referrals', gymId, 'stats'],
+    leaderboard: (gymId, period) => ['admin', 'referrals', gymId, 'leaderboard', period],
+    member: (gymId, memberId) => ['admin', 'referrals', gymId, 'member', memberId],
+    config: (gymId) => ['admin', 'referrals', gymId, 'config'],
+  },
+
+  nps: {
+    all: (gymId) => ['admin', 'nps', gymId],
+    stats: (gymId, days) => ['admin', 'nps', gymId, 'stats', days],
+    responses: (gymId, days) => ['admin', 'nps', gymId, 'responses', days],
+    surveys: (gymId) => ['admin', 'nps', gymId, 'surveys'],
+  },
+
+  kpiTargets: (gymId, month) => ['admin', 'kpi-targets', gymId, month],
+
+  digest: (gymId) => ['admin', 'digest-config', gymId],
 };

@@ -69,7 +69,8 @@ export default function AdminModal({
           </div>
           <button
             onClick={onClose}
-            className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+            aria-label="Close dialog"
+            className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <X size={20} />
           </button>

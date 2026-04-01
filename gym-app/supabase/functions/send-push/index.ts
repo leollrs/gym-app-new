@@ -355,6 +355,27 @@ serve(async (req) => {
     const { gym_id, title, body, data: pushData } = await req.json();
     const targetGymId = gym_id || callerProfile.gym_id;
 
+    // ── Gym boundary check ──────────────────────────────────────
+    // Non-super_admin callers can only send pushes to their own gym.
+    if (callerProfile.role !== 'super_admin' && targetGymId !== callerProfile.gym_id) {
+      return jsonResp({ error: 'Forbidden — cannot send pushes to another gym' }, 403);
+    }
+
+    // ── Rate limiting: max 10 broadcast pushes per hour per gym ─
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentPushCount, error: rlErr } = await supabase
+      .from('admin_push_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('gym_id', targetGymId)
+      .gte('sent_at', oneHourAgo);
+
+    if (!rlErr && (recentPushCount ?? 0) >= 10) {
+      return jsonResp(
+        { error: 'Rate limit exceeded — max 10 broadcast pushes per hour per gym' },
+        429,
+      );
+    }
+
     // Validate title
     if (!title || typeof title !== 'string') {
       return jsonResp({ error: 'title is required' }, 400);
@@ -409,6 +430,14 @@ serve(async (req) => {
 
     const totalSent = iosResult.sent + androidResult.sent;
     const totalFailed = iosResult.failed + androidResult.failed;
+
+    // Log broadcast for rate limiting (best-effort, don't fail the request)
+    await supabase
+      .from('admin_push_log')
+      .insert({ gym_id: targetGymId, sent_by: user.id, sent_at: new Date().toISOString(), total_sent: totalSent })
+      .then(({ error: logErr }) => {
+        if (logErr) console.warn('Failed to log push for rate limiting:', logErr.message);
+      });
 
     return jsonResp({
       message: `Push delivered to ${totalSent} devices`,

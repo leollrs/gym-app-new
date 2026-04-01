@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
@@ -34,46 +34,49 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-[17px] font-bold text-[#E5E7EB] mb-0.5">{t('generateWorkout.bodyProfile')}</h2>
-        <p className="text-[12px] text-[#6B7280]">{t('generateWorkout.bodyProfileDesc')}</p>
+        <h2 className="text-[17px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.bodyProfile')}</h2>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.bodyProfileDesc')}</p>
       </div>
 
       {/* Height + Weight */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.heightCm')}</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightCm')}</label>
           <input
             type="number" min="100" max="250" placeholder="e.g. 175"
             value={form.height_cm}
             onChange={e => set('height_cm', e.target.value)}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
+            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
           />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.weightKg')}</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.weightKg')}</label>
           <input
             type="number" min="30" max="300" placeholder="e.g. 80"
             value={form.weight_kg}
             onChange={e => set('weight_kg', e.target.value)}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
+            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
           />
         </div>
       </div>
 
       {/* Age */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.age')}</label>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.age')}</label>
         <input
           type="number" min="14" max="90" placeholder="e.g. 28"
           value={form.age}
           onChange={e => set('age', e.target.value)}
-          className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+          className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
+            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
         />
       </div>
 
       {/* Gender */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1.5">{t('generateWorkout.gender')}</label>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.gender')}</label>
         <div className="flex gap-2">
           {GENDER_OPTIONS.map(g => (
             <button
@@ -83,8 +86,9 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
               className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
                 form.gender === g.value
                   ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]'
-                  : 'bg-[#111827] border-white/6 text-[#6B7280] hover:border-white/12 hover:text-[#9CA3AF]'
+                  : ''
               }`}
+              style={form.gender !== g.value ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' } : undefined}
             >
               {t(`generateWorkout.genderOptions.${g.value}`)}
             </button>
@@ -94,8 +98,8 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 
       {/* Priority muscles */}
       <div>
-        <label className="block text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">{t('generateWorkout.priorityMuscles')}</label>
-        <p className="text-[11px] text-[#4B5563] mb-2">{t('generateWorkout.priorityMusclesDesc')}</p>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMuscles')}</label>
+        <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
         <div className="flex flex-wrap gap-2">
           {MUSCLE_OPTIONS.map(m => {
             const active = form.priority_muscles.includes(m.value);
@@ -109,9 +113,10 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
                   active
                     ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]'
                     : atMax
-                    ? 'bg-[#111827] border-white/4 text-[#4B5563] cursor-not-allowed opacity-40'
-                    : 'bg-[#111827] border-white/6 text-[#6B7280] hover:border-white/12 hover:text-[#9CA3AF]'
+                    ? 'cursor-not-allowed opacity-40'
+                    : ''
                 }`}
+                style={!active ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' } : undefined}
               >
                 {t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}
               </button>
@@ -124,23 +129,29 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
 };
 
 // ── Step 2: Preview ────────────────────────────────────────────────────────
-const StepPreview = ({ result }) => {
+const StepPreview = ({ result, preferredTrainingDays }) => {
   const { t } = useTranslation('pages');
   if (!result) return null;
   const { splitLabel, routinesA, routinesB, cardio, dayTemplates } = result;
   const DAY_LABELS = DAY_KEYS.map(k => t(`days.${k}`, { ns: 'common' }));
 
   // Build weekly schedule display
-  // Assign routines to days of the week
+  // Map routines to user's actual preferred training days
+  // Preview grid: 0=Mon, 1=Tue, ..., 6=Sun (matches DAY_KEYS order)
+  const dayNameToPreviewIdx = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
+  const userDays = (preferredTrainingDays || [])
+    .map(d => dayNameToPreviewIdx[d.toLowerCase()])
+    .filter(n => n !== undefined)
+    .sort((a, b) => a - b);
+
   const daysCount = routinesA.length;
-  // Simple day assignment: spread across week
-  const dayAssignments = (() => {
-    const patterns = {
-      1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4],
-      5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6],
-    };
-    return patterns[Math.min(daysCount, 7)] || [];
-  })();
+  const fallbackPatterns = {
+    1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4],
+    5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6],
+  };
+  const dayAssignments = userDays.length >= daysCount
+    ? userDays.slice(0, daysCount)
+    : (fallbackPatterns[Math.min(daysCount, 7)] || []);
 
   const week1Days = DAY_LABELS.map((day, i) => {
     const routineIdx = dayAssignments.indexOf(i);
@@ -155,36 +166,36 @@ const StepPreview = ({ result }) => {
   });
 
   const avgDuration = routinesA.length
-    ? Math.round(routinesA.reduce((s, r) => s + estimateDuration(r, r.exercises[0]?.restSeconds || 90), 0) / routinesA.length)
+    ? Math.round(routinesA.reduce((s, r) => s + estimateDuration(r), 0) / routinesA.length)
     : 0;
 
   return (
     <div className="space-y-5">
       <div>
         <div className="flex items-center gap-2 mb-0.5">
-          <h2 className="text-[17px] font-bold text-[#E5E7EB]">{splitLabel}</h2>
+          <h2 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{splitLabel}</h2>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37]">
             {routinesA.length} {t('generateWorkout.daysPerWeek')}
           </span>
         </div>
-        <p className="text-[12px] text-[#6B7280]">{t('generateWorkout.minPerSession', { min: avgDuration })}</p>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.minPerSession', { min: avgDuration })}</p>
       </div>
 
       {/* Week 1 */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week1')}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week1')}</p>
         <div className="grid grid-cols-7 gap-1">
           {week1Days.map(({ day, type, routine }) => (
             <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
-              type === 'rest' ? 'bg-[#0F172A] opacity-40' : 'bg-[#D4AF37]/8 border border-[#D4AF37]/20'
-            }`}>
-              <span className="text-[9px] font-bold text-[#6B7280] uppercase">{day}</span>
+              type === 'rest' ? 'opacity-40' : 'bg-[#D4AF37]/8 border border-[#D4AF37]/20'
+            }`} style={type === 'rest' ? { background: 'var(--color-bg-card)' } : undefined}>
+              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-subtle)' }}>{day}</span>
               {type === 'workout' ? (
                 <span className="text-[8px] font-semibold text-[#D4AF37] text-center leading-tight mt-1">
                   {routine.label.replace(' Day', '')}
                 </span>
               ) : (
-                <span className="text-[8px] text-[#4B5563] mt-1">{t('generateWorkout.rest')}</span>
+                <span className="text-[8px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.rest')}</span>
               )}
             </div>
           ))}
@@ -193,19 +204,19 @@ const StepPreview = ({ result }) => {
 
       {/* Week 2 */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week2')}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week2')}</p>
         <div className="grid grid-cols-7 gap-1">
           {week2Days.map(({ day, type, routine }) => (
             <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
-              type === 'rest' ? 'bg-[#0F172A] opacity-40' : 'bg-white/4 border border-white/8'
-            }`}>
-              <span className="text-[9px] font-bold text-[#6B7280] uppercase">{day}</span>
+              type === 'rest' ? 'opacity-40' : 'bg-white/4 border border-white/8'
+            }`} style={type === 'rest' ? { background: 'var(--color-bg-card)' } : undefined}>
+              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-subtle)' }}>{day}</span>
               {type === 'workout' ? (
-                <span className="text-[8px] font-semibold text-[#9CA3AF] text-center leading-tight mt-1">
+                <span className="text-[8px] font-semibold text-center leading-tight mt-1" style={{ color: 'var(--color-text-muted)' }}>
                   {routine.label.replace(' Day', '')}
                 </span>
               ) : (
-                <span className="text-[8px] text-[#4B5563] mt-1">{t('generateWorkout.rest')}</span>
+                <span className="text-[8px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.rest')}</span>
               )}
             </div>
           ))}
@@ -214,18 +225,18 @@ const StepPreview = ({ result }) => {
 
       {/* Routines preview */}
       <div>
-        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">{t('generateWorkout.week1Routines')}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week1Routines')}</p>
         <div className="space-y-2">
           {routinesA.map((r, i) => (
-            <div key={i} className="flex items-center gap-3 bg-[#111827] rounded-xl px-3 py-2.5">
+            <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-bg-card)' }}>
               <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
                 <Dumbbell size={13} className="text-[#D4AF37]" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{r.name}</p>
-                <p className="text-[11px] text-[#6B7280]">{r.exercises.length} {t('workouts.exercises')}</p>
+                <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{r.name}</p>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{r.exercises.length} {t('workouts.exercises')}</p>
               </div>
-              <span className="text-[11px] font-semibold text-[#6B7280]">~{estimateDuration(r, r.exercises[0]?.restSeconds || 90)}m</span>
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>~{estimateDuration(r)}m</span>
             </div>
           ))}
         </div>
@@ -237,7 +248,7 @@ const StepPreview = ({ result }) => {
           <Heart size={15} className="text-emerald-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-[13px] font-semibold text-emerald-400">{t('generateWorkout.cardioPerWeek', { count: cardio.daysPerWeek })}</p>
-            <p className="text-[12px] text-[#6B7280]">{cardio.description}</p>
+            <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{cardio.description}</p>
           </div>
         </div>
       )}
@@ -293,10 +304,13 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     }
   }, [step]);
 
+  const [gymHoursWarnings, setGymHoursWarnings] = useState([]);
+
   const handleGenerate = async () => {
     if (!user?.id || !profile?.gym_id) return;
     setSaving(true);
     setError('');
+    setGymHoursWarnings([]);
     try {
       // Save updated body data to member_onboarding
       await supabase.from('member_onboarding').upsert({
@@ -308,6 +322,28 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         gender:          form.gender,
         priority_muscles: form.priority_muscles,
       }, { onConflict: 'profile_id' });
+
+      // Fetch gym hours to know which days are closed
+      const { data: gymHours } = await supabase
+        .from('gym_hours')
+        .select('day_of_week, open_time, close_time, is_closed')
+        .eq('gym_id', profile.gym_id);
+
+      const closedDays = new Set((gymHours || []).filter(h => h.is_closed).map(h => h.day_of_week));
+      const gymSchedule = Object.fromEntries((gymHours || []).map(h => [h.day_of_week, h]));
+
+      // Fetch user's average session duration (last 10 sessions) for closing-time warnings
+      const { data: recentSessions } = await supabase
+        .from('workout_sessions')
+        .select('duration_seconds')
+        .eq('profile_id', user.id)
+        .not('duration_seconds', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(10);
+
+      const avgDuration = recentSessions?.length > 0
+        ? recentSessions.reduce((s, x) => s + x.duration_seconds, 0) / recentSessions.length
+        : 3600; // default 60 min if no history
 
       // Delete existing auto-generated routines (only those matching the specific pattern used by the generator)
       const { data: existing } = await supabase
@@ -323,9 +359,76 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
       // Delete existing generated_programs row
       await supabase.from('generated_programs').delete().eq('profile_id', user.id);
 
+      // Compute preferred day mapping for workout_schedule
+      // DB day_of_week: Sunday=0, Monday=1, ..., Saturday=6
+      const dayNameToDbNum = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+      const dbNumToDayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const preferredDays = profile?.preferred_training_days || [];
+      const userDbDays = preferredDays
+        .map(d => dayNameToDbNum[d.toLowerCase()])
+        .filter(n => n !== undefined)
+        .sort((a, b) => a - b);
+      const trainingDays = result.routinesA.length;
+      const fallbackPattern = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
+      const candidateDays = userDbDays.length >= trainingDays
+        ? userDbDays.slice(0, trainingDays)
+        : (fallbackPattern[trainingDays] || [1, 3, 5]);
+
+      // Remove closed days from candidate schedule
+      const availableDays = candidateDays.filter(d => !closedDays.has(d));
+
+      // If closed days reduced available slots, fill from remaining open days
+      let scheduleDays = availableDays;
+      if (availableDays.length < trainingDays) {
+        const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !closedDays.has(d));
+        const used = new Set(availableDays);
+        for (const d of allOpenDays) {
+          if (scheduleDays.length >= trainingDays) break;
+          if (!used.has(d)) {
+            scheduleDays.push(d);
+            used.add(d);
+          }
+        }
+        scheduleDays.sort((a, b) => a - b);
+      }
+
+      // Check if workouts might extend past closing time (soft warning)
+      const warnings = [];
+      for (const dayNum of scheduleDays) {
+        const hourInfo = gymSchedule[dayNum];
+        if (hourInfo && hourInfo.close_time && !hourInfo.is_closed) {
+          const [closeH, closeM] = hourInfo.close_time.split(':').map(Number);
+          const closeMins = closeH * 60 + closeM;
+          const avgDurMins = Math.ceil(avgDuration / 60);
+          const latestStartMins = closeMins - avgDurMins;
+          if (latestStartMins < closeMins && avgDurMins > 0) {
+            const latestH = Math.floor(Math.max(0, latestStartMins) / 60);
+            const latestM = Math.max(0, latestStartMins) % 60;
+            const latestStart = `${String(latestH).padStart(2, '0')}:${String(latestM).padStart(2, '0')}`;
+            if (latestStartMins < closeMins - 30) {
+              warnings.push(
+                t('generateWorkout.closingTimeWarning', {
+                  day: dbNumToDayName[dayNum],
+                  closeTime: hourInfo.close_time,
+                  defaultValue: `Your workout on ${dbNumToDayName[dayNum]} may run past closing time (${hourInfo.close_time}). Start before ${latestStart}.`,
+                })
+              );
+            }
+          }
+        }
+      }
+      if (warnings.length > 0) {
+        setGymHoursWarnings(warnings);
+      }
+
+      // Delete existing workout_schedule for this user
+      await supabase.from('workout_schedule').delete().eq('profile_id', user.id).then(() => {}).catch(() => {});
+
       // Save all routines (A + B sets)
       const allRoutines = [...result.routinesA, ...result.routinesB];
-      for (const routine of allRoutines) {
+      const savedRoutineAIds = [];
+      for (let ri = 0; ri < allRoutines.length; ri++) {
+        const routine = allRoutines[ri];
         const { data: saved, error: rErr } = await supabase
           .from('routines')
           .insert({
@@ -336,6 +439,11 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
           .select('id')
           .single();
         if (rErr) throw rErr;
+
+        // Track Week A routine IDs for schedule assignment
+        if (ri < result.routinesA.length) {
+          savedRoutineAIds.push(saved.id);
+        }
 
         if (routine.exercises.length > 0) {
           const rows = routine.exercises.map((ex, i) => ({
@@ -349,6 +457,17 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
           const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
           if (exErr) throw exErr;
         }
+      }
+
+      // Save workout_schedule entries for Week A routines
+      for (let i = 0; i < savedRoutineAIds.length && i < scheduleDays.length; i++) {
+        await supabase.from('workout_schedule').upsert({
+          profile_id: user.id,
+          gym_id:     profile.gym_id,
+          day_of_week: scheduleDays[i],
+          routine_id:  savedRoutineAIds[i],
+          updated_at:  new Date().toISOString(),
+        }, { onConflict: 'profile_id,day_of_week' }).then(() => {}).catch(() => {});
       }
 
       // Save generated_programs row
@@ -391,7 +510,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="generate-workout-title"
-        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden"
+        className="border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden"
+        style={{ background: 'var(--color-bg-card)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -401,12 +521,12 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <Zap size={15} className="text-[#D4AF37]" />
             </div>
             <div>
-              <p id="generate-workout-title" className="text-[15px] font-bold text-[#E5E7EB]">{t('generateWorkout.generateMyProgram')}</p>
-              <p className="text-[11px] text-[#6B7280]">{t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
+              <p id="generate-workout-title" className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.generateMyProgram')}</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close dialog" className="p-1">
-            <X size={18} className="text-[#6B7280]" />
+          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+            <X size={18} style={{ color: 'var(--color-text-subtle)' }} />
           </button>
         </div>
 
@@ -423,18 +543,29 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             <StepBodyData form={form} onChange={onChange} onToggleMuscle={onToggleMuscle} />
           )}
           {step === 1 && (
-            <StepPreview result={result} />
+            <StepPreview result={result} preferredTrainingDays={profile?.preferred_training_days} />
           )}
         </div>
 
         {/* Footer */}
         <div className="px-5 pb-5 pt-3 border-t border-white/6 flex-shrink-0 space-y-2">
+          {gymHoursWarnings.length > 0 && (
+            <div className="space-y-1">
+              {gymHoursWarnings.map((w, i) => (
+                <p key={i} className="text-[11px] text-amber-400 flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+                  {w}
+                </p>
+              ))}
+            </div>
+          )}
           {error && <p className="text-[12px] text-red-400">{error}</p>}
           <div className="flex gap-2">
             {step > 0 && (
               <button
                 onClick={() => setStep(s => s - 1)}
-                className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-white/10 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors text-[13px] font-semibold"
+                className="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-white/10 transition-colors text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ color: 'var(--color-text-muted)' }}
               >
                 <ChevronLeft size={15} /> {t('generateWorkout.back')}
               </button>
@@ -443,7 +574,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <button
                 onClick={() => setStep(1)}
                 disabled={!canAdvance}
-                className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-[14px] py-3 rounded-xl transition-all"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-[14px] py-3 rounded-xl transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 {t('generateWorkout.previewProgram')} <ChevronRight size={15} />
               </button>
@@ -451,7 +582,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               <button
                 onClick={handleGenerate}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3 rounded-xl transition-all"
+                className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 text-black font-bold text-[14px] py-3 rounded-xl transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 {saving ? t('generateWorkout.generating') : <><Check size={15} strokeWidth={2.5} /> {t('generateWorkout.generateMyProgram')}</>}
               </button>

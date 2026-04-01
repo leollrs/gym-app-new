@@ -3,6 +3,11 @@
 /* Class-based dark mode: add .dark to html to enable dark: variants */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Prevent iOS zoom on input focus */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
 @theme {
   --font-sans: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
@@ -21,6 +26,18 @@
   /* Accent colors — mapped to CSS custom properties */
   --color-accent-DEFAULT: var(--accent-gold);
   --color-accent-hover: var(--accent-gold-hover);
+
+  /* NEW: Brand-aware tokens */
+  --color-brand: var(--color-accent);
+  --color-brand-soft: var(--color-accent-soft);
+  --color-brand-dark: var(--color-accent-dark);
+  --color-brand-glow: var(--color-accent-glow);
+  --color-on-brand: var(--color-text-on-accent, #FFFFFF);
+
+  /* NEW: Status tokens mapped to vars */
+  --color-positive: var(--color-success);
+  --color-negative: var(--color-danger);
+  --color-caution: var(--color-warning);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -31,13 +48,13 @@
 
 :root {
   /* ── Backgrounds ─────────────────────────── */
-  --color-bg-primary:    #FAFAFA;
-  --color-bg-secondary:  #F5F5F7;
+  --color-bg-primary:    #FAFAF8;
+  --color-bg-secondary:  #F5F5F2;
   --color-bg-card:       #FFFFFF;
-  --color-bg-input:      #F5F5F7;
+  --color-bg-input:      #F5F5F2;
   --color-bg-elevated:   #F0F0F2;
   --color-bg-inset:      #E5E5EA;
-  --color-bg-deep:       #FAFAFA;
+  --color-bg-deep:       #FAFAF8;
 
   /* Translucent surfaces (nav bars, sticky headers, overlays) */
   --color-bg-nav:        rgba(255, 255, 255, 0.92);
@@ -46,11 +63,11 @@
   --color-bg-active:     rgba(0, 0, 0, 0.06);
   --color-bg-subtle:     rgba(0, 0, 0, 0.03);
 
-  /* ── Gold accent (light-mode optimized) ──── */
-  --color-accent:        #B8860B;
-  --color-accent-soft:   #D4A017;
-  --color-accent-dark:   #8B6914;
-  --color-accent-glow:   rgba(184, 134, 11, 0.15);
+  /* ── Amber accent (light-mode optimized — darker for contrast) ── */
+  --color-accent:        #C88400;
+  --color-accent-soft:   #F0A500;
+  --color-accent-dark:   #9A6700;
+  --color-accent-glow:   rgba(200, 132, 0, 0.15);
 
   /* ── Blue (charts / secondary) ───────────── */
   --color-blue:          #3B82F6;
@@ -63,13 +80,16 @@
   --color-text-subtle:    #86868B;
   --color-text-faint:     #AEAEB2;
 
+  /* ── Text on accent ────────────────────────── */
+  --color-text-on-accent: #1D1D1F;
+
   /* ── Borders ─────────────────────────────── */
   --color-border-subtle:  rgba(0, 0, 0, 0.06);
   --color-border-default: rgba(0, 0, 0, 0.10);
   --color-border-strong:  rgba(0, 0, 0, 0.16);
 
   /* ── Status ──────────────────────────────── */
-  --color-success: #10B981;
+  --color-success: #0FA88A;
   --color-warning: #F59E0B;
   --color-danger:  #EF4444;
 
@@ -119,21 +139,33 @@
   --danger:           var(--color-danger);
 }
 
-/* ── Dark theme ──────────────────────────────────────────────────────────── */
+/* ── Dark theme (Obsidian & Amber) ──────────────────────────────────────── */
 html.dark {
-  --color-bg-primary:    #05070B;
-  --color-bg-secondary:  #0A0D14;
-  --color-bg-card:       #0F172A;
-  --color-bg-input:      #1E293B;
-  --color-bg-elevated:   #0B1220;
-  --color-bg-inset:      #1E293B;
+  --color-bg-primary:    #0B0F1A;
+  --color-bg-secondary:  #0E1322;
+  --color-bg-card:       #141B2E;
+  --color-bg-input:      #1C2540;
+  --color-bg-elevated:   #101828;
+  --color-bg-inset:      #1C2540;
   --color-bg-deep:       #111827;
 
-  --color-bg-nav:        rgba(5, 7, 11, 0.92);
-  --color-bg-overlay:    rgba(5, 7, 11, 0.95);
+  --color-bg-nav:        rgba(11, 15, 26, 0.92);
+  --color-bg-overlay:    rgba(11, 15, 26, 0.95);
   --color-bg-hover:      rgba(255, 255, 255, 0.04);
   --color-bg-active:     rgba(255, 255, 255, 0.06);
   --color-bg-subtle:     rgba(255, 255, 255, 0.03);
+
+  /* Amber accent */
+  --color-accent:        #F0A500;
+  --color-accent-soft:   #FFB833;
+  --color-accent-dark:   #C88400;
+  --color-accent-glow:   rgba(240, 165, 0, 0.15);
+
+  /* Text on accent — dark text on bright amber */
+  --color-text-on-accent: #1D1D1F;
+
+  /* Brighter mint success */
+  --color-success: #22D3A7;
 
   --color-text-primary:   #E5E7EB;
   --color-text-secondary: #CBD5E1;
@@ -148,7 +180,7 @@ html.dark {
   --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(212, 175, 55, 0.25);
+  --shadow-glow: 0 0 20px rgba(240, 165, 0, 0.20);
 
   /* Legacy */
   --glass-bg: rgba(30, 41, 59, 0.95);
@@ -162,41 +194,42 @@ html.dark {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Background remapping ──────────────────────────────────────────────── */
-.bg-\[\#05070B\]   { background-color: var(--color-bg-primary)   !important; }
+/* Old hex values + new Obsidian palette hex values both map to the same var */
+.bg-\[\#05070B\], .bg-\[\#0B0F1A\]   { background-color: var(--color-bg-primary)   !important; }
 .bg-\[\#03050A\]   { background-color: var(--color-bg-primary)   !important; }
-.bg-\[\#0A0D14\]   { background-color: var(--color-bg-secondary) !important; }
+.bg-\[\#0A0D14\], .bg-\[\#0E1322\]   { background-color: var(--color-bg-secondary) !important; }
 .bg-\[\#0A0F1A\]   { background-color: var(--color-bg-card)      !important; }
-.bg-\[\#0B1220\]   { background-color: var(--color-bg-elevated)  !important; }
-.bg-\[\#0F172A\]   { background-color: var(--color-bg-card)      !important; }
+.bg-\[\#0B1220\], .bg-\[\#101828\]   { background-color: var(--color-bg-elevated)  !important; }
+.bg-\[\#0F172A\], .bg-\[\#141B2E\]   { background-color: var(--color-bg-card)      !important; }
 .bg-\[\#111827\]   { background-color: var(--color-bg-deep)      !important; }
 .bg-\[\#131929\]   { background-color: var(--color-bg-primary)   !important; }
 .bg-\[\#131D2E\]   { background-color: var(--color-bg-secondary) !important; }
 .bg-\[\#1C1C1E\]   { background-color: var(--color-bg-card)      !important; }
-.bg-\[\#1E293B\]   { background-color: var(--color-bg-inset)     !important; }
+.bg-\[\#1E293B\], .bg-\[\#1C2540\]   { background-color: var(--color-bg-inset)     !important; }
 .bg-\[\#2C2C2E\]   { background-color: var(--color-bg-inset)     !important; }
 .bg-\[\#3A3A3C\]   { background-color: var(--color-bg-input)     !important; }
 .bg-\[\#0f172a\]   { background-color: var(--color-bg-card)      !important; }
 .bg-\[\#1e293b\]   { background-color: var(--color-bg-inset)     !important; }
 .bg-\[\#374151\]   { background-color: var(--color-bg-input)     !important; }
 
-/* Gradient stop remapping */
-.to-\[\#0F172A\]   { --tw-gradient-to: var(--color-bg-card) !important; }
-.from-\[\#0F172A\] { --tw-gradient-from: var(--color-bg-card) !important; }
-.to-\[\#05070B\]   { --tw-gradient-to: var(--color-bg-primary) !important; }
-.from-\[\#05070B\] { --tw-gradient-from: var(--color-bg-primary) !important; }
+/* Gradient stop remapping (old + new hex values) */
+.to-\[\#0F172A\], .to-\[\#141B2E\]     { --tw-gradient-to: var(--color-bg-card) !important; }
+.from-\[\#0F172A\], .from-\[\#141B2E\] { --tw-gradient-from: var(--color-bg-card) !important; }
+.to-\[\#05070B\], .to-\[\#0B0F1A\]     { --tw-gradient-to: var(--color-bg-primary) !important; }
+.from-\[\#05070B\], .from-\[\#0B0F1A\] { --tw-gradient-from: var(--color-bg-primary) !important; }
 
-/* Nav / overlay alpha backgrounds */
-.bg-\[\#05070B\]\/90  { background-color: var(--color-bg-nav)     !important; }
-.bg-\[\#05070B\]\/95  { background-color: var(--color-bg-overlay)  !important; }
+/* Nav / overlay alpha backgrounds (old + new hex values) */
+.bg-\[\#05070B\]\/90, .bg-\[\#0B0F1A\]\/90  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#05070B\]\/95, .bg-\[\#0B0F1A\]\/95  { background-color: var(--color-bg-overlay)  !important; }
 .bg-\[\#03050A\]\/90  { background-color: var(--color-bg-nav)     !important; }
-.bg-\[\#0A0D14\]\/80  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#0A0D14\]\/80, .bg-\[\#0E1322\]\/80  { background-color: var(--color-bg-nav)     !important; }
 .bg-\[\#1C1C1E\]\/95  { background-color: var(--color-bg-overlay)  !important; }
-.bg-\[\#0F172A\]\/80  { background-color: var(--color-bg-nav)     !important; }
-.bg-\[\#0F172A\]\/95  { background-color: var(--color-bg-overlay)  !important; }
-.bg-\[\#0F172A\]\/96  { background-color: var(--color-bg-overlay)  !important; }
-.bg-\[\#0F172A\]\/97  { background-color: var(--color-bg-overlay)  !important; }
-.bg-\[\#0F172A\]\/50  { background-color: color-mix(in srgb, var(--color-bg-card) 50%, transparent) !important; }
-.bg-\[\#0A0D14\]\/50  { background-color: color-mix(in srgb, var(--color-bg-secondary) 50%, transparent) !important; }
+.bg-\[\#0F172A\]\/80, .bg-\[\#141B2E\]\/80  { background-color: var(--color-bg-nav)     !important; }
+.bg-\[\#0F172A\]\/95, .bg-\[\#141B2E\]\/95  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/96, .bg-\[\#141B2E\]\/96  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/97, .bg-\[\#141B2E\]\/97  { background-color: var(--color-bg-overlay)  !important; }
+.bg-\[\#0F172A\]\/50, .bg-\[\#141B2E\]\/50  { background-color: color-mix(in srgb, var(--color-bg-card) 50%, transparent) !important; }
+.bg-\[\#0A0D14\]\/50, .bg-\[\#0E1322\]\/50  { background-color: color-mix(in srgb, var(--color-bg-secondary) 50%, transparent) !important; }
 .bg-\[\#111827\]\/40  { background-color: color-mix(in srgb, var(--color-bg-deep) 40%, transparent) !important; }
 .bg-\[\#111827\]\/50  { background-color: color-mix(in srgb, var(--color-bg-deep) 50%, transparent) !important; }
 .bg-\[\#111827\]\/60  { background-color: color-mix(in srgb, var(--color-bg-deep) 60%, transparent) !important; }
@@ -205,17 +238,17 @@ html.dark {
 /* Hover / focus / state variant remapping for dark hex backgrounds */
 .hover\:bg-\[\#111827\]:hover         { background-color: var(--color-bg-deep)      !important; }
 .hover\:bg-\[\#111827\]\/80\:hover    { background-color: color-mix(in srgb, var(--color-bg-deep) 80%, transparent) !important; }
-.hover\:bg-\[\#0F172A\]:hover         { background-color: var(--color-bg-card)      !important; }
+.hover\:bg-\[\#0F172A\]:hover, .hover\:bg-\[\#141B2E\]:hover         { background-color: var(--color-bg-card)      !important; }
 .hover\:bg-\[\#0f172a\]:hover         { background-color: var(--color-bg-card)      !important; }
-.hover\:bg-\[\#1e293b\]:hover         { background-color: var(--color-bg-inset)     !important; }
+.hover\:bg-\[\#1e293b\]:hover, .hover\:bg-\[\#1C2540\]:hover         { background-color: var(--color-bg-inset)     !important; }
 .hover\:bg-\[\#1E293B\]:hover         { background-color: var(--color-bg-inset)     !important; }
 .focus\:bg-\[\#111827\]:focus         { background-color: var(--color-bg-deep)      !important; }
 .disabled\:hover\:bg-\[\#111827\]:hover:disabled { background-color: var(--color-bg-deep) !important; }
 
 /* Responsive variant remapping for dark hex backgrounds */
 @media (min-width: 768px) {
-  .md\:bg-\[\#05070B\]     { background-color: var(--color-bg-primary)  !important; }
-  .md\:bg-\[\#05070B\]\/95 { background-color: var(--color-bg-overlay)  !important; }
+  .md\:bg-\[\#05070B\], .md\:bg-\[\#0B0F1A\]     { background-color: var(--color-bg-primary)  !important; }
+  .md\:bg-\[\#05070B\]\/95, .md\:bg-\[\#0B0F1A\]\/95 { background-color: var(--color-bg-overlay)  !important; }
 }
 
 /* white/N alpha backgrounds → theme-aware surfaces */
@@ -270,9 +303,10 @@ html.dark {
 .border-white\/25        { border-color: var(--color-border-strong)  !important; }
 .border-white\/\[0\.06\] { border-color: var(--color-border-subtle)  !important; }
 
-/* Hardcoded hex border colors that should match bg */
-.border-\[\#0F172A\] { border-color: var(--color-bg-card)    !important; }
-.border-\[\#05070B\] { border-color: var(--color-bg-primary) !important; }
+/* Hardcoded hex border colors that should match bg (old + new hex values) */
+.border-\[\#0F172A\], .border-\[\#141B2E\] { border-color: var(--color-bg-card)    !important; }
+.border-\[\#05070B\], .border-\[\#0B0F1A\] { border-color: var(--color-bg-primary) !important; }
+.border-\[\#1E293B\], .border-\[\#1C2540\] { border-color: var(--color-border-default) !important; }
 
 .border-black\/5  { border-color: var(--color-border-subtle)  !important; }
 .border-black\/8  { border-color: var(--color-border-default) !important; }
@@ -297,81 +331,85 @@ html.dark {
 /* ── Placeholder remapping ─────────────────────────────────────────────── */
 input::placeholder  { color: var(--color-text-subtle); }
 .placeholder-\[\#6B7280\]::placeholder { color: var(--color-text-subtle) !important; }
+.placeholder-\[\#9CA3AF\]::placeholder { color: var(--color-text-muted)  !important; }
 .placeholder-\[\#4B5563\]::placeholder { color: var(--color-text-faint)  !important; }
 
-/* ── Gold accent remapping ───────────────────────────────────────────────
+/* ── Gold / Amber accent remapping ─────────────────────────────────────────
    Intercept all hardcoded #D4AF37 / #E6C766 / #C4A030 / #f2d36b usages
+   AND new amber #F0A500 / #FFB833 / #C88400 usages
    and route them through CSS variables so light mode uses the refined gold.
    ──────────────────────────────────────────────────────────────────────── */
 
-/* Text gold */
-.text-\[\#D4AF37\]   { color: var(--color-accent) !important; }
-.text-\[\#d4af37\]   { color: var(--color-accent) !important; }
-.text-\[\#E6C766\]   { color: var(--color-accent-soft) !important; }
-.text-\[\#e6c766\]   { color: var(--color-accent-soft) !important; }
-.text-\[\#C4A030\]   { color: var(--color-accent-dark) !important; }
+/* Text gold / amber (old + new hex values) */
+.text-\[\#D4AF37\], .text-\[\#F0A500\]   { color: var(--color-accent) !important; }
+.text-\[\#d4af37\], .text-\[\#f0a500\]   { color: var(--color-accent) !important; }
+.text-\[\#E6C766\], .text-\[\#FFB833\]   { color: var(--color-accent-soft) !important; }
+.text-\[\#e6c766\], .text-\[\#ffb833\]   { color: var(--color-accent-soft) !important; }
+.text-\[\#C4A030\], .text-\[\#C88400\]   { color: var(--color-accent-dark) !important; }
+.text-\[\#B8860B\], .text-\[\#9A6700\]   { color: var(--color-accent-dark) !important; }
 .text-\[\#f2d36b\]   { color: var(--color-accent-soft) !important; }
 .text-\[\#F2D36B\]   { color: var(--color-accent-soft) !important; }
 
-/* Hover text gold */
-.hover\:text-\[\#D4AF37\]:hover { color: var(--color-accent) !important; }
-.hover\:text-\[\#E6C766\]:hover { color: var(--color-accent-soft) !important; }
+/* Hover text gold / amber */
+.hover\:text-\[\#D4AF37\]:hover, .hover\:text-\[\#F0A500\]:hover { color: var(--color-accent) !important; }
+.hover\:text-\[\#E6C766\]:hover, .hover\:text-\[\#FFB833\]:hover { color: var(--color-accent-soft) !important; }
 .hover\:text-\[\#f2d36b\]:hover { color: var(--color-accent-soft) !important; }
-.hover\:text-\[\#C4A030\]:hover { color: var(--color-accent-dark) !important; }
-.group-hover\:text-\[\#D4AF37\]:is(.group:hover *) { color: var(--color-accent) !important; }
+.hover\:text-\[\#C4A030\]:hover, .hover\:text-\[\#C88400\]:hover { color: var(--color-accent-dark) !important; }
+.group-hover\:text-\[\#D4AF37\]:is(.group:hover *), .group-hover\:text-\[\#F0A500\]:is(.group:hover *) { color: var(--color-accent) !important; }
 
-/* Background gold */
-.bg-\[\#D4AF37\]     { background-color: var(--color-accent) !important; }
-.bg-\[\#d4af37\]     { background-color: var(--color-accent) !important; }
-.bg-\[\#E6C766\]     { background-color: var(--color-accent-soft) !important; }
-.bg-\[\#C4A030\]     { background-color: var(--color-accent-dark) !important; }
-.hover\:bg-\[\#D4AF37\]:hover { background-color: var(--color-accent) !important; }
-.hover\:bg-\[\#C4A030\]:hover { background-color: var(--color-accent-dark) !important; }
-.hover\:bg-\[\#E6C766\]:hover { background-color: var(--color-accent-soft) !important; }
+/* Background gold / amber (old + new hex values) */
+.bg-\[\#D4AF37\], .bg-\[\#F0A500\]     { background-color: var(--color-accent) !important; }
+.bg-\[\#d4af37\], .bg-\[\#f0a500\]     { background-color: var(--color-accent) !important; }
+.bg-\[\#E6C766\], .bg-\[\#FFB833\]     { background-color: var(--color-accent-soft) !important; }
+.bg-\[\#C4A030\], .bg-\[\#C88400\]     { background-color: var(--color-accent-dark) !important; }
+.bg-\[\#B8860B\], .bg-\[\#9A6700\]     { background-color: var(--color-accent-dark) !important; }
+.hover\:bg-\[\#D4AF37\]:hover, .hover\:bg-\[\#F0A500\]:hover { background-color: var(--color-accent) !important; }
+.hover\:bg-\[\#C4A030\]:hover, .hover\:bg-\[\#C88400\]:hover { background-color: var(--color-accent-dark) !important; }
+.hover\:bg-\[\#E6C766\]:hover, .hover\:bg-\[\#FFB833\]:hover { background-color: var(--color-accent-soft) !important; }
 
-/* Gold alpha backgrounds */
-.bg-\[\#D4AF37\]\/5  { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent) !important; }
-.bg-\[\#D4AF37\]\/6  { background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important; }
-.bg-\[\#D4AF37\]\/8  { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
-.bg-\[\#D4AF37\]\/10 { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
-.bg-\[\#D4AF37\]\/15 { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
-.bg-\[\#D4AF37\]\/20 { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
-.hover\:bg-\[\#D4AF37\]\/10:hover { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
-.hover\:bg-\[\#D4AF37\]\/15:hover { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
-.hover\:bg-\[\#D4AF37\]\/20:hover { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+/* Gold / amber alpha backgrounds (old + new hex values) */
+.bg-\[\#D4AF37\]\/5, .bg-\[\#F0A500\]\/5   { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent) !important; }
+.bg-\[\#D4AF37\]\/6, .bg-\[\#F0A500\]\/6   { background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important; }
+.bg-\[\#D4AF37\]\/8, .bg-\[\#F0A500\]\/8   { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
+.bg-\[\#D4AF37\]\/10, .bg-\[\#F0A500\]\/10 { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.bg-\[\#D4AF37\]\/15, .bg-\[\#F0A500\]\/15 { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.bg-\[\#D4AF37\]\/20, .bg-\[\#F0A500\]\/20 { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/10:hover, .hover\:bg-\[\#F0A500\]\/10:hover { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/15:hover, .hover\:bg-\[\#F0A500\]\/15:hover { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/20:hover, .hover\:bg-\[\#F0A500\]\/20:hover { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
 
-/* Gold gradient stops */
-.from-\[\#D4AF37\]   { --tw-gradient-from: var(--color-accent) !important; }
-.to-\[\#D4AF37\]     { --tw-gradient-to: var(--color-accent) !important; }
-.via-\[\#D4AF37\]    { --tw-gradient-via: var(--color-accent) !important; }
-.from-\[\#C4A030\]   { --tw-gradient-from: var(--color-accent-dark) !important; }
-.to-\[\#C4A030\]     { --tw-gradient-to: var(--color-accent-dark) !important; }
-.from-\[\#E6C766\]   { --tw-gradient-from: var(--color-accent-soft) !important; }
-.to-\[\#E6C766\]     { --tw-gradient-to: var(--color-accent-soft) !important; }
+/* Gold / amber gradient stops (old + new hex values) */
+.from-\[\#D4AF37\], .from-\[\#F0A500\]   { --tw-gradient-from: var(--color-accent) !important; }
+.to-\[\#D4AF37\], .to-\[\#F0A500\]       { --tw-gradient-to: var(--color-accent) !important; }
+.via-\[\#D4AF37\], .via-\[\#F0A500\]     { --tw-gradient-via: var(--color-accent) !important; }
+.from-\[\#C4A030\], .from-\[\#C88400\]   { --tw-gradient-from: var(--color-accent-dark) !important; }
+.to-\[\#C4A030\], .to-\[\#C88400\]       { --tw-gradient-to: var(--color-accent-dark) !important; }
+.from-\[\#E6C766\], .from-\[\#FFB833\]   { --tw-gradient-from: var(--color-accent-soft) !important; }
+.to-\[\#E6C766\], .to-\[\#FFB833\]       { --tw-gradient-to: var(--color-accent-soft) !important; }
 .from-\[\#f2d36b\]   { --tw-gradient-from: var(--color-accent-soft) !important; }
 .to-\[\#f2d36b\]     { --tw-gradient-to: var(--color-accent-soft) !important; }
 
-/* Border gold */
-.border-\[\#D4AF37\] { border-color: var(--color-accent) !important; }
-.border-\[\#D4AF37\]\/20 { border-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
-.border-\[\#D4AF37\]\/30 { border-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
-.hover\:border-\[\#D4AF37\]:hover { border-color: var(--color-accent) !important; }
-.hover\:border-\[\#D4AF37\]\/40:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important; }
-.hover\:border-\[\#D4AF37\]\/50:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, transparent) !important; }
-.focus\:border-\[\#D4AF37\]:focus { border-color: var(--color-accent) !important; }
+/* Border gold / amber (old + new hex values) */
+.border-\[\#D4AF37\], .border-\[\#F0A500\] { border-color: var(--color-accent) !important; }
+.border-\[\#D4AF37\]\/20, .border-\[\#F0A500\]\/20 { border-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.border-\[\#D4AF37\]\/30, .border-\[\#F0A500\]\/30 { border-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
+.hover\:border-\[\#D4AF37\]:hover, .hover\:border-\[\#F0A500\]:hover { border-color: var(--color-accent) !important; }
+.hover\:border-\[\#D4AF37\]\/40:hover, .hover\:border-\[\#F0A500\]\/40:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important; }
+.hover\:border-\[\#D4AF37\]\/50:hover, .hover\:border-\[\#F0A500\]\/50:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, transparent) !important; }
+.focus\:border-\[\#D4AF37\]:focus, .focus\:border-\[\#F0A500\]:focus { border-color: var(--color-accent) !important; }
 
-/* Ring gold */
-.ring-\[\#D4AF37\]     { --tw-ring-color: var(--color-accent) !important; }
-.ring-\[\#D4AF37\]\/20 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
-.ring-\[\#D4AF37\]\/30 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
-.focus\:ring-\[\#D4AF37\]:focus { --tw-ring-color: var(--color-accent) !important; }
-.focus\:ring-\[\#D4AF37\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+/* Ring gold / amber (old + new hex values) */
+.ring-\[\#D4AF37\], .ring-\[\#F0A500\]     { --tw-ring-color: var(--color-accent) !important; }
+.ring-\[\#D4AF37\]\/20, .ring-\[\#F0A500\]\/20 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.ring-\[\#D4AF37\]\/30, .ring-\[\#F0A500\]\/30 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
+.focus\:ring-\[\#D4AF37\]:focus, .focus\:ring-\[\#F0A500\]:focus { --tw-ring-color: var(--color-accent) !important; }
+.focus\:ring-\[\#D4AF37\]\/20:focus, .focus\:ring-\[\#F0A500\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
 
-/* Shadow gold */
-.shadow-\[\#D4AF37\]     { --tw-shadow-color: var(--color-accent) !important; }
+/* Shadow gold / amber */
+.shadow-\[\#D4AF37\], .shadow-\[\#F0A500\]     { --tw-shadow-color: var(--color-accent) !important; }
 
-/* Divide gold */
-.divide-\[\#D4AF37\] > :not(:first-child) { border-color: var(--color-accent) !important; }
+/* Divide gold / amber */
+.divide-\[\#D4AF37\] > :not(:first-child), .divide-\[\#F0A500\] > :not(:first-child) { border-color: var(--color-accent) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    text-white / text-black
@@ -386,18 +424,25 @@ input::placeholder  { color: var(--color-text-subtle); }
 
 /* In light mode, remap text-white to dark text when inside remapped dark backgrounds */
 html:not(.dark) .bg-\[\#05070B\] > .text-white,
+html:not(.dark) .bg-\[\#0B0F1A\] > .text-white,
 html:not(.dark) .bg-\[\#0A0D14\] > .text-white,
+html:not(.dark) .bg-\[\#0E1322\] > .text-white,
 html:not(.dark) .bg-\[\#0F172A\] > .text-white,
+html:not(.dark) .bg-\[\#141B2E\] > .text-white,
 html:not(.dark) .bg-\[\#111827\] > .text-white,
 html:not(.dark) .bg-\[\#0B1220\] > .text-white,
+html:not(.dark) .bg-\[\#101828\] > .text-white,
 html:not(.dark) .bg-\[\#131929\] > .text-white,
 html:not(.dark) .bg-\[\#1E293B\] > .text-white,
-html:not(.dark) .app-wrapper .text-white:not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-\[\#D4AF37\]"]):not(button > .text-white) {
+html:not(.dark) .bg-\[\#1C2540\] > .text-white,
+html:not(.dark) .app-wrapper .text-white:not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-\[\#D4AF37\]"]):not([class*="bg-\[\#F0A500\]"]):not(button > .text-white):not([class*="text-white/"]) {
   color: var(--color-text-primary) !important;
 }
 
 /* Preserve text-white on accent/status colored backgrounds in light mode */
 html:not(.dark) .bg-\[\#D4AF37\] .text-white,
+html:not(.dark) .bg-\[\#F0A500\] .text-white,
+html:not(.dark) .bg-\[\#C88400\] .text-white,
 html:not(.dark) .bg-emerald-500 .text-white,
 html:not(.dark) .bg-emerald-600 .text-white,
 html:not(.dark) .bg-red-500 .text-white,
@@ -473,7 +518,7 @@ html:not(.dark) .bg-black\/50 { background-color: rgba(0, 0, 0, 0.3) !important;
   width: auto;
   height: auto;
   overflow: visible;
-  outline: 2px solid #D4AF37;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -486,7 +531,7 @@ textarea:focus-visible,
 [tabindex]:focus-visible,
 [role="tab"]:focus-visible,
 [role="button"]:focus-visible {
-  outline: 2px solid #D4AF37;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -629,7 +674,7 @@ button {
   justify-content: center;
   padding: 0.625rem 1.25rem;
   background: var(--color-accent);
-  color: #000;
+  color: var(--color-text-on-accent);
   font-weight: 700;
   font-size: 0.9375rem;
   border-radius: var(--radius-md);
@@ -683,8 +728,8 @@ button {
 
 @keyframes pulse-glow {
   0%   { box-shadow: 0 0 0 0   var(--color-accent-glow); }
-  70%  { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0);   }
-  100% { box-shadow: 0 0 0 0   rgba(212, 175, 55, 0);   }
+  70%  { box-shadow: 0 0 0 8px rgba(240, 165, 0, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(240, 165, 0, 0);   }
 }
 
 .animate-pulse-glow { animation: pulse-glow 2s infinite; }
@@ -739,7 +784,7 @@ button {
 /* ── Set completion pulse ────────────────────────────────────── */
 @keyframes set-complete {
   0%   { transform: scale(1); }
-  50%  { transform: scale(1.02); background-color: rgba(212, 175, 55, 0.08); }
+  50%  { transform: scale(1.02); background-color: rgba(240, 165, 0, 0.08); }
   100% { transform: scale(1); }
 }
 
@@ -794,19 +839,23 @@ html.android-platform .backdrop-blur-xl {
   backdrop-filter: none !important;
 }
 
-html.android-platform.dark .bg-\[\#05070B\]\/90 {
-  background-color: rgba(5, 7, 11, 0.97) !important;
+html.android-platform.dark .bg-\[\#05070B\]\/90,
+html.android-platform.dark .bg-\[\#0B0F1A\]\/90 {
+  background-color: rgba(11, 15, 26, 0.97) !important;
 }
 
-html.android-platform.dark .bg-\[\#05070B\]\/95 {
-  background-color: rgba(5, 7, 11, 0.98) !important;
+html.android-platform.dark .bg-\[\#05070B\]\/95,
+html.android-platform.dark .bg-\[\#0B0F1A\]\/95 {
+  background-color: rgba(11, 15, 26, 0.98) !important;
 }
 
-html.android-platform:not(.dark) .bg-\[\#05070B\]\/90 {
+html.android-platform:not(.dark) .bg-\[\#05070B\]\/90,
+html.android-platform:not(.dark) .bg-\[\#0B0F1A\]\/90 {
   background-color: rgba(255, 255, 255, 0.97) !important;
 }
 
-html.android-platform:not(.dark) .bg-\[\#05070B\]\/95 {
+html.android-platform:not(.dark) .bg-\[\#05070B\]\/95,
+html.android-platform:not(.dark) .bg-\[\#0B0F1A\]\/95 {
   background-color: rgba(255, 255, 255, 0.98) !important;
 }
 

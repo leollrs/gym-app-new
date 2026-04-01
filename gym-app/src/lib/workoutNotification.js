@@ -5,6 +5,7 @@
  */
 
 import logger from './logger';
+import i18n from 'i18next';
 
 const WORKOUT_NOTIF_ID = 2001;
 let updateInterval = null;
@@ -57,8 +58,8 @@ export const startWorkoutNotification = async (startTimestamp, completedSets, to
   // Fire initial notification
   const elapsed = Math.floor((Date.now() - workoutStartTime) / 1000);
   fireNotification(
-    `Workout in progress — ${formatDuration(elapsed)}`,
-    `${completedSets} / ${totalSets} sets completed`
+    i18n.t('notifications.workoutInProgress', { ns: 'common', time: formatDuration(elapsed), defaultValue: `Workout in progress — ${formatDuration(elapsed)}` }),
+    i18n.t('notifications.setsCompleted', { ns: 'common', completed: completedSets, total: totalSets, defaultValue: `${completedSets} / ${totalSets} sets completed` })
   );
 
   // Update every 60s
@@ -67,8 +68,8 @@ export const startWorkoutNotification = async (startTimestamp, completedSets, to
     if (!workoutStartTime) return;
     const el = Math.floor((Date.now() - workoutStartTime) / 1000);
     fireNotification(
-      `Workout in progress — ${formatDuration(el)}`,
-      `${lastSetsInfo.completed} / ${lastSetsInfo.total} sets completed`
+      i18n.t('notifications.workoutInProgress', { ns: 'common', time: formatDuration(el), defaultValue: `Workout in progress — ${formatDuration(el)}` }),
+      i18n.t('notifications.setsCompleted', { ns: 'common', completed: lastSetsInfo.completed, total: lastSetsInfo.total, defaultValue: `${lastSetsInfo.completed} / ${lastSetsInfo.total} sets completed` })
     );
   }, 60_000);
 };
@@ -81,8 +82,8 @@ export const updateWorkoutNotification = (completedSets, totalSets) => {
   lastSetsInfo = { completed: completedSets, total: totalSets };
   const elapsed = Math.floor((Date.now() - workoutStartTime) / 1000);
   fireNotification(
-    `Workout in progress — ${formatDuration(elapsed)}`,
-    `${completedSets} / ${totalSets} sets completed`
+    i18n.t('notifications.workoutInProgress', { ns: 'common', time: formatDuration(elapsed), defaultValue: `Workout in progress — ${formatDuration(elapsed)}` }),
+    i18n.t('notifications.setsCompleted', { ns: 'common', completed: completedSets, total: totalSets, defaultValue: `${completedSets} / ${totalSets} sets completed` })
   );
 };
 

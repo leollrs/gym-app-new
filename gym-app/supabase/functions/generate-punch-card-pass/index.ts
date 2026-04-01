@@ -2,6 +2,7 @@
  * Generate Punch Card Apple Wallet Pass — Supabase Edge Function
  * Separate pass type from the membership check-in pass.
  * No QR/barcode — purely a loyalty card showing punch card progress.
+ * Per-product branded with distinct color schemes and visual strip images.
  */
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -31,6 +32,105 @@ const PLACEHOLDER_PNG = new Uint8Array([
   68, 174, 66, 96, 130,
 ]);
 
+// ── Per-product color system ──────────────────────────────────
+
+interface ProductColors {
+  bg: string;
+  fg: string;
+  label: string;
+  accent: string;
+}
+
+function getProductColor(productName: string, categoryHint?: string): ProductColors {
+  const name = (productName || '').toLowerCase();
+  const cat = (categoryHint || '').toLowerCase();
+  const combined = `${name} ${cat}`;
+
+  // Beverages / shakes / smoothies / juice → emerald
+  if (/\b(beverage|shake|smoothie|juice|drink|agua|water|coffee|tea|lemonade)\b/.test(combined)) {
+    return { bg: 'rgb(6, 78, 59)', fg: 'rgb(255, 255, 255)', label: 'rgb(167, 243, 208)', accent: '#10B981' };
+  }
+
+  // Supplements / vitamins / protein → blue
+  if (/\b(supplement|vitamin|protein|creatine|bcaa|pre[-\s]?workout|amino|whey|capsule|pill)\b/.test(combined)) {
+    return { bg: 'rgb(30, 58, 138)', fg: 'rgb(255, 255, 255)', label: 'rgb(191, 219, 254)', accent: '#3B82F6' };
+  }
+
+  // Training / sessions / personal / class → gold
+  if (/\b(training|session|personal|class|coach|lesson|pt|consultation|massage|recovery)\b/.test(combined)) {
+    return { bg: 'rgb(120, 83, 9)', fg: 'rgb(255, 255, 255)', label: 'rgb(253, 230, 138)', accent: '#D4AF37' };
+  }
+
+  // Merchandise / shirt / towel / gear → purple
+  if (/\b(merch|merchandise|shirt|towel|gear|apparel|hat|cap|hoodie|shorts|glove|bag|bottle|accessory|accessories)\b/.test(combined)) {
+    return { bg: 'rgb(88, 28, 135)', fg: 'rgb(255, 255, 255)', label: 'rgb(216, 180, 254)', accent: '#A78BFA' };
+  }
+
+  // Default — use null to signal "use gym primary color"
+  return null as any;
+}
+
+function getDefaultColors(primaryColorHex: string): ProductColors {
+  const hex = primaryColorHex.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16) || 212;
+  const g = parseInt(hex.substring(2, 4), 16) || 175;
+  const b = parseInt(hex.substring(4, 6), 16) || 55;
+
+  // Auto-contrast: compute luminance to decide fg color
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const fg = luminance > 0.5 ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
+
+  // Darken bg significantly
+  const bgR = Math.round(r * 0.25);
+  const bgG = Math.round(g * 0.25);
+  const bgB = Math.round(b * 0.25);
+
+  // Lighter label
+  const lR = Math.min(255, Math.round(r * 0.6 + 100));
+  const lG = Math.min(255, Math.round(g * 0.6 + 100));
+  const lB = Math.min(255, Math.round(b * 0.6 + 100));
+
+  return {
+    bg: `rgb(${bgR}, ${bgG}, ${bgB})`,
+    fg,
+    label: `rgb(${lR}, ${lG}, ${lB})`,
+    accent: primaryColorHex,
+  };
+}
+
+function resolveColors(productName: string, categoryHint: string | undefined, primaryColor: string): ProductColors {
+  const colors = getProductColor(productName, categoryHint);
+  if (colors) return colors;
+  return getDefaultColors(primaryColor);
+}
+
+// ── Motivational message ──────────────────────────────────────
+
+function getMotivationalMessage(punches: number, target: number): string {
+  if (punches >= target) return '🎉 REWARD UNLOCKED!';
+  const remaining = target - punches;
+  const pct = (punches / target) * 100;
+  if (punches === 0) return 'Start your journey!';
+  if (pct < 50) return `${remaining} more to go!`;
+  if (pct < 90) return 'Halfway there! Keep it up!';
+  return `Almost there! Just ${remaining} left!`;
+}
+
+// ── Pick top card (most punches or closest to reward) ─────────
+
+function pickTopCard(cards: any[]): any {
+  if (!cards || cards.length === 0) return null;
+  if (cards.length === 1) return cards[0];
+
+  // Prefer card closest to completion (highest percentage), tiebreak by most punches
+  return cards.slice().sort((a, b) => {
+    const pctA = a.target > 0 ? a.punches / a.target : 0;
+    const pctB = b.target > 0 ? b.punches / b.target : 0;
+    if (pctB !== pctA) return pctB - pctA;
+    return b.punches - a.punches;
+  })[0];
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -51,8 +151,6 @@ serve(async (req: Request) => {
     if (user) {
       userId = user.id;
     } else if (bodyProfileId) {
-      // Internal call from webhook — verify token is the actual service-role key
-      // (full string comparison, NOT decoded JWT payload which can be spoofed)
       if (token === SUPABASE_SERVICE_ROLE_KEY) {
         userId = bodyProfileId;
       }
@@ -60,7 +158,7 @@ serve(async (req: Request) => {
 
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 200,
+        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -96,29 +194,61 @@ serve(async (req: Request) => {
       } catch { /* use placeholder */ }
     }
 
-    // ── Build punch card progress strings ──
+    // ── Pick top card from cards array ──
     const cards = punchCards || [];
-    const topCard = cards[0];
+    const topCard = pickTopCard(cards);
+    const productName = topCard?.name || cardName || 'Loyalty';
+    const categoryHint = topCard?.category || '';
 
-    // Build visual punch progress: ● ● ● ● ● ○ ○ ○ ○ ○
-    const buildPunchVisual = (punches: number, target: number) => {
-      const filled = Math.min(punches, target - 1);
-      return '●'.repeat(filled) + '○'.repeat(target - 1 - filled) + (punches >= target ? ' 🎁' : ' 🎁');
-    };
+    // Resolve per-product colors
+    const colors = resolveColors(productName, categoryHint, primaryColor);
+
+    const punches = topCard ? topCard.punches : 0;
+    const target = topCard ? topCard.target : 10;
+    const remaining = target - punches;
+    const isComplete = punches >= target;
+    const completedCount = topCard?.completed || 0;
+    const rewardDescription = topCard?.reward || `Free ${productName}`;
 
     // Unique serial per product so each punch card is a separate pass in Wallet
-    const slug = (cardName || topCard?.name || 'card').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const slug = productName.toLowerCase().replace(/[^a-z0-9]/g, '');
     const serialNumber = `punch-${userId}-${slug}`;
 
     const walletWebhookUrl = `${SUPABASE_URL}/functions/v1/apple-wallet-webhook`;
-
-    const remaining = topCard ? topCard.target - topCard.punches : 0;
-    const isComplete = topCard ? topCard.punches >= topCard.target : false;
 
     // Purchase QR payload — admin scans this to auto-fill member + product
     const productId = topCard?.productId || '';
     const purchaseQR = `gym-purchase:${profile?.gym_id}:${userId}:${productId}`;
 
+    // ── Build back fields ──
+    const backFields: any[] = [];
+
+    // All cards summary
+    if (cards.length > 0) {
+      backFields.push({
+        key: 'allCards',
+        label: 'Your Loyalty Cards',
+        value: cards.map((pc: any) => {
+          const r = pc.target - pc.punches;
+          const earned = pc.completed > 0 ? ` · ${pc.completed} reward${pc.completed !== 1 ? 's' : ''} earned` : '';
+          return `${pc.name}\n${pc.punches} / ${pc.target}${r > 0 ? ` — ${r} more to go` : ' — Reward unlocked!'}${earned}`;
+        }).join('\n\n'),
+      });
+    }
+
+    backFields.push({
+      key: 'howItWorks',
+      label: 'How It Works',
+      value: '1. Make a purchase and earn a punch\n2. Collect all punches to unlock your reward\n3. Your card updates automatically — no action needed\n4. Rewards are applied at checkout by staff',
+    });
+
+    backFields.push({
+      key: 'terms',
+      label: 'Terms & Conditions',
+      value: 'Punch cards are non-transferable. Rewards expire 30 days after being unlocked. One reward per completed card. The gym reserves the right to modify or discontinue the loyalty program at any time.',
+    });
+
+    // ── Build pass.json ──
     const passJson: any = {
       formatVersion: 1,
       passTypeIdentifier: PASS_TYPE_ID,
@@ -127,10 +257,11 @@ serve(async (req: Request) => {
       webServiceURL: walletWebhookUrl,
       authenticationToken: profile?.wallet_auth_token || crypto.randomUUID(),
       organizationName: gymName || 'TuGymPR',
-      description: `${gymName || 'TuGymPR'} Loyalty Card`,
-      foregroundColor: 'rgb(255, 255, 255)',
-      backgroundColor: 'rgb(10, 13, 20)',
-      labelColor: 'rgb(130, 130, 140)',
+      description: `${productName} Punch Card — ${gymName || 'TuGymPR'}`,
+      foregroundColor: colors.fg,
+      backgroundColor: colors.bg,
+      labelColor: colors.label,
+      relevantDate: new Date().toISOString(),
       barcodes: [{
         message: purchaseQR,
         format: 'PKBarcodeFormatQR',
@@ -143,10 +274,15 @@ serve(async (req: Request) => {
       },
       storeCard: {
         headerFields: [{
-          key: 'count',
-          label: topCard ? topCard.name.toUpperCase() : 'LOYALTY',
-          value: topCard ? `${topCard.punches} / ${topCard.target}` : '0 / 0',
+          key: 'progress',
+          label: productName.toUpperCase(),
+          value: `${punches} / ${target}`,
           changeMessage: '%@ punches',
+        }],
+        primaryFields: [{
+          key: 'message',
+          label: '',
+          value: getMotivationalMessage(punches, target),
         }],
         secondaryFields: [
           {
@@ -154,14 +290,11 @@ serve(async (req: Request) => {
             label: 'MEMBER',
             value: memberName || 'Member',
           },
-          ...(topCard ? [{
-            key: 'status',
-            label: 'STATUS',
-            value: isComplete
-              ? '🎁 Reward unlocked'
-              : `${remaining} visit${remaining !== 1 ? 's' : ''} left`,
-            changeMessage: '%@',
-          }] : []),
+          {
+            key: 'reward',
+            label: 'REWARD',
+            value: rewardDescription,
+          },
         ],
         auxiliaryFields: [
           {
@@ -169,29 +302,14 @@ serve(async (req: Request) => {
             label: 'GYM',
             value: gymName || 'TuGymPR',
           },
-          ...(topCard && topCard.completed > 0 ? [{
-            key: 'rewards',
+          ...(completedCount > 0 ? [{
+            key: 'earned',
             label: 'REWARDS EARNED',
-            value: `${topCard.completed}`,
+            value: `${completedCount}`,
             changeMessage: 'Rewards earned: %@',
           }] : []),
         ],
-        backFields: [
-          ...(cards.length > 0 ? [{
-            key: 'allCards',
-            label: 'Your Loyalty Cards',
-            value: cards.map((pc: any) => {
-              const r = pc.target - pc.punches;
-              const earned = pc.completed > 0 ? ` · ${pc.completed} reward${pc.completed !== 1 ? 's' : ''} earned` : '';
-              return `${pc.name}\n${pc.punches} / ${pc.target}${r > 0 ? ` — ${r} visit${r !== 1 ? 's' : ''} left` : ' — Reward unlocked!'}${earned}`;
-            }).join('\n\n'),
-          }] : []),
-          {
-            key: 'howItWorks',
-            label: 'How It Works',
-            value: 'Each purchase earns a punch toward a free reward. Your card updates automatically — no action needed.',
-          },
-        ],
+        backFields,
       },
     };
 
@@ -209,12 +327,10 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Generate strip image with visual stamps ──
-    const stripPng = generateStampStripImage(
-      primaryColor,
-      topCard ? topCard.punches : 0,
-      topCard ? topCard.target : 10,
-    );
+    // ── Generate strip images at proper sizes ──
+    const strip1x = generateStampStripImage(colors, punches, target, productName, 1);
+    const strip2x = generateStampStripImage(colors, punches, target, productName, 2);
+    const strip3x = generateStampStripImage(colors, punches, target, productName, 3);
 
     // ── Build .pkpass ZIP ──
     const files: Record<string, Uint8Array> = {
@@ -223,8 +339,9 @@ serve(async (req: Request) => {
       'icon@2x.png': iconPng,
       'logo.png': iconPng,
       'logo@2x.png': iconPng,
-      'strip.png': stripPng,
-      'strip@2x.png': stripPng,
+      'strip.png': strip1x,
+      'strip@2x.png': strip2x,
+      'strip@3x.png': strip3x,
     };
 
     // Generate manifest
@@ -297,7 +414,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({
         error: 'Pass generation failed',
       }), {
-        status: 200,
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -316,11 +433,289 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({
       error: 'Pass generation failed',
     }), {
-      status: 200,
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+
+// ── Strip image generation ──────────────────────────────────────
+
+function parseRgb(rgbStr: string): [number, number, number] {
+  const m = rgbStr.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (m) return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+  return [10, 13, 20];
+}
+
+function parseHex(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.substring(0, 2), 16) || 0,
+    parseInt(h.substring(2, 4), 16) || 0,
+    parseInt(h.substring(4, 6), 16) || 0,
+  ];
+}
+
+/**
+ * Generate a strip image with large, prominent stamp circles.
+ * Per-product branded with gradient background and modern design.
+ * @param colors - Product color scheme
+ * @param punches - Current punch count
+ * @param target - Target punch count
+ * @param productName - Product name for context
+ * @param scale - 1, 2, or 3 for @1x, @2x, @3x
+ */
+function generateStampStripImage(
+  colors: ProductColors,
+  punches: number,
+  target: number,
+  productName: string,
+  scale: number,
+): Uint8Array {
+  const W = 375 * scale;
+  const H = 123 * scale;
+
+  const [bgR, bgG, bgB] = parseRgb(colors.bg);
+  const [acR, acG, acB] = parseHex(colors.accent);
+
+  const raw = new Uint8Array(W * H * 4);
+
+  // ── Rich gradient background (lighter center, darker edges) ──
+  const centerX = W / 2, centerY = H / 2;
+  const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const dx = x - centerX, dy = y - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy) / maxDist;
+      // Center is 40% lighter, edges are 20% darker
+      const lightFactor = 1.0 + 0.4 * (1 - dist) - 0.2 * dist;
+      raw[i]     = Math.min(255, Math.round(bgR * lightFactor));
+      raw[i + 1] = Math.min(255, Math.round(bgG * lightFactor));
+      raw[i + 2] = Math.min(255, Math.round(bgB * lightFactor));
+      raw[i + 3] = 255;
+    }
+  }
+
+  // ── Pixel helpers ──
+  const blendPixel = (px: number, py: number, r: number, g: number, b: number, a: number) => {
+    if (px < 0 || px >= W || py < 0 || py >= H || a <= 0) return;
+    const i = (py * W + px) * 4;
+    const sa = a / 255, da = raw[i + 3] / 255, oa = sa + da * (1 - sa);
+    if (oa === 0) return;
+    raw[i]     = Math.round((r * sa + raw[i] * da * (1 - sa)) / oa);
+    raw[i + 1] = Math.round((g * sa + raw[i + 1] * da * (1 - sa)) / oa);
+    raw[i + 2] = Math.round((b * sa + raw[i + 2] * da * (1 - sa)) / oa);
+    raw[i + 3] = Math.round(oa * 255);
+  };
+
+  const fillCircle = (cx: number, cy: number, r: number, cr: number, cg: number, cb: number, alpha: number) => {
+    for (let dy = -r - 1; dy <= r + 1; dy++) {
+      for (let dx = -r - 1; dx <= r + 1; dx++) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d <= r) {
+          const aa = Math.min(1, (r - d) * 1.5) * alpha;
+          blendPixel(cx + dx, cy + dy, cr, cg, cb, Math.round(aa * 255));
+        }
+      }
+    }
+  };
+
+  const fillRect = (x: number, y: number, w: number, h: number, cr: number, cg: number, cb: number, alpha: number) => {
+    for (let py = y; py < y + h; py++) {
+      for (let px = x; px < x + w; px++) {
+        blendPixel(px, py, cr, cg, cb, Math.round(alpha * 255));
+      }
+    }
+  };
+
+  const strokeRing = (cx: number, cy: number, r: number, thickness: number, cr: number, cg: number, cb: number, alpha: number) => {
+    const outer = r, inner = r - thickness;
+    for (let dy = -outer - 1; dy <= outer + 1; dy++) {
+      for (let dx = -outer - 1; dx <= outer + 1; dx++) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= inner && d <= outer) {
+          const outerAA = Math.min(1, (outer - d) * 1.5);
+          const innerAA = Math.min(1, (d - inner) * 1.5);
+          const aa = outerAA * innerAA * alpha;
+          blendPixel(cx + dx, cy + dy, cr, cg, cb, Math.round(aa * 255));
+        }
+      }
+    }
+  };
+
+  // ── Checkmark shape (simple geometric V) ──
+  const drawCheckmark = (cx: number, cy: number, size: number, r: number, g: number, b: number, alpha: number) => {
+    const thick = Math.max(2, Math.round(size * 0.18));
+    // V shape: left arm from (-0.35, 0) to (0, 0.35), right arm from (0, 0.35) to (0.45, -0.35)
+    const pts = [
+      { x: -0.35, y: 0 },
+      { x: 0, y: 0.35 },
+      { x: 0.45, y: -0.35 },
+    ];
+
+    // Draw thick line segments
+    const drawThickLine = (x1: number, y1: number, x2: number, y2: number) => {
+      const len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      const steps = Math.ceil(len);
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const px = Math.round(x1 + (x2 - x1) * t);
+        const py = Math.round(y1 + (y2 - y1) * t);
+        fillCircle(px, py, thick, r, g, b, alpha);
+      }
+    };
+
+    const p0x = cx + Math.round(pts[0].x * size);
+    const p0y = cy + Math.round(pts[0].y * size);
+    const p1x = cx + Math.round(pts[1].x * size);
+    const p1y = cy + Math.round(pts[1].y * size);
+    const p2x = cx + Math.round(pts[2].x * size);
+    const p2y = cy + Math.round(pts[2].y * size);
+
+    drawThickLine(p0x, p0y, p1x, p1y);
+    drawThickLine(p1x, p1y, p2x, p2y);
+  };
+
+  // ── Star icon for reward slot ──
+  const drawStar = (cx: number, cy: number, size: number, r: number, g: number, b: number, alpha: number) => {
+    const outerR = size * 0.45;
+    const innerR = size * 0.2;
+    const points = 5;
+    for (let dy = -Math.ceil(outerR) - 1; dy <= Math.ceil(outerR) + 1; dy++) {
+      for (let dx = -Math.ceil(outerR) - 1; dx <= Math.ceil(outerR) + 1; dx++) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > outerR + 1) continue;
+        const angle = Math.atan2(dy, dx) + Math.PI / 2;
+        const sector = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const slice = (Math.PI * 2) / (points * 2);
+        const idx = Math.floor(sector / slice);
+        const frac = (sector - idx * slice) / slice;
+        const isOuter = idx % 2 === 0;
+        const r1 = isOuter ? outerR : innerR;
+        const r2 = isOuter ? innerR : outerR;
+        const edgeR = r1 + (r2 - r1) * frac;
+        if (d <= edgeR) {
+          const aa = Math.min(1, (edgeR - d) * 1.5) * alpha;
+          blendPixel(cx + dx, cy + dy, r, g, b, Math.round(aa * 255));
+        }
+      }
+    }
+  };
+
+  // ── Layout calculation ──
+  // Cap display at 12 stamps
+  const displaySlots = Math.min(target, 12);
+  const hasOverflow = target > 12;
+
+  const perRow = displaySlots <= 6 ? displaySlots : Math.ceil(displaySlots / 2);
+  const numRows = displaySlots <= 6 ? 1 : 2;
+
+  // Progress bar height at the bottom
+  const progressBarH = Math.round(6 * scale);
+  const usableH = H - progressBarH - Math.round(4 * scale);
+
+  // Larger circles: 60px radius @2x = 30*scale
+  const idealRadius = 30 * scale;
+  const maxRadiusFromH = Math.floor((usableH - 12 * scale) / (numRows * 2 + (numRows - 1) * 0.4));
+  const maxRadiusFromW = Math.floor((W - 20 * scale) / (perRow * 2 + (perRow - 1) * 0.5));
+  const radius = Math.min(maxRadiusFromH, maxRadiusFromW, idealRadius);
+  const gap = Math.round(radius * 0.4);
+  const circleD = radius * 2;
+
+  const gridH = numRows * circleD + (numRows - 1) * gap;
+  const startY = Math.round((usableH - gridH) / 2) + radius;
+
+  const rewardUnlocked = punches >= target;
+
+  // ── Draw all stamps ──
+  for (let i = 0; i < displaySlots; i++) {
+    const row = i < perRow ? 0 : 1;
+    const col = row === 0 ? i : i - perRow;
+    const rowSlots = row === 0 ? perRow : displaySlots - perRow;
+    const rowW = rowSlots * circleD + (rowSlots - 1) * gap;
+    const rowStartX = Math.round((W - rowW) / 2) + radius;
+    const cx = rowStartX + col * (circleD + gap);
+    const cy = startY + row * (circleD + gap);
+
+    const isRewardSlot = i === displaySlots - 1;
+    // For overflow, the reward slot represents the last stamp
+    const mappedIndex = hasOverflow && isRewardSlot ? target - 1 : i;
+    const isFilled = isRewardSlot ? rewardUnlocked : mappedIndex < punches;
+
+    // Reward slot is slightly larger
+    const slotRadius = isRewardSlot ? Math.round(radius * 1.12) : radius;
+
+    if (isFilled) {
+      // Filled stamp: solid white circle with checkmark (or star for reward)
+      fillCircle(cx, cy, slotRadius, 255, 255, 255, 0.95);
+
+      const iconSize = Math.round(slotRadius * 0.7);
+      if (isRewardSlot) {
+        // Gold star on filled reward
+        drawStar(cx, cy, iconSize, acR, acG, acB, 0.95);
+      } else {
+        // Dark checkmark inside white circle
+        drawCheckmark(cx, cy, iconSize, bgR, bgG, bgB, 0.9);
+      }
+    } else {
+      // Empty stamp: thin white ring with subtle fill
+      fillCircle(cx, cy, slotRadius, 255, 255, 255, 0.05);
+      const strokeW = Math.max(1, Math.round(2 * scale));
+      strokeRing(cx, cy, slotRadius, strokeW, 255, 255, 255, isRewardSlot ? 0.35 : 0.25);
+
+      if (isRewardSlot) {
+        // Faint star inside empty reward slot (accent color)
+        const iconSize = Math.round(slotRadius * 0.55);
+        drawStar(cx, cy, iconSize, acR, acG, acB, 0.15);
+
+        // If reward unlocked (all filled), glow effect around reward
+        if (rewardUnlocked) {
+          const glowR = slotRadius + Math.round(8 * scale);
+          for (let dy = -glowR; dy <= glowR; dy++) {
+            for (let dx = -glowR; dx <= glowR; dx++) {
+              const d = Math.sqrt(dx * dx + dy * dy);
+              if (d > slotRadius && d <= glowR) {
+                const intensity = Math.max(0, 1 - (d - slotRadius) / (8 * scale));
+                blendPixel(cx + dx, cy + dy, acR, acG, acB, Math.round(intensity * 0.4 * 255));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Draw "..." indicator for overflow ──
+  if (hasOverflow) {
+    // Place dots between the second-to-last and last stamp in the last row
+    const lastRow = numRows - 1;
+    const rowSlots = lastRow === 0 ? perRow : displaySlots - perRow;
+    const rowW = rowSlots * circleD + (rowSlots - 1) * gap;
+    const rowStartX = Math.round((W - rowW) / 2) + radius;
+    // Dots at the right edge before the reward slot
+    const dotsX = rowStartX + (rowSlots - 2) * (circleD + gap) + circleD + Math.round(gap * 0.5);
+    const dotsY = startY + lastRow * (circleD + gap);
+    const dotR = Math.max(2, Math.round(3 * scale));
+    const dotGap = Math.round(dotR * 2.5);
+    fillCircle(dotsX - dotGap, dotsY, dotR, 255, 255, 255, 0.5);
+    fillCircle(dotsX, dotsY, dotR, 255, 255, 255, 0.5);
+    fillCircle(dotsX + dotGap, dotsY, dotR, 255, 255, 255, 0.5);
+  }
+
+  // ── Bottom progress bar ──
+  const barY = H - progressBarH;
+  const progressPct = target > 0 ? Math.min(punches / target, 1.0) : 0;
+  // Bar background (dark)
+  fillRect(0, barY, W, progressBarH, 0, 0, 0, 0.3);
+  // Filled portion in accent color
+  const filledW = Math.round(W * progressPct);
+  if (filledW > 0) {
+    fillRect(0, barY, filledW, progressBarH, acR, acG, acB, 0.8);
+  }
+
+  return encodePNG(W, H, raw);
+}
 
 // ── Helpers (same as generate-apple-pass) ──────────────────
 
@@ -391,212 +786,6 @@ function crc32(data: Uint8Array): number {
     }
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-
-function generateStripImage(accentHex: string): Uint8Array {
-  return generateStampStripImage(accentHex, 0, 10);
-}
-
-/**
- * Generate a strip image with large, prominent stamp circles.
- * Filled stamps: solid accent fill + white dumbbell icon.
- * Empty stamps: visible ring outline.
- * Last slot: gift/reward icon.
- * @2x resolution: 750x246.
- */
-function generateStampStripImage(accentHex: string, punches: number, target: number): Uint8Array {
-  const W = 750, H = 246;
-  const ah = accentHex.replace('#', '');
-  const acR = parseInt(ah.substring(0, 2), 16) || 212;
-  const acG = parseInt(ah.substring(2, 4), 16) || 175;
-  const acB = parseInt(ah.substring(4, 6), 16) || 55;
-
-  const raw = new Uint8Array(W * H * 4);
-
-  // Dark background
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4;
-      raw[i] = 10; raw[i + 1] = 13; raw[i + 2] = 20; raw[i + 3] = 255;
-    }
-  }
-
-  // ── Pixel helpers ──
-  const blendPixel = (px: number, py: number, r: number, g: number, b: number, a: number) => {
-    if (px < 0 || px >= W || py < 0 || py >= H || a <= 0) return;
-    const i = (py * W + px) * 4;
-    const sa = a / 255, da = raw[i + 3] / 255, oa = sa + da * (1 - sa);
-    if (oa === 0) return;
-    raw[i]     = Math.round((r * sa + raw[i] * da * (1 - sa)) / oa);
-    raw[i + 1] = Math.round((g * sa + raw[i + 1] * da * (1 - sa)) / oa);
-    raw[i + 2] = Math.round((b * sa + raw[i + 2] * da * (1 - sa)) / oa);
-    raw[i + 3] = Math.round(oa * 255);
-  };
-
-  const fillCircle = (cx: number, cy: number, r: number, cr: number, cg: number, cb: number, alpha: number) => {
-    for (let dy = -r - 1; dy <= r + 1; dy++) {
-      for (let dx = -r - 1; dx <= r + 1; dx++) {
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d <= r) {
-          const aa = Math.min(1, (r - d) * 1.5) * alpha;
-          blendPixel(cx + dx, cy + dy, cr, cg, cb, Math.round(aa * 255));
-        }
-      }
-    }
-  };
-
-  const fillRect = (x: number, y: number, w: number, h: number, cr: number, cg: number, cb: number, alpha: number) => {
-    for (let py = y; py < y + h; py++) {
-      for (let px = x; px < x + w; px++) {
-        blendPixel(px, py, cr, cg, cb, Math.round(alpha * 255));
-      }
-    }
-  };
-
-  const strokeRing = (cx: number, cy: number, r: number, thickness: number, cr: number, cg: number, cb: number, alpha: number) => {
-    const outer = r, inner = r - thickness;
-    for (let dy = -outer - 1; dy <= outer + 1; dy++) {
-      for (let dx = -outer - 1; dx <= outer + 1; dx++) {
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d >= inner && d <= outer) {
-          const outerAA = Math.min(1, (outer - d) * 1.5);
-          const innerAA = Math.min(1, (d - inner) * 1.5);
-          const aa = outerAA * innerAA * alpha;
-          blendPixel(cx + dx, cy + dy, cr, cg, cb, Math.round(aa * 255));
-        }
-      }
-    }
-  };
-
-  // ── Water bottle icon ──
-  const drawBottle = (cx: number, cy: number, size: number, r: number, g: number, b: number, alpha: number) => {
-    const bodyW = Math.round(size * 0.38);
-    const bodyH = Math.round(size * 0.52);
-    const neckW = Math.round(size * 0.18);
-    const neckH = Math.round(size * 0.18);
-    const capW = Math.round(size * 0.24);
-    const capH = Math.round(size * 0.1);
-    const cornerR = Math.round(bodyW * 0.3);
-
-    // Body (rounded rectangle)
-    const bodyTop = cy - Math.round(bodyH * 0.3);
-    const bodyLeft = cx - Math.round(bodyW / 2);
-    fillRect(bodyLeft, bodyTop + cornerR, bodyW, bodyH - cornerR, r, g, b, alpha);
-    fillRect(bodyLeft + cornerR, bodyTop, bodyW - cornerR * 2, cornerR, r, g, b, alpha);
-    fillCircle(bodyLeft + cornerR, bodyTop + cornerR, cornerR, r, g, b, alpha);
-    fillCircle(bodyLeft + bodyW - cornerR, bodyTop + cornerR, cornerR, r, g, b, alpha);
-    // Bottom rounded
-    const botR = Math.round(bodyW * 0.25);
-    fillCircle(bodyLeft + botR, bodyTop + bodyH - botR, botR, r, g, b, alpha);
-    fillCircle(bodyLeft + bodyW - botR, bodyTop + bodyH - botR, botR, r, g, b, alpha);
-
-    // Neck
-    const neckTop = bodyTop - neckH;
-    fillRect(cx - Math.round(neckW / 2), neckTop, neckW, neckH + 2, r, g, b, alpha);
-
-    // Cap (wider than neck)
-    const capTop = neckTop - capH;
-    fillRect(cx - Math.round(capW / 2), capTop, capW, capH, r, g, b, alpha);
-    // Cap rounded top
-    const capR = Math.round(capW * 0.3);
-    fillCircle(cx - Math.round(capW / 2) + capR, capTop + capR, capR, r, g, b, alpha);
-    fillCircle(cx + Math.round(capW / 2) - capR, capTop + capR, capR, r, g, b, alpha);
-  };
-
-  // ── Star icon for gift/reward slot ──
-  const drawStar = (cx: number, cy: number, size: number, r: number, g: number, b: number, alpha: number) => {
-    const outerR = size * 0.45;
-    const innerR = size * 0.2;
-    const points = 5;
-    for (let dy = -Math.ceil(outerR) - 1; dy <= Math.ceil(outerR) + 1; dy++) {
-      for (let dx = -Math.ceil(outerR) - 1; dx <= Math.ceil(outerR) + 1; dx++) {
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d > outerR + 1) continue;
-        const angle = Math.atan2(dy, dx) + Math.PI / 2;
-        const sector = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-        const slice = (Math.PI * 2) / (points * 2);
-        const idx = Math.floor(sector / slice);
-        const frac = (sector - idx * slice) / slice;
-        const isOuter = idx % 2 === 0;
-        const r1 = isOuter ? outerR : innerR;
-        const r2 = isOuter ? innerR : outerR;
-        const edgeR = r1 + (r2 - r1) * frac;
-        if (d <= edgeR) {
-          const aa = Math.min(1, (edgeR - d) * 1.5) * alpha;
-          blendPixel(cx + dx, cy + dy, r, g, b, Math.round(aa * 255));
-        }
-      }
-    }
-  };
-
-  // ── Layout calculation ──
-  const totalSlots = target;
-  const perRow = totalSlots <= 5 ? totalSlots : Math.ceil(totalSlots / 2);
-  const numRows = totalSlots <= 5 ? 1 : 2;
-
-  // Make circles as large as possible within the strip
-  const maxRadiusFromH = Math.floor((H - 24) / (numRows * 2 + (numRows - 1) * 0.4));
-  const maxRadiusFromW = Math.floor((W - 40) / (perRow * 2 + (perRow - 1) * 0.5));
-  const radius = Math.min(maxRadiusFromH, maxRadiusFromW, 48); // cap at 48px @2x
-  const gap = Math.round(radius * 0.4);
-  const circleD = radius * 2;
-
-  const gridH = numRows * circleD + (numRows - 1) * gap;
-  const startY = Math.round((H - gridH) / 2) + radius;
-
-  // ── Draw all stamps ──
-  for (let i = 0; i < totalSlots; i++) {
-    const row = i < perRow ? 0 : 1;
-    const col = row === 0 ? i : i - perRow;
-    const rowSlots = row === 0 ? perRow : totalSlots - perRow;
-    const rowW = rowSlots * circleD + (rowSlots - 1) * gap;
-    const rowStartX = Math.round((W - rowW) / 2) + radius;
-    const cx = rowStartX + col * (circleD + gap);
-    const cy = startY + row * (circleD + gap);
-
-    const isFree = i === totalSlots - 1;
-    const isFilled = isFree ? punches >= target : i < punches;
-
-    if (isFilled) {
-      // Outer glow
-      const glowR = radius + 6;
-      for (let dy = -glowR; dy <= glowR; dy++) {
-        for (let dx = -glowR; dx <= glowR; dx++) {
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d > radius && d <= glowR) {
-            blendPixel(cx + dx, cy + dy, acR, acG, acB, Math.round(Math.max(0, 1 - (d - radius) / 6) * 0.3 * 255));
-          }
-        }
-      }
-
-      // Solid filled circle
-      fillCircle(cx, cy, radius, acR, acG, acB, 0.85);
-
-      // Accent border ring
-      strokeRing(cx, cy, radius, 3, acR, acG, acB, 1.0);
-
-      // Icon inside (white)
-      const iconSize = Math.round(radius * 0.7);
-      if (isFree) {
-        drawStar(cx, cy, iconSize, 255, 255, 255, 0.95);
-      } else {
-        drawBottle(cx, cy, iconSize, 255, 255, 255, 0.95);
-      }
-    } else {
-      // Empty: visible ring
-      strokeRing(cx, cy, radius, 2, 255, 255, 255, isFree ? 0.2 : 0.12);
-
-      // Faint icon inside
-      const iconSize = Math.round(radius * 0.55);
-      if (isFree) {
-        drawStar(cx, cy, iconSize, 255, 255, 255, 0.08);
-      } else {
-        drawBottle(cx, cy, iconSize, 255, 255, 255, 0.06);
-      }
-    }
-  }
-
-  return encodePNG(W, H, raw);
 }
 
 function encodePNG(width: number, height: number, rgba: Uint8Array): Uint8Array {

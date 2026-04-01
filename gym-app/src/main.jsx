@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { persistQueryClient } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { PostHogProvider } from '@posthog/react';
 import { Capacitor } from '@capacitor/core';
 import App from './App.jsx';
@@ -21,8 +23,33 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 2 * 60 * 1000,      // 2 min — data stays fresh
       gcTime: 10 * 60 * 1000,         // 10 min — cache kept in memory
-      retry: 1,                        // retry failed requests once
+      retry: (failureCount) => {
+        // Don't retry on network loss — wait for reconnect
+        if (!navigator.onLine) return false;
+        return failureCount < 1;
+      },
+      retryDelay: 3000,               // wait 3s before retry
       refetchOnWindowFocus: false,     // don't refetch on tab focus (mobile app)
+      networkMode: 'offlineFirst',     // serve cached data when offline
+    },
+  },
+});
+
+const persister = createSyncStoragePersister({
+  storage: window.localStorage,
+  key: 'tugympr-query-cache',
+});
+
+persistQueryClient({
+  queryClient,
+  persister,
+  maxAge: 1000 * 60 * 60 * 24, // 24 hours
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query) => {
+      // Only persist successful queries, skip real-time data
+      const key = query.queryKey?.[0];
+      const skipKeys = ['notifications', 'realtime', 'feed'];
+      return query.state.status === 'success' && !skipKeys.includes(key);
     },
   },
 });

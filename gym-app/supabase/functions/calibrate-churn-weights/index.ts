@@ -19,6 +19,9 @@
  *   - Gym with 200+ outcomes → fully trusts its own data
  *
  * Uses gradient descent logistic regression (no external ML libs).
+ *
+ * v2: 12 signals (added anchor_day, app_engagement,
+ *     comms_responsiveness, referral_activity, workout_type_shift)
  */
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -40,17 +43,30 @@ const SIGNAL_KEYS = [
   'session_gaps',
   'goal_progress',
   'engagement_depth',
+  // v2 signals
+  'anchor_day',
+  'app_engagement',
+  'comms_responsiveness',
+  'referral_activity',
+  'workout_type_shift',
 ];
 
 // Research-based max points per signal (used to normalize to 0–1 range)
+// v2 rebalanced: 12 signals totaling 100 points
 const SIGNAL_MAX: Record<string, number> = {
-  visit_frequency: 28,
-  attendance_trend: 17,
-  tenure_risk: 15,
-  social_engagement: 14,
-  session_gaps: 10,
-  goal_progress: 9,
-  engagement_depth: 7,
+  visit_frequency: 22,
+  attendance_trend: 14,
+  tenure_risk: 12,
+  social_engagement: 10,
+  session_gaps: 7,
+  goal_progress: 7,
+  engagement_depth: 5,
+  // v2 signals
+  anchor_day: 8,
+  app_engagement: 5,
+  comms_responsiveness: 4,
+  referral_activity: 3,
+  workout_type_shift: 3,
 };
 
 const MIN_OUTCOMES = 30; // minimum labeled outcomes to attempt calibration
@@ -246,6 +262,7 @@ serve(async (req) => {
         if (!snapshot) continue;
 
         // Normalize each signal score to 0–1 range
+        // For v2 signals that may be missing from older snapshots, default to 0
         const features = SIGNAL_KEYS.map(key => {
           const rawScore = snapshot[key]?.score ?? snapshot[key] ?? 0;
           const max = SIGNAL_MAX[key];
@@ -301,6 +318,12 @@ serve(async (req) => {
           w_session_gaps: weights.session_gaps,
           w_goal_progress: weights.goal_progress,
           w_engagement_depth: weights.engagement_depth,
+          // v2 weight columns
+          w_anchor_day: weights.anchor_day,
+          w_app_engagement: weights.app_engagement,
+          w_comms_responsiveness: weights.comms_responsiveness,
+          w_referral_activity: weights.referral_activity,
+          w_workout_type_shift: weights.workout_type_shift,
           labeled_outcomes: X.length,
           confidence,
           last_calibrated_at: now.toISOString(),

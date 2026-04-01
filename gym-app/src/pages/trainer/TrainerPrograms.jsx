@@ -54,9 +54,9 @@ export default function TrainerPrograms() {
   const exName = (id) => exercises[id] ?? id;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB]">Programs</h1>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Programs</h1>
         <p className="text-[13px] text-[#6B7280] mt-0.5">Published gym programs you can assign to clients</p>
       </div>
 

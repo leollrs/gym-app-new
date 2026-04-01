@@ -8,53 +8,111 @@ import {
   Dumbbell, Zap, TrendingDown, TrendingUp, DollarSign,
   Star, Edit2, Circle, CheckCircle, UtensilsCrossed,
   Sunrise, Sun, Moon, Apple, Camera, CheckCircle2, AlertCircle,
-  SlidersHorizontal,
+  SlidersHorizontal, Sparkles, RefreshCw, BarChart2, ChevronDown, ChevronUp,
+  Calendar, ScanLine, ScanBarcode, Loader, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { List as VirtualList } from 'react-window';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateMacros } from '../lib/macroCalculator';
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { getFoodImage } from '../lib/foodImages';
 import { foodImageUrl } from '../lib/imageUrl';
 import { takePhoto } from '../lib/takePhoto';
 // scanOverlay removed — camera no longer causes page reloads after Uri fix
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
+import { suggestMeals, generateDayPlan, generateWeekPlan, suggestPostWorkoutMeal } from '../lib/mealPlanner';
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// ── NUTRI-SCORE (0-100) ──────────────────────────────────────
+function nutriScore(calories, protein_g, carbs_g, fat_g, grams) {
+  if (!grams || grams <= 0) return null;
+
+  // Normalize to per 100g
+  const scale = 100 / grams;
+  const cal100 = calories * scale;
+  const pro100 = protein_g * scale;
+  const fat100 = fat_g * scale;
+
+  // Start at 50 (neutral)
+  let score = 50;
+
+  // Protein ratio bonus (high protein = healthier) — up to +25
+  const proteinRatio = (protein_g * 4) / Math.max(calories, 1);
+  score += Math.min(proteinRatio * 60, 25);
+
+  // Calorie density penalty — very calorie-dense foods score lower
+  if (cal100 < 100) score += 15;
+  else if (cal100 < 200) score += 8;
+  else if (cal100 > 400) score -= 15;
+  else if (cal100 > 300) score -= 8;
+
+  // Fat ratio penalty — high fat % of total calories
+  const fatRatio = (fat_g * 9) / Math.max(calories, 1);
+  if (fatRatio > 0.5) score -= 12;
+  else if (fatRatio > 0.35) score -= 5;
+  else if (fatRatio < 0.2) score += 5;
+
+  // Protein absolute bonus — high protein foods are good
+  if (pro100 > 20) score += 10;
+  else if (pro100 > 10) score += 5;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+const NutriScoreBadge = ({ score }) => {
+  if (score == null) return null;
+  const color = score >= 80 ? '#22C55E' : score >= 60 ? '#84CC16' : score >= 40 ? '#EAB308' : score >= 20 ? '#F97316' : '#EF4444';
+  return (
+    <span className="inline-flex items-center justify-center w-8 h-5 rounded-md text-[10px] font-bold text-white flex-shrink-0"
+      style={{ backgroundColor: color }}>
+      {score}
+    </span>
+  );
+};
+
+const toLocalDateStr = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const todayStr = () => toLocalDateStr(new Date());
 
 const MEAL_TYPES = [
   { key: 'breakfast', labelKey: 'nutrition.meals.breakfast', icon: Sunrise, color: '#F97316' },
-  { key: 'lunch',     labelKey: 'nutrition.meals.lunch',     icon: Sun,     color: '#F59E0B' },
+  { key: 'lunch',     labelKey: 'nutrition.meals.lunch',     icon: Sun,     color: 'var(--color-warning)' },
   { key: 'dinner',    labelKey: 'nutrition.meals.dinner',    icon: Moon,    color: '#8B5CF6' },
-  { key: 'snack',     labelKey: 'nutrition.meals.snack',     icon: Apple,   color: '#10B981' },
+  { key: 'snack',     labelKey: 'nutrition.meals.snack',     icon: Apple,   color: 'var(--color-success)' },
 ];
 
 // ── RECIPE DATA (300 meals — imported from src/data/meals.js) ──
 const RECIPES = MEALS;
 const CATEGORIES = [
-  { id: 'high_protein', label: 'High Protein', Icon: Dumbbell,     color: '#10B981' },
+  { id: 'high_protein', label: 'High Protein', Icon: Dumbbell,     color: 'var(--color-success)' },
   { id: 'fat_loss',     label: 'Fat Loss',     Icon: TrendingDown, color: '#F472B6' },
-  { id: 'lean_bulk',    label: 'Lean Bulk',    Icon: TrendingUp,   color: '#D4AF37' },
+  { id: 'lean_bulk',    label: 'Lean Bulk',    Icon: TrendingUp,   color: 'var(--color-accent)' },
   { id: 'mass_gain',    label: 'Mass Gain',    Icon: TrendingUp,   color: '#F97316' },
-  { id: 'quick_meals',  label: 'Quick Meals',  Icon: Zap,          color: '#F59E0B' },
-  { id: 'budget',       label: 'Budget',       Icon: Star,         color: '#60A5FA' },
+  { id: 'quick_meals',  label: 'Quick Meals',  Icon: Zap,          color: 'var(--color-warning)' },
+  { id: 'budget',       label: 'Budget',       Icon: Star,         color: 'var(--color-blue-soft)' },
   { id: 'breakfast',    label: 'Breakfast',    Icon: Flame,        color: '#FBBF24' },
-  { id: 'post_workout', label: 'Post-Workout', Icon: Flame,        color: '#EF4444' },
+  { id: 'post_workout', label: 'Post-Workout', Icon: Flame,        color: 'var(--color-danger)' },
 ];
 
 const WEEKLY_COLLECTIONS = [
   {
     id: 'wc1', title: '5 High-Protein Dinners',
     subtitle: 'Build muscle with every meal',
-    recipeIds: ['r1', 'r2', 'r3', 'r10', 'r25'], accent: '#10B981',
+    recipeIds: ['r1', 'r2', 'r3', 'r10', 'r25'], accent: 'var(--color-success)',
   },
   {
     id: 'wc2', title: 'Easy Meal Prep Sunday',
     subtitle: 'Cook once, eat all week',
-    recipeIds: ['r1', 'r9', 'r101', 'r108'], accent: '#D4AF37',
+    recipeIds: ['r1', 'r9', 'r101', 'r108'], accent: 'var(--color-accent)',
   },
   {
     id: 'wc3', title: 'Cutting Week Meals',
@@ -146,9 +204,9 @@ const DISCOVER_FILTERS = [
 ];
 
 const TAG_COLORS = {
-  'High Protein': '#10B981', 'Lean': '#10B981', 'Lean Bulk': '#D4AF37',
-  'Mass Gain': '#F97316', 'Quick': '#F59E0B', 'Budget': '#60A5FA',
-  'Post-Workout': '#EF4444', 'Breakfast': '#FBBF24', 'Fat Loss': '#F472B6',
+  'High Protein': 'var(--color-success)', 'Lean': 'var(--color-success)', 'Lean Bulk': 'var(--color-accent)',
+  'Mass Gain': '#F97316', 'Quick': 'var(--color-warning)', 'Budget': 'var(--color-blue-soft)',
+  'Post-Workout': 'var(--color-danger)', 'Breakfast': '#FBBF24', 'Fat Loss': '#F472B6',
 };
 
 // ── MACRO BAR ───────────────────────────────────────────────
@@ -164,13 +222,13 @@ const MacroBar = ({ label, value, max, color, t }) => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-black tabular-nums" style={{ color, fontVariantNumeric: 'tabular-nums' }}>{Math.round(value)}</span>
-          <span className="text-[11px] text-[#4B5563]">/ {max}g</span>
+          <span className="text-[11px] text-[#9CA3AF]">/ {max}g</span>
         </div>
       </div>
       <div className="h-[10px] rounded-full overflow-hidden" style={{ background: 'var(--color-border-subtle)' }}>
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
-      <p className="text-[10px] mt-1 text-[#4B5563]">
+      <p className="text-[10px] mt-1 text-[#9CA3AF]">
         {remaining > 0 ? `${remaining}g ${t?.('nutrition.left') ?? 'left'}` : (t?.('nutrition.targetHit') ?? 'Target hit!')}
         <span className="ml-2 font-semibold" style={{ color: `${color}90` }}>{Math.round(pct)}%</span>
       </p>
@@ -221,7 +279,7 @@ const MacroRing = ({ value, max, color, trackColor, size = 72, strokeWidth = 5, 
           )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`font-black text-[var(--color-text-primary)] tabular-nums leading-none ${hero ? 'text-[28px]' : 'text-[15px]'}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <span className={`font-black text-[var(--color-text-primary)] tabular-nums leading-none ${hero ? 'text-[24px]' : 'text-[15px]'}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(value)}
           </span>
           <span className={`uppercase tracking-wider font-semibold ${hero ? 'text-[9px] text-[var(--color-text-muted)] mt-1' : 'text-[7px] text-[var(--color-text-muted)] mt-0.5'}`}>
@@ -243,7 +301,7 @@ const MacroRing = ({ value, max, color, trackColor, size = 72, strokeWidth = 5, 
 const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' }) => {
   const isLg = size === 'lg';
   const mealTag = (lang === 'es' && recipe.tag_es) ? recipe.tag_es : recipe.tag;
-  const tagColor = TAG_COLORS[recipe.tag] || '#9CA3AF';
+  const tagColor = TAG_COLORS[recipe.tag] || 'var(--color-text-muted)';
   return (
     <button
       onClick={() => onOpen(recipe)}
@@ -260,7 +318,8 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' })
         {/* Save button */}
         <button
           onClick={e => { e.stopPropagation(); onSave(recipe.id); }}
-          className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
+          className="absolute top-2.5 right-2.5 min-w-[44px] min-h-[44px] w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          aria-label={saved ? 'Remove bookmark' : 'Bookmark recipe'}
         >
           <Bookmark size={13} className={saved ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-white/70'} />
         </button>
@@ -276,7 +335,7 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' })
         <div className="flex items-center gap-2.5">
           <span className="text-[11px] font-semibold text-[#F59E0B] tabular-nums">{recipe.calories} cal</span>
           <span className="text-[10px] font-bold text-[#10B981]">{recipe.protein}g P</span>
-          <span className="flex items-center gap-0.5 text-[10px] text-[#4B5563]">
+          <span className="flex items-center gap-0.5 text-[10px] text-[#9CA3AF]">
             <Clock size={9} />{recipe.prepTime}m
           </span>
         </div>
@@ -292,16 +351,16 @@ const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen, lang = 'en' 
   if (!items.length) return null;
   return (
     <div className="mb-7">
-      <div className="flex items-center justify-between mb-3 px-5">
+      <div className="flex items-center justify-between mb-3 px-4">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: `${category.color}22` }}>
             <category.Icon size={11} style={{ color: category.color }} />
           </div>
           <span className="text-[13px] font-bold text-[#E5E7EB]">{t(`nutrition.categories.${category.id}`, category.label)}</span>
         </div>
-        <span className="text-[11px] text-[#4B5563]">{items.length} {t('nutrition.recipesPlural', 'recipes')}</span>
+        <span className="text-[11px] text-[#9CA3AF]">{items.length} {t('nutrition.recipesPlural', 'recipes')}</span>
       </div>
-      <div className="flex gap-3 overflow-x-auto scroll-smooth px-5 pb-1 scrollbar-none">
+      <div className="flex gap-3 overflow-x-auto scroll-smooth px-4 pb-1 scrollbar-none">
         {items.map(r => (
           <RecipeCard key={r.id} recipe={r} saved={savedIds.has(r.id)} onSave={onSave} onOpen={onOpen} lang={lang} />
         ))}
@@ -346,14 +405,16 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
           }} />
           {/* close */}
           <button onClick={onClose}
-            className="absolute top-3.5 left-3.5 w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-70"
-            style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}>
+            className="absolute top-3.5 left-3.5 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-70 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}
+            aria-label="Close">
             <X size={15} className="text-white" />
           </button>
           {/* bookmark */}
           <button onClick={() => onSave(recipe.id)}
-            className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-70"
-            style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}>
+            className="absolute top-3.5 right-3.5 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-70 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}
+            aria-label={saved ? 'Remove bookmark' : 'Bookmark recipe'}>
             <Bookmark size={15} className={saved ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-white'} />
           </button>
           {/* title overlay */}
@@ -372,7 +433,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
             {/* ── Macros ── */}
             <div className="grid grid-cols-4 gap-2 mb-5">
               {macros.map(m => (
-                <div key={m.label} className="flex flex-col items-center py-3 px-1 rounded-2xl"
+                <div key={m.label} className="flex flex-col items-center justify-center text-center py-3 px-1 rounded-2xl"
                   style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
                   <span className="text-[17px] font-bold tabular-nums text-[var(--color-text-primary)] leading-none mb-1" style={{ fontVariantNumeric: 'tabular-nums' }}>{m.val}</span>
                   <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{m.label}</span>
@@ -410,7 +471,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
                         color: 'var(--color-text-muted)',
                       }}>
                       {match?.emoji && <span className="text-[12px]">{match.emoji}</span>}
-                      {match ? t(`nutrition_ingredients.items.${match.id}`, match.label) : ing.replace(/_/g, ' ')}
+                      {t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' '))}
                     </span>
                   );
                 })}
@@ -426,7 +487,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
                   <div key={i} className="flex gap-3 items-start">
                     <div className="flex-shrink-0 w-[22px] h-[22px] rounded-full flex items-center justify-center mt-[1px]"
                       style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                      <span className="text-[10px] font-bold" style={{ color: '#10B981' }}>{i + 1}</span>
+                      <span className="text-[10px] font-bold" style={{ color: 'var(--color-success)' }}>{i + 1}</span>
                     </div>
                     <p className="text-[13px] flex-1" style={{ color: 'var(--color-text-primary)', lineHeight: 1.65 }}>{step}</p>
                   </div>
@@ -446,7 +507,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
               height: 50,
               borderRadius: 14,
               background: groceryAdded ? 'rgba(16,185,129,0.12)' : '#16A34A',
-              color: groceryAdded ? '#10B981' : '#fff',
+              color: groceryAdded ? 'var(--color-success)' : '#fff',
               border: groceryAdded ? '1px solid rgba(16,185,129,0.25)' : 'none',
             }}
             onMouseEnter={e => { if (!groceryAdded) e.currentTarget.style.background = '#15803D'; }}
@@ -462,8 +523,137 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
   );
 };
 
+// ── BARCODE LOOKUP HELPER ────────────────────────────────────
+const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+const lookupBarcode = async (barcode, lang = 'en') => {
+  // Use locale-specific API endpoint for translated product names
+  const host = lang === 'es' ? 'es.openfoodfacts.org' : 'world.openfoodfacts.org';
+  const res = await fetch(`https://${host}/api/v2/product/${encodeURIComponent(barcode)}.json`);
+  if (!res.ok) throw new Error('network');
+  const json = await res.json();
+  if (json.status !== 1 || !json.product) return null;
+  const p = json.product;
+  const n = p.nutriments || {};
+  const servingG = parseFloat(p.serving_quantity) || 100;
+  const factor = servingG / 100;
+  // Prefer localized name, fall back to generic
+  const rawName = (lang === 'es' && p[`product_name_${lang}`]) || p.product_name || barcode;
+  return {
+    name: capitalize(rawName),
+    serving_size: p.serving_size || `${servingG}g`,
+    serving_g: servingG,
+    calories: Math.round((n['energy-kcal_100g'] || 0) * factor),
+    protein_g: Math.round(((n.proteins_100g || 0) * factor) * 10) / 10,
+    carbs_g: Math.round(((n.carbohydrates_100g || 0) * factor) * 10) / 10,
+    fat_g: Math.round(((n.fat_100g || 0) * factor) * 10) / 10,
+    image_url: p.image_front_small_url || null,
+    barcode,
+  };
+};
+
+// ── BARCODE RESULT MODAL ────────────────────────────────────
+const BarcodeResultModal = ({ product, onClose, onLog }) => {
+  const { t } = useTranslation('pages');
+  const [servings, setServings] = useState(1);
+  const [mealType, setMealType] = useState('snack');
+  const [saving, setSaving] = useState(false);
+  if (!product) return null;
+
+  const s = parseFloat(servings) || 0;
+  const cal = Math.round(product.calories * s);
+  const pro = Math.round(product.protein_g * s * 10) / 10;
+  const carb = Math.round(product.carbs_g * s * 10) / 10;
+  const fat = Math.round(product.fat_g * s * 10) / 10;
+  const adjust = (d) => setServings(prev => Math.max(0.5, Math.round((prev + d) * 2) / 2));
+
+  const handleLog = async () => {
+    setSaving(true);
+    await onLog({
+      food: {
+        id: null,
+        name: product.name,
+        calories: product.calories,
+        protein_g: product.protein_g,
+        carbs_g: product.carbs_g,
+        fat_g: product.fat_g,
+        serving_size: parseFloat(product.serving_g) || 100,
+        serving_unit: 'g',
+      },
+      servings: s, mealType, cal, pro, carb, fat, isBarcode: true,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[85] flex items-center justify-center px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+      <div className="relative w-full max-w-md rounded-[24px] overflow-hidden bg-[#0F172A]" onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ScanLine size={16} className="text-[#D4AF37]" />
+              <h3 className="text-[16px] font-bold text-[#E5E7EB]">{t('nutrition.scannedProduct')}</h3>
+            </div>
+            <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center" aria-label="Close">
+              <X size={15} className="text-[#6B7280]" />
+            </button>
+          </div>
+          {product.image_url && <img src={product.image_url} alt="" className="w-16 h-16 rounded-xl object-cover mb-3 bg-[#1E293B]" loading="lazy" />}
+          <p className="text-[18px] font-black text-[#E5E7EB] mb-1">{product.name}</p>
+          <p className="text-[11px] text-[#9CA3AF] mb-4">{product.serving_size} {t('nutrition.perServing')}</p>
+        </div>
+        {/* Macro chips */}
+        <div className="px-5 pb-3">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: 'Cal', value: cal, color: '#D4AF37' },
+              { label: t('nutrition.protein'), value: `${pro}g`, color: '#10B981' },
+              { label: t('nutrition.carbs'), value: `${carb}g`, color: '#60A5FA' },
+              { label: t('nutrition.fat'), value: `${fat}g`, color: '#A78BFA' },
+            ].map(m => (
+              <div key={m.label} className="rounded-[10px] p-2 text-center" style={{ background: `${m.color}10`, border: `1px solid ${m.color}20` }}>
+                <p className="text-[10px] font-bold" style={{ color: `${m.color}99` }}>{m.label}</p>
+                <p className="text-[14px] font-bold" style={{ color: m.color }}>{m.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Serving adjust */}
+        <div className="px-5 pb-3">
+          <p className="text-[11px] font-bold text-[#525C6B] uppercase tracking-wider mb-2">{t('nutrition.servingCount')}</p>
+          <div className="flex items-center gap-3">
+            <button onClick={() => adjust(-0.5)} className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-[#E5E7EB] font-bold text-lg active:scale-90">−</button>
+            <span className="text-[20px] font-bold text-[#E5E7EB] tabular-nums w-12 text-center">{servings}</span>
+            <button onClick={() => adjust(0.5)} className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-[#E5E7EB] font-bold text-lg active:scale-90">+</button>
+          </div>
+        </div>
+        {/* Meal type */}
+        <div className="px-5 pb-3">
+          <p className="text-[11px] font-bold text-[#525C6B] uppercase tracking-wider mb-2">{t('nutrition.meal')}</p>
+          <div className="flex gap-1.5">
+            {MEAL_TYPES.map(mt => (
+              <button key={mt.key} onClick={() => setMealType(mt.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${mealType === mt.key ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-white/[0.04] text-[#9CA3AF]'}`}>
+                <mt.icon size={11} />{t(`nutrition.meals.${mt.key}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Log button */}
+        <div className="px-5 pb-5 pt-2">
+          <button onClick={handleLog} disabled={saving}
+            className="w-full py-3.5 rounded-xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.97] transition-all disabled:opacity-50">
+            {saving ? t('nutrition.logging') : t('nutrition.logScannedFood')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── FOOD SEARCH MODAL ───────────────────────────────────────
-const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
+const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeResult, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
   const { t } = useTranslation('pages');
   const isEs = lang === 'es';
   const foodName = (food) => (isEs && food.name_es) ? food.name_es : food.name;
@@ -501,38 +691,56 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = 
         <div className="px-5 pt-5 pb-3 shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[18px] font-bold text-[#E5E7EB]">{t('nutrition.logFood')}</h3>
-            <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center">
+            <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Close">
               <X size={16} className="text-[#6B7280]" />
             </button>
           </div>
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
               <input type="text" value={query} onChange={e => { setQuery(e.target.value); setTab('search'); }}
                 placeholder={t('nutrition.searchFoods')} autoFocus
-                className="w-full bg-white/[0.04] rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06] transition-colors" />
+                aria-label={t('nutrition.searchFoods')}
+                className="w-full bg-white/[0.04] rounded-xl pl-10 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:ring-2 focus:ring-[#D4AF37] transition-colors" />
             </div>
-            {onPhotoCapture && (
-              <button
-                onClick={async () => {
-                  try {
-                    const file = await takePhoto();
-                    if (file) onPhotoCapture(file);
-                  } catch (err) {
-                    console.error('[Nutrition] takePhoto failed:', err);
-                  }
-                }}
-                className="w-[46px] h-[46px] rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
-              >
-                <Camera size={18} className="text-[#D4AF37]" />
-              </button>
-            )}
           </div>
+          {/* ── Scan buttons row ── */}
+          {(onPhotoCapture || onBarcodeResult) && (
+            <div className="flex gap-3 mb-3">
+              {onPhotoCapture && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const file = await takePhoto();
+                      if (file) onPhotoCapture(file);
+                    } catch (err) {
+                      console.error('[Nutrition] takePhoto failed:', err);
+                    }
+                  }}
+                  className="flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl active:scale-[0.97] transition-all"
+                  style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.06))', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <Camera size={22} style={{ color: 'var(--color-accent, #D4AF37)' }} />
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.scanFood')}</span>
+                </button>
+              )}
+              {onBarcodeResult && (
+                <button
+                  onClick={() => onBarcodeResult('__open_scanner__')}
+                  className="flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl active:scale-[0.97] transition-all"
+                  style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.06))', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <ScanBarcode size={22} className="text-emerald-400" />
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.barcodeLabel')}</span>
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex gap-1">
             {[{ key: 'search', label: t('nutrition.searchTab', 'Search'), Icon: Search }, { key: 'recent', label: t('nutrition.recentTab', 'Recent'), Icon: Clock }, { key: 'favorites', label: t('nutrition.favoritesTab', 'Favorites'), Icon: Heart }]
               .map(tb => (
                 <button key={tb.key} onClick={() => setTab(tb.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === tb.key ? 'bg-white/[0.08] text-[#E5E7EB]' : 'text-[#4B5563]'}`}>
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === tb.key ? 'bg-white/[0.08] text-[#E5E7EB]' : 'text-[#9CA3AF]'}`}>
                   <tb.Icon size={12} />{tb.label}
                 </button>
               ))}
@@ -542,7 +750,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = 
           {searching && <div className="py-8 text-center"><div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mx-auto" /></div>}
           {!searching && displayList.length === 0 && (
             <div className="py-8 text-center">
-              <p className="text-[13px] text-[#4B5563]">
+              <p className="text-[13px] text-[#9CA3AF]">
                 {tab === 'search' && query.length < 2 ? t('nutrition.typeToSearch', 'Type to search foods') : tab === 'recent' ? t('nutrition.noRecentFoods', 'No recent foods') : tab === 'favorites' ? t('nutrition.noFavoritesYet', 'No favorites yet') : t('nutrition.noResultsFound', 'No results found')}
               </p>
             </div>
@@ -551,13 +759,15 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, favorites = 
             {displayList.map(food => food && (
               <button key={food.id} onClick={() => onSelect(food)}
                 className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left hover:bg-white/[0.04] transition-colors">
-                {(getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)) && <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-[#1E293B]" />}
+                {(getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)) && <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-[#1E293B]" loading="lazy" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{foodName(food)}</p>
-                  <p className="text-[10px] text-[#4B5563] mt-0.5">{food.serving_size}{food.serving_unit} · {food.calories} cal · {food.protein_g}p</p>
+                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">{food.serving_size}{food.serving_unit} · {food.calories} cal · {food.protein_g}p</p>
                 </div>
+                <NutriScoreBadge score={nutriScore(food.calories, food.protein_g, food.carbs_g, food.fat_g, food.serving_size || 100)} />
                 <button onClick={e => { e.stopPropagation(); onToggleFavorite(food.id); }}
-                  className="w-7 h-7 flex items-center justify-center flex-shrink-0">
+                  className="min-w-[44px] min-h-[44px] w-7 h-7 flex items-center justify-center flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                  aria-label={favIds.has(food.id) ? 'Remove from favorites' : 'Add to favorites'}>
                   <Heart size={14} className={favIds.has(food.id) ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#2A2F3A]'} />
                 </button>
               </button>
@@ -598,11 +808,11 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
         <div className="relative">
           {(getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)) ? (
             <div className="relative aspect-square overflow-hidden rounded-t-[24px]">
-              <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt="" className="w-full h-full object-cover" />
+              <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt="" className="w-full h-full object-cover" loading="lazy" />
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), color-mix(in srgb, var(--color-bg-secondary) 40%, transparent), color-mix(in srgb, black 10%, transparent))' }} />
             </div>
           ) : <div className="h-16" />}
-          <button onClick={onClose} className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10">
+          <button onClick={onClose} className="absolute top-3.5 right-3.5 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Close">
             <X size={15} className="text-white/60" />
           </button>
           <div className="absolute bottom-0 left-0 right-0 px-5 pb-5">
@@ -611,14 +821,14 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
         </div>
         <div className="px-5 pt-5 pb-5">
           <div className="mb-6">
-            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.servings', 'Servings')}</p>
+            <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.servings', 'Servings')}</p>
             <div className="flex items-center justify-center gap-5">
               <button onClick={() => adjust(-0.5)} disabled={s <= 0.5}
                 className="w-12 h-12 rounded-2xl bg-[#111827] border border-[#1E293B] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all disabled:opacity-25">
                 <span className="text-[22px] font-light leading-none">−</span>
               </button>
               <div className="w-24 text-center">
-                <p className="text-[32px] font-black leading-none tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{s}</p>
+                <p className="text-[24px] font-black leading-none tabular-nums truncate" style={{ color: 'var(--color-text-primary)' }}>{s}</p>
                 <p className="text-[10px] text-[#6B7280] mt-1.5">{food.serving_unit}</p>
               </div>
               <button onClick={() => adjust(0.5)}
@@ -628,23 +838,34 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
             </div>
           </div>
           <div className="mb-6">
-            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.meal', 'Meal')}</p>
+            <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.meal', 'Meal')}</p>
             <div className="flex gap-2">
               {MEAL_TYPES.map(m => (
                 <button key={m.key} onClick={() => setMealType(m.key)}
-                  className={`flex-1 py-3 rounded-xl text-[11px] font-semibold transition-all ${mealType === m.key ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-[#111827] text-[#4B5563] border border-[#111827]'}`}>
-                  <m.icon size={17} className={`mb-1 transition-all ${mealType === m.key ? '' : 'opacity-50'}`} style={{ color: mealType === m.key ? m.color : '#4B5563' }} />
+                  className={`flex-1 flex flex-col items-center py-3 rounded-xl text-[11px] font-semibold transition-all ${mealType === m.key ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-[#111827] text-[#9CA3AF] border border-[#111827]'}`}>
+                  <m.icon size={17} className={`mb-1 transition-all ${mealType === m.key ? '' : 'opacity-50'}`} style={{ color: mealType === m.key ? m.color : 'var(--color-text-faint)' }} />
                   {t(m.labelKey)}
                 </button>
               ))}
             </div>
           </div>
           <div className="rounded-2xl bg-[#111827] border border-[#1E293B] px-4 py-5 mb-6">
+            {(() => {
+              const ns = nutriScore(cal, pro, carb, fat, (food.serving_size || 100) * s);
+              if (ns == null) return null;
+              const nsColor = ns >= 80 ? '#22C55E' : ns >= 60 ? '#84CC16' : ns >= 40 ? '#EAB308' : ns >= 20 ? '#F97316' : '#EF4444';
+              return (
+                <div className="flex items-center justify-center gap-2 mb-4 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.12em]">Nutri-Score</span>
+                  <span className="inline-flex items-center justify-center w-10 h-6 rounded-lg text-[12px] font-black text-white" style={{ backgroundColor: nsColor }}>{ns}</span>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-4 gap-2">
-              {[{ v: cal, l: t('nutrition.cal', 'Cal'), c: '#F59E0B' }, { v: `${pro}g`, l: t('nutrition.protein'), c: '#10B981' }, { v: `${carb}g`, l: t('nutrition.carbs'), c: '#60A5FA' }, { v: `${fat}g`, l: t('nutrition.fat'), c: '#A78BFA' }].map(m => (
+              {[{ v: cal, l: t('nutrition.cal', 'Cal'), c: 'var(--color-warning)' }, { v: `${pro}g`, l: t('nutrition.protein'), c: 'var(--color-success)' }, { v: `${carb}g`, l: t('nutrition.carbs'), c: 'var(--color-blue-soft)' }, { v: `${fat}g`, l: t('nutrition.fat'), c: '#A78BFA' }].map(m => (
                 <div key={m.l} className="text-center">
                   <p className="text-[20px] font-black leading-none tabular-nums" style={{ color: m.c }}>{m.v}</p>
-                  <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.1em] mt-2">{m.l}</p>
+                  <p className="text-[8px] font-bold text-[#9CA3AF] uppercase tracking-[0.1em] mt-2">{m.l}</p>
                 </div>
               ))}
             </div>
@@ -709,7 +930,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
   const carb = Math.round(macros.carbs_g * s * 10) / 10;
   const fat = Math.round(macros.fat_g * s * 10) / 10;
 
-  const confidenceColors = { high: '#10B981', medium: '#F59E0B', low: '#EF4444' };
+  const confidenceColors = { high: 'var(--color-success)', medium: 'var(--color-warning)', low: 'var(--color-danger)' };
 
   const handleLog = async () => {
     setSaving(true);
@@ -724,7 +945,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
       <div className="relative w-full max-w-md max-h-[90vh] rounded-[24px] overflow-y-auto" style={{ background: 'var(--color-bg-secondary)' }} onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10">
+        <button onClick={onClose} className="absolute top-3.5 right-3.5 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Close">
           <X size={15} className="text-white/60" />
         </button>
 
@@ -738,7 +959,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
             )}
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mx-auto mb-4" />
             <p className="text-[14px] text-[#9CA3AF]">{t('nutrition.analyzingFood', 'Analyzing your food...')}</p>
-            <p className="text-[11px] text-[#4B5563] mt-1">{t('nutrition.identifyingItems', 'Identifying items & looking up nutrition')}</p>
+            <p className="text-[11px] text-[#9CA3AF] mt-1">{t('nutrition.identifyingItems', 'Identifying items & looking up nutrition')}</p>
           </div>
         )}
 
@@ -769,7 +990,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
                     style={{ color: confidenceColors[result.confidence], backgroundColor: `${confidenceColors[result.confidence]}15` }}>
-                    {result.confidence} {t('nutrition.confidence', 'confidence')}
+                    {t(`nutrition.confidence_${result.confidence}`, `${result.confidence} confidence`)}
                   </span>
                 </div>
                 <h3 className="text-[20px] font-black text-white leading-tight">{result.food_name}</h3>
@@ -780,14 +1001,15 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
               {/* Item breakdown */}
               {result.items?.length > 0 && (
                 <div className="mb-5">
-                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-2">{t('nutrition.identifiedItems', 'Identified Items')}</p>
+                  <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-2">{t('nutrition.identifiedItems', 'Identified Items')}</p>
                   <div className="space-y-1.5">
                     {result.items.map((item, i) => (
                       <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#111827] border border-white/[0.04]">
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-medium text-[#E5E7EB] truncate capitalize">{item.name}</p>
-                          <p className="text-[10px] text-[#4B5563]">{item.grams}g · {item.calories} cal · {item.protein_g}g P</p>
+                          <p className="text-[10px] text-[#9CA3AF]">{item.grams}g · {item.calories} cal · {item.protein_g}g P · {item.fat_g}g F</p>
                         </div>
+                        <NutriScoreBadge score={nutriScore(item.calories, item.protein_g, item.carbs_g, item.fat_g, item.grams)} />
                         {item.usda_match ? (
                           <CheckCircle2 size={14} className="text-[#10B981] flex-shrink-0" />
                         ) : (
@@ -805,9 +1027,9 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
               )}
 
               {/* AI disclaimer */}
-              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[#F59E0B]/8 border border-[#F59E0B]/15 mb-4">
-                <AlertCircle size={14} className="text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] text-[#F59E0B]/80 leading-relaxed">
+              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 mb-4">
+                <AlertCircle size={14} className="text-[#D97706] flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-[#D97706] leading-relaxed">
                   {t('nutrition.aiDisclaimer', 'AI-estimated values may not be fully accurate. Adjust the portion size or macros below before logging.')}
                 </p>
               </div>
@@ -815,7 +1037,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
               {/* Portion size adjuster */}
               {totalGrams > 0 && (
                 <div className="mb-5">
-                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.portionSize', 'Portion Size')}</p>
+                  <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.portionSize', 'Portion Size')}</p>
                   <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#111827] border border-[#1E293B]">
                     <button onClick={() => handleGramsChange(totalGrams - 10)}
                       className="w-9 h-9 rounded-xl bg-[#0A0F1A] border border-white/[0.06] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all">
@@ -842,26 +1064,26 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
 
               {/* Editable macros */}
               <div className="mb-5">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.nutritionPerServing', 'Nutrition (per serving)')}</p>
+                <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.nutritionPerServing', 'Nutrition (per serving)')}</p>
                 <div className="rounded-2xl bg-[#111827] border border-[#1E293B] px-4 py-4">
                   <div className="grid grid-cols-4 gap-2">
                     {[
-                      { key: 'calories', l: t('nutrition.cal', 'Cal'), c: '#F59E0B', unit: '' },
-                      { key: 'protein_g', l: t('nutrition.protein'), c: '#10B981', unit: 'g' },
-                      { key: 'carbs_g', l: t('nutrition.carbs'), c: '#60A5FA', unit: 'g' },
+                      { key: 'calories', l: t('nutrition.cal', 'Cal'), c: 'var(--color-warning)', unit: '' },
+                      { key: 'protein_g', l: t('nutrition.protein'), c: 'var(--color-success)', unit: 'g' },
+                      { key: 'carbs_g', l: t('nutrition.carbs'), c: 'var(--color-blue-soft)', unit: 'g' },
                       { key: 'fat_g', l: t('nutrition.fat'), c: '#A78BFA', unit: 'g' },
                     ].map(m => (
                       <div key={m.key} className="text-center">
                         <input
                           type="number"
                           inputMode="decimal"
-                          value={macros[m.key] || ''}
+                          value={macros[m.key] ?? ''}
                           onFocus={e => e.target.select()}
                           onChange={e => setEditedMacros(prev => ({ ...prev, [m.key]: parseFloat(e.target.value) || 0 }))}
                           className="w-full text-center text-[18px] font-black leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                           style={{ color: m.c }}
                         />
-                        <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.1em] mt-2">{m.l}</p>
+                        <p className="text-[8px] font-bold text-[#9CA3AF] uppercase tracking-[0.1em] mt-2">{m.l}</p>
                       </div>
                     ))}
                   </div>
@@ -870,13 +1092,13 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
 
               {/* Servings */}
               <div className="mb-5">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.servings', 'Servings')}</p>
+                <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.servings', 'Servings')}</p>
                 <div className="flex items-center justify-center gap-5">
                   <button onClick={() => adjust(-0.5)} disabled={s <= 0.5}
                     className="w-10 h-10 rounded-xl bg-[#111827] border border-[#1E293B] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all disabled:opacity-25">
                     <span className="text-[18px] font-light leading-none">−</span>
                   </button>
-                  <p className="text-[28px] font-black tabular-nums w-16 text-center" style={{ color: 'var(--color-text-primary)' }}>{s}</p>
+                  <p className="text-[24px] font-black tabular-nums w-16 text-center truncate" style={{ color: 'var(--color-text-primary)' }}>{s}</p>
                   <button onClick={() => adjust(0.5)}
                     className="w-10 h-10 rounded-xl bg-[#111827] border border-[#1E293B] flex items-center justify-center text-[#9CA3AF] active:scale-90 transition-all">
                     <span className="text-[18px] font-light leading-none">+</span>
@@ -886,12 +1108,12 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
 
               {/* Meal type */}
               <div className="mb-5">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-3">{t('nutrition.meal', 'Meal')}</p>
+                <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-3">{t('nutrition.meal', 'Meal')}</p>
                 <div className="flex gap-2">
                   {MEAL_TYPES.map(m => (
                     <button key={m.key} onClick={() => setMealType(m.key)}
-                      className={`flex-1 py-3 rounded-xl text-[11px] font-semibold transition-all ${mealType === m.key ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-[#111827] text-[#4B5563] border border-[#111827]'}`}>
-                      <m.icon size={17} className={`mb-1 transition-all ${mealType === m.key ? '' : 'opacity-50'}`} style={{ color: mealType === m.key ? m.color : '#4B5563' }} />
+                      className={`flex-1 flex flex-col items-center py-3 rounded-xl text-[11px] font-semibold transition-all ${mealType === m.key ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-[#111827] text-[#9CA3AF] border border-[#111827]'}`}>
+                      <m.icon size={17} className={`mb-1 transition-all ${mealType === m.key ? '' : 'opacity-50'}`} style={{ color: mealType === m.key ? m.color : 'var(--color-text-faint)' }} />
                       {t(m.labelKey)}
                     </button>
                   ))}
@@ -900,12 +1122,12 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
 
               {/* Total + Log button */}
               <div className="rounded-2xl bg-[#111827] border border-[#1E293B] px-4 py-4 mb-5">
-                <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-[0.12em] mb-2">{t('nutrition.total', 'Total')} ({s} {s !== 1 ? t('nutrition.servingsPlural', 'servings') : t('nutrition.servingSingular', 'serving')})</p>
+                <p className="text-[9px] font-semibold text-[#9CA3AF] uppercase tracking-[0.12em] mb-2">{t('nutrition.total', 'Total')} ({s} {s !== 1 ? t('nutrition.servingsPlural', 'servings') : t('nutrition.servingSingular', 'serving')})</p>
                 <div className="grid grid-cols-4 gap-2">
-                  {[{ v: cal, l: t('nutrition.cal', 'Cal'), c: '#F59E0B' }, { v: `${pro}g`, l: t('nutrition.protein'), c: '#10B981' }, { v: `${carb}g`, l: t('nutrition.carbs'), c: '#60A5FA' }, { v: `${fat}g`, l: t('nutrition.fat'), c: '#A78BFA' }].map(m => (
+                  {[{ v: cal, l: t('nutrition.cal', 'Cal'), c: 'var(--color-warning)' }, { v: `${pro}g`, l: t('nutrition.protein'), c: 'var(--color-success)' }, { v: `${carb}g`, l: t('nutrition.carbs'), c: 'var(--color-blue-soft)' }, { v: `${fat}g`, l: t('nutrition.fat'), c: '#A78BFA' }].map(m => (
                     <div key={m.l} className="text-center">
                       <p className="text-[18px] font-black leading-none tabular-nums" style={{ color: m.c }}>{m.v}</p>
-                      <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.1em] mt-2">{m.l}</p>
+                      <p className="text-[8px] font-bold text-[#9CA3AF] uppercase tracking-[0.1em] mt-2">{m.l}</p>
                     </div>
                   ))}
                 </div>
@@ -969,7 +1191,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
     onClose();
   };
 
-  const mealColor = MEAL_TYPES.find(m => m.key === log.meal_type)?.color || '#6B7280';
+  const mealColor = MEAL_TYPES.find(m => m.key === log.meal_type)?.color || 'var(--color-text-subtle)';
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose}>
@@ -979,8 +1201,9 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
         onClick={e => e.stopPropagation()}>
 
         {/* Close button */}
-        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center z-10"
-          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid var(--color-border-default)' }}>
+        <button onClick={onClose} className="absolute top-4 right-4 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid var(--color-border-default)' }}
+          aria-label="Close">
           <X size={14} className="text-white/70" />
         </button>
 
@@ -1002,7 +1225,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
                   {t(`nutrition.meals.${log.meal_type}`, log.meal_type)}
                 </span>
               )}
-              <span className="text-[9px] text-[#4B5563] font-medium">{timeStr}</span>
+              <span className="text-[9px] text-[#9CA3AF] font-medium">{timeStr}</span>
             </div>
             <h3 className="text-[22px] font-black text-white leading-tight tracking-tight">{displayName}</h3>
           </div>
@@ -1026,10 +1249,10 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
           {/* Macros */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3.5">
-              <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-[0.15em]">{t('nutrition.nutritionLabel', 'Nutrition')}</p>
+              <p className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-[0.15em]">{t('nutrition.nutritionLabel', 'Nutrition')}</p>
               <button onClick={() => setEditing(!editing)}
                 className="text-[10px] font-bold tracking-wide transition-colors"
-                style={{ color: editing ? '#9CA3AF' : 'var(--color-accent)' }}>
+                style={{ color: editing ? 'var(--color-text-muted)' : 'var(--color-accent)' }}>
                 {editing ? t('nutrition.cancel', 'Cancel') : t('nutrition.edit', 'Edit')}
               </button>
             </div>
@@ -1043,21 +1266,21 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
                     value={editValues.calories || ''}
                     onFocus={e => e.target.select()}
                     onChange={e => setEditValues(prev => ({ ...prev, calories: e.target.value }))}
-                    className="w-full text-center text-[36px] font-black leading-none tabular-nums bg-transparent outline-none text-[#F59E0B] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                    className="w-full text-center text-[24px] font-black leading-none tabular-nums bg-transparent outline-none text-[#F59E0B] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                   />
                 ) : (
-                  <p className="text-[36px] font-black leading-none tabular-nums text-[#F59E0B]"
+                  <p className="text-[24px] font-black leading-none tabular-nums text-[#F59E0B] truncate"
                     style={{ textShadow: '0 0 20px rgba(245,158,11,0.15)' }}>
                     {Math.round(log.calories)}
                   </p>
                 )}
-                <p className="text-[9px] font-bold text-[#4B5563] uppercase tracking-[0.15em] mt-2">{t('nutrition.dailyCalories', 'Calories')}</p>
+                <p className="text-[9px] font-bold text-[#9CA3AF] uppercase tracking-[0.15em] mt-2">{t('nutrition.dailyCalories', 'Calories')}</p>
               </div>
               {/* Macro row */}
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { key: 'protein_g', l: t('nutrition.protein'), c: '#10B981' },
-                  { key: 'carbs_g', l: t('nutrition.carbs'), c: '#60A5FA' },
+                  { key: 'protein_g', l: t('nutrition.protein'), c: 'var(--color-success)' },
+                  { key: 'carbs_g', l: t('nutrition.carbs'), c: 'var(--color-blue-soft)' },
                   { key: 'fat_g', l: t('nutrition.fat'), c: '#A78BFA' },
                 ].map(m => (
                   <div key={m.key} className="text-center py-3 rounded-[12px]"
@@ -1076,7 +1299,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
                         {Math.round(log[m.key])}<span className="text-[13px] font-bold opacity-60">g</span>
                       </p>
                     )}
-                    <p className="text-[8px] font-bold text-[#4B5563] uppercase tracking-[0.12em] mt-2">{m.l}</p>
+                    <p className="text-[8px] font-bold text-[#9CA3AF] uppercase tracking-[0.12em] mt-2">{m.l}</p>
                   </div>
                 ))}
               </div>
@@ -1085,7 +1308,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
 
           {/* Servings */}
           <div className="flex items-center justify-between px-1 mb-6">
-            <span className="text-[11px] font-medium text-[#4B5563]">{t('nutrition.servings', 'Servings')}</span>
+            <span className="text-[11px] font-medium text-[#9CA3AF]">{t('nutrition.servings', 'Servings')}</span>
             <span className="text-[14px] font-black text-[#E5E7EB] tabular-nums">{log.servings}</span>
           </div>
 
@@ -1120,7 +1343,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
         style={{ background: 'var(--color-bg-secondary)', paddingBottom: 'max(40px, var(--safe-area-bottom, env(safe-area-inset-bottom)))' }}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.nutritionTargets')}</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center"><X size={16} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Close"><X size={16} className="text-[#6B7280]" /></button>
         </div>
         <button onClick={onAutoCalculate} className="w-full mb-5 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/15">
           {t('nutrition.autoCalculate')}
@@ -1129,12 +1352,12 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
           {[{ label: t('nutrition.dailyCalories'), key: 'daily_calories', unit: 'kcal' }, { label: t('nutrition.protein'), key: 'daily_protein_g', unit: 'g' }, { label: t('nutrition.carbs'), key: 'daily_carbs_g', unit: 'g' }, { label: t('nutrition.fat'), key: 'daily_fat_g', unit: 'g' }]
             .map(f => (
               <div key={f.key}>
-                <label className="block text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5">{f.label}</label>
+                <label htmlFor={`target-${f.key}`} className="block text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5">{f.label}</label>
                 <div className="relative">
-                  <input type="number" value={draft[f.key] || ''} onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
+                  <input id={`target-${f.key}`} type="number" value={draft[f.key] || ''} onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
                     className="w-full rounded-xl px-4 py-3 text-[15px] outline-none focus:border-[#D4AF37]/40 transition-colors pr-14"
                     style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[#4B5563]">{f.unit}</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[#9CA3AF]">{f.unit}</span>
                 </div>
               </div>
             ))}
@@ -1148,48 +1371,1314 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
   );
 };
 
-// ── HOME VIEW ───────────────────────────────────────────────
-const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit }) => {
+// ── DAILY SUGGESTION ("Sugerencia del Día") ─────────────────
+const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, lang, t, userId, workoutBurn = 0 }) => {
+  const SLOT_ICONS = ['\u{1F305}', '\u{2600}\u{FE0F}', '\u{1F319}']; // sunrise, sun, moon
+  const SLOT_LABELS = [t('nutrition.meals.breakfast'), t('nutrition.meals.lunch'), t('nutrition.meals.dinner')];
+  const SLOT_COLORS = ['#F97316', '#F59E0B', '#8B5CF6'];
+
+  const macroTargets = useMemo(() => ({
+    calories: (targets?.daily_calories || 2000) + workoutBurn,
+    protein: (targets?.daily_protein_g || 150) + Math.round(workoutBurn * 0.4 / 4),
+    carbs: (targets?.daily_carbs_g || 200) + Math.round(workoutBurn * 0.6 / 4),
+    fat: targets?.daily_fat_g || 65,
+  }), [targets, workoutBurn]);
+
+  const today = todayStr();
+  const storageKey = `daily_suggestion_${userId || 'anon'}_${today}`;
+
+  const [meals, setMeals] = useState(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  });
+
+  const [removedIdx, setRemovedIdx] = useState(null);
+  const [replacements, setReplacements] = useState([]);
+
+  // Auto-generate on first visit each day
+  useEffect(() => {
+    if (meals) return;
+    const plan = generateDayPlan({ targets: macroTargets, slots: 3 });
+    const m = plan.meals || [];
+    setMeals(m);
+    try { localStorage.setItem(storageKey, JSON.stringify(m)); } catch {}
+  }, [meals, macroTargets, storageKey]);
+
+  const handleRegenerate = useCallback(() => {
+    const plan = generateDayPlan({ targets: macroTargets, slots: 3 });
+    const m = plan.meals || [];
+    setMeals(m);
+    setRemovedIdx(null);
+    setReplacements([]);
+    try { localStorage.setItem(storageKey, JSON.stringify(m)); } catch {}
+  }, [macroTargets, storageKey]);
+
+  const handleRemoveMeal = useCallback((idx) => {
+    setRemovedIdx(idx);
+    // Calculate remaining macros after removing this meal
+    const remaining = meals.reduce((acc, m, i) => {
+      if (i === idx) return acc;
+      return {
+        calories: acc.calories - (m?.calories || 0),
+        protein: acc.protein - (m?.protein || 0),
+        carbs: acc.carbs - (m?.carbs || 0),
+        fat: acc.fat - (m?.fat || 0),
+      };
+    }, {
+      calories: macroTargets.calories - (todayTotals.calories || 0),
+      protein: macroTargets.protein - (todayTotals.protein || 0),
+      carbs: macroTargets.carbs - (todayTotals.carbs || 0),
+      fat: macroTargets.fat - (todayTotals.fat || 0),
+    });
+    const otherIds = meals.filter((_, i) => i !== idx).map(m => m?.id).filter(Boolean);
+    const suggestions = suggestMeals({
+      targets: { calories: Math.max(remaining.calories, 100), protein: Math.max(remaining.protein, 10), carbs: Math.max(remaining.carbs, 10), fat: Math.max(remaining.fat, 5) },
+      consumed: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      excludeIds: otherIds,
+      lang,
+    });
+    setReplacements(suggestions.slice(0, 5));
+  }, [meals, macroTargets, todayTotals, lang]);
+
+  const handleReplace = useCallback((idx, newMeal) => {
+    const updated = [...(meals || [])];
+    updated[idx] = newMeal;
+    setMeals(updated);
+    setRemovedIdx(null);
+    setReplacements([]);
+    try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
+  }, [meals, storageKey]);
+
+  const mealTitle = (r) => r ? ((lang === 'es' && r.title_es) ? r.title_es : r.title) : '';
+
+  if (!meals || meals.length === 0) return null;
+
+  // Calculate gap between suggestion totals and target
+  const planTotals = meals.reduce((acc, m) => ({
+    calories: acc.calories + (m?.calories || 0),
+    protein: acc.protein + (m?.protein || 0),
+    carbs: acc.carbs + (m?.carbs || 0),
+    fat: acc.fat + (m?.fat || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+  const calGap = macroTargets.calories - planTotals.calories - (todayTotals.calories || 0);
+  const proteinGap = macroTargets.protein - planTotals.protein - (todayTotals.protein || 0);
+  const carbGap = macroTargets.carbs - planTotals.carbs - (todayTotals.carbs || 0);
+  const fatGap = macroTargets.fat - planTotals.fat - (todayTotals.fat || 0);
+  const showGap = calGap > macroTargets.calories * 0.05 || proteinGap > macroTargets.protein * 0.05;
+
+  return (
+    <div className="mx-4 mb-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center" style={{ backgroundColor: '#D4AF3712' }}>
+            <Sparkles size={13} style={{ color: 'var(--color-accent)' }} />
+          </div>
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('nutrition.dailySuggestion')}
+          </span>
+        </div>
+        <button onClick={handleRegenerate}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold active:scale-90 transition-all"
+          style={{ background: 'var(--color-surface-hover)', color: 'var(--color-accent)' }}
+          aria-label={t('nutrition.regenerate')}>
+          <RefreshCw size={12} />
+          {t('nutrition.regenerate')}
+        </button>
+      </div>
+
+      {/* Meal cards */}
+      <div className="space-y-2.5">
+        {meals.map((meal, idx) => {
+          if (!meal) return null;
+          const isRemoved = removedIdx === idx;
+
+          if (isRemoved) {
+            return (
+              <div key={`removed-${idx}`} className="rounded-[16px] overflow-hidden"
+                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                <div className="px-4 py-3 flex items-center justify-between"
+                  style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                  <span className="text-[11px] font-bold" style={{ color: SLOT_COLORS[idx] }}>
+                    {SLOT_ICONS[idx]} {SLOT_LABELS[idx]} — {t('nutrition.replaceMeal')}
+                  </span>
+                  <button onClick={() => { setRemovedIdx(null); setReplacements([]); }}
+                    className="text-[10px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('nutrition.cancel', 'Cancel')}
+                  </button>
+                </div>
+                <div className="px-4 py-3 space-y-2 max-h-[220px] overflow-y-auto">
+                  {replacements.map(({ meal: rMeal }) => (
+                    <button key={rMeal.id} onClick={() => handleReplace(idx, rMeal)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left transition-all active:scale-[0.975]"
+                      style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                      <img src={foodImageUrl(rMeal.image)} alt="" className="w-9 h-9 rounded-[8px] object-cover bg-[#1E293B] flex-shrink-0" loading="lazy" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-semibold text-[#E5E7EB] truncate">{mealTitle(rMeal)}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[9px] font-medium tabular-nums text-[#F59E0B99]">{rMeal.calories} cal</span>
+                          <span className="text-[7px] text-[#2A3040]">&middot;</span>
+                          <span className="text-[9px] font-medium text-[#10B98199] tabular-nums">{rMeal.protein}g P</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                  {replacements.length === 0 && (
+                    <p className="text-[11px] text-center py-4" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('nutrition.noResultsFound', 'No results found')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={meal.id || idx} className="relative">
+              <button onClick={() => onOpenRecipe(meal)}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[16px] text-left transition-all active:scale-[0.975]"
+                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                <img src={foodImageUrl(meal.image)} alt="" className="w-11 h-11 rounded-[12px] object-cover bg-[#1E293B] flex-shrink-0"
+                  style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }} loading="lazy" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: SLOT_COLORS[idx] }}>
+                      {SLOT_ICONS[idx]} {SLOT_LABELS[idx]}
+                    </span>
+                  </div>
+                  <p className="text-[12px] font-semibold text-[#E5E7EB] truncate mt-0.5">{mealTitle(meal)}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] font-semibold tabular-nums" style={{ color: '#F59E0B99' }}>{meal.calories} cal</span>
+                    <span className="text-[8px] text-[#2A3040]">&middot;</span>
+                    <span className="text-[10px] font-medium text-[#10B98199] tabular-nums">{meal.protein}g P</span>
+                  </div>
+                </div>
+              </button>
+              {/* Remove button */}
+              <button onClick={(e) => { e.stopPropagation(); handleRemoveMeal(idx); }}
+                className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full flex items-center justify-center active:scale-90 transition-all"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)' }}
+                aria-label={t('nutrition.remove', 'Remove')}>
+                <X size={12} className="text-[#EF4444]" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Remaining macros gap */}
+      {showGap && calGap > 0 && (
+        <div className="mt-3 px-4 py-2.5 rounded-[12px]"
+          style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
+          <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--color-warning)' }}>
+            {t('nutrition.remaining', 'Remaining')}:
+          </p>
+          <div className="flex items-center gap-3 text-[10px] font-medium">
+            <span style={{ color: 'var(--color-warning)' }}>{Math.round(Math.max(0, calGap))} kcal</span>
+            <span style={{ color: 'var(--color-success)' }}>{Math.round(Math.max(0, proteinGap))}g {t('nutrition.protein', 'protein')}</span>
+            <span style={{ color: '#FBBF24' }}>{Math.round(Math.max(0, carbGap))}g {t('nutrition.carbs', 'carbs')}</span>
+            <span style={{ color: '#F97316' }}>{Math.round(Math.max(0, fatGap))}g {t('nutrition.fat', 'fat')}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <p className="mt-3 text-[9px] leading-relaxed px-1" style={{ color: 'var(--color-text-faint)' }}>
+        {t('nutrition.disclaimer', 'Caloric and nutritional values are estimates and may vary based on ingredients, portions, and preparation. Consult a healthcare professional for allergies or dietary restrictions.')}
+      </p>
+    </div>
+  );
+};
+
+// ── WEEKLY NUTRITION SUMMARY ─────────────────────────────────
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+const WeeklyNutritionSummary = ({ userId, targets, startExpanded = false }) => {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
+  const [weekData, setWeekData] = useState(null);
+  const [expandedDay, setExpandedDay] = useState(null);
+  const [collapsed, setCollapsed] = useState(!startExpanded);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
+  const [trendData, setTrendData] = useState(null);
+
   const calTarget = targets?.daily_calories || 2000;
+  const proteinTarget = targets?.daily_protein_g || 150;
+  const carbsTarget = targets?.daily_carbs_g || 200;
+  const fatTarget = targets?.daily_fat_g || 65;
+
+  useEffect(() => {
+    if (!userId) return;
+    const fetchWeek = async () => {
+      const dates = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i) + (weekOffset * 7));
+        return toLocalDateStr(d);
+      });
+
+      const { data: logs } = await supabase
+        .from('food_logs')
+        .select('log_date, calories, protein_g, carbs_g, fat_g, meal_type, custom_name, food_item:food_items(name, name_es)')
+        .eq('profile_id', userId)
+        .gte('log_date', dates[0])
+        .lte('log_date', dates[6]);
+
+      const byDate = {};
+      for (const date of dates) byDate[date] = { calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0, logs: [] };
+      for (const log of (logs || [])) {
+        const d = byDate[log.log_date];
+        if (d) {
+          d.calories += log.calories || 0;
+          d.protein += log.protein_g || 0;
+          d.carbs += log.carbs_g || 0;
+          d.fat += log.fat_g || 0;
+          d.meals++;
+          d.logs.push(log);
+        }
+      }
+
+      setWeekData({ dates, byDate });
+    };
+    fetchWeek();
+  }, [userId, weekOffset]);
+
+  // ── 4-week protein trend data ──
+  useEffect(() => {
+    if (!userId) return;
+    const fetchTrend = async () => {
+      const today = new Date();
+      const fourWeeksAgo = new Date(today);
+      fourWeeksAgo.setDate(today.getDate() - 27);
+      const startStr = toLocalDateStr(fourWeeksAgo);
+      const endStr = toLocalDateStr(today);
+
+      const { data: logs } = await supabase
+        .from('food_logs')
+        .select('log_date, protein_g')
+        .eq('profile_id', userId)
+        .gte('log_date', startStr)
+        .lte('log_date', endStr);
+
+      if (!logs || logs.length === 0) { setTrendData(null); return; }
+
+      // Group by week (Mon-Sun)
+      const weeks = [];
+      for (let w = 3; w >= 0; w--) {
+        const wStart = new Date(today);
+        wStart.setDate(today.getDate() - (w * 7 + 6));
+        const wEnd = new Date(today);
+        wEnd.setDate(today.getDate() - (w * 7));
+        const wStartStr = toLocalDateStr(wStart);
+        const wEndStr = toLocalDateStr(wEnd);
+
+        const weekLogs = logs.filter(l => l.log_date >= wStartStr && l.log_date <= wEndStr);
+        // Group by date
+        const byDate = {};
+        for (const l of weekLogs) {
+          byDate[l.log_date] = (byDate[l.log_date] || 0) + (l.protein_g || 0);
+        }
+        const daysWithData = Object.keys(byDate).length;
+        const totalProtein = Object.values(byDate).reduce((s, v) => s + v, 0);
+        const avg = daysWithData > 0 ? Math.round(totalProtein / daysWithData) : 0;
+
+        const label = wEnd.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
+        weeks.push({ label, avg, daysWithData, weekNum: 4 - w });
+      }
+
+      setTrendData(weeks.filter(w => w.daysWithData > 0));
+    };
+    fetchTrend();
+  }, [userId, lang]);
+
+  if (!weekData) return null;
+
+  const { dates, byDate } = weekData;
+
+  // Compute weekly stats
+  const daysTracked = dates.filter(d => byDate[d].meals > 0).length;
+  const trackedDays = dates.filter(d => byDate[d].meals > 0);
+  const avgCal = trackedDays.length > 0 ? Math.round(trackedDays.reduce((s, d) => s + byDate[d].calories, 0) / trackedDays.length) : 0;
+  const avgProtein = trackedDays.length > 0 ? Math.round(trackedDays.reduce((s, d) => s + byDate[d].protein, 0) / trackedDays.length) : 0;
+
+  // Compliance: days where ALL macros within 15% of target
+  const compliantDays = trackedDays.filter(d => {
+    const day = byDate[d];
+    const calOk = Math.abs(day.calories - calTarget) / calTarget <= 0.15;
+    const proOk = Math.abs(day.protein - proteinTarget) / proteinTarget <= 0.15;
+    const carbOk = Math.abs(day.carbs - carbsTarget) / carbsTarget <= 0.15;
+    const fatOk = Math.abs(day.fat - fatTarget) / fatTarget <= 0.15;
+    return calOk && proOk && carbOk && fatOk;
+  }).length;
+  const compliancePct = daysTracked > 0 ? Math.round((compliantDays / daysTracked) * 100) : 0;
+
+  // Max cal in week for bar scaling
+  const maxCal = Math.max(calTarget, ...dates.map(d => byDate[d].calories));
+
+  const getBarColor = (cal) => {
+    if (cal === 0) return 'var(--color-bg-input)';
+    const diff = Math.abs(cal - calTarget) / calTarget;
+    if (diff <= 0.10) return 'var(--color-success)';
+    if (diff <= 0.25) return 'var(--color-warning)';
+    return 'var(--color-danger)';
+  };
+
+  const getProteinOk = (protein) => {
+    if (protein === 0) return false;
+    return Math.abs(protein - proteinTarget) / proteinTarget <= 0.15;
+  };
+
+  // Get day-of-week index for each date (0=Sun..6=Sat) → map to i18n keys
+  const getDayLabel = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const jsDay = d.getDay(); // 0=Sun
+    const dayMap = [6, 0, 1, 2, 3, 4, 5]; // JS Sun=0 → our index 6 (sun), Mon=1 → 0 (mon)
+    return t(`nutrition.days.${DAY_KEYS[dayMap[jsDay]]}`);
+  };
+
+  const isToday = (dateStr) => dateStr === todayStr();
+
+  return (
+    <div className="mx-4 mb-7">
+      {/* Header - always visible, acts as toggle */}
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center justify-between mb-4 group"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-[26px] h-[26px] rounded-[8px] flex items-center justify-center"
+            style={{ backgroundColor: '#D4AF3712' }}>
+            <BarChart2 size={13} style={{ color: 'var(--color-accent)' }} />
+          </div>
+          <span className="text-[10px] font-extrabold text-[#525C6B] uppercase tracking-[0.18em]">{t('nutrition.weeklySummary')}</span>
+        </div>
+        {collapsed ? (
+          <ChevronDown size={14} className="text-[#525C6B] group-active:text-[#9CA3AF] transition-colors" />
+        ) : (
+          <ChevronUp size={14} className="text-[#525C6B] group-active:text-[#9CA3AF] transition-colors" />
+        )}
+      </button>
+
+      {!collapsed && (
+        <div className="rounded-[20px] overflow-hidden"
+          style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+
+          {/* ── Week Navigation ── */}
+          <div className="flex items-center justify-between px-5 pt-4 pb-2">
+            <button onClick={() => setWeekOffset(o => o - 1)}
+              className="flex items-center gap-1 text-[11px] font-semibold active:scale-90 transition-all"
+              style={{ color: 'var(--color-accent)' }}>
+              <ChevronLeft size={14} />
+              {t('nutrition.previousWeek')}
+            </button>
+            <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+              {weekData?.dates?.[0] ? (() => {
+                const s = new Date(weekData.dates[0] + 'T12:00:00');
+                const e = new Date(weekData.dates[6] + 'T12:00:00');
+                const fmt = (d) => d.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
+                return `${fmt(s)} - ${fmt(e)}`;
+              })() : ''}
+            </span>
+            <button onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
+              disabled={weekOffset >= 0}
+              className="flex items-center gap-1 text-[11px] font-semibold active:scale-90 transition-all disabled:opacity-30"
+              style={{ color: 'var(--color-accent)' }}>
+              {t('nutrition.nextWeek')}
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          {/* ── 7-Day Bar Chart ── */}
+          <div className="px-5 pt-6 pb-4">
+            <div className="flex items-end justify-between gap-2" style={{ height: 120 }}>
+              {dates.map((date) => {
+                const day = byDate[date];
+                const barH = day.calories > 0 ? Math.max(8, (day.calories / maxCal) * 100) : 4;
+                const barColor = getBarColor(day.calories);
+                const proteinOk = getProteinOk(day.protein);
+                const isExp = expandedDay === date;
+                const today = isToday(date);
+
+                return (
+                  <button
+                    key={date}
+                    onClick={() => setExpandedDay(isExp ? null : date)}
+                    className="flex flex-col items-center flex-1 min-w-0 transition-all active:scale-95"
+                    style={{ height: '100%' }}
+                  >
+                    <div className="flex-1 flex items-end w-full justify-center">
+                      <div
+                        className="rounded-t-[4px] transition-all duration-300"
+                        style={{
+                          width: 8,
+                          height: `${barH}%`,
+                          backgroundColor: barColor,
+                          opacity: day.calories === 0 ? 0.3 : 1,
+                          boxShadow: day.calories > 0 ? `0 0 8px ${barColor}30` : 'none',
+                          outline: isExp ? `2px solid ${barColor}` : 'none',
+                          outlineOffset: 2,
+                        }}
+                      />
+                    </div>
+                    {/* Protein indicator dot */}
+                    <div
+                      className="w-[5px] h-[5px] rounded-full mt-2 mb-1.5"
+                      style={{
+                        backgroundColor: day.meals === 0 ? 'var(--color-bg-input)' : (proteinOk ? 'var(--color-success)' : 'var(--color-danger)'),
+                        opacity: day.meals === 0 ? 0.4 : 1,
+                      }}
+                    />
+                    {/* Day label */}
+                    <span
+                      className="text-[9px] font-bold tracking-wide"
+                      style={{
+                        color: today ? 'var(--color-accent)' : (isExp ? 'var(--color-text-primary)' : '#525C6B'),
+                      }}
+                    >
+                      {getDayLabel(date)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Target line label */}
+            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-white/[0.04]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-[2px] rounded-full" style={{ backgroundColor: 'var(--color-success)' }} />
+                <span className="text-[9px] text-[#525C6B]">{`<10%`}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-[2px] rounded-full" style={{ backgroundColor: 'var(--color-warning)' }} />
+                <span className="text-[9px] text-[#525C6B]">10-25%</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-[2px] rounded-full" style={{ backgroundColor: 'var(--color-danger)' }} />
+                <span className="text-[9px] text-[#525C6B]">{`>25%`}</span>
+              </div>
+              <div className="flex items-center gap-1.5 ml-auto">
+                <div className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: 'var(--color-success)' }} />
+                <span className="text-[9px] text-[#525C6B]">{t('nutrition.protein')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Expanded Day Detail ── */}
+          {expandedDay && byDate[expandedDay] && byDate[expandedDay].meals > 0 && (
+            <div className="mx-4 mb-4 rounded-[14px] overflow-hidden"
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+              <div className="px-4 py-3">
+                <p className="text-[11px] font-bold text-[#D1D5DB] mb-2">
+                  {getDayLabel(expandedDay)} — {byDate[expandedDay].calories} kcal
+                </p>
+                <div className="flex gap-3 mb-3">
+                  <span className="text-[10px] font-semibold" style={{ color: '#10B98199' }}>{byDate[expandedDay].protein}g P</span>
+                  <span className="text-[10px] font-semibold" style={{ color: '#60A5FA99' }}>{byDate[expandedDay].carbs}g C</span>
+                  <span className="text-[10px] font-semibold" style={{ color: '#A78BFA99' }}>{byDate[expandedDay].fat}g F</span>
+                </div>
+                <div className="space-y-1.5">
+                  {byDate[expandedDay].logs.map((log, i) => (
+                    <div key={i} className="flex items-center justify-between py-1">
+                      <span className="text-[10px] text-[#9CA3AF] truncate flex-1 mr-2">
+                        {(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}
+                      </span>
+                      <span className="text-[10px] font-semibold text-[#6B7280] tabular-nums flex-shrink-0">
+                        {log.calories} cal
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Weekly Stats ── */}
+          <div className="px-5 pb-5">
+            <div className="grid grid-cols-2 gap-3">
+              {/* Days tracked */}
+              <div className="rounded-[12px] p-3"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-1">{t('nutrition.daysTracked')}</p>
+                <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums leading-none">{daysTracked} <span className="text-[11px] font-semibold text-[#3B4252]">/ 7</span></p>
+              </div>
+
+              {/* Compliance */}
+              <div className="rounded-[12px] p-3"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-1">{t('nutrition.compliance')}</p>
+                <div className="flex items-center gap-2">
+                  {/* Mini ring */}
+                  <svg width="28" height="28" viewBox="0 0 28 28">
+                    <circle cx="14" cy="14" r="11" fill="none" stroke="var(--color-bg-input)" strokeWidth="3" />
+                    <circle cx="14" cy="14" r="11" fill="none"
+                      stroke={compliancePct >= 70 ? 'var(--color-success)' : compliancePct >= 40 ? 'var(--color-warning)' : 'var(--color-danger)'}
+                      strokeWidth="3"
+                      strokeDasharray={`${(compliancePct / 100) * 69.115} 69.115`}
+                      strokeLinecap="round"
+                      transform="rotate(-90 14 14)"
+                    />
+                  </svg>
+                  <p className="text-[12px] font-bold tabular-nums leading-none"
+                    style={{ color: compliancePct >= 70 ? 'var(--color-success)' : compliancePct >= 40 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
+                    {t('nutrition.weeklyCompliance', { pct: compliancePct })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Avg Calories */}
+              <div className="rounded-[12px] p-3"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-1">{t('nutrition.avgCalories')}</p>
+                <p className="text-[15px] font-bold text-[#E5E7EB] tabular-nums leading-none">
+                  {avgCal} <span className="text-[10px] font-semibold text-[#3B4252]">/ {calTarget}</span>
+                </p>
+              </div>
+
+              {/* Avg Protein */}
+              <div className="rounded-[12px] p-3"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-1">{t('nutrition.avgProtein')}</p>
+                <p className="text-[15px] font-bold text-[#E5E7EB] tabular-nums leading-none">
+                  {avgProtein}g <span className="text-[10px] font-semibold text-[#3B4252]">/ {proteinTarget}g</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 4-Week Protein Trend ── */}
+          {trendData && trendData.length >= 2 ? (
+            <div className="px-5 pb-5">
+              <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-3">{t('nutrition.proteinTrend')}</p>
+
+              {/* Stat card */}
+              {(() => {
+                const latest = trendData[trendData.length - 1]?.avg || 0;
+                const prev = trendData.length >= 2 ? trendData[trendData.length - 2]?.avg : latest;
+                const hittingTarget = latest >= proteinTarget * 0.85;
+                const trending = latest > prev ? 'up' : latest < prev ? 'down' : 'flat';
+                return (
+                  <div className="rounded-[12px] p-3 mb-3 flex items-center justify-between"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                    <div>
+                      <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-1">{t('nutrition.avgDailyProtein')}</p>
+                      <p className="text-[15px] font-bold tabular-nums leading-none" style={{ color: hittingTarget ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                        {latest}g <span className="text-[10px] font-semibold text-[#3B4252]">({t('nutrition.target')}: {proteinTarget}g)</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1" style={{ color: trending === 'up' ? 'var(--color-success)' : trending === 'down' ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+                      {trending === 'up' && <ArrowUp size={14} />}
+                      {trending === 'down' && <ArrowDown size={14} />}
+                      {trending !== 'flat' && (
+                        <span className="text-[11px] font-bold tabular-nums">{Math.abs(latest - prev)}g</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Chart */}
+              <div className="rounded-[12px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                <ResponsiveContainer width="100%" height={140}>
+                  <LineChart data={trendData} margin={{ top: 16, right: 16, bottom: 8, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-bg-input)" />
+                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#525C6B' }} axisLine={false} tickLine={false} />
+                    <YAxis hide domain={[0, (dataMax) => Math.max(dataMax, proteinTarget) * 1.15]} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 11 }}
+                      labelStyle={{ color: 'var(--color-text-muted)', fontSize: 10 }}
+                      formatter={(value) => [`${value}g`, t('nutrition.protein')]}
+                    />
+                    <ReferenceLine y={proteinTarget} stroke="var(--color-accent)" strokeDasharray="6 3" strokeWidth={1.5} />
+                    <Line
+                      type="monotone"
+                      dataKey="avg"
+                      stroke="var(--color-success)"
+                      strokeWidth={2.5}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        const color = payload.avg >= proteinTarget * 0.85 ? 'var(--color-success)' : 'var(--color-danger)';
+                        return <circle key={props.key} cx={cx} cy={cy} r={4} fill={color} stroke="var(--color-bg-card)" strokeWidth={2} />;
+                      }}
+                      activeDot={{ r: 6, stroke: 'var(--color-accent)', strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : trendData !== null && trendData.length < 2 ? (
+            <div className="px-5 pb-5">
+              <p className="text-[9px] font-bold text-[#525C6B] uppercase tracking-wider mb-2">{t('nutrition.proteinTrend')}</p>
+              <p className="text-[11px] text-[#525C6B]">{t('nutrition.noTrendData')}</p>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── WEEKLY MEAL PLANNER ──────────────────────────────────────
+const getWeekStartDate = () => {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? 6 : day - 1; // Monday = start
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - diff);
+  return toLocalDateStr(mon);
+};
+
+const getWeekDates = () => {
+  const start = getWeekStartDate();
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    dates.push(toLocalDateStr(d));
+  }
+  return dates;
+};
+
+const PLANNER_SLOT_KEYS = ['breakfast', 'lunch', 'dinner'];
+
+const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false }) => {
+  const { t, i18n } = useTranslation('pages');
+  const lang = i18n.language || 'en';
+  const [plan, setPlan] = useState({});
+  const [toast, setToast] = useState('');
+  const [removingSlot, setRemovingSlot] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current, -1 = past, +1 = next
+
+  const currentWeekStart = useMemo(() => getWeekStartDate(), []);
+
+  const weekDates = useMemo(() => {
+    const start = new Date(currentWeekStart + 'T12:00:00');
+    start.setDate(start.getDate() + weekOffset * 7);
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      dates.push(toLocalDateStr(d));
+    }
+    return dates;
+  }, [currentWeekStart, weekOffset]);
+
+  const weekStart = weekDates[0];
+  const isPastWeek = weekOffset < 0;
+
+  const storageKey = `meal_plan_${userId || 'anon'}_${weekStart}`;
+  const legacyStorageKey = `meal_plan_${userId || 'anon'}`;
+
+  // Load plan from localStorage
+  useEffect(() => {
+    try {
+      // Try week-specific key first
+      let raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setPlan(parsed.days || {});
+        return;
+      }
+      // Fallback: legacy key (only for current week)
+      if (weekOffset === 0) {
+        raw = localStorage.getItem(legacyStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.weekStart === weekStart) {
+            setPlan(parsed.days || {});
+            return;
+          }
+        }
+      }
+      setPlan({});
+    } catch { setPlan({}); }
+  }, [storageKey, legacyStorageKey, weekStart, weekOffset]);
+
+  // Persist plan
+  const savePlan = useCallback((newPlan) => {
+    setPlan(newPlan);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ weekStart, days: newPlan }));
+      // Also update legacy key for current week (backward compat)
+      if (weekOffset === 0) {
+        localStorage.setItem(legacyStorageKey, JSON.stringify({ weekStart, days: newPlan }));
+      }
+    } catch {}
+    // Attempt Supabase save (fire and forget)
+    if (userId) {
+      supabase.from('meal_plans').upsert({
+        profile_id: userId,
+        week_start: weekStart,
+        plan_data: newPlan,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'profile_id,week_start' }).then(() => {}).catch(() => {});
+    }
+  }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset]);
+
+  const handleAutoplan = useCallback(() => {
+    if (isPastWeek) return;
+    const macroTargets = {
+      calories: targets?.daily_calories || 2000,
+      protein: targets?.daily_protein_g || 150,
+      carbs: targets?.daily_carbs_g || 200,
+      fat: targets?.daily_fat_g || 65,
+    };
+    const weekPlan = generateWeekPlan({ targets: macroTargets, favorites: [], lang });
+    const newPlan = { ...plan };
+    weekDates.forEach((date, i) => {
+      if (!newPlan[date]) newPlan[date] = {};
+      const dayMeals = weekPlan[i]?.meals || [];
+      PLANNER_SLOT_KEYS.forEach((slot, si) => {
+        if (!newPlan[date][slot] && dayMeals[si]) {
+          newPlan[date][slot] = dayMeals[si];
+        }
+      });
+    });
+    savePlan(newPlan);
+    setToast(t('nutrition.planGenerated', 'Plan generated!'));
+    setTimeout(() => setToast(''), 2000);
+  }, [targets, plan, weekDates, savePlan, lang, t, isPastWeek]);
+
+  const handleRemoveMeal = useCallback((date, slot) => {
+    if (isPastWeek) return;
+    const newPlan = { ...plan };
+    if (newPlan[date]) {
+      delete newPlan[date][slot];
+    }
+    savePlan(newPlan);
+    setRemovingSlot(null);
+  }, [plan, savePlan, isPastWeek]);
+
+  const handleTapSlot = useCallback((date, slot, meal) => {
+    if (meal) {
+      onOpenRecipe(meal);
+    } else if (!isPastWeek) {
+      onOpenSearch();
+    }
+  }, [onOpenRecipe, onOpenSearch, isPastWeek]);
+
+  // Complete a day: auto-fill empty slots to hit macro targets
+  const handleCompleteDay = useCallback((date) => {
+    if (isPastWeek) return;
+    const macroTargets = {
+      calories: targets?.daily_calories || 2000,
+      protein: targets?.daily_protein_g || 150,
+      carbs: targets?.daily_carbs_g || 200,
+      fat: targets?.daily_fat_g || 65,
+    };
+    const dayData = plan[date] || {};
+    const usedIds = PLANNER_SLOT_KEYS.map(k => dayData[k]?.id).filter(Boolean);
+    const emptySlots = PLANNER_SLOT_KEYS.filter(k => !dayData[k]);
+    if (emptySlots.length === 0) return;
+    // Calculate already planned macros
+    const planned = PLANNER_SLOT_KEYS.reduce((acc, k) => ({
+      calories: acc.calories + (dayData[k]?.calories || 0),
+      protein: acc.protein + (dayData[k]?.protein || 0),
+      carbs: acc.carbs + (dayData[k]?.carbs || 0),
+      fat: acc.fat + (dayData[k]?.fat || 0),
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    const remainingTargets = {
+      calories: Math.max(macroTargets.calories - planned.calories, 100),
+      protein: Math.max(macroTargets.protein - planned.protein, 10),
+      carbs: Math.max(macroTargets.carbs - planned.carbs, 10),
+      fat: Math.max(macroTargets.fat - planned.fat, 5),
+    };
+    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, excludeIds: usedIds });
+    const newPlan = { ...plan };
+    if (!newPlan[date]) newPlan[date] = {};
+    emptySlots.forEach((slot, i) => {
+      if (fillPlan.meals[i]) newPlan[date][slot] = fillPlan.meals[i];
+    });
+    savePlan(newPlan);
+  }, [plan, savePlan, targets, isPastWeek]);
+
+  const calTarget = targets?.daily_calories || 2000;
+  const proteinTarget = targets?.daily_protein_g || 150;
+  const carbsTarget = targets?.daily_carbs_g || 200;
+  const fatTarget = targets?.daily_fat_g || 65;
+
+  const mealTitle = (m) => (lang === 'es' && m.title_es) ? m.title_es : m.title;
+
+  const getDayLabel = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const jsDay = d.getDay();
+    const dayMap = [6, 0, 1, 2, 3, 4, 5];
+    return t(`nutrition.days.${DAY_KEYS[dayMap[jsDay]]}`);
+  };
+
+  const getDateLabel = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.getDate();
+  };
+
+  const isToday = (dateStr) => dateStr === todayStr();
+
+  const getMacroColor = (val, target) => {
+    const diff = Math.abs(val - target) / target;
+    if (diff <= 0.10) return 'var(--color-success)';
+    if (diff <= 0.25) return 'var(--color-warning)';
+    return 'var(--color-danger)';
+  };
+
+  const content = (
+    <div className="h-screen flex flex-col" style={{ background: 'var(--color-bg-primary)' }}>
+      {/* Header — fixed, opaque, content scrolls behind */}
+      <div className="shrink-0 px-4 py-4 flex items-center gap-3 z-10"
+        style={{ background: 'var(--color-bg-primary)', borderBottom: '1px solid var(--color-border-subtle))' }}>
+        <button onClick={onClose}
+          className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all"
+          style={{ background: 'var(--color-surface-hover))', border: '1px solid var(--color-border-subtle))' }}
+          aria-label={t('nutrition.back', 'Back')}>
+          <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+        <h1 className="text-[18px] font-bold flex-1 truncate" style={{ color: 'var(--color-text-primary)' }}>
+          {t('nutrition.weeklyPlan', 'Plan Semanal')}
+        </h1>
+        {!isPastWeek && (
+          <button onClick={handleAutoplan}
+            className="px-4 py-2 rounded-xl text-[12px] font-bold active:scale-95 transition-all"
+            style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #B8962E 100%)', color: '#000', boxShadow: '0 2px 8px rgba(212,175,55,0.25)' }}>
+            <Sparkles size={12} className="inline mr-1.5" style={{ verticalAlign: '-1px' }} />
+            {t('nutrition.autoPlan', 'Auto-plan')}
+          </button>
+        )}
+      </div>
+
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+
+      {/* Week Navigation */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
+        <button onClick={() => setWeekOffset(o => o - 1)}
+          className="flex items-center gap-1 text-[11px] font-semibold active:scale-90 transition-all"
+          style={{ color: 'var(--color-accent)' }}>
+          <ChevronLeft size={14} />
+          {t('nutrition.previousWeek')}
+        </button>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+          {(() => {
+            const s = new Date(weekDates[0] + 'T12:00:00');
+            const e = new Date(weekDates[6] + 'T12:00:00');
+            const fmt = (d) => d.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
+            return `${fmt(s)} - ${fmt(e)}`;
+          })()}
+        </span>
+        <button onClick={() => setWeekOffset(o => o + 1)}
+          className="flex items-center gap-1 text-[11px] font-semibold active:scale-90 transition-all"
+          style={{ color: 'var(--color-accent)' }}>
+          {t('nutrition.nextWeek')}
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {/* Past week read-only banner */}
+      {isPastWeek && (
+        <div className="mx-4 mt-2 px-4 py-2.5 rounded-xl text-center text-[11px] font-medium"
+          style={{ background: 'rgba(245,158,11,0.06)', color: 'var(--color-warning)', border: '1px solid rgba(245,158,11,0.12)' }}>
+          {t('nutrition.pastWeekReadOnly')}
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-center text-[12px] font-semibold animate-pulse"
+          style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--color-success)', border: '1px solid rgba(16,185,129,0.2)' }}>
+          {toast}
+        </div>
+      )}
+
+      {/* Day cards */}
+      <div className="px-4 py-4 space-y-4 pb-20">
+        {weekDates.map((date) => {
+          const dayData = plan[date] || {};
+          const dayCal = PLANNER_SLOT_KEYS.reduce((s, k) => s + (dayData[k]?.calories || 0), 0);
+          const dayP = PLANNER_SLOT_KEYS.reduce((s, k) => s + (dayData[k]?.protein || 0), 0);
+          const dayC = PLANNER_SLOT_KEYS.reduce((s, k) => s + (dayData[k]?.carbs || 0), 0);
+          const dayF = PLANNER_SLOT_KEYS.reduce((s, k) => s + (dayData[k]?.fat || 0), 0);
+          const hasMeals = PLANNER_SLOT_KEYS.some(k => dayData[k]);
+          const today = isToday(date);
+
+          return (
+            <div key={date} className="rounded-[18px] overflow-hidden"
+              style={{
+                background: 'var(--color-bg-card)',
+                border: today ? '1.5px solid rgba(212,175,55,0.3)' : '1px solid var(--color-border-subtle))',
+                boxShadow: today ? '0 0 16px rgba(212,175,55,0.08)' : '0 2px 8px rgba(0,0,0,0.1)',
+              }}>
+              {/* Day header */}
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: today ? 'rgba(212,175,55,0.12)' : 'var(--color-surface-hover))' }}>
+                    <span className="text-[13px] font-black tabular-nums" style={{ color: today ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                      {getDateLabel(date)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[13px] font-bold" style={{ color: today ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                      {getDayLabel(date)}
+                    </span>
+                    {today && (
+                      <span className="ml-2 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(212,175,55,0.12)', color: 'var(--color-accent)' }}>
+                        {t('nutrition.today', 'Today')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Meal slots */}
+              <div className="px-4 pb-3 space-y-2">
+                {PLANNER_SLOT_KEYS.map((slot, si) => {
+                  const meal = dayData[slot];
+                  const slotColors = ['#F97316', '#F59E0B', '#8B5CF6'];
+                  const slotColor = slotColors[si];
+                  const isRemoving = removingSlot === `${date}-${slot}`;
+
+                  return (
+                    <div key={slot} className="relative">
+                      <button
+                        onClick={() => handleTapSlot(date, slot, meal)}
+                        onContextMenu={(e) => { if (meal && !isPastWeek) { e.preventDefault(); setRemovingSlot(`${date}-${slot}`); } }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left transition-all active:scale-[0.98]"
+                        style={{
+                          background: meal ? 'var(--color-surface-hover))' : 'transparent',
+                          border: meal ? '1px solid var(--color-border-subtle))' : '1.5px dashed var(--color-border-subtle))',
+                        }}>
+                        {meal ? (
+                          <>
+                            <img src={foodImageUrl(meal.image)} alt="" className="w-9 h-9 rounded-[8px] object-cover flex-shrink-0" style={{ background: 'var(--color-bg-input)' }} loading="lazy" />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: slotColor }}>{t(`nutrition.meals.${slot}`)}</span>
+                              <p className="text-[12px] font-semibold truncate mt-0.5" style={{ color: 'var(--color-text-primary)' }}>{mealTitle(meal)}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[9px] font-medium tabular-nums" style={{ color: '#F59E0B99' }}>{meal.calories} cal</span>
+                                <span className="text-[7px]" style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span className="text-[9px] font-medium tabular-nums" style={{ color: '#10B98199' }}>{meal.protein}g P</span>
+                                <span className="text-[7px]" style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span className="text-[9px] font-medium tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{meal.carbs ?? 0}g C</span>
+                                <span className="text-[7px]" style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span className="text-[9px] font-medium tabular-nums" style={{ color: '#A78BFA99' }}>{meal.fat ?? 0}g F</span>
+                              </div>
+                            </div>
+                            {!isPastWeek && (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleRemoveMeal(date, slot); }}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center active:scale-90 transition-all"
+                                  style={{ background: 'rgba(239,68,68,0.08)' }}
+                                  aria-label={t('nutrition.remove', 'Remove')}
+                                >
+                                  <X size={11} className="text-[#EF4444]" />
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-9 h-9 rounded-[8px] flex items-center justify-center" style={{ background: `${slotColor}10` }}>
+                              <Plus size={14} style={{ color: `${slotColor}80` }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: slotColor }}>{t(`nutrition.meals.${slot}`)}</span>
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                                {t('nutrition.tapToAdd', 'Tap to add')}
+                              </p>
+                            </div>
+                          </>
+                        )}
+                      </button>
+                      {/* Remove overlay */}
+                      {isRemoving && meal && (
+                        <div className="absolute inset-0 flex items-center justify-end pr-3 rounded-[12px]"
+                          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                          <button onClick={() => handleRemoveMeal(date, slot)}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold active:scale-90 transition-all"
+                            style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--color-danger)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                            <X size={12} className="inline mr-1" />{t('nutrition.remove', 'Remove')}
+                          </button>
+                          <button onClick={() => setRemovingSlot(null)}
+                            className="ml-2 px-3 py-1.5 rounded-lg text-[11px] font-bold"
+                            style={{ color: 'var(--color-text-muted)' }}>
+                            {t('nutrition.cancel', 'Cancel')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Day macro totals */}
+              {hasMeals && (
+                <div className="px-4 pb-3.5 pt-1.5" style={{ borderTop: '1px solid var(--color-border-subtle))' }}>
+                  {/* Total row */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.total', 'Total')}</span>
+                    <div className="flex items-center gap-2.5 text-[9px] font-semibold tabular-nums">
+                      <span style={{ color: getMacroColor(dayCal, calTarget) }}>{dayCal} cal</span>
+                      <span style={{ color: getMacroColor(dayP, proteinTarget) }}>{dayP}g P</span>
+                      <span style={{ color: getMacroColor(dayC, carbsTarget) }}>{dayC}g C</span>
+                      <span style={{ color: getMacroColor(dayF, fatTarget) }}>{dayF}g F</span>
+                    </div>
+                  </div>
+                  {/* Remaining row */}
+                  {(() => {
+                    const calRemaining = calTarget - dayCal;
+                    const pRemaining = proteinTarget - dayP;
+                    const cRemaining = carbsTarget - dayC;
+                    const fRemaining = fatTarget - dayF;
+                    const hasEmptySlots = PLANNER_SLOT_KEYS.some(k => !dayData[k]);
+                    if (calRemaining <= 0 && pRemaining <= 0) return null;
+                    return (
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-warning)' }}>{t('nutrition.remaining', 'Remaining')}</span>
+                        <div className="flex items-center gap-2.5 text-[9px] font-medium tabular-nums">
+                          <span style={{ color: 'var(--color-warning)' }}>{Math.round(Math.max(0, calRemaining))} cal</span>
+                          <span style={{ color: 'var(--color-success)' }}>{Math.round(Math.max(0, pRemaining))}g P</span>
+                          <span style={{ color: '#FBBF24' }}>{Math.round(Math.max(0, cRemaining))}g C</span>
+                          <span style={{ color: '#F97316' }}>{Math.round(Math.max(0, fRemaining))}g F</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* Complete button */}
+                  {(() => {
+                    const hasEmptySlots = PLANNER_SLOT_KEYS.some(k => !dayData[k]);
+                    if (!hasEmptySlots || isPastWeek) return null;
+                    return (
+                      <div className="flex justify-end mt-2">
+                        <button onClick={() => handleCompleteDay(date)}
+                          className="text-[10px] font-bold px-2.5 py-1 rounded-lg active:scale-90 transition-all"
+                          style={{ background: 'rgba(212,175,55,0.1)', color: 'var(--color-accent)', border: '1px solid rgba(212,175,55,0.2)' }}>
+                          {t('nutrition.complete')}
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      </div>{/* end scrollable content area */}
+    </div>
+  );
+
+  return content;
+};
+
+// Helper: count planned days this week
+const countPlannedDays = (userId) => {
+  try {
+    const ws = getWeekStartDate();
+    // Try new week-specific key first
+    let raw = localStorage.getItem(`meal_plan_${userId || 'anon'}_${ws}`);
+    if (!raw) {
+      // Fallback: legacy key
+      raw = localStorage.getItem(`meal_plan_${userId || 'anon'}`);
+    }
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw);
+    if (parsed.weekStart !== ws) return 0;
+    const days = parsed.days || {};
+    return Object.values(days).filter(d => PLANNER_SLOT_KEYS.some(k => d[k])).length;
+  } catch { return 0; }
+};
+
+// ── HOME VIEW ───────────────────────────────────────────────
+const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId }) => {
+  const { t, i18n } = useTranslation('pages');
+  const lang = i18n.language || 'en';
+
+  const [showPlanner, setShowPlanner] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [plannedDays, setPlannedDays] = useState(() => countPlannedDays(userId));
+  const [compliancePct, setCompliancePct] = useState(0);
+  const [workoutBurn, setWorkoutBurn] = useState(0);
+
+  // Fetch today's workout calorie burn
+  useEffect(() => {
+    if (!userId) return;
+    const fetchBurn = async () => {
+      const todayStart = todayStr() + 'T00:00:00';
+      const { data } = await supabase
+        .from('workout_sessions')
+        .select('duration_seconds')
+        .eq('profile_id', userId)
+        .eq('status', 'completed')
+        .gte('completed_at', todayStart);
+      if (data && data.length > 0) {
+        const totalSeconds = data.reduce((s, r) => s + (r.duration_seconds || 0), 0);
+        setWorkoutBurn(Math.round((totalSeconds / 60) * 7)); // 7 cal/min average
+      }
+    };
+    fetchBurn();
+  }, [userId]);
+
+  // Adjusted targets including workout burn
+  const adjustedCalTarget = (targets?.daily_calories || 2000) + workoutBurn;
+  const adjustedProteinTarget = (targets?.daily_protein_g || 150) + Math.round(workoutBurn * 0.4 / 4);
+  const adjustedCarbsTarget = (targets?.daily_carbs_g || 200) + Math.round(workoutBurn * 0.6 / 4);
+  const adjustedFatTarget = targets?.daily_fat_g || 65;
+
+  const calTarget = adjustedCalTarget;
   const caloriesLeft = Math.max(0, calTarget - todayTotals.calories);
   const caloriesOver = todayTotals.calories > calTarget;
+
+  // Recalculate planned days when planner closes
+  useEffect(() => {
+    if (!showPlanner) setPlannedDays(countPlannedDays(userId));
+  }, [showPlanner, userId]);
+
+  // Calculate compliance from weekly data
+  useEffect(() => {
+    if (!userId) return;
+    const fetchCompliance = async () => {
+      const dates = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return toLocalDateStr(d);
+      });
+      const { data: logs } = await supabase
+        .from('food_logs')
+        .select('log_date, calories, protein_g, carbs_g, fat_g')
+        .eq('profile_id', userId)
+        .gte('log_date', dates[0])
+        .lte('log_date', dates[6]);
+      if (!logs) return;
+      const byDate = {};
+      for (const date of dates) byDate[date] = { calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
+      for (const log of logs) {
+        const d = byDate[log.log_date];
+        if (d) { d.calories += log.calories || 0; d.protein += log.protein_g || 0; d.carbs += log.carbs_g || 0; d.fat += log.fat_g || 0; d.meals++; }
+      }
+      const cTarget = targets?.daily_calories || 2000;
+      const pTarget = targets?.daily_protein_g || 150;
+      const cbTarget = targets?.daily_carbs_g || 200;
+      const fTarget = targets?.daily_fat_g || 65;
+      const tracked = dates.filter(d => byDate[d].meals > 0);
+      const compliant = tracked.filter(d => {
+        const day = byDate[d];
+        return Math.abs(day.calories - cTarget) / cTarget <= 0.15
+          && Math.abs(day.protein - pTarget) / pTarget <= 0.15
+          && Math.abs(day.carbs - cbTarget) / cbTarget <= 0.15
+          && Math.abs(day.fat - fTarget) / fTarget <= 0.15;
+      }).length;
+      setCompliancePct(tracked.length > 0 ? Math.round((compliant / tracked.length) * 100) : 0);
+    };
+    fetchCompliance();
+  }, [userId, targets]);
 
   const mealGroups = MEAL_TYPES.reduce((acc, mt) => {
     acc[mt.key] = todayLogs.filter(l => l.meal_type === mt.key);
     return acc;
   }, {});
 
+  // Weekly planner overlay
+  const plannerOverlay = showPlanner && (
+    <WeeklyMealPlanner
+      onClose={() => setShowPlanner(false)}
+      targets={targets}
+      onOpenRecipe={onOpenRecipe}
+      onOpenSearch={onOpenSearch}
+      userId={userId}
+      embedded={embedded}
+    />
+  );
+
   return (
-    <div className="pb-36">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-6">
-        <div>
-          <h1 className="text-[28px] font-bold tracking-tight leading-none" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.title')}</h1>
-          <p className="text-[12px] text-[#4B5563] mt-1 font-medium">{format(new Date(), 'EEEE, MMM d')}</p>
+    <div className={embedded ? 'pb-4' : 'pb-28 md:pb-12'}>
+      {/* Weekly Planner Overlay */}
+      {showPlanner && embedded && createPortal(
+        <div className="fixed inset-0 z-[60] overflow-y-auto" style={{ background: 'var(--color-bg-primary)', paddingTop: 'env(safe-area-inset-top)' }}>
+          {plannerOverlay}
+        </div>,
+        document.body
+      )}
+      {showPlanner && !embedded && plannerOverlay}
+
+      {/* Header — only show on standalone page */}
+      {!embedded && (
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div>
+            <h1 className="text-[22px] font-bold tracking-tight leading-none truncate" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.title')}</h1>
+            <p className="text-[12px] text-[#9CA3AF] mt-1 font-medium">{format(new Date(), 'EEEE, MMM d')}</p>
+          </div>
         </div>
-        <button onClick={openEdit} className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center active:scale-90 transition-all">
-          <Edit2 size={15} className="text-[#6B7280]" />
+      )}
+
+      {/* ── Top Row — 3 buttons ── */}
+      <div className="flex items-center gap-2 px-4 pt-2 pb-4">
+        {/* Plan Semanal */}
+        <button onClick={() => setShowPlanner(true)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-bold active:scale-95 transition-all"
+          style={{
+            background: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border-subtle))',
+            color: 'var(--color-text-primary)',
+          }}>
+          <Calendar size={13} style={{ color: 'var(--color-accent)' }} />
+          <span style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.weeklyPlanBtn', 'Plan')}</span>
+          <span className="text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md ml-0.5"
+            style={{ background: 'rgba(212,175,55,0.12)', color: 'var(--color-accent)' }}>
+            {plannedDays}/7
+          </span>
+        </button>
+
+        {/* Resumen Semanal */}
+        <button onClick={() => setShowSummary(s => !s)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-bold active:scale-95 transition-all"
+          style={{
+            background: showSummary ? 'rgba(212,175,55,0.08)' : 'var(--color-bg-card)',
+            border: showSummary ? '1px solid rgba(212,175,55,0.2)' : '1px solid var(--color-border-subtle))',
+            color: 'var(--color-text-primary)',
+          }}>
+          <BarChart2 size={13} style={{ color: 'var(--color-success)' }} />
+          <span style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.summaryBtn', 'Summary')}</span>
+          <span className="text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md ml-0.5"
+            style={{ background: compliancePct >= 70 ? 'rgba(16,185,129,0.12)' : compliancePct >= 40 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)', color: compliancePct >= 70 ? 'var(--color-success)' : compliancePct >= 40 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
+            {compliancePct}%
+          </span>
+        </button>
+
+        {/* Edit targets */}
+        <button onClick={openEdit}
+          className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 transition-all flex-shrink-0"
+          style={{
+            background: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border-subtle))',
+          }}
+          aria-label={t('nutrition.edit', 'Edit')}>
+          <Edit2 size={14} style={{ color: 'var(--color-text-muted)' }} />
         </button>
       </div>
 
+      {/* ── Weekly Summary (collapsed by default, toggled by button) ── */}
+      {showSummary && (
+        <WeeklyNutritionSummary userId={userId} targets={targets} startExpanded />
+      )}
+
       {/* ── Calorie Ring + Macro Rings ── */}
-      <div className="mx-5 mb-7 rounded-[20px] overflow-hidden"
+      <div className="mx-4 mb-7 rounded-[20px] overflow-hidden"
         style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
         {/* Calorie ring hero */}
         <div className="flex flex-col items-center pt-8 pb-5">
           <MacroRing
             value={todayTotals.calories}
             max={calTarget}
-            color={caloriesOver ? '#EF4444' : '#F59E0B'}
+            color={caloriesOver ? 'var(--color-danger)' : 'var(--color-warning)'}
             size={148}
             strokeWidth={10}
             label=""
             unit="kcal"
             hero
           />
-          <p className="text-[11px] text-[#4B5563] mt-3 font-medium tracking-wide">
+          <p className="text-[11px] text-[#9CA3AF] mt-3 font-medium tracking-wide">
             {caloriesOver
               ? <span className="text-[#EF4444] font-semibold">{Math.round(todayTotals.calories - calTarget)} {t('nutrition.overTarget', 'over target')}</span>
               : <><span className="text-[#9CA3AF] font-semibold">{Math.round(caloriesLeft)}</span> {t('nutrition.remainingOf', 'remaining of')} <span className="text-[#6B7280]">{calTarget}</span></>
@@ -1199,9 +2688,9 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
 
         {/* Macro mini-rings row */}
         <div className="flex justify-around px-5 pb-6 pt-5 mx-4 border-t border-white/[0.04]">
-          <MacroRing value={todayTotals.protein} max={targets?.daily_protein_g || 150} color="#10B981" size={66} strokeWidth={4.5} label={t('nutrition.protein')} unit="g" />
-          <MacroRing value={todayTotals.carbs}   max={targets?.daily_carbs_g   || 200} color="#60A5FA" size={66} strokeWidth={4.5} label={t('nutrition.carbs')}   unit="g" />
-          <MacroRing value={todayTotals.fat}     max={targets?.daily_fat_g     || 65}  color="#A78BFA" size={66} strokeWidth={4.5} label={t('nutrition.fat')}     unit="g" />
+          <MacroRing value={todayTotals.protein} max={adjustedProteinTarget} color="var(--color-success)" size={66} strokeWidth={4.5} label={t('nutrition.protein')} unit="g" />
+          <MacroRing value={todayTotals.carbs}   max={adjustedCarbsTarget}   color="var(--color-blue-soft)" size={66} strokeWidth={4.5} label={t('nutrition.carbs')}   unit="g" />
+          <MacroRing value={todayTotals.fat}     max={adjustedFatTarget}     color="#A78BFA" size={66} strokeWidth={4.5} label={t('nutrition.fat')}     unit="g" />
         </div>
 
         {/* Log food CTA */}
@@ -1214,8 +2703,30 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         </div>
       </div>
 
+      {/* ── Workout Calorie Burn ── */}
+      {workoutBurn > 0 && (
+        <div className="mx-4 mb-5 px-4 py-3 rounded-[14px] flex items-center gap-2.5"
+          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
+          <span className="text-[16px]">{'\u{1F525}'}</span>
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--color-danger)' }}>
+            {t('nutrition.burnFromWorkout', { cal: workoutBurn })}
+          </span>
+        </div>
+      )}
+
+      {/* ── Sugerencia del Día — always visible ── */}
+      <DailySuggestion
+        targets={targets}
+        todayTotals={todayTotals}
+        onOpenRecipe={onOpenRecipe}
+        lang={lang}
+        t={t}
+        userId={userId}
+        workoutBurn={workoutBurn}
+      />
+
       {/* ── Today's Meals ── */}
-      <div className="mb-8 px-5">
+      <div className="mb-8 px-4">
         <p className="text-[10px] font-extrabold text-[#525C6B] uppercase tracking-[0.18em] mb-5">{t('nutrition.todaysMeals')}</p>
         {MEAL_TYPES.map((mt, idx) => {
           const logs = mealGroups[mt.key];
@@ -1229,7 +2740,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                   style={{ backgroundColor: `${mt.color}12`, boxShadow: `0 0 8px ${mt.color}08` }}>
                   <Icon size={11} style={{ color: mt.color }} />
                 </div>
-                <span className="text-[12px] font-bold text-[#D1D5DB] capitalize tracking-wide">{t(mt.labelKey)}</span>
+                <span className="text-[12px] font-bold capitalize tracking-wide" style={{ color: 'var(--color-text-primary)' }}>{t(mt.labelKey)}</span>
                 {logs.length > 0 && (
                   <span className="text-[10px] font-semibold ml-auto tabular-nums" style={{ color: `${mt.color}99` }}>{mealCals} cal</span>
                 )}
@@ -1258,7 +2769,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                         {logImg ? (
                           <div className="relative flex-shrink-0">
                             <img src={logImg} alt="" className="w-10 h-10 rounded-[11px] object-cover bg-[#1E293B]"
-                              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }} />
+                              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }} loading="lazy" />
                           </div>
                         ) : (
                           <div className="w-10 h-10 rounded-[11px] flex-shrink-0 flex items-center justify-center"
@@ -1267,17 +2778,18 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold text-[#F1F3F5] truncate leading-snug">{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}</p>
+                          <p className="text-[13px] font-semibold truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}</p>
                           <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[10px] font-semibold tabular-nums" style={{ color: '#F59E0B99' }}>{log.calories} cal</span>
-                            <span className="text-[8px] text-[#2A3040]">·</span>
-                            <span className="text-[10px] font-medium text-[#4B5563] tabular-nums">{log.protein_g}g P</span>
-                            {log.carbs_g > 0 && <>
-                              <span className="text-[8px] text-[#2A3040]">·</span>
-                              <span className="text-[10px] font-medium text-[#3B4252] tabular-nums">{log.carbs_g}g C</span>
-                            </>}
+                            <span className="text-[10px] font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{log.calories ?? 0} cal</span>
+                            <span className="text-[8px]" style={{ color: 'var(--color-text-subtle)' }}>·</span>
+                            <span className="text-[10px] font-medium tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{log.protein_g ?? 0}g P</span>
+                            <span className="text-[8px]" style={{ color: 'var(--color-text-subtle)' }}>·</span>
+                            <span className="text-[10px] font-medium tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{log.carbs_g ?? 0}g C</span>
+                            <span className="text-[8px]" style={{ color: 'var(--color-text-subtle)' }}>·</span>
+                            <span className="text-[10px] font-medium tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{log.fat_g ?? 0}g F</span>
                           </div>
                         </div>
+                        <NutriScoreBadge score={nutriScore(log.calories, log.protein_g, log.carbs_g, log.fat_g, log.serving_grams || 100)} />
                         <ChevronRight size={14} className="text-[#2A3040] flex-shrink-0 ml-1" />
                       </button>
                     );
@@ -1290,7 +2802,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       </div>
 
       {/* ── Quick Actions ── */}
-      <div className="px-5 grid grid-cols-3 gap-3 mb-4">
+      <div className="px-4 grid grid-cols-3 gap-3 mb-4">
         {[
           { view: 'discover', icon: UtensilsCrossed, color: '#D4AF37', label: t('nutrition.recipes') },
           { view: 'saved',    icon: Bookmark,         color: '#F59E0B', label: t('nutrition.savedRecipes') },
@@ -1365,21 +2877,21 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
   }, [selectedIngredients, activeFilter]);
 
   return (
-    <div className="pb-36" >
+    <div className="pb-28 md:pb-12" >
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-4 pb-5">
-        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
+      <div className="flex items-center gap-3 px-4 pt-4 pb-5">
+        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Go back">
           <ChevronLeft size={18} className="text-[#9CA3AF]" />
         </button>
-        <div>
-          <h1 className="text-[20px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.cookWithWhatYouHave')}</h1>
-          <p className="text-[11px] text-[#4B5563] mt-0.5">{t('nutrition.selectIngredients')}</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[20px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.cookWithWhatYouHave')}</h1>
+          <p className="text-[11px] text-[#9CA3AF] mt-0.5">{t('nutrition.selectIngredients')}</p>
         </div>
       </div>
 
       {/* Selected ingredients pills */}
       {selectedIngredients.length > 0 && (
-        <div className="px-5 mb-4">
+        <div className="px-4 mb-4">
           <div className="flex gap-2 overflow-x-auto scroll-smooth scrollbar-none pb-1">
             {selectedIngredients.map(id => {
               const item = allIngredients.find(i => i.id === id);
@@ -1395,22 +2907,23 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
       )}
 
       {/* Ingredient search + filter button */}
-      <div className="px-5 mb-4">
+      <div className="px-4 mb-4">
         <div className="relative flex gap-2">
           <div className="relative flex-1">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
             <input type="text" value={ingredientQuery}
               onChange={e => { setIngredientQuery(e.target.value); }}
               placeholder={t('nutrition.searchIngredients', 'Search ingredients...')}
-              className="w-full bg-[#0F172A] border border-white/[0.06] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/30 transition-colors" />
+              className="w-full bg-[#0F172A] border border-white/[0.06] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/30 transition-colors" />
           </div>
           <button
             onClick={() => setShowRecipeFilters(true)}
-            className="relative flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95"
+            className="relative flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            aria-label="Filter recipes"
             style={{
               background: activeFilter !== 'all' ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'var(--color-surface-hover)',
               border: `1px solid ${activeFilter !== 'all' ? 'color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'var(--color-border-subtle)'}`,
-              color: activeFilter !== 'all' ? 'var(--color-accent)' : '#6B7280',
+              color: activeFilter !== 'all' ? 'var(--color-accent)' : 'var(--color-text-subtle)',
             }}
           >
             <SlidersHorizontal size={16} />
@@ -1423,10 +2936,10 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
 
       {/* Search results (inline, when typing) */}
       {ingredientQuery.length > 0 && (
-        <div className="px-5 mb-4">
+        <div className="px-4 mb-4">
           <div className="flex flex-wrap gap-2">
             {filteredForQuery.length === 0 ? (
-              <p className="text-[12px] text-[#4B5563]">{t('nutrition.noIngredientsMatch', 'No ingredients match')} "{ingredientQuery}"</p>
+              <p className="text-[12px] text-[#9CA3AF]">{t('nutrition.noIngredientsMatch', 'No ingredients match')} "{ingredientQuery}"</p>
             ) : filteredForQuery.map(item => {
               const selected = selectedIngredients.includes(item.id);
               return (
@@ -1448,7 +2961,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
 
       {/* Selected ingredients summary + CTA */}
       {selectedIngredients.length > 0 && (
-        <div className="px-5 mb-5">
+        <div className="px-4 mb-5">
           <div className="flex flex-wrap gap-1.5 mb-3">
             {selectedIngredients.map(id => {
               const allItems = Object.values(INGREDIENT_CATEGORIES || {}).flat();
@@ -1509,7 +3022,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -1582,14 +3095,14 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
 
       {/* Recipe Results */}
       {showResults && (
-        <div className="px-5">
-          <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-widest mb-4">
+        <div className="px-4">
+          <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-4">
             {matchedRecipes.length} {matchedRecipes.length !== 1 ? t('nutrition.recipesPlural', 'recipes') : t('nutrition.recipeSingular', 'recipe')} {t('nutrition.found', 'found')}
           </p>
           {matchedRecipes.length === 0 ? (
             <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-6 text-center">
               <p className="text-[14px] font-semibold text-[#6B7280] mb-1">{t('nutrition.noMatchesYet', 'No matches yet')}</p>
-              <p className="text-[12px] text-[#4B5563]">{t('nutrition.tryAddingMore', 'Try adding more ingredients or changing the filter.')}</p>
+              <p className="text-[12px] text-[#9CA3AF]">{t('nutrition.tryAddingMore', 'Try adding more ingredients or changing the filter.')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1614,12 +3127,12 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                       <div className="flex items-center gap-2.5">
                         <span className="text-[11px] font-semibold text-[#F59E0B]">{recipe.calories} cal</span>
                         <span className="text-[11px] font-bold text-[#10B981]">{recipe.protein}g P</span>
-                        <span className="flex items-center gap-0.5 text-[10px] text-[#4B5563]"><Clock size={9} />{recipe.prepTime}m</span>
+                        <span className="flex items-center gap-0.5 text-[10px] text-[#9CA3AF]"><Clock size={9} />{recipe.prepTime}m</span>
                       </div>
                     </div>
                     <button onClick={e => { e.stopPropagation(); onSave(recipe.id); }}
                       className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/[0.04] flex-shrink-0">
-                      <Bookmark size={13} className={savedIds.has(recipe.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-[#4B5563]'} />
+                      <Bookmark size={13} className={savedIds.has(recipe.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-[#9CA3AF]'} />
                     </button>
                   </button>
                 );
@@ -1630,18 +3143,18 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
       )}
 
       {selectedIngredients.length === 0 && (
-        <div className="px-5 mt-2">
+        <div className="px-4 mt-2">
           <div className="rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-5 text-center">
             <p className="text-[30px] mb-2">🥘</p>
             <p className="text-[14px] font-semibold text-[#6B7280]">{t('nutrition.pickIngredients', 'Pick your ingredients above')}</p>
-            <p className="text-[12px] text-[#4B5563] mt-1">{t('nutrition.wellShowRecipes', "We'll show you recipes you can make right now.")}</p>
+            <p className="text-[12px] text-[#9CA3AF] mt-1">{t('nutrition.wellShowRecipes', "We'll show you recipes you can make right now.")}</p>
           </div>
         </div>
       )}
 
       {/* ── Browse by Category ── */}
       <div className="mt-8 mb-2">
-        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest px-5 mb-5">{t('nutrition.browseRecipes', 'Browse Recipes')}</p>
+        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest px-4 mb-5">{t('nutrition.browseRecipes', 'Browse Recipes')}</p>
         {CATEGORIES.map(cat => (
           <CategoryRow key={cat.id} category={cat} recipes={RECIPES} savedIds={savedIds} onSave={onSave} onOpen={onOpenRecipe} lang={lang} />
         ))}
@@ -1649,8 +3162,8 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
 
       {/* ── Weekly Collections ── */}
       <div className="mb-7">
-        <p className="text-[11px] font-bold text-[#4B5563] uppercase tracking-widest px-5 mb-4">{t('nutrition.weeklyCollections', 'Weekly Collections')}</p>
-        <div className="px-5 space-y-3">
+        <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest px-4 mb-4">{t('nutrition.weeklyCollections', 'Weekly Collections')}</p>
+        <div className="px-4 space-y-3">
           {WEEKLY_COLLECTIONS.map(col => {
             const colRecipes = RECIPES.filter(r => col.recipeIds.includes(r.id));
             return (
@@ -1660,7 +3173,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 pr-3">
                       <h4 className="text-[14px] font-bold text-[#E5E7EB] leading-snug">{t(`nutrition_ingredients.weeklyCollections.${col.id}_title`, col.title)}</h4>
-                      <p className="text-[11px] text-[#4B5563] mt-0.5">{t(`nutrition_ingredients.weeklyCollections.${col.id}_subtitle`, col.subtitle)}</p>
+                      <p className="text-[11px] text-[#9CA3AF] mt-0.5">{t(`nutrition_ingredients.weeklyCollections.${col.id}_subtitle`, col.subtitle)}</p>
                     </div>
                     <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${col.accent}18` }}>
                       <span className="text-[11px] font-black" style={{ color: col.accent }}>{colRecipes.length}</span>
@@ -1694,29 +3207,29 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
   const savedRecipes = RECIPES.filter(r => savedIds.has(r.id));
 
   return (
-    <div className="pb-36" >
-      <div className="flex items-center gap-3 px-5 pt-4 pb-5">
-        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
+    <div className="pb-28 md:pb-12" >
+      <div className="flex items-center gap-3 px-4 pt-4 pb-5">
+        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Go back">
           <ChevronLeft size={18} className="text-[#9CA3AF]" />
         </button>
-        <div>
-          <h1 className="text-[20px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.savedRecipes')}</h1>
-          <p className="text-[11px] text-[#4B5563] mt-0.5">{savedRecipes.length} {t('nutrition.saved', 'saved')}</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[20px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.savedRecipes')}</h1>
+          <p className="text-[11px] text-[#9CA3AF] mt-0.5">{savedRecipes.length} {t('nutrition.saved', 'saved')}</p>
         </div>
       </div>
 
       {savedRecipes.length === 0 ? (
-        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
+        <div className="mx-4 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
           <Bookmark size={28} className="text-[#374151] mx-auto mb-3" />
           <p className="text-[15px] font-bold text-[#6B7280] mb-1">{t('nutrition.noSavedRecipes', 'No saved recipes yet')}</p>
-          <p className="text-[12px] text-[#4B5563] mb-4">{t('nutrition.tapBookmark', 'Tap the bookmark icon on any recipe to save it here.')}</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-4">{t('nutrition.tapBookmark', 'Tap the bookmark icon on any recipe to save it here.')}</p>
           <button onClick={() => setView('home')}
             className="px-5 py-2.5 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 text-[13px] font-semibold text-[#D4AF37]">
             {t('nutrition.browseRecipes', 'Browse Recipes')}
           </button>
         </div>
       ) : (
-        <div className="px-5">
+        <div className="px-4">
           <VirtualList
             height={Math.min(savedRecipes.length * 100, 600)}
             itemCount={savedRecipes.length}
@@ -1726,7 +3239,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
           >
             {({ index, style }) => {
               const recipe = savedRecipes[index];
-              const tagColor = TAG_COLORS[recipe.tag] || '#9CA3AF';
+              const tagColor = TAG_COLORS[recipe.tag] || 'var(--color-text-muted)';
               return (
                 <div style={style} className="pb-3">
                   <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
@@ -1742,11 +3255,12 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe }) => {
                       <div className="flex items-center gap-2.5">
                         <span className="text-[11px] font-semibold text-[#F59E0B]">{recipe.calories} cal</span>
                         <span className="text-[11px] font-bold text-[#10B981]">{recipe.protein}g P</span>
-                        <span className="flex items-center gap-0.5 text-[10px] text-[#4B5563]"><Clock size={9} />{recipe.prepTime}m</span>
+                        <span className="flex items-center gap-0.5 text-[10px] text-[#9CA3AF]"><Clock size={9} />{recipe.prepTime}m</span>
                       </div>
                     </div>
                     <button onClick={e => { e.stopPropagation(); onSave(recipe.id); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#D4AF37]/10 flex-shrink-0">
+                      className="min-w-[44px] min-h-[44px] w-8 h-8 flex items-center justify-center rounded-xl bg-[#D4AF37]/10 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      aria-label="Remove bookmark">
                       <Bookmark size={13} className="fill-[#D4AF37] text-[#D4AF37]" />
                     </button>
                   </button>
@@ -1776,60 +3290,62 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   const checkedCount = groceryList.filter(i => i.checked).length;
 
   return (
-    <div className="pb-36" >
-      <div className="flex items-center justify-between px-5 pt-4 pb-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center">
+    <div className="pb-28 md:pb-12" >
+      <div className="flex items-center justify-between px-4 pt-4 pb-5">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" aria-label="Go back">
             <ChevronLeft size={18} className="text-[#9CA3AF]" />
           </button>
-          <div>
-            <h1 className="text-[20px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.groceryList')}</h1>
-            <p className="text-[11px] text-[#4B5563] mt-0.5">{checkedCount}/{groceryList.length} {t('nutrition.checked', 'checked')}</p>
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.groceryList')}</h1>
+            <p className="text-[11px] text-[#9CA3AF] mt-0.5">{checkedCount}/{groceryList.length} {t('nutrition.checked', 'checked')}</p>
           </div>
         </div>
         {checkedCount > 0 && (
           <button onClick={onClearChecked}
-            className="text-[11px] font-semibold text-[#4B5563] hover:text-[#6B7280] transition-colors px-3 py-1.5 rounded-lg bg-white/[0.04]">
+            className="text-[11px] font-semibold text-[#9CA3AF] hover:text-[#6B7280] transition-colors px-3 py-1.5 rounded-lg bg-white/[0.04]">
             {t('nutrition.clearChecked', 'Clear checked')}
           </button>
         )}
       </div>
 
       {groceryList.length === 0 ? (
-        <div className="mx-5 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
+        <div className="mx-4 rounded-[18px] bg-[#0F172A] border border-white/[0.06] p-8 text-center">
           <ShoppingCart size={28} className="text-[#374151] mx-auto mb-3" />
           <p className="text-[15px] font-bold text-[#6B7280] mb-1">{t('nutrition.groceryListEmpty', 'Your grocery list is empty')}</p>
-          <p className="text-[12px] text-[#4B5563] mb-4">{t('nutrition.groceryListEmptyHint', 'Open a recipe and tap "Add to Grocery List" to get started.')}</p>
+          <p className="text-[12px] text-[#9CA3AF] mb-4">{t('nutrition.groceryListEmptyHint', 'Open a recipe and tap "Add to Grocery List" to get started.')}</p>
           <button onClick={() => setView('home')}
             className="px-5 py-2.5 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 text-[13px] font-semibold text-[#D4AF37]">
             {t('nutrition.browseRecipes', 'Browse Recipes')}
           </button>
         </div>
       ) : (
-        <div className="px-5 space-y-6">
+        <div className="px-4 space-y-6">
           {Object.entries(grouped).map(([category, items]) => (
             <div key={category}>
-              <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest mb-3">{category}</p>
+              <p className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-3">{category}</p>
               <div className="space-y-2">
                 {items.map(item => (
                   <div key={item.id}
                     className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-[#0F172A] border transition-all ${item.checked ? 'border-white/[0.03] opacity-50' : 'border-white/[0.06]'}`}>
                     <button onClick={() => onToggleItem(item.id)}
-                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
+                      className="flex-shrink-0 min-w-[44px] min-h-[44px] w-6 h-6 flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      aria-label={item.checked ? 'Uncheck item' : 'Check item'}>
                       {item.checked
                         ? <CheckCircle size={20} className="text-[#10B981]" />
                         : <Circle size={20} className="text-[#374151]" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-[13px] font-semibold transition-all ${item.checked ? 'line-through text-[#4B5563]' : 'text-[#E5E7EB]'}`}>
+                      <p className={`text-[13px] font-semibold transition-all ${item.checked ? 'line-through text-[#9CA3AF]' : 'text-[#E5E7EB]'}`}>
                         {item.label}
                       </p>
                       {item.fromRecipe && (
-                        <p className="text-[10px] text-[#4B5563] mt-0.5">{t('nutrition.forRecipe', 'For')}: {item.fromRecipe}</p>
+                        <p className="text-[10px] text-[#9CA3AF] mt-0.5">{t('nutrition.forRecipe', 'For')}: {item.fromRecipe}</p>
                       )}
                     </div>
                     <button onClick={() => onRemoveItem(item.id)}
-                      className="w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-40 hover:opacity-100 transition-opacity">
+                      className="min-w-[44px] min-h-[44px] w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-40 hover:opacity-100 transition-opacity focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      aria-label="Remove item">
                       <X size={12} className="text-[#6B7280]" />
                     </button>
                   </div>
@@ -1853,14 +3369,13 @@ const NutritionNav = ({ view, setView }) => {
     { id: 'grocery',  Icon: ShoppingCart, label: t('nutrition.navGrocery', 'Grocery') },
   ];
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-2xl" style={{ background: 'var(--color-nav-bg)', borderTop: '1px solid var(--color-border-subtle)' }}
-      style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
+    <div className="fixed bottom-0 left-0 right-0 z-40 backdrop-blur-2xl" style={{ background: 'var(--color-nav-bg)', borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
       <div className="flex mx-auto max-w-[480px]">
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setView(tab.id)}
-            className={`flex-1 flex flex-col items-center py-3 gap-1 transition-all ${view === tab.id ? 'text-[#D4AF37]' : 'text-[#374151]'}`}>
+            className={`flex-1 flex flex-col items-center py-3 gap-1 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${view === tab.id ? 'text-[#D4AF37]' : 'text-[#374151]'}`}>
             <tab.Icon size={20} className={view === tab.id ? 'stroke-[2.5]' : 'stroke-[1.5]'} />
-            <span className={`text-[10px] font-semibold ${view === tab.id ? 'text-[#D4AF37]' : 'text-[#4B5563]'}`}>{tab.label}</span>
+            <span className={`text-[10px] font-semibold ${view === tab.id ? 'text-[#D4AF37]' : 'text-[#9CA3AF]'}`}>{tab.label}</span>
           </button>
         ))}
       </div>
@@ -1869,7 +3384,7 @@ const NutritionNav = ({ view, setView }) => {
 };
 
 // ── MAIN ─────────────────────────────────────────────────────
-export default function Nutrition() {
+export default function Nutrition({ embedded = false }) {
   const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
@@ -1898,6 +3413,10 @@ export default function Nutrition() {
   const [photoResult, setPhotoResult] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [barcodeScanning, setBarcodeScanning] = useState(false);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [barcodeProduct, setBarcodeProduct] = useState(null);
+  const [barcodeError, setBarcodeError] = useState('');
 
   // Android-only: resume pending photo analysis after WebView restart.
   // On Samsung Android, the OS destroys the WebView when the camera opens.
@@ -1957,6 +3476,7 @@ export default function Nutrition() {
   // Recipe-level state
   const [openRecipe, setOpenRecipe] = useState(null);
   const [openCollection, setOpenCollection] = useState(null);
+  const [collectionContext, setCollectionContext] = useState(null);
   const [savedRecipeIds, setSavedRecipeIds] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('saved_recipes') || '[]')); } catch { return new Set(); }
   });
@@ -2002,7 +3522,7 @@ export default function Nutrition() {
         const catEntry = Object.entries(INGREDIENT_CATEGORIES || {}).find(([, items]) => items.some(i => i.id === ing));
         return {
           id: `${ing}_${recipe.id}`,
-          label: match ? t(`nutrition_ingredients.items.${match.id}`, match.label) : ing.replace(/_/g, ' '),
+          label: t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' ')),
           category: catEntry ? t(`nutrition_ingredients.categoryNames.${catEntry[0].toLowerCase()}`, catEntry[0]) : t('nutrition.other', 'Other'),
           fromRecipe: recipeTitle,
           checked: false,
@@ -2096,6 +3616,88 @@ export default function Nutrition() {
     }
     return t;
   }, [todayLogs]);
+
+  // ── Barcode scanning ──
+  const handleBarcodeRequest = useCallback(async (signal) => {
+    if (signal === '__open_scanner__') {
+      setSearchOpen(false);
+      setBarcodeError('');
+      setBarcodeProduct(null);
+
+      const processBarcode = async (rawValue) => {
+        setBarcodeScanning(false);
+        setBarcodeLoading(true);
+        try {
+          const product = await lookupBarcode(rawValue, lang);
+          if (!product) {
+            setBarcodeError(t('nutrition.productNotFound'));
+          } else {
+            setBarcodeProduct(product);
+          }
+        } catch (err) {
+          setBarcodeError(err.message === 'network' ? t('nutrition.networkError') : t('nutrition.barcodeError'));
+        } finally {
+          setBarcodeLoading(false);
+        }
+      };
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          setBarcodeScanning(true);
+          const { BarcodeScanner, BarcodeFormat } = await import('@capacitor-mlkit/barcode-scanning');
+          const { camera } = await BarcodeScanner.requestPermissions();
+          if (camera !== 'granted') { setBarcodeError(t('nutrition.barcodeError')); setBarcodeScanning(false); return; }
+          const { barcodes } = await BarcodeScanner.scan({
+            formats: [BarcodeFormat.Ean13, BarcodeFormat.Ean8, BarcodeFormat.UpcA, BarcodeFormat.UpcE],
+          });
+          if (barcodes.length > 0 && barcodes[0].rawValue) {
+            await processBarcode(barcodes[0].rawValue);
+          } else {
+            setBarcodeScanning(false);
+          }
+        } catch (err) {
+          setBarcodeScanning(false);
+          if (!err?.message?.includes('cancel')) setBarcodeError(t('nutrition.barcodeError'));
+        }
+      } else {
+        // Web fallback with html5-qrcode
+        setBarcodeScanning(true);
+        try {
+          const { Html5Qrcode } = await import('html5-qrcode');
+          await new Promise(r => setTimeout(r, 150));
+          const el = document.getElementById('barcode-web-reader');
+          if (!el) { setBarcodeScanning(false); return; }
+          const html5Qr = new Html5Qrcode('barcode-web-reader', { verbose: false });
+          const qrboxW = Math.min(window.innerWidth * 0.7, 320);
+          await html5Qr.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: { width: Math.round(qrboxW), height: Math.round(qrboxW * 0.5) } },
+            async (decoded) => {
+              html5Qr.stop().catch(() => {});
+              await processBarcode(decoded);
+            },
+            () => {}
+          );
+          // Store ref for cleanup
+          window.__barcodeScannerRef = html5Qr;
+        } catch (err) {
+          setBarcodeScanning(false);
+          setBarcodeError(t('nutrition.barcodeError'));
+        }
+      }
+    }
+  }, [t]);
+
+  const closeBarcodeScanner = useCallback(() => {
+    setBarcodeScanning(false);
+    setBarcodeLoading(false);
+    setBarcodeError('');
+    setBarcodeProduct(null);
+    if (window.__barcodeScannerRef) {
+      window.__barcodeScannerRef.stop().catch(() => {});
+      window.__barcodeScannerRef = null;
+    }
+  }, []);
 
   const handlePhotoCapture = async (file) => {
     setSearchOpen(false);
@@ -2333,7 +3935,7 @@ export default function Nutrition() {
   if (loading) {
     return (
       <>
-        <div className="min-h-screen bg-[#05070B] px-5 pt-6 pb-36">
+        <div className="min-h-screen bg-[#05070B] px-4 pt-6 pb-28 md:pb-12">
           <div className="mx-auto max-w-[480px] space-y-4">
             {/* Calorie card skeleton */}
             <div className="rounded-2xl bg-white/[0.04] p-5 space-y-3">
@@ -2382,8 +3984,9 @@ export default function Nutrition() {
 
   return (
     <FadeIn>
-    <div className="min-h-screen bg-[#05070B]">
-      <div className="mx-auto w-full max-w-[480px]">
+    <div className={embedded ? '' : 'min-h-screen bg-[#05070B]'}>
+      <div className={embedded ? '' : 'mx-auto w-full max-w-[480px] md:max-w-4xl'}>
+        {/* Home view always renders inline */}
         {view === 'home' && (
           <HomeView
             {...sharedProps}
@@ -2395,27 +3998,57 @@ export default function Nutrition() {
             onOpenLog={setDetailLog}
             setView={setView}
             openEdit={openEdit}
+            embedded={embedded}
+            userId={user?.id}
           />
         )}
-        {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
-        {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
-        {view === 'grocery'  && (
-          <GroceryView
-            setView={setView}
-            groceryList={groceryList}
-            onToggleItem={handleToggleGroceryItem}
-            onClearChecked={handleClearChecked}
-            onRemoveItem={handleRemoveGroceryItem}
-          />
+
+        {/* Sub-views: when embedded, render as fullscreen overlay via portal to escape SwipeableTabView */}
+        {view !== 'home' && embedded && createPortal(
+          <div className="fixed inset-0 z-[60] bg-[var(--color-bg-primary)] overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <div className="mx-auto w-full max-w-[480px] md:max-w-4xl">
+              {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
+              {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
+              {view === 'grocery'  && (
+                <GroceryView
+                  setView={setView}
+                  groceryList={groceryList}
+                  onToggleItem={handleToggleGroceryItem}
+                  onClearChecked={handleClearChecked}
+                  onRemoveItem={handleRemoveGroceryItem}
+                />
+              )}
+            </div>
+            <NutritionNav view={view} setView={setView} />
+          </div>,
+          document.body
+        )}
+
+        {/* Sub-views: when standalone, render inline as before */}
+        {view !== 'home' && !embedded && (
+          <>
+            {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
+            {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
+            {view === 'grocery'  && (
+              <GroceryView
+                setView={setView}
+                groceryList={groceryList}
+                onToggleItem={handleToggleGroceryItem}
+                onClearChecked={handleClearChecked}
+                onRemoveItem={handleRemoveGroceryItem}
+              />
+            )}
+          </>
         )}
       </div>
 
-      <NutritionNav view={view} setView={setView} />
+      {!embedded && <NutritionNav view={view} setView={setView} />}
 
-      {/* Modals */}
+      {/* Modals — portal when embedded to escape SwipeableTabView */}
+      {embedded ? createPortal(<>
       <RecipeDetailModal
         recipe={openRecipe}
-        onClose={() => setOpenRecipe(null)}
+        onClose={() => { setOpenRecipe(null); if (collectionContext) { setOpenCollection(collectionContext); setCollectionContext(null); } }}
         saved={openRecipe ? savedRecipeIds.has(openRecipe.id) : false}
         onSave={toggleSaveRecipe}
         onAddToGrocery={handleAddToGrocery}
@@ -2426,41 +4059,99 @@ export default function Nutrition() {
       {/* Collection Detail Modal */}
       {openCollection && (() => {
         const colRecipes = RECIPES.filter(r => openCollection.recipeIds.includes(r.id));
+        const totalCal = colRecipes.reduce((s, r) => s + (r.calories || 0), 0);
+        const totalP = colRecipes.reduce((s, r) => s + (r.protein || 0), 0);
+        const totalC = colRecipes.reduce((s, r) => s + (r.carbs || 0), 0);
+        const totalF = colRecipes.reduce((s, r) => s + (r.fat || 0), 0);
+        const colTitle = t(`nutrition_ingredients.weeklyCollections.${openCollection.id}_title`, openCollection.title);
+        const colSubtitle = t(`nutrition_ingredients.weeklyCollections.${openCollection.id}_subtitle`, openCollection.subtitle);
         return (
-          <div className="fixed inset-0 z-[70] flex items-end justify-center">
+          <div className="fixed inset-0 z-[70] flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpenCollection(null)} />
-            <div className="relative w-full max-w-md overflow-hidden" style={{ maxHeight: '85vh', background: '#0F172A', borderRadius: '24px 24px 0 0', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="sticky top-0 z-10 flex items-center justify-between px-5 pt-5 pb-3 bg-[#0F172A]">
-                <div>
-                  <h3 className="text-[17px] font-bold text-[#E5E7EB]">{openCollection.title}</h3>
-                  <p className="text-[12px] text-[#6B7280] mt-0.5">{openCollection.subtitle}</p>
+            <div
+              className="relative w-full max-w-md flex flex-col overflow-hidden"
+              style={{
+                maxHeight: '90vh',
+                background: 'var(--color-bg-secondary)',
+                borderRadius: 24,
+                border: '1px solid var(--color-border-subtle)',
+                boxShadow: '0 32px 64px rgba(0,0,0,0.6)',
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between px-5 pt-5 pb-2">
+                <div className="flex-1 pr-3">
+                  <h3 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{colTitle}</h3>
+                  <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{colSubtitle}</p>
                 </div>
-                <button onClick={() => setOpenCollection(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                  <X size={16} className="text-[#9CA3AF]" />
+                <button onClick={() => setOpenCollection(null)} className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <X size={16} style={{ color: 'var(--color-text-muted)' }} />
                 </button>
               </div>
-              <div className="overflow-y-auto px-5 pb-8 space-y-3" style={{ maxHeight: 'calc(85vh - 80px)' }}>
+
+              {/* Macro summary bar */}
+              <div className="mx-5 mb-3 p-3 rounded-2xl border border-white/[0.04]" style={{ background: 'color-mix(in srgb, var(--color-bg-inset) 50%, transparent)' }}>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div>
+                    <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{totalCal}</p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.kcalUnit', 'kcal')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-[#10B981]">{totalP}g</p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.protein')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-[#FBBF24]">{totalC}g</p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.carbs')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-[#F97316]">{totalF}g</p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.fat')}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Meal list */}
+              <div className="overflow-y-auto flex-1 px-5 pb-6 space-y-2">
                 {colRecipes.map(r => {
                   const title = (lang === 'es' && r.title_es) ? r.title_es : r.title;
                   const tag = (lang === 'es' && r.tag_es) ? r.tag_es : r.tag;
                   return (
-                    <button key={r.id} onClick={() => { setOpenCollection(null); setOpenRecipe(r); }}
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#1E293B]/60 border border-white/[0.04] text-left">
-                      <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-[#1E293B]">
+                    <button key={r.id} onClick={() => { setCollectionContext(openCollection); setOpenCollection(null); setOpenRecipe(r); }}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl text-left active:scale-[0.98] transition-transform"
+                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                      <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'var(--color-bg-inset)' }}>
                         <img src={foodImageUrl(r.image)} alt={title} className="w-full h-full object-cover" loading="lazy" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{title}</p>
-                        <p className="text-[11px] text-[#6B7280] mt-0.5">{tag}</p>
-                        <div className="flex gap-3 mt-1">
-                          <span className="text-[11px] text-[#9CA3AF]">{r.calories} kcal</span>
-                          <span className="text-[11px] text-[#9CA3AF]">{r.protein}g protein</span>
+                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{title}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{tag}</p>
+                        <div className="flex gap-2 mt-1">
+                          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{r.calories} {t('nutrition.kcalUnit', 'kcal')}</span>
+                          <span className="text-[10px] text-[#10B981]">{r.protein}g P</span>
+                          <span className="text-[10px] text-[#FBBF24]">{r.carbs}g C</span>
+                          <span className="text-[10px] text-[#F97316]">{r.fat}g F</span>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-[#4B5563] flex-shrink-0" />
+                      <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Save collection button */}
+              <div className="px-5 pb-5 pt-2 border-t border-white/[0.04]" style={{ background: 'var(--color-bg-secondary)' }}>
+                <button
+                  onClick={() => {
+                    colRecipes.forEach(r => { if (!savedRecipeIds.has(r.id)) toggleSaveRecipe(r.id); });
+                    setOpenCollection(null);
+                  }}
+                  className="w-full py-3 rounded-2xl font-semibold text-[14px] flex items-center justify-center gap-2 transition-colors"
+                  style={{ background: openCollection.accent || 'var(--color-accent)', color: '#000' }}
+                >
+                  <Bookmark size={16} />
+                  {t('nutrition.saveAllRecipes', 'Save All Recipes')}
+                </button>
               </div>
             </div>
           </div>
@@ -2472,6 +4163,7 @@ export default function Nutrition() {
         onClose={() => setSearchOpen(false)}
         onSelect={food => { setSearchOpen(false); setLogFood(food); }}
         onPhotoCapture={handlePhotoCapture}
+        onBarcodeResult={handleBarcodeRequest}
         favorites={favorites}
         recentFoods={recentFoods}
         onToggleFavorite={handleToggleFavorite}
@@ -2483,6 +4175,83 @@ export default function Nutrition() {
         onClose={() => setLogFood(null)}
         onLog={handleLogFood}
         lang={lang}
+      />
+
+      {/* Barcode scanner overlay (web) */}
+      {barcodeScanning && (
+        <div className="fixed inset-0 z-[90] flex flex-col bg-[#05070B]">
+          {/* Header */}
+          <div className="relative flex items-center justify-center py-4 px-4" style={{ background: 'linear-gradient(180deg, rgba(5,7,11,0.95) 0%, rgba(5,7,11,0.7) 100%)' }}>
+            <button onClick={closeBarcodeScanner} className="absolute left-4 w-11 h-11 flex items-center justify-center rounded-full bg-white/[0.08] text-[#E5E7EB] active:scale-90 transition-transform" aria-label="Close">
+              <X size={18} />
+            </button>
+            <div className="flex items-center gap-2">
+              <ScanLine size={16} className="text-[#10B981]" />
+              <span className="text-[15px] font-bold text-white">{t('nutrition.barcodeScanner')}</span>
+            </div>
+          </div>
+          {/* Scanner area */}
+          <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
+            {/* Scan frame with animated corners */}
+            <div className="relative w-full max-w-[280px] aspect-square">
+              {/* Corner brackets */}
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-[#10B981] rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-[#10B981] rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-[#10B981] rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-[#10B981] rounded-br-lg" />
+              {/* Scanning line animation */}
+              <div className="absolute inset-x-4 h-[2px] bg-gradient-to-r from-transparent via-[#10B981] to-transparent animate-pulse" style={{ top: '50%' }} />
+              {/* Camera feed area */}
+              <div id="barcode-web-reader" className="absolute inset-2 rounded-lg overflow-hidden" style={{ minHeight: 240 }} />
+            </div>
+            {/* Hint text */}
+            <div className="text-center">
+              <p className="text-[14px] text-[#E5E7EB] font-medium mb-1">{t('nutrition.scanBarcode')}</p>
+              <p className="text-[12px] text-[#6B7280]">Point your camera at a product barcode</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barcode loading overlay */}
+      {barcodeLoading && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#05070B]">
+          <div className="flex flex-col items-center gap-6">
+            {/* Animated scan frame */}
+            <div className="relative w-32 h-32">
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-[#10B981] rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-[#10B981] rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-[#10B981] rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-[3px] border-r-[3px] border-[#10B981] rounded-br-lg" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader size={28} className="text-[#10B981] animate-spin" />
+              </div>
+              <div className="absolute inset-x-3 h-[2px] bg-gradient-to-r from-transparent via-[#10B981] to-transparent animate-pulse" style={{ top: '50%' }} />
+            </div>
+            <div className="text-center">
+              <p className="text-[15px] font-bold text-[#E5E7EB] mb-1">{t('nutrition.scanning')}</p>
+              <p className="text-[12px] text-[#6B7280]">{t('nutrition.lookingUpProduct', 'Looking up product...')}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barcode error */}
+      {barcodeError && !barcodeProduct && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center px-4" onClick={closeBarcodeScanner}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+          <div className="relative w-full max-w-sm rounded-[20px] p-6 text-center bg-[#0F172A]" onClick={e => e.stopPropagation()}>
+            <AlertCircle size={36} className="text-[#EF4444] mx-auto mb-3" />
+            <p className="text-[14px] text-[#E5E7EB] mb-4">{barcodeError}</p>
+            <button onClick={closeBarcodeScanner} className="px-6 py-2.5 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37]">OK</button>
+          </div>
+        </div>
+      )}
+
+      <BarcodeResultModal
+        product={barcodeProduct}
+        onClose={closeBarcodeScanner}
+        onLog={async (entry) => { await handleLogFood(entry); closeBarcodeScanner(); }}
       />
 
       <FoodPhotoResultModal
@@ -2512,6 +4281,65 @@ export default function Nutrition() {
         saving={saving}
         onAutoCalculate={handleAutoCalculate}
       />
+      </>, document.body) : <>
+      {/* Non-embedded modals render inline */}
+      <RecipeDetailModal
+        recipe={openRecipe}
+        onClose={() => { setOpenRecipe(null); if (collectionContext) { setOpenCollection(collectionContext); setCollectionContext(null); } }}
+        saved={openRecipe ? savedRecipeIds.has(openRecipe.id) : false}
+        onSave={toggleSaveRecipe}
+        onAddToGrocery={handleAddToGrocery}
+        groceryAdded={openRecipe ? groceryAdded.has(openRecipe.id) : false}
+        lang={lang}
+      />
+      <FoodSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onSelect={food => { setSearchOpen(false); setLogFood(food); }}
+        onPhotoCapture={handlePhotoCapture}
+        onBarcodeResult={handleBarcodeRequest}
+        favorites={favorites}
+        recentFoods={recentFoods}
+        onToggleFavorite={handleToggleFavorite}
+        lang={lang}
+      />
+      <LogFoodModal
+        food={logFood}
+        onClose={() => setLogFood(null)}
+        onLog={handleLogFood}
+        lang={lang}
+      />
+      <BarcodeResultModal
+        product={barcodeProduct}
+        onClose={closeBarcodeScanner}
+        onLog={async (entry) => { await handleLogFood(entry); closeBarcodeScanner(); }}
+      />
+      <FoodPhotoResultModal
+        result={photoResult}
+        analyzing={photoAnalyzing}
+        error={photoError}
+        photoPreview={photoPreview}
+        onClose={() => { setPhotoResult(null); setPhotoError(''); setPhotoAnalyzing(false); setPhotoPreview(null); try { localStorage.removeItem('_pendingFoodResult'); } catch {} }}
+        onLog={handleLogFood}
+        lang={lang}
+      />
+      <FoodLogDetailModal
+        log={detailLog}
+        onClose={() => setDetailLog(null)}
+        onUpdate={handleUpdateLog}
+        onDelete={handleDeleteLog}
+        lang={lang}
+      />
+      <TargetEditModal
+        open={editing}
+        onClose={() => setEditing(false)}
+        draft={draft}
+        setDraft={setDraft}
+        onSave={handleSave}
+        saving={saving}
+        onAutoCalculate={handleAutoCalculate}
+      />
+      </>}
     </div>
     </FadeIn>
   );

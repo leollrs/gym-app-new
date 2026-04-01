@@ -17,14 +17,14 @@ const TYPE_META = {
   milestone:    { icon: Dumbbell,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   challenge:    { icon: Zap,       color: 'text-purple-400',  bg: 'bg-purple-500/10'  },
   friend:       { icon: UserPlus,  color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
-  default:      { icon: Bell,      color: 'text-[#9CA3AF]',   bg: 'bg-white/6'        },
+  default:      { icon: Bell,      color: 'text-[var(--color-text-muted)]', bg: 'bg-white/6' },
 };
 
 const ANN_ACCENT = {
-  event: '#D4AF37',
-  challenge: '#10B981',
-  maintenance: '#EF4444',
-  news: '#3B82F6',
+  event: 'var(--color-accent)',
+  challenge: 'var(--color-success)',
+  maintenance: 'var(--color-danger)',
+  news: 'var(--color-blue)',
 };
 
 export default function Notifications() {
@@ -174,22 +174,22 @@ export default function Notifications() {
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-2xl md:max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => navigate(-1)}
               aria-label="Go back"
-              className="p-2 -ml-2 rounded-xl transition-colors"
+              className="p-2 -ml-2 rounded-xl transition-colors flex-shrink-0"
               style={{ color: 'var(--color-text-muted)' }}
             >
               <ChevronLeft size={24} strokeWidth={2} />
             </button>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(var(--color-accent), 0.1)', background: 'var(--color-accent-glow)' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(var(--color-accent), 0.1)', background: 'var(--color-accent-glow)' }}>
               <Bell size={18} style={{ color: 'var(--color-accent)' }} />
             </div>
-            <div>
-              <h1 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('notifications.title')}</h1>
+            <div className="min-w-0">
+              <h1 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('notifications.title')}</h1>
               {unreadCount > 0 && (
                 <p className="text-[12px] font-medium" style={{ color: 'var(--color-accent)' }}>
                   {t('notifications.messagesUnread', { count: unreadCount })}
@@ -201,16 +201,16 @@ export default function Notifications() {
             <button
               onClick={markAllRead}
               disabled={marking}
-              className="flex items-center gap-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors disabled:opacity-50 min-h-[44px] px-2 rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ color: 'var(--color-accent)' }}
             >
-              <CheckCheck size={14} /> {t('notifications.markAllRead')}
+              <CheckCheck size={14} />{' '}{t('notifications.markAllRead')}
             </button>
           )}
         </div>
       </div>
 
-      <div className="max-w-2xl md:max-w-3xl mx-auto px-4 py-4">
+      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4">
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">
@@ -219,8 +219,8 @@ export default function Notifications() {
               {announcements.map(ann => (
                 <div
                   key={ann.id}
-                  className="rounded-2xl transition-colors px-5 py-4 border-l-[3px]"
-                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)', borderLeftColor: ANN_ACCENT[ann.type] ?? '#3B82F6' }}
+                  className="rounded-2xl overflow-hidden transition-colors px-5 py-4 border-l-[3px]"
+                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)', borderLeftColor: ANN_ACCENT[ann.type] ?? 'var(--color-blue)' }}
                 >
                   <p className="text-[15px] font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ann.title)}</p>
                   <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{sanitize(ann.message)}</p>
@@ -239,10 +239,10 @@ export default function Notifications() {
             {items.length > 0 && (
               <button
                 onClick={clearAllNotifications}
-                className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors"
-                style={{ color: 'var(--color-danger, #EF4444)' }}
+                className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors min-h-[44px] px-2 rounded-lg focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ color: 'var(--color-danger)' }}
               >
-                <Trash2 size={12} /> {t('notifications.clearAll')}
+                <Trash2 size={12} />{' '}{t('notifications.clearAll')}
               </button>
             )}
           </div>
@@ -263,7 +263,7 @@ export default function Notifications() {
                 return (
                   <div
                     key={n.id}
-                    className={`group relative w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-all ${
+                    className={`group relative w-full text-left flex items-start gap-3 p-4 rounded-2xl border overflow-hidden transition-all ${
                       n.read_at
                         ? 'border-[var(--color-border-subtle)] opacity-60'
                         : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)]'
@@ -304,7 +304,7 @@ export default function Notifications() {
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
                       className="relative z-10 p-1.5 rounded-lg transition-colors flex-shrink-0"
-                      style={{ color: 'var(--color-danger, #EF4444)' }}
+                      style={{ color: 'var(--color-danger)' }}
                       aria-label={t('notifications.deleteNotification')}
                     >
                       <X size={14} />

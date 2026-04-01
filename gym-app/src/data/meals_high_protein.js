@@ -404,7 +404,7 @@ export const MEALS_HIGH_PROTEIN = [
     tag: 'High Protein', tag_es: 'Alto en Proteína', category: 'high_protein', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'greek_yogurt', 'protein_powder', 'almond_milk', 'chia_seeds', 'banana', 'peanut_butter'],
     steps: ['Combine oats, Greek yogurt, protein powder, chia seeds, and almond milk in a jar.', 'Stir well, seal, and refrigerate overnight or at least 4 hours.', 'In the morning, top with sliced banana and a dollop of peanut butter.', 'Stir before eating and add more milk if too thick.'],
-    steps_es: ['Combina la avena, yogur griego, proteína en polvo, semillas de chía y leche de almendras en un frasco.', 'Mezcla bien, sella y refrigera durante la noche o al menos 4 horas.', 'Por la mañana, cubre con rodajas de plátano y una cucharada de mantequilla de maní.', 'Revuelve antes de comer y agrega más leche si está muy espesa.'],
+    steps_es: ['Combina la avena, yogur griego, proteína en polvo, semillas de chía y leche de almendras en un frasco.', 'Mezcla bien, sella y refrigera durante la noche o al menos 4 horas.', 'Por la mañana, cubre con rodajas de guineo y una cucharada de mantequilla de maní.', 'Revuelve antes de comer y agrega más leche si está muy espesa.'],
   },
   {
     id: 'r38',

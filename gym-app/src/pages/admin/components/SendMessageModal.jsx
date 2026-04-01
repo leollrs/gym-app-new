@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MessageSquare, Send, CheckCircle } from 'lucide-react';
+import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
@@ -15,12 +16,20 @@ export default function SendMessageModal({ member, gymId, adminId, onClose, onSe
     try {
       await supabase.from('notifications').insert({
         profile_id: member.id, gym_id: gymId, type: 'admin_message',
-        title: 'Message from your gym', body: msg, data: { source: 'churn_intel' },
+        title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'churn_intel' },
+        dedup_key: `admin_msg_${member.id}_${adminId}_${Date.now() / 60000 | 0}`,
       });
       try {
         await supabase.from('win_back_attempts').insert({
           user_id: member.id, gym_id: gymId, admin_id: adminId,
           message: msg, offer: null, outcome: 'pending', created_at: new Date().toISOString(),
+        });
+      } catch (_) {}
+      // Log contact to admin_contact_log
+      try {
+        await supabase.from('admin_contact_log').insert({
+          admin_id: adminId, member_id: member.id, gym_id: gymId,
+          method: 'in_app_message', note: msg.substring(0, 200),
         });
       } catch (_) {}
       setSent(true);
@@ -37,12 +46,12 @@ export default function SendMessageModal({ member, gymId, adminId, onClose, onSe
       footer={
         <>
           <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
+            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
             Cancel
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
-            style={{ background: sent ? 'rgba(16,185,129,0.15)' : 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: sent ? '#10B981' : 'var(--color-accent)', border: `1px solid ${sent ? 'rgba(16,185,129,0.25)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)'}` }}>
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+            style={{ background: sent ? 'rgba(16,185,129,0.15)' : 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: sent ? 'var(--color-success)' : 'var(--color-accent)', border: `1px solid ${sent ? 'rgba(16,185,129,0.25)' : 'color-mix(in srgb, var(--color-accent) 25%, transparent)'}` }}>
             {sent ? <><CheckCircle size={14} /> Sent!</> : sending ? 'Sending…' : <><Send size={13} /> Send Message</>}
           </button>
         </>

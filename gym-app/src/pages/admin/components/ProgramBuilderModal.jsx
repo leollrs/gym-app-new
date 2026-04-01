@@ -166,7 +166,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
               </p>
             )}
           </div>
-          <button onClick={onClose}><X size={20} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"><X size={20} className="text-[#6B7280]" /></button>
         </div>
 
         {/* Scrollable body */}
@@ -177,7 +177,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Program Name</label>
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="e.g. 8-Week Strength Builder"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
 
           {/* Description */}
@@ -185,7 +185,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Description</label>
             <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
               placeholder="What will members achieve?"
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
 
           {/* Duration */}
@@ -225,7 +225,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                         <ChevronDown size={14} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? '' : '-rotate-90'}`} />
                         <span className="text-[13px] font-semibold text-[#E5E7EB]">Week {wk}</span>
                         {!isOpen && (
-                          <span className="text-[11px] text-[#4B5563] ml-1">
+                          <span className="text-[11px] text-[#6B7280] ml-1">
                             {days.length} day{days.length !== 1 ? 's' : ''}{totalEx > 0 ? ` \u00b7 ${totalEx} ex` : ''}{wkTime > 0 ? ` \u00b7 ~${fmtTime(wkTime / Math.max(days.length, 1))} avg` : ''}
                           </span>
                         )}
@@ -241,7 +241,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                         </button>
                         {showCopyWeek && (
                           <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[130px]">
-                            <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to...</p>
+                            <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to...</p>
                             {allWeekNums.filter(w => w !== wk).map(targetWk => (
                               <button
                                 key={targetWk}
@@ -250,7 +250,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                               >
                                 Week {targetWk}
                                 {(weeks[targetWk] || []).length > 0 && (
-                                  <span className="text-[#4B5563] ml-1">(overwrite)</span>
+                                  <span className="text-[#6B7280] ml-1">(overwrite)</span>
                                 )}
                               </button>
                             ))}
@@ -263,7 +263,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                     {isOpen && (
                       <div className="p-3 space-y-2">
                         {days.length === 0 && (
-                          <p className="text-[12px] text-[#4B5563] text-center py-2">No days yet — add one below</p>
+                          <p className="text-[12px] text-[#6B7280] text-center py-2">No days yet — add one below</p>
                         )}
 
                         {days.map((day, di) => {
@@ -279,10 +279,10 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                   value={day.name}
                                   onChange={e => updateDayName(wk, di, e.target.value)}
                                   placeholder={`Day ${di + 1}`}
-                                  className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#4B5563] outline-none"
+                                  className="flex-1 bg-transparent text-[13px] font-semibold text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
                                 />
                                 {dayTime > 0 && (
-                                  <span className="text-[10px] text-[#4B5563] flex items-center gap-0.5 flex-shrink-0">
+                                  <span className="text-[10px] text-[#6B7280] flex items-center gap-0.5 flex-shrink-0">
                                     <Clock size={9} /> {fmtTime(dayTime)}
                                   </span>
                                 )}
@@ -290,14 +290,14 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                 <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
                                   <button
                                     onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
-                                    className="text-[#4B5563] hover:text-[#9CA3AF] transition-colors p-0.5"
+                                    className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors p-0.5"
                                     title="Copy day"
                                   >
                                     <Copy size={12} />
                                   </button>
                                   {showCopyDay && (
                                     <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[160px] max-h-48 overflow-y-auto">
-                                      <p className="text-[10px] font-bold text-[#4B5563] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to...</p>
+                                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to...</p>
                                       {dayTargets.map((t, idx) => (
                                         <button
                                           key={idx}
@@ -312,7 +312,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                 </div>
                                 <button
                                   onClick={() => removeDay(wk, di)}
-                                  className="text-[#4B5563] hover:text-red-400 transition-colors flex-shrink-0"
+                                  className="text-[#6B7280] hover:text-red-400 transition-colors flex-shrink-0"
                                 >
                                   <X size={14} />
                                 </button>
@@ -321,7 +321,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                               {/* Exercises */}
                               <div className="px-3 pb-3 pt-1 space-y-1">
                                 {day.exercises.length === 0 && (
-                                  <p className="text-[11px] text-[#4B5563] py-1">No exercises yet</p>
+                                  <p className="text-[11px] text-[#6B7280] py-1">No exercises yet</p>
                                 )}
                                 {day.exercises.map((ex, ei) => (
                                   <div key={ei} className="flex items-center gap-2 md:gap-3 py-1.5 border-b border-white/4 last:border-0">
@@ -337,7 +337,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                         onClick={() => updateExercise(wk, di, ei, 'sets', (ex.sets ?? DEFAULT_SETS) + 1)}
                                         className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
                                       >+</button>
-                                      <span className="text-[10px] text-[#4B5563] w-5">sets</span>
+                                      <span className="text-[10px] text-[#6B7280] w-5">sets</span>
                                     </div>
                                     {/* Rest */}
                                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -350,11 +350,11 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                         onClick={() => updateExercise(wk, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
                                         className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
                                       >+</button>
-                                      <span className="text-[10px] text-[#4B5563] w-5">rest</span>
+                                      <span className="text-[10px] text-[#6B7280] w-5">rest</span>
                                     </div>
                                     <button
                                       onClick={() => removeExercise(wk, di, ei)}
-                                      className="text-[#4B5563] hover:text-red-400 transition-colors ml-1 flex-shrink-0"
+                                      className="text-[#6B7280] hover:text-red-400 transition-colors ml-1 flex-shrink-0"
                                     >
                                       <Trash2 size={11} />
                                     </button>
@@ -379,7 +379,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
 
                         <button
                           onClick={() => addDay(wk)}
-                          className="w-full py-2 text-[12px] font-semibold text-[#D4AF37] border border-[#D4AF37]/20 rounded-xl hover:bg-[#D4AF37]/5 transition-colors"
+                          className="w-full py-2 text-[12px] font-semibold text-[#D4AF37] border border-[#D4AF37]/20 rounded-xl hover:bg-[#D4AF37]/5 transition-colors whitespace-nowrap"
                         >
                           + Add Day
                         </button>

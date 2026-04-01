@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2, Zap, Pencil, Trophy } from 'lucide-react';
+import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2, Zap, Pencil, Trophy, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,6 +8,7 @@ import { timeAgo as formatTimeAgo } from '../lib/dateUtils';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import { exercises as exerciseLibrary } from '../data/exercises';
+import { localizeRoutineName } from '../lib/exerciseName';
 import { useTranslation } from 'react-i18next';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 
@@ -35,6 +36,8 @@ const QuickStart = () => {
   const [expandedRoutineId, setExpandedRoutineId] = useState(null);
   const [expandedExercises, setExpandedExercises] = useState([]);
   const [loadingExercises, setLoadingExercises] = useState(false);
+  const [isRestDay, setIsRestDay] = useState(false);
+  const [isGymClosed, setIsGymClosed] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -42,10 +45,10 @@ const QuickStart = () => {
     const load = async () => {
       const todayDow = new Date().getDay();
 
-      const [{ data: routineData }, { data: sessionData }, scheduleRes] = await Promise.all([
+      const [{ data: routineData }, { data: sessionData }, scheduleRes, progRes] = await Promise.all([
         supabase
           .from('routines')
-          .select('id, name, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name))')
+          .select('id, name, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name))')
           .eq('created_by', user.id)
           .eq('is_template', false)
           .order('created_at', { ascending: false }),
@@ -59,10 +62,20 @@ const QuickStart = () => {
           .from('workout_schedule')
           .select('day_of_week, routine_id')
           .eq('profile_id', user.id),
+        supabase
+          .from('generated_programs')
+          .select('id, program_start, split_type, expires_at, routines_a_count')
+          .eq('profile_id', user.id)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       const allRoutines = routineData || [];
       const sessions = sessionData || [];
+      const fetchedProgram = !progRes.error ? progRes.data : null;
+      const programStart = fetchedProgram ? new Date(fetchedProgram.program_start) : null;
 
       // Build last-performed map
       const lastPerformed = {};
@@ -79,24 +92,46 @@ const QuickStart = () => {
       }));
       setRoutines(enriched);
 
-      // Find today's scheduled routine
-      let todayR = null;
-      if (!scheduleRes.error && scheduleRes.data) {
-        const todaySchedule = scheduleRes.data.find(s => s.day_of_week === todayDow);
-        if (todaySchedule) {
-          todayR = allRoutines.find(r => r.id === todaySchedule.routine_id) || null;
+      // Build schedule map (same logic as Dashboard)
+      const scheduleData = !scheduleRes.error ? (scheduleRes.data || []) : [];
+      const scheduleMap = {};
+      for (const row of scheduleData) {
+        const routine = allRoutines.find(r => r.id === row.routine_id);
+        if (routine) {
+          // When an active program exists, only include Auto: routines created
+          // after the program start — filters out stale manual schedule entries
+          if (fetchedProgram) {
+            const isAutoRoutine = routine.name.startsWith('Auto:');
+            const createdAfterProgram = new Date(routine.created_at || 0) >= programStart;
+            if (!isAutoRoutine || !createdAfterProgram) continue;
+          }
+          scheduleMap[row.day_of_week] = row.routine_id;
         }
       }
 
-      // Fallback: least recently done
-      if (!todayR && enriched.length > 0) {
-        const sorted = [...enriched].sort((a, b) => {
-          if (!a.lastPerformedAt && !b.lastPerformedAt) return 0;
-          if (!a.lastPerformedAt) return -1;
-          if (!b.lastPerformedAt) return 1;
-          return new Date(a.lastPerformedAt) - new Date(b.lastPerformedAt);
-        });
-        todayR = sorted[0];
+      // Find today's scheduled routine using schedule map
+      let todayR = null;
+      if (scheduleMap[todayDow]) {
+        todayR = allRoutines.find(r => r.id === scheduleMap[todayDow]) || null;
+      }
+
+      // Check if gym is closed today
+      try {
+        const { data: gymHours } = await supabase
+          .from('gym_hours')
+          .select('is_closed')
+          .eq('gym_id', profile?.gym_id)
+          .eq('day_of_week', todayDow)
+          .maybeSingle();
+        if (gymHours?.is_closed) {
+          setIsGymClosed(true);
+        }
+      } catch { /* table may not exist */ }
+
+      // If there's a schedule with entries but nothing for today → rest day
+      const hasAnySchedule = Object.keys(scheduleMap).length > 0;
+      if (!todayR && hasAnySchedule) {
+        setIsRestDay(true);
       }
 
       if (todayR) {
@@ -165,7 +200,7 @@ const QuickStart = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
         <Skeleton variant="page" />
       </div>
     );
@@ -173,26 +208,63 @@ const QuickStart = () => {
 
   return (
     <FadeIn>
-    <div className="min-h-screen bg-[#05070B] px-5 pt-4 pb-28">
+    <div className="min-h-screen px-4 pt-4 pb-28 md:pb-12" style={{ background: 'var(--color-bg-primary)' }}>
       <div className="max-w-[480px] mx-auto space-y-5">
 
         {/* Header */}
         <div data-tour="tour-quickstart-page">
-          <h1 className="text-[26px] font-black text-[#E5E7EB] tracking-tight">{t('quickStart.startWorkout')}</h1>
-          <p className="text-[13px] text-[#6B7280] mt-0.5">
-            {todayCompleted ? t('quickStart.greatWorkToday') : todayRoutine ? t('quickStart.todaysWorkoutReady') : t('quickStart.pickRoutineAndGo')}
+          <h1 className="text-[22px] font-black tracking-tight truncate" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.startWorkout')}</h1>
+          <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+            {isGymClosed ? t('dashboard.gymClosed', 'Gym Closed') : todayCompleted ? t('quickStart.greatWorkToday') : isRestDay && !todayRoutine ? t('quickStart.noWorkoutScheduled', 'No workout scheduled today') : todayRoutine ? t('quickStart.todaysWorkoutReady') : t('quickStart.pickRoutineAndGo')}
           </p>
         </div>
 
         {/* ── TODAY'S WORKOUT HERO ─────────────────────────────── */}
-        {todayRoutine && todayCompleted && completedSession ? (
+        {isGymClosed ? (
+          /* ── GYM CLOSED STATE ── */
+          <div className="w-full rounded-2xl bg-red-500/5 border border-red-500/15 p-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+              <span className="text-[28px]">🔒</span>
+            </div>
+            <p className="font-bold text-[18px] text-red-400">{t('dashboard.gymClosed', 'Gym Closed')}</p>
+            <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('dashboard.gymClosedMessage', 'The gym is closed today. Rest up and come back stronger!')}
+            </p>
+            <button
+              onClick={() => setShowOther(v => !v)}
+              className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl text-[13px] font-bold text-black transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ backgroundColor: 'var(--color-accent)' }}
+            >
+              <Dumbbell size={15} />
+              {t('dashboard.trainOutsideGym', 'Want to train outside the gym?')}
+            </button>
+          </div>
+        ) : isRestDay && !todayRoutine ? (
+          /* ── REST DAY STATE ── */
+          <div className="w-full rounded-2xl bg-gradient-to-br from-[#6B7280]/8 to-[#6B7280]/[0.01] border border-white/[0.06] p-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center mx-auto mb-4">
+              <Moon size={28} style={{ color: 'var(--color-text-muted)' }} />
+            </div>
+            <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.restDay', 'Rest Day')}</p>
+            <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('quickStart.restDayMessage', 'No workout scheduled for today. Rest up and come back stronger!')}
+            </p>
+            <button
+              onClick={() => setShowOther(v => !v)}
+              className="w-full py-3.5 rounded-2xl text-[13px] font-bold bg-white/[0.06] hover:bg-white/[0.10] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              {t('quickStart.startAnywayButton', 'Start a Workout Anyway')}
+            </button>
+          </div>
+        ) : todayRoutine && todayCompleted && completedSession ? (
           /* ── COMPLETED STATE — matches Dashboard hero ── */
           <div className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/8 to-[#10B981]/[0.01] border border-[#10B981]/15 p-6 text-center">
             <div className="w-14 h-14 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 size={28} className="text-[#10B981]" />
             </div>
-            <p className="font-bold text-[18px] text-[#E5E7EB]">{t('quickStart.workoutAlreadyCompleted', 'Workout Already Completed')}</p>
-            <p className="text-[13px] text-[#6B7280] mt-1.5 mb-5">
+            <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.workoutAlreadyCompleted', 'Workout Already Completed')}</p>
+            <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>
               Great job today! Your <span className="text-[#10B981] font-semibold">{todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}</span> session is done.
             </p>
 
@@ -211,14 +283,14 @@ const QuickStart = () => {
                     sessionId: completedSession.id,
                     completedAt: completedSession.completed_at,
                   }}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-3 text-left"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-3 text-left focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                 >
                   <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
                     <Trophy size={16} className="text-[#10B981]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{completedSession.name || todayRoutine.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#6B7280]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{completedSession.name || todayRoutine.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>
                       <span>{Math.round((completedSession.duration_seconds || 0) / 60)}m</span>
                       <span className="text-white/[0.06]">&middot;</span>
                       <span>{volStr} lbs</span>
@@ -231,7 +303,8 @@ const QuickStart = () => {
 
             <button
               onClick={() => navigate('/workouts')}
-              className="w-full py-3.5 rounded-2xl text-[13px] font-bold text-[#E5E7EB] bg-white/[0.06] hover:bg-white/[0.10] transition-colors"
+              className="w-full py-3.5 rounded-2xl text-[13px] font-bold bg-white/[0.06] hover:bg-white/[0.10] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-primary)' }}
             >
               {t('quickStart.doAnotherWorkout', 'Do Another Workout')}
             </button>
@@ -240,7 +313,7 @@ const QuickStart = () => {
           <button
             type="button"
             onClick={() => navigate(`/session/${todayRoutine.id}`)}
-            className="relative w-full rounded-2xl overflow-hidden text-left active:scale-[0.98] transition-transform"
+            className="relative w-full rounded-2xl overflow-hidden text-left active:scale-[0.98] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ aspectRatio: '4 / 3' }}
           >
             {/* Cycling video/gradient background */}
@@ -288,7 +361,7 @@ const QuickStart = () => {
               <p className="text-[11px] font-bold uppercase tracking-[0.15em] mb-2 text-[#D4AF37]">
                 {t('quickStart.todaysWorkout')}
               </p>
-              <h2 className="text-[24px] font-black text-white tracking-tight leading-tight">
+              <h2 className="text-[18px] font-black text-white tracking-tight leading-tight truncate">
                 {todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}
               </h2>
 
@@ -313,7 +386,7 @@ const QuickStart = () => {
               {/* CTA */}
               <div className="w-full py-5 rounded-2xl flex items-center justify-center gap-2.5 bg-[#D4AF37] shadow-[0_4px_24px_rgba(212,175,55,0.3)]">
                 <Play size={20} className="text-black" fill="black" strokeWidth={0} />
-                <span className="text-[18px] font-black tracking-wide uppercase text-black">
+                <span className="text-[14px] font-black tracking-wide uppercase text-black whitespace-nowrap">
                   {t('quickStart.startWorkout')}
                 </span>
               </div>
@@ -321,15 +394,15 @@ const QuickStart = () => {
           </button>
         ) : (
           /* No routines at all */
-          <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-8 text-center">
+          <div className="rounded-2xl border border-white/[0.06] p-8 text-center" style={{ background: 'var(--color-bg-card)' }}>
             <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mx-auto mb-4">
-              <Dumbbell size={28} className="text-[#4B5563]" />
+              <Dumbbell size={28} style={{ color: 'var(--color-text-muted)' }} />
             </div>
-            <p className="font-bold text-[#E5E7EB] text-[16px]">{t('quickStart.noRoutinesYet')}</p>
-            <p className="text-[13px] text-[#6B7280] mt-1.5 mb-5">{t('quickStart.createToGetStarted')}</p>
+            <p className="font-bold text-[16px]" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.noRoutinesYet')}</p>
+            <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.createToGetStarted')}</p>
             <button
               onClick={() => navigate('/workouts')}
-              className="inline-block py-3 px-8 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px]"
+              className="inline-block py-3 px-8 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               {t('quickStart.createRoutine')}
             </button>
@@ -342,29 +415,31 @@ const QuickStart = () => {
           <button
             type="button"
             onClick={() => setShowOther(v => !v)}
-            className="rounded-[16px] bg-[#0F172A] border border-white/[0.06] hover:border-white/[0.12] p-4 text-left transition-colors active:scale-[0.97]"
+            className="rounded-[16px] border border-white/[0.06] hover:border-white/[0.12] p-4 text-left transition-colors active:scale-[0.97] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ background: 'var(--color-bg-card)' }}
           >
             <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-3">
-              <Dumbbell size={20} className="text-[#9CA3AF]" />
+              <Dumbbell size={20} style={{ color: 'var(--color-text-muted)' }} />
             </div>
-            <p className="text-[14px] font-bold text-[#E5E7EB]">{t('quickStart.chooseRoutine')}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">
+            <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('quickStart.chooseRoutine')}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
               {otherRoutines.length} {t('quickStart.available')}
             </p>
           </button>
 
-          {/* Create New */}
+          {/* Quick Start Empty */}
           <button
             type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="rounded-[16px] bg-[#0F172A] border border-dashed border-[#D4AF37]/20 hover:border-[#D4AF37]/40 p-4 text-left transition-colors active:scale-[0.97]"
+            onClick={() => navigate('/session/empty')}
+            className="rounded-[16px] border border-dashed border-[#D4AF37]/20 hover:border-[#D4AF37]/40 p-4 text-left transition-colors active:scale-[0.97] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{ background: 'var(--color-bg-card)' }}
           >
             <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center mb-3">
-              <Plus size={20} className="text-[#D4AF37]" />
+              <Zap size={20} className="text-[#D4AF37]" />
             </div>
-            <p className="text-[14px] font-bold text-[#D4AF37]">{t('quickStart.createNew')}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5">
-              {t('quickStart.buildWorkout')}
+            <p className="text-[14px] font-bold text-[#D4AF37]">{t('quickStart.startEmptyWorkout')}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('quickStart.addExercisesAsYouGo')}
             </p>
           </button>
         </div>
@@ -379,30 +454,31 @@ const QuickStart = () => {
               transition={{ duration: 0.25 }}
               className="overflow-hidden"
             >
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 pb-28">
                 {otherRoutines.map(r => {
                   const isExpanded = expandedRoutineId === r.id;
                   return (
                     <div key={r.id}>
                       <button
                         onClick={() => handleToggleExpand(r.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-[#0F172A] border transition-colors text-left active:scale-[0.99] ${
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-colors text-left active:scale-[0.99] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                           isExpanded ? 'border-[#D4AF37]/30' : 'border-white/[0.06] hover:border-white/[0.1]'
                         }`}
+                        style={{ background: 'var(--color-bg-card)' }}
                       >
                         <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-                          <Dumbbell size={16} className="text-[#6B7280]" />
+                          <Dumbbell size={16} style={{ color: 'var(--color-text-subtle)' }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
-                            {r.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}
+                          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                            {localizeRoutineName(r.name).replace(/ [AB]$/, '')}
                           </p>
-                          <p className="text-[11px] text-[#6B7280]">
+                          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
                             {r.exerciseCount} {t('quickStart.exercises')}
                             {r.lastPerformedAt && ` · ${formatTimeAgo(r.lastPerformedAt)}`}
                           </p>
                         </div>
-                        <ChevronDown size={14} className={`text-[#4B5563] shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
                       </button>
 
                       {/* Expanded exercise details */}
@@ -415,17 +491,17 @@ const QuickStart = () => {
                             transition={{ duration: 0.2 }}
                             className="overflow-hidden"
                           >
-                            <div className="mt-1 ml-2 mr-2 rounded-xl bg-[#111827] border border-white/[0.04] p-4">
+                            <div className="mt-1 ml-2 mr-2 rounded-xl border border-white/[0.04] p-4" style={{ background: 'var(--color-bg-card)' }}>
                               {loadingExercises ? (
-                                <p className="text-[12px] text-[#6B7280]">Loading...</p>
+                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>Loading...</p>
                               ) : expandedExercises.length === 0 ? (
-                                <p className="text-[12px] text-[#6B7280]">No exercises yet. Tap Edit to add some.</p>
+                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>No exercises yet. Tap Edit to add some.</p>
                               ) : (
                                 <div className="space-y-1.5 mb-4">
                                   {expandedExercises.map((ex, i) => (
                                     <div key={i} className="flex items-center justify-between">
-                                      <p className="text-[13px] text-[#E5E7EB] truncate flex-1">{ex.name}</p>
-                                      <p className="text-[12px] text-[#6B7280] ml-3 shrink-0">{ex.sets}&times;{ex.reps}</p>
+                                      <p className="text-[13px] truncate flex-1" style={{ color: 'var(--color-text-primary)' }}>{ex.name}</p>
+                                      <p className="text-[12px] ml-3 shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{ex.sets}&times;{ex.reps}</p>
                                     </div>
                                   ))}
                                 </div>
@@ -433,14 +509,15 @@ const QuickStart = () => {
                               <div className="flex gap-2 mt-3">
                                 <button
                                   onClick={() => navigate(`/workouts/${r.id}/edit?from=/quick-start`)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-semibold bg-white/[0.06] border border-white/[0.06] text-[#E5E7EB] hover:bg-white/[0.1] transition-colors"
+                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-semibold bg-white/[0.06] border border-white/[0.06] hover:bg-white/[0.1] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                                  style={{ color: 'var(--color-text-primary)' }}
                                 >
                                   <Pencil size={14} />
                                   Edit
                                 </button>
                                 <button
                                   onClick={() => navigate(`/session/${r.id}`)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-colors"
+                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                                 >
                                   <Play size={14} fill="black" strokeWidth={0} />
                                   Start

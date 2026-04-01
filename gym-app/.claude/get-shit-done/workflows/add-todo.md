@@ -94,7 +94,7 @@ created: [timestamp]
 title: [title]
 area: [area]
 files:
-  - [file:lines]
+  - <file:lines>
 ---
 
 ## Problem

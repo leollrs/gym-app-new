@@ -86,10 +86,10 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em] truncate" style={{ color: 'var(--color-text-primary)' }}>
             {exName(exercise)}
           </p>
-          <p className="text-[12.5px] mt-0.5 text-[#6B7280]">
+          <p className="text-[12.5px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>
             {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
             <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
             {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
@@ -100,7 +100,8 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
+            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
           </button>
@@ -110,7 +111,8 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(exercise); }}
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all"
+            aria-label={`Add ${exName(exercise)}`}
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
           >
             <Plus size={14} strokeWidth={2.5} style={{ color: 'var(--color-accent)' }} />
@@ -119,7 +121,8 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
 
         <ChevronRight
           size={16}
-          className={`flex-shrink-0 transition-transform duration-200 text-[#4B5563] ${expanded ? 'rotate-90' : ''}`}
+          className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          style={{ color: 'var(--color-text-muted)' }}
         />
       </div>
 
@@ -144,11 +147,11 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
           <div className="px-4 pt-3 pb-4">
             {/* Title + metadata (reinforced in expanded) */}
             <div className="mb-3">
-              <h3 className="text-[17px] font-bold tracking-[-0.015em] leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+              <h3 className="text-[17px] font-bold tracking-[-0.015em] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
                 {exName(exercise)}
               </h3>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[12.5px] text-[#6B7280]">
+                <span className="text-[12.5px]" style={{ color: 'var(--color-text-subtle)' }}>
                   {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
                   <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
                   {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
@@ -313,30 +316,34 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
     <div className="animate-fade-in">
       {/* Search bar with filter toggle */}
       <div className="relative mb-4">
-        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#4B5563]" />
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={t('exerciseLibrary.searchPlaceholder')}
           aria-label={t('exerciseLibrary.searchPlaceholder')}
-          className="w-full rounded-xl pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all bg-[#111827]/80 border border-white/[0.06] text-[#E5E7EB] placeholder-[#3B4252] focus:border-white/[0.12] focus:bg-[#111827]"
+          className="w-full rounded-xl pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all border border-white/[0.06] placeholder-[#3B4252] focus:border-white/[0.12]"
+          style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="p-1.5 rounded-lg transition-colors text-[#6B7280] hover:text-[#E5E7EB]"
+              aria-label="Clear search"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-subtle)' }}
             >
               <X size={14} />
             </button>
           )}
           <button
             onClick={() => setShowAdvancedFilters(true)}
-            className="relative p-2 rounded-xl transition-all active:scale-95"
+            aria-label="Open filters"
+            className="relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-all active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{
               background: activeFilterCount > 0 ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
-              color: activeFilterCount > 0 ? 'var(--color-accent)' : '#6B7280',
+              color: activeFilterCount > 0 ? 'var(--color-accent)' : 'var(--color-text-subtle)',
             }}
           >
             <SlidersHorizontal size={16} />
@@ -353,12 +360,13 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       <div className="flex items-center justify-between mb-4">
         <p className="text-[12.5px] font-medium text-[#5B6276]">
           {t('exerciseLibrary.resultCount', { count: sorted.length })}
-          {query && <span className="text-[#4B5563]"> {t('exerciseLibrary.forQuery', { query })}</span>}
+          {query && <span style={{ color: 'var(--color-text-muted)' }}> {t('exerciseLibrary.forQuery', { query })}</span>}
         </p>
         <div ref={sortRef} className="relative">
           <button
             onClick={() => setShowSortMenu(s => !s)}
-            className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg transition-colors text-[#6B7280] hover:text-[#9CA3AF] active:scale-95"
+            className="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg transition-colors active:scale-95"
+            style={{ color: 'var(--color-text-subtle)' }}
           >
             <ArrowUpDown size={13} />
             {t('exerciseLibrary.sort')}
@@ -400,8 +408,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
               <Dumbbell size={28} className="text-[#3B4252]" />
             </div>
-            <p className="text-[15px] font-medium text-[#6B7280]">{t('exerciseLibrary.noExercisesFound')}</p>
-            <p className="text-[13px] mt-1 text-[#4B5563]">{t('exerciseLibrary.tryDifferentSearch')}</p>
+            <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.noExercisesFound')}</p>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.tryDifferentSearch')}</p>
           </div>
         )}
       </div>
@@ -412,6 +420,8 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           className="fixed inset-0 z-[100] flex items-end justify-center"
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
           onClick={e => e.target === e.currentTarget && setShowAdvancedFilters(false)}
+          role="dialog"
+          aria-labelledby="filters-dialog-title"
         >
           <div
             className="w-full max-w-[520px] rounded-t-[24px] pb-8 pt-3 animate-slide-up"
@@ -422,7 +432,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
 
             <div className="px-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.filters')}</h3>
+                <h3 id="filters-dialog-title" className="text-[17px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.filters')}</h3>
                 <button
                   onClick={() => {
                     setActiveMuscle('All');
@@ -448,7 +458,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -473,7 +483,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -498,7 +508,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
                         className="text-[12.5px] font-medium px-3.5 py-[7px] rounded-[10px] transition-all active:scale-95"
                         style={{
                           background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
-                          color: active ? '#0A0D14' : 'var(--color-text-muted)',
+                          color: active ? 'var(--color-bg-secondary)' : 'var(--color-text-muted)',
                           border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
                           fontWeight: active ? 700 : 500,
                         }}
@@ -552,17 +562,17 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em] truncate" style={{ color: 'var(--color-text-primary)' }}>
             {exName(exercise)}
           </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[12.5px] text-[#6B7280]">
+          <div className="flex items-center gap-1.5 mt-0.5 truncate">
+            <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text-subtle)' }}>
               {t(`muscleGroups.${exercise.muscle}`, exercise.muscle)}
               <span className="mx-1.5 text-[#3B3F47]">&middot;</span>
               {t(`exerciseLibrary.equipmentNames.${exercise.equipment}`, exercise.equipment)}
             </span>
             {!isMine && exercise.createdByName && (
-              <span className="text-[11px] text-[#4B5563] ml-1">
+              <span className="text-[11px] ml-1" style={{ color: 'var(--color-text-muted)' }}>
                 by @{exercise.createdByUsername ?? exercise.createdByName}
               </span>
             )}
@@ -581,7 +591,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onToggleFavorite(exercise.id); }}
-              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all"
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               <Star size={15} className={isFavorite ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#3B4252]'} />
             </button>
@@ -590,7 +601,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
           {!isMine && !isSaved && onSave && (
             <button
               onClick={e => { e.stopPropagation(); onSave(); }}
-              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-all"
+              aria-label="Save exercise"
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
             >
               <Bookmark size={14} style={{ color: 'var(--color-accent)' }} />
@@ -599,7 +611,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
           {isSaved && !isMine && onUnsave && (
             <button
               onClick={e => { e.stopPropagation(); onUnsave(); }}
-              className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 bg-[#10B981]/10 hover:bg-red-500/10 transition-colors"
+              aria-label="Unsave exercise"
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 bg-[#10B981]/10 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             >
               <Bookmark size={14} className="text-[#10B981] fill-[#10B981]" />
             </button>
@@ -607,7 +620,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
 
           <ChevronRight
             size={16}
-            className={`transition-transform duration-200 text-[#4B5563] ${expanded ? 'rotate-90' : ''}`}
+            className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+            style={{ color: 'var(--color-text-muted)' }}
           />
         </div>
       </div>
@@ -634,7 +648,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
               {onEdit && (
                 <button
                   onClick={() => onEdit(exercise)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  style={{ color: 'var(--color-text-subtle)' }}
                 >
                   <Pencil size={11} /> {t('exerciseLibrary.edit')}
                 </button>
@@ -642,7 +657,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
               {onDelete && (
                 <button
                   onClick={() => onDelete(exercise.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#4B5563] hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   <X size={11} /> {t('exerciseLibrary.delete')}
                 </button>
@@ -655,7 +671,8 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
             <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
               <button
                 onClick={() => onUnsave()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-[#4B5563] hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium hover:text-red-400 bg-white/[0.03] hover:bg-red-500/10 transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
               >
                 <X size={11} /> {t('exerciseLibrary.removeFromSaved')}
               </button>
@@ -703,27 +720,30 @@ const DropdownSelect = ({ value, options, onChange, placeholder, label, renderOp
   }, []);
   return (
     <div ref={ref} className="relative">
-      <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">
+      <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </label>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none focus:border-[#D4AF37]/40 transition-all text-[#E5E7EB]"
+        className="w-full border border-white/[0.06] rounded-xl px-3.5 py-3 text-left text-[14px] flex items-center justify-between min-h-[44px] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+        style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
       >
         <span>{value ? display(value) : placeholder}</span>
-        <ChevronDown size={15} className={`flex-shrink-0 transition-transform text-[#6B7280] ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={15} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
       </button>
       {open && (
         <div
-          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto bg-[#0A0F1A] border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10 max-h-[200px] overflow-y-auto border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          style={{ background: 'var(--color-bg-primary)' }}
         >
           {options.map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => { onChange(opt); setOpen(false); }}
-              className={`w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-white/[0.04] transition-colors ${value === opt ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}
+              className="w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-white/[0.04] transition-colors"
+              style={{ color: value === opt ? 'var(--color-accent)' : 'var(--color-text-primary)' }}
             >
               {display(opt)}
             </button>
@@ -782,13 +802,13 @@ const AddExerciseModal = ({ onSave, onClose }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col bg-[#05070B] animate-fade-in">
+    <div className="fixed inset-0 z-[110] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
       {/* Header */}
-      <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 bg-[#05070B]" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}>
+      <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
         <button onClick={onClose} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
-          <X size={18} className="text-[#9CA3AF]" />
+          <X size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
-        <h2 className="text-[18px] font-bold text-[#E5E7EB]">{t('exerciseLibrary.newExercise')}</h2>
+        <h2 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.newExercise')}</h2>
       </header>
 
       {/* Scrollable body — save button is inline at the bottom */}
@@ -796,7 +816,7 @@ const AddExerciseModal = ({ onSave, onClose }) => {
         <div className="flex flex-col gap-5">
           {/* Name */}
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
               {t('exerciseLibrary.exerciseNameLabel')}
             </label>
             <input
@@ -804,7 +824,8 @@ const AddExerciseModal = ({ onSave, onClose }) => {
               value={form.name}
               onChange={e => set('name', e.target.value)}
               placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
-              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
             />
           </div>
 
@@ -816,8 +837,8 @@ const AddExerciseModal = ({ onSave, onClose }) => {
 
           {/* Secondary Muscles (optional multi-select chips) */}
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-2 text-[#9CA3AF]">
-              {t('exerciseLibrary.secondaryMusclesLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-2" style={{ color: 'var(--color-text-muted)' }}>
+              {t('exerciseLibrary.secondaryMusclesLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
               {SECONDARY_MUSCLES.filter(m => m !== form.muscle).map(muscle => {
@@ -830,8 +851,9 @@ const AddExerciseModal = ({ onSave, onClose }) => {
                     className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
                       selected
                         ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                        : 'bg-white/[0.04] text-[#6B7280] border border-white/[0.06] hover:text-[#9CA3AF]'
+                        : 'bg-white/[0.04] border border-white/[0.06]'
                     }`}
+                    style={!selected ? { color: 'var(--color-text-subtle)' } : undefined}
                   >
                     {t(`muscleGroups.${muscle}`, muscle)}
                   </button>
@@ -843,39 +865,39 @@ const AddExerciseModal = ({ onSave, onClose }) => {
           {/* Sets + Reps */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultSetsLabel')}</label>
+              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultSetsLabel')}</label>
               <input type="number" min="1" max="10" value={form.defaultSets}
                 onChange={e => set('defaultSets', e.target.value)}
-                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+                className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
               />
             </div>
             <div>
-              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultRepsLabel')}</label>
+              <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultRepsLabel')}</label>
               <input inputMode="numeric" value={form.defaultReps}
                 onChange={e => set('defaultReps', e.target.value)}
                 placeholder="8-12"
-                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+                className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
               />
             </div>
           </div>
 
           {/* Instructions */}
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.instructionsLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span></label>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.instructionsLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span></label>
             <textarea
               value={form.instructions}
               onChange={e => set('instructions', e.target.value)}
               placeholder={t('exerciseLibrary.instructionsPlaceholder')}
               rows={3}
-              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all"
+              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
             />
           </div>
 
           {/* Share with friends toggle */}
           <div className="flex items-center justify-between py-3 border-t border-white/[0.06]">
             <div>
-              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('exerciseLibrary.shareWithFriends')}</p>
-              <p className="text-[11px] text-[#4B5563] mt-0.5">{t('exerciseLibrary.shareWithFriendsHint')}</p>
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.shareWithFriends')}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.shareWithFriendsHint')}</p>
             </div>
             <button
               type="button"
@@ -893,7 +915,7 @@ const AddExerciseModal = ({ onSave, onClose }) => {
           <button
             onClick={handleSave}
             disabled={saving || !form.name.trim()}
-            className="w-full py-3.5 rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+            className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
           >
             {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveExercise')}
           </button>
@@ -922,9 +944,10 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
     <div className="flex-1 overflow-y-auto px-5 py-5 pb-[calc(2rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))]">
       <div className="flex flex-col gap-5">
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.exerciseNameLabel')}</label>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.exerciseNameLabel')}</label>
           <input autoFocus value={form.name} onChange={e => set('name', e.target.value)} placeholder={t('exerciseLibrary.exerciseNamePlaceholder')}
-            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+            className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[14px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all"
+            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <DropdownSelect label={t('exerciseLibrary.primaryMuscleLabel')} value={form.muscle} options={MUSCLE_GROUPS} onChange={v => set('muscle', v)} renderOption={(v) => t(`muscleGroups.${v}`, v)} />
@@ -932,20 +955,20 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultSetsLabel')}</label>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultSetsLabel')}</label>
             <input type="number" min="1" max="10" value={form.defaultSets} onChange={e => set('defaultSets', e.target.value)}
-              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
           </div>
           <div>
-            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.defaultRepsLabel')}</label>
+            <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.defaultRepsLabel')}</label>
             <input inputMode="numeric" value={form.defaultReps} onChange={e => set('defaultReps', e.target.value)} placeholder="8-12"
-              className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" />
+              className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
           </div>
         </div>
         <div>
-          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5 text-[#9CA3AF]">{t('exerciseLibrary.instructionsLabel')} <span className="text-[#4B5563] normal-case">({t('exerciseLibrary.optional')})</span></label>
+          <label className="block text-[12px] font-semibold uppercase tracking-[0.1em] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.instructionsLabel')} <span className="normal-case" style={{ color: 'var(--color-text-muted)' }}>({t('exerciseLibrary.optional')})</span></label>
           <textarea value={form.instructions} onChange={e => set('instructions', e.target.value)} placeholder={t('exerciseLibrary.instructionsPlaceholder')} rows={3}
-            className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" />
+            className="w-full border border-white/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] placeholder-[#3B4252] focus:outline-none focus:border-[#D4AF37]/40 resize-none transition-all" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} />
         </div>
         {error && <p className="text-[12px] text-red-400">{error}</p>}
         <button
@@ -957,7 +980,7 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
             setSaving(false);
           }}
           disabled={saving || !form.name.trim()}
-          className="w-full py-3.5 rounded-2xl font-bold text-[15px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
+          className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-50 active:scale-[0.98] transition-all mt-2"
         >
           {saving ? t('exerciseLibrary.saving') : t('exerciseLibrary.saveChanges')}
         </button>
@@ -1149,13 +1172,13 @@ export const ExerciseLibraryPage = () => {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 md:px-8 pt-7 md:pt-12 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 md:px-8 pt-7 md:pt-12 pb-28 md:pb-12 animate-fade-in">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="mb-7 flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1
-            className="text-[28px] md:text-[32px] font-extrabold tracking-[-0.02em] leading-none"
+            className="text-[22px] md:text-[32px] font-extrabold tracking-[-0.02em] leading-none truncate"
             style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
           >
             {t('exerciseLibrary.title')}
@@ -1166,10 +1189,10 @@ export const ExerciseLibraryPage = () => {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95 transition-all whitespace-nowrap flex-shrink-0"
           style={{
             background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 85%, black) 100%)',
-            color: '#0A0D14',
+            color: 'var(--color-bg-secondary)',
             boxShadow: '0 2px 12px color-mix(in srgb, var(--color-accent) 20%, transparent)',
           }}
         >
@@ -1283,12 +1306,12 @@ export const ExerciseLibraryPage = () => {
 
       {/* Edit Exercise Modal */}
       {editingExercise && createPortal(
-        <div className="fixed inset-0 z-[110] flex flex-col bg-[#05070B] animate-fade-in">
-          <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 bg-[#05070B]" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}>
+        <div className="fixed inset-0 z-[110] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
+          <header className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3" style={{ paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))', background: 'var(--color-bg-primary)' }}>
             <button onClick={() => setEditingExercise(null)} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center hover:bg-white/[0.08] transition-colors">
-              <X size={18} className="text-[#9CA3AF]" />
+              <X size={18} style={{ color: 'var(--color-text-muted)' }} />
             </button>
-            <h2 className="text-[18px] font-bold text-[#E5E7EB]">{t('exerciseLibrary.editExercise')}</h2>
+            <h2 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('exerciseLibrary.editExercise')}</h2>
           </header>
           <EditExerciseForm exercise={editingExercise} onSave={handleEditExercise} onCancel={() => setEditingExercise(null)} />
         </div>,

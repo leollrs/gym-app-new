@@ -7,6 +7,7 @@ export { StatusBadge, RiskBadge, ScoreBar, STATUS_CONFIG, RISK_CONFIG } from './
 export { default as FilterBar } from './FilterBar';
 export { default as SectionLabel } from './SectionLabel';
 export { default as PageHeader } from './PageHeader';
+export { default as AdminPageShell } from './AdminPageShell';
 export { default as AdminModal } from './AdminModal';
 export { default as AdminTable } from './AdminTable';
 export { default as ErrorCard } from './ErrorCard';

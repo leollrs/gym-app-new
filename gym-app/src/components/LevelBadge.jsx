@@ -68,7 +68,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-bold text-[#E5E7EB]">{levelLabel} {level}</span>
+            <span className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{levelLabel} {level}</span>
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{
@@ -80,7 +80,7 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
               {tierLabel}
             </span>
           </div>
-          <p className="text-[11px] text-[#6B7280] mt-0.5">
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
             {t('rewards.xpTotal', { count: totalPoints.toLocaleString() })}
           </p>
         </div>
@@ -89,17 +89,17 @@ export function LevelCard({ totalPoints, lifetimePoints, className = '' }) {
       {/* XP Progress bar */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-[#6B7280]">
+          <span className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
             {xpIntoLevel} / {xpForNext} XP
           </span>
           <span className="text-[10px] font-semibold" style={{ color: tier.color }}>
             {levelLabel} {level + 1}
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(128,128,128,0.15)', border: '1.5px solid rgba(128,128,128,0.3)' }}>
           <div
             className="h-full rounded-full transition-all duration-700 ease-out"
-            style={{ width: `${progress}%`, backgroundColor: tier.color }}
+            style={{ width: `${Math.max(progress, 2)}%`, backgroundColor: tier.color }}
           />
         </div>
       </div>

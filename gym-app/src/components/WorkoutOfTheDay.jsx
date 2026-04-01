@@ -108,7 +108,7 @@ export default function WorkoutOfTheDay() {
   // ── Loading skeleton ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5 animate-pulse">
+      <div className="bg-[var(--color-bg-card)] rounded-[14px] border border-white/8 p-5 animate-pulse overflow-hidden">
         {/* Header skeleton */}
         <div className="flex items-center gap-2 mb-4">
           <div className="w-5 h-5 rounded bg-white/10" />
@@ -143,10 +143,10 @@ export default function WorkoutOfTheDay() {
   // ── Error state ─────────────────────────────────────────────────────────
   if (error && !workout) {
     return (
-      <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5">
+      <div className="bg-[var(--color-bg-card)] rounded-[14px] border border-white/8 p-5 overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-5 h-5 text-[#D4AF37]" />
-          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">{t('workoutOfDay.todaysWorkout')}</h3>
+          <Sparkles className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
+          <h3 className="text-[var(--color-text-primary)] font-semibold text-sm tracking-wide truncate">{t('workoutOfDay.todaysWorkout')}</h3>
         </div>
         <p className="text-sm text-red-400 mb-3">{error}</p>
         <button
@@ -163,17 +163,17 @@ export default function WorkoutOfTheDay() {
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="bg-[#0F172A] rounded-[14px] border border-white/8 p-5">
+    <div className="bg-[var(--color-bg-card)] rounded-[14px] border border-white/8 p-5 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[#D4AF37]" />
-          <h3 className="text-[#E5E7EB] font-semibold text-sm tracking-wide">{t('workoutOfDay.todaysWorkout')}</h3>
+          <Sparkles className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
+          <h3 className="text-[var(--color-text-primary)] font-semibold text-sm tracking-wide truncate">{t('workoutOfDay.todaysWorkout')}</h3>
         </div>
         <button
           onClick={handleRegenerate}
           disabled={regenerating}
-          className="flex items-center gap-1 text-xs text-[#9CA3AF] hover:text-[#D4AF37] transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[#D4AF37] transition-colors disabled:opacity-40"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
           {t('workoutOfDay.regenerate')}
@@ -181,20 +181,20 @@ export default function WorkoutOfTheDay() {
       </div>
 
       {/* Workout name */}
-      <h2 className="text-[#E5E7EB] font-bold text-lg leading-tight mb-2">
+      <h2 className="text-[var(--color-text-primary)] font-bold text-[18px] leading-tight mb-2 truncate">
         {workout.name}
       </h2>
 
       {/* Meta: time + muscle pills */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <span className="flex items-center gap-1 text-xs text-[#6B7280]">
+        <span className="flex items-center gap-1 text-xs text-[var(--color-text-subtle)]">
           <Clock className="w-3.5 h-3.5" />
           ~{workout.estimatedMinutes} min
         </span>
         {workout.musclesFocused.map(muscle => (
           <span
             key={muscle}
-            className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${MUSCLE_COLORS[muscle] || 'bg-white/10 text-[#9CA3AF]'}`}
+            className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${MUSCLE_COLORS[muscle] || 'bg-white/10 text-[var(--color-text-muted)]'}`}
           >
             {muscle}
           </span>
@@ -202,7 +202,7 @@ export default function WorkoutOfTheDay() {
       </div>
 
       {/* Reasoning */}
-      <p className="text-sm text-[#9CA3AF] leading-relaxed mb-4">
+      <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
         {workout.reasoning}
       </p>
 
@@ -215,17 +215,17 @@ export default function WorkoutOfTheDay() {
           return (
             <div key={ex.exerciseId} className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-2.5 min-w-0">
-                <span className="text-xs text-[#6B7280] font-mono mt-0.5 w-4 shrink-0 text-right">
+                <span className="text-xs text-[var(--color-text-subtle)] font-mono mt-0.5 w-4 shrink-0 text-right">
                   {idx + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm text-[#E5E7EB] font-medium truncate">{name}</p>
-                  <p className="text-[11px] text-[#6B7280] leading-snug mt-0.5 line-clamp-1">
+                  <p className="text-sm text-[var(--color-text-primary)] font-medium truncate">{name}</p>
+                  <p className="text-[11px] text-[var(--color-text-subtle)] leading-snug mt-0.5 line-clamp-1">
                     {ex.reason}
                   </p>
                 </div>
               </div>
-              <span className="text-xs text-[#9CA3AF] font-medium whitespace-nowrap shrink-0 mt-0.5">
+              <span className="text-xs text-[var(--color-text-muted)] font-medium whitespace-nowrap shrink-0 mt-0.5">
                 {ex.sets} × {ex.reps}
               </span>
             </div>
@@ -237,7 +237,7 @@ export default function WorkoutOfTheDay() {
       <button
         onClick={handleStart}
         disabled={saving}
-        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#B8962E] text-[#05070B] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
+        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#B8962E] text-[var(--color-bg-primary)] font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
       >
         {saving ? (
           <>

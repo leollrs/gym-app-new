@@ -75,6 +75,11 @@ export const useRoutines = () => {
 
     if (routinesRes.error) {
       setError(routinesRes.error.message);
+      // Try loading from offline cache on error
+      try {
+        const cached = localStorage.getItem('offline_routines');
+        if (cached) setRoutines(JSON.parse(cached));
+      } catch {}
     } else {
       const lastPerformedMap = {};
       sessionsRes.data?.forEach(s => {
@@ -91,6 +96,8 @@ export const useRoutines = () => {
 
       setRoutines(enriched);
       setCache(`routines:${user.id}`, enriched);
+      // Cache for offline access
+      try { localStorage.setItem('offline_routines', JSON.stringify(enriched)); } catch {}
 
       // Sync routines to Apple Watch — include program + today flags
       getTodayProgramRoutineIds(user.id, enriched).then(todayIds => {

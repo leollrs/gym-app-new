@@ -49,7 +49,8 @@ const WorkoutHeroCard = ({
     <motion.button
       type="button"
       onClick={() => navigate(`/session/${routineId}`)}
-      className="relative w-full rounded-[20px] overflow-hidden text-left group"
+      aria-label={exerciseName}
+      className="relative w-full rounded-[20px] overflow-hidden text-left group focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
       style={{ aspectRatio: '9 / 10' }}
       whileTap={{ scale: 0.985 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -85,6 +86,7 @@ const WorkoutHeroCard = ({
               playsInline
               preload="auto"
               onCanPlay={handleVideoReady}
+              aria-label={exerciseName}
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
               style={{ opacity: videoReady ? 1 : 0 }}
             />
@@ -92,12 +94,10 @@ const WorkoutHeroCard = ({
         </motion.div>
       </AnimatePresence>
 
+      {/* Dark backdrop — always present so white text is readable */}
+      <div className={`absolute inset-0 z-[1] ${hasMedia ? 'bg-black/50' : 'bg-black/40'}`} />
       {/* Gradient overlay */}
-      <div className={`absolute inset-0 z-[1] ${
-        hasMedia
-          ? 'bg-gradient-to-t from-black/95 via-black/50 to-black/20'
-          : 'bg-gradient-to-t from-black/90 via-black/40 to-transparent'
-      }`} />
+      <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/40 to-black/30" />
 
       {/* Accent glow */}
       {isActive ? (
@@ -145,14 +145,14 @@ const WorkoutHeroCard = ({
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.3 }}
           >
-            <p className="text-[13px] font-medium text-white/60 mb-1">
+            <p className="text-[13px] font-medium mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
               {t('workoutHeroCard.exerciseXOfY', { current: currentIndex + 1, total: exercises.length })}
             </p>
-            <h3 className="text-[22px] font-black text-white tracking-tight leading-tight">
+            <h3 className="text-[18px] font-black tracking-tight leading-tight truncate" style={{ color: 'rgba(255,255,255,0.9)' }}>
               {exerciseName}
             </h3>
             {current.sets && current.reps && (
-              <p className="text-[12px] text-white/40 mt-0.5">
+              <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
                 {t('workoutHeroCard.setsXReps', { sets: current.sets, reps: current.reps })}
               </p>
             )}
@@ -160,7 +160,7 @@ const WorkoutHeroCard = ({
         </AnimatePresence>
 
         {/* Suggested routine hint */}
-        <p className="text-[10px] text-white/30 mt-3 leading-relaxed">
+        <p className="text-[10px] mt-3 leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
           {t('dashboard.suggestedRoutineHint')}
         </p>
 
@@ -181,7 +181,7 @@ const WorkoutHeroCard = ({
           ) : (
             <Play size={18} className="text-black" fill="black" strokeWidth={0} />
           )}
-          <span className={`text-[16px] font-black tracking-wide uppercase ${
+          <span className={`text-[13px] font-black tracking-wide uppercase ${
             isCompleted ? 'text-emerald-400' : 'text-black'
           }`}>
             {isCompleted ? t('workoutHeroCard.workoutCompleted', 'Workout Completed') : isActive ? t('workoutHeroCard.resumeWorkout') : t('workoutHeroCard.startWorkout')}

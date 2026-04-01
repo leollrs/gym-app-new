@@ -4,29 +4,30 @@ import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, MessageSquare, Bug,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV_SECTIONS = [
   {
-    label: 'MAIN',
+    labelKey: 'platformNav.main',
     items: [
-      { to: '/platform',            label: 'Gyms',           icon: Building2, exact: true },
-      { to: '/platform/analytics',   label: 'Analytics',      icon: BarChart3 },
+      { to: '/platform',            labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
+      { to: '/platform/analytics',   labelKey: 'platformNav.analytics',  icon: BarChart3 },
     ],
   },
   {
-    label: 'TOOLS',
+    labelKey: 'platformNav.tools',
     items: [
-      { to: '/platform/members',    label: 'Member Lookup',  icon: Search },
-      { to: '/platform/sms',        label: 'SMS',            icon: MessageSquare },
-      { to: '/platform/audit-log',  label: 'Audit Log',      icon: ScrollText },
-      { to: '/platform/error-logs', label: 'Error Logs',     icon: Bug },
+      { to: '/platform/members',    labelKey: 'platformNav.members',    icon: Search },
+      { to: '/platform/sms',        labelKey: 'platformNav.sms',        icon: MessageSquare },
+      { to: '/platform/audit-log',  labelKey: 'platformNav.auditLog',   icon: ScrollText },
+      { to: '/platform/error-logs', labelKey: 'platformNav.errorLogs',  icon: Bug },
     ],
   },
   {
-    label: 'SYSTEM',
+    labelKey: 'platformNav.system',
     items: [
-      { to: '/platform/settings',   label: 'Settings',       icon: Settings },
+      { to: '/platform/settings',   labelKey: 'platformNav.settings',   icon: Settings },
     ],
   },
 ];
@@ -45,6 +46,7 @@ const linkClass = (active) =>
   }`;
 
 export default function PlatformLayout({ children }) {
+  const { t } = useTranslation('common');
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -110,12 +112,12 @@ export default function PlatformLayout({ children }) {
 
         <nav aria-label="Platform sidebar navigation" className="flex-1 px-3 pb-3 overflow-y-auto">
           {NAV_SECTIONS.map((section, idx) => (
-            <div key={section.label} className={idx > 0 ? 'mt-5' : ''}>
+            <div key={section.labelKey} className={idx > 0 ? 'mt-5' : ''}>
               <p className="px-3 mb-1.5 text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em]">
-                {section.label}
+                {t(section.labelKey)}
               </p>
               <div className="space-y-px">
-                {section.items.map(({ to, label, icon: Icon, exact }) => (
+                {section.items.map(({ to, labelKey, icon: Icon, exact }) => (
                   <NavLink
                     key={to}
                     to={to}
@@ -123,7 +125,7 @@ export default function PlatformLayout({ children }) {
                     className={({ isActive }) => linkClass(isActive)}
                   >
                     <Icon size={16} strokeWidth={1.75} />
-                    <span className="flex-1">{label}</span>
+                    <span className="flex-1">{t(labelKey)}</span>
                   </NavLink>
                 ))}
               </div>
@@ -183,7 +185,7 @@ export default function PlatformLayout({ children }) {
         }`}
         style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}
       >
-        <div className="bg-[#0F172A] border-t border-white/[0.06] rounded-t-2xl px-4 pt-3 pb-4">
+        <div className="bg-[#0F172A] border-t border-white/[0.06] rounded-t-2xl px-4 pt-3 pb-4 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[13px] font-semibold text-[#9CA3AF]">More Pages</p>
             <button
@@ -195,7 +197,7 @@ export default function PlatformLayout({ children }) {
             </button>
           </div>
           <div className="grid grid-cols-4 gap-2">
-            {MOBILE_MORE_NAV.map(({ to, label, icon: Icon, exact }) => (
+            {MOBILE_MORE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -210,7 +212,7 @@ export default function PlatformLayout({ children }) {
                 }
               >
                 <Icon size={22} strokeWidth={1.75} />
-                <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
+                <span className="text-[10px] font-medium text-center leading-tight">{t(labelKey)}</span>
               </NavLink>
             ))}
           </div>
@@ -220,7 +222,7 @@ export default function PlatformLayout({ children }) {
       {/* Mobile bottom nav */}
       <nav aria-label="Platform mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/[0.06] bg-[#05070B]/95 backdrop-blur-2xl transition-colors duration-200"
         style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
-        {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
+        {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink
             key={to}
             to={to}
@@ -232,7 +234,7 @@ export default function PlatformLayout({ children }) {
             }
           >
             <Icon size={20} />
-            <span className="text-[10px] font-medium">{label}</span>
+            <span className="text-[10px] font-medium">{t(labelKey)}</span>
           </NavLink>
         ))}
         {MOBILE_MORE_NAV.length > 0 && (

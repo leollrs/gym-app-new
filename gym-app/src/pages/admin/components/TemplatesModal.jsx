@@ -49,7 +49,7 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
         <div className="flex justify-end -mt-2 mb-3">
           <button
             onClick={onStartFromScratch}
-            className="text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] px-3 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
+            className="text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] px-3 py-1.5 rounded-lg hover:bg-white/5 transition-colors whitespace-nowrap"
           >
             Start from scratch
           </button>
@@ -86,9 +86,9 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
           {PROGRAM_TEMPLATES.map(t => {
             const totalDays = t.weekPattern.length;
             return (
-              <div key={t.id} className="bg-[#111827] border border-white/6 rounded-2xl p-4 flex flex-col gap-3">
+              <div key={t.id} className="bg-[#111827] border border-white/6 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden">
                 <div>
-                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-2">{t.name}</p>
+                  <p className="text-[14px] font-bold text-[#E5E7EB] mb-2 truncate">{t.name}</p>
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${GOAL_BADGE[t.goal] ?? 'bg-white/8 text-[#9CA3AF]'}`}>
                       {t.goal}
@@ -104,7 +104,7 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
                 <p className="text-[12px] text-[#6B7280] leading-relaxed flex-1">{t.description}</p>
                 <button
                   onClick={() => onSelect(t)}
-                  className="w-full py-2 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
+                  className="w-full py-2 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors whitespace-nowrap"
                 >
                   Use Template
                 </button>
@@ -186,7 +186,7 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
 
           <button
             onClick={handleGenerate}
-            className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors"
+            className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors whitespace-nowrap"
           >
             Generate Program
           </button>

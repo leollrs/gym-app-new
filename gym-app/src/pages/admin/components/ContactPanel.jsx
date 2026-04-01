@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Mail, Bell, Phone, CheckCircle, X, Send, Smartphone } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { createNotification } from '../../../lib/notifications';
+import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { AdminModal, Avatar, SectionLabel } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
@@ -27,11 +28,11 @@ export default function ContactPanel({
     try {
       await createNotification({
         profileId: member.id, gymId, type: 'admin_message',
-        title: 'Message from your gym', body: notifMsg,
+        title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: notifMsg,
         data: { source: 'churn_contact_panel' },
       });
       setNotifSent(true);
-      onMarkContacted(member.id);
+      onMarkContacted(member.id, 'push', notifMsg);
       setTimeout(() => setNotifSent(false), 2000);
       setNotifMsg('');
     } catch (err) {
@@ -44,7 +45,7 @@ export default function ContactPanel({
   const handleEmail = () => {
     if (email) {
       window.open(`mailto:${email}`, '_blank');
-      onMarkContacted(member.id);
+      onMarkContacted(member.id, 'email');
     }
   };
 
@@ -55,7 +56,7 @@ export default function ContactPanel({
   };
 
   const handleMessageClick = () => {
-    onMarkContacted(member.id);
+    onMarkContacted(member.id, 'in_app_message');
     onOpenMessage();
   };
 
@@ -119,7 +120,7 @@ export default function ContactPanel({
             </button>
 
             {/* SMS / Messages */}
-            <button onClick={() => { onMarkContacted(member.id); onClose(); navigate(`/admin/messages?member=${member.id}`); }}
+            <button onClick={() => { onMarkContacted(member.id, 'sms'); onClose(); navigate(`/admin/messages?member=${member.id}`); }}
               className="flex flex-col items-center gap-2 p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all group">
               <div className="w-10 h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center group-hover:bg-[#F59E0B]/20 transition-colors">
                 <Smartphone size={18} className="text-[#F59E0B]" />
@@ -144,7 +145,7 @@ export default function ContactPanel({
               className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
               style={{
                 background: notifSent ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.10)',
-                color: notifSent ? '#10B981' : '#10B981',
+                color: 'var(--color-success)',
                 border: `1px solid ${notifSent ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.2)'}`,
               }}>
               {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
@@ -153,9 +154,9 @@ export default function ContactPanel({
         </div>
 
         {/* Contacted status toggle */}
-        <div className="flex items-center justify-between p-3 bg-[#111827] border border-white/6 rounded-xl">
-          <div>
-            <p className="text-[12px] font-semibold text-[#E5E7EB]">
+        <div className="flex items-center justify-between gap-3 p-3 bg-[#111827] border border-white/6 rounded-xl overflow-hidden">
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-semibold text-[#E5E7EB] truncate">
               {isContacted ? 'Marked as Contacted' : 'Not yet contacted'}
             </p>
             {contactedLabel && (
@@ -163,8 +164,8 @@ export default function ContactPanel({
             )}
           </div>
           <button
-            onClick={() => isContacted ? onUnmarkContacted(member.id) : onMarkContacted(member.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors ${
+            onClick={() => isContacted ? onUnmarkContacted(member.id) : onMarkContacted(member.id, 'manual')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors flex-shrink-0 whitespace-nowrap ${
               isContacted
                 ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#EF4444]/10 hover:text-[#EF4444] hover:border-[#EF4444]/20'
                 : 'bg-white/4 text-[#9CA3AF] border-white/8 hover:text-[#E5E7EB]'

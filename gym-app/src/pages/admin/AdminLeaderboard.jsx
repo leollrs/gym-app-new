@@ -123,7 +123,7 @@ export default function AdminLeaderboard() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Leaderboard"
         subtitle="Live gym rankings"
@@ -131,7 +131,7 @@ export default function AdminLeaderboard() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
             >
               <Download size={13} />
               Export
@@ -196,7 +196,7 @@ export default function AdminLeaderboard() {
                   </div>
                   <div className="hidden md:block w-24 flex-shrink-0">
                     <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? '#D4AF37' : 'rgba(212,175,55,0.4)' }} />
+                      <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
                     </div>
                   </div>
                   <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">

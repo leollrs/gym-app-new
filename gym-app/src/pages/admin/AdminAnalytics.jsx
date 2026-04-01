@@ -1,6 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Target, Check, X } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format, startOfMonth } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
-import { FadeIn, PageHeader } from '../../components/admin';
+import { supabase } from '../../lib/supabase';
+import { useToast } from '../../contexts/ToastContext';
+import { FadeIn, PageHeader, AdminPageShell } from '../../components/admin';
+import { adminKeys } from '../../lib/adminQueryKeys';
 
 import GrowthChart from './components/analytics/GrowthChart';
 import RetentionChart from './components/analytics/RetentionChart';
@@ -12,6 +18,154 @@ import LifecycleStages from './components/analytics/LifecycleStages';
 import TrainerPerformance from './components/analytics/TrainerPerformance';
 import MonthlySummary from './components/analytics/MonthlySummary';
 
+const KPI_METRICS = [
+  { key: 'retention_rate', label: 'Retention Rate', unit: '%', icon: '📊' },
+  { key: 'new_members', label: 'New Members', unit: '', icon: '👥' },
+  { key: 'active_rate', label: 'Active Rate', unit: '%', icon: '🔥' },
+  { key: 'avg_workouts', label: 'Avg Workouts/Member', unit: '', icon: '💪' },
+  { key: 'checkin_rate', label: 'Check-in Rate', unit: '%', icon: '📍' },
+  { key: 'churn_rate', label: 'Churn Rate', unit: '%', icon: '⚠️', invertColor: true },
+];
+
+function getStatusColor(current, target, invert) {
+  if (current == null || target == null) return 'bg-white/10';
+  const ratio = current / target;
+  if (invert) {
+    if (ratio <= 1) return 'bg-emerald-500';
+    if (ratio <= 1.25) return 'bg-amber-500';
+    return 'bg-red-500';
+  }
+  if (ratio >= 1) return 'bg-emerald-500';
+  if (ratio >= 0.8) return 'bg-amber-500';
+  return 'bg-red-500';
+}
+
+function getTextColor(current, target, invert) {
+  if (current == null || target == null) return 'text-white/40';
+  const ratio = current / target;
+  if (invert) {
+    if (ratio <= 1) return 'text-emerald-400';
+    if (ratio <= 1.25) return 'text-amber-400';
+    return 'text-red-400';
+  }
+  if (ratio >= 1) return 'text-emerald-400';
+  if (ratio >= 0.8) return 'text-amber-400';
+  return 'text-red-400';
+}
+
+function KPITargets({ gymId }) {
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
+  const month = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState('');
+
+  const { data: targets = {} } = useQuery({
+    queryKey: [...adminKeys.analytics.all(gymId), 'kpi-targets', month],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('admin_kpi_targets')
+        .select('metric, target_value, current_value')
+        .eq('gym_id', gymId)
+        .eq('month', month);
+      const map = {};
+      (data || []).forEach((r) => { map[r.metric] = r; });
+      return map;
+    },
+    enabled: !!gymId,
+  });
+
+  const upsert = useMutation({
+    mutationFn: async ({ metric, value }) => {
+      const { error } = await supabase
+        .from('admin_kpi_targets')
+        .upsert({ gym_id: gymId, month, metric, target_value: value }, { onConflict: 'gym_id,month,metric' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.analytics.all(gymId) });
+      addToast('Target saved', 'success');
+      setEditing(null);
+    },
+    onError: () => addToast('Failed to save target', 'error'),
+  });
+
+  const save = (metric) => {
+    const val = parseFloat(draft);
+    if (isNaN(val) || val < 0) return;
+    upsert.mutate({ metric, value: val });
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Target className="w-5 h-5 text-[color:var(--color-accent)]" />
+        <h3 className="text-white font-semibold text-lg">KPI Targets</h3>
+        <span className="text-white/40 text-sm ml-auto">{format(new Date(), 'MMMM yyyy')}</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {KPI_METRICS.map((m) => {
+          const row = targets[m.key];
+          const current = row?.current_value;
+          const target = row?.target_value;
+          const pct = target ? Math.min(((current ?? 0) / target) * 100, 120) : 0;
+          const isEditing = editing === m.key;
+
+          return (
+            <div key={m.key} className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{m.icon}</span>
+                <span className="text-white/70 text-xs font-medium leading-tight">{m.label}</span>
+              </div>
+
+              <div className="flex items-baseline gap-1">
+                <span className={`text-2xl font-bold ${getTextColor(current, target, m.invertColor)}`}>
+                  {current != null ? `${current}${m.unit}` : '—'}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${getStatusColor(current, target, m.invertColor)}`}
+                  style={{ width: `${Math.min(pct, 100)}%` }}
+                />
+              </div>
+
+              {/* Target row */}
+              {isEditing ? (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <input
+                    type="number"
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm text-white outline-none focus:border-[color:var(--color-accent)]"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && save(m.key)}
+                    autoFocus
+                  />
+                  <button onClick={() => save(m.key)} className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setEditing(null)} className="p-1 rounded-lg bg-white/[0.06] text-white/40 hover:bg-white/10">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
+                  className="text-xs text-white/40 hover:text-[color:var(--color-accent)] transition-colors text-left mt-1"
+                >
+                  {target != null ? `Target: ${target}${m.unit}` : '+ Set Target'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminAnalytics() {
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
@@ -19,7 +173,7 @@ export default function AdminAnalytics() {
   useEffect(() => { document.title = 'Admin - Analytics | TuGymPR'; }, []);
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <AdminPageShell>
 
       {/* Page header */}
       <FadeIn>
@@ -30,50 +184,57 @@ export default function AdminAnalytics() {
         />
       </FadeIn>
 
-      {/* Member Lifecycle Funnel */}
-      <FadeIn delay={60}>
-        <LifecycleStages gymId={gymId} />
+      {/* KPI Targets */}
+      <FadeIn delay={30}>
+        <KPITargets gymId={gymId} />
       </FadeIn>
 
-      {/* Monthly Summary */}
-      <FadeIn delay={90}>
-        <MonthlySummary gymId={gymId} />
-      </FadeIn>
+      <div className="grid xl:grid-cols-12 gap-4">
+        {/* Member Lifecycle Funnel */}
+        <FadeIn delay={60} className="xl:col-span-7">
+          <LifecycleStages gymId={gymId} />
+        </FadeIn>
 
-      {/* Row 1: Member Growth + Retention Rate */}
-      <FadeIn delay={120}>
-        <div className="grid md:grid-cols-2 gap-4 mb-4">
-          <GrowthChart gymId={gymId} />
-          <RetentionChart gymId={gymId} />
-        </div>
-      </FadeIn>
+        {/* Monthly Summary */}
+        <FadeIn delay={90} className="xl:col-span-5">
+          <MonthlySummary gymId={gymId} />
+        </FadeIn>
 
-      {/* Row 1b: Engagement */}
-      <FadeIn delay={180}>
-        <div className="mb-4">
-          <ActivityChart gymId={gymId} />
-        </div>
-      </FadeIn>
+        {/* Row 1: Member Growth + Retention Rate */}
+        <FadeIn delay={120} className="xl:col-span-8">
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <GrowthChart gymId={gymId} />
+            <RetentionChart gymId={gymId} />
+          </div>
+        </FadeIn>
 
-      {/* Row 2: Cohort Retention */}
-      <FadeIn delay={240}>
-        <div className="mb-4">
-          <CohortTable gymId={gymId} />
-        </div>
-      </FadeIn>
+        {/* Row 1b: Engagement */}
+        <FadeIn delay={180} className="xl:col-span-4">
+          <div className="mb-4 h-full">
+            <ActivityChart gymId={gymId} />
+          </div>
+        </FadeIn>
 
-      {/* Row 3: Challenge Participation + Onboarding Completion */}
-      <FadeIn delay={300}>
-        <div className="grid md:grid-cols-2 gap-4">
-          <ChallengeStats gymId={gymId} />
-          <OnboardingFunnel gymId={gymId} />
-        </div>
-      </FadeIn>
+        {/* Row 2: Cohort Retention */}
+        <FadeIn delay={240} className="xl:col-span-12">
+          <div className="mb-4">
+            <CohortTable gymId={gymId} />
+          </div>
+        </FadeIn>
 
-      {/* Trainer Performance */}
-      <FadeIn delay={360}>
-        <TrainerPerformance gymId={gymId} />
-      </FadeIn>
-    </div>
+        {/* Row 3: Challenge Participation + Onboarding Completion */}
+        <FadeIn delay={300} className="xl:col-span-8">
+          <div className="grid md:grid-cols-2 gap-4">
+            <ChallengeStats gymId={gymId} />
+            <OnboardingFunnel gymId={gymId} />
+          </div>
+        </FadeIn>
+
+        {/* Trainer Performance */}
+        <FadeIn delay={360} className="xl:col-span-4">
+          <TrainerPerformance gymId={gymId} />
+        </FadeIn>
+      </div>
+    </AdminPageShell>
   );
 }

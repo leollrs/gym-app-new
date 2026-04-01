@@ -142,11 +142,11 @@ export default function LifecycleStages({ gymId }) {
       {/* Legend */}
       <div className="flex flex-wrap gap-x-5 gap-y-1.5">
         {stages.map(s => (
-          <div key={s.key} className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
-            <span className="text-[12px] text-[#9CA3AF]">{s.label}</span>
-            <span className="text-[12px] font-semibold text-[#E5E7EB]">{s.count}</span>
-            <span className="text-[11px] text-[#6B7280]">({s.pct}%)</span>
+          <div key={s.key} className="flex items-center gap-2 min-w-0">
+            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+            <span className="text-[12px] text-[#9CA3AF] truncate">{s.label}</span>
+            <span className="text-[12px] font-semibold text-[#E5E7EB] flex-shrink-0">{s.count}</span>
+            <span className="text-[11px] text-[#6B7280] flex-shrink-0">({s.pct}%)</span>
           </div>
         ))}
       </div>

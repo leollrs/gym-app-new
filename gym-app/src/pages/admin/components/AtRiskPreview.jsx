@@ -9,8 +9,8 @@ export default function AtRiskPreview({ atRisk = [] }) {
   return (
     <AdminCard hover>
       <div className="flex items-center justify-between mb-2.5">
-        <p className="text-[13px] font-semibold text-[#E5E7EB]">At-Risk Members</p>
-        <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
+        <p className="text-[13px] font-semibold text-[#E5E7EB] min-w-0 flex-1 truncate">At-Risk Members</p>
+        <button onClick={() => navigate('/admin/churn')} className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5 whitespace-nowrap">
           View all <ChevronRight size={12} />
         </button>
       </div>
@@ -35,7 +35,7 @@ export default function AtRiskPreview({ atRisk = [] }) {
                     {keySignal && <span className="text-[#4B5563]"> · {keySignal}</span>}
                   </p>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: tier.color, background: tier.bg }}>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: tier.color, background: tier.bg }}>
                   {m.score}%
                 </span>
               </div>

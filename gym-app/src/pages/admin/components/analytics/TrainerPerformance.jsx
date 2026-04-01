@@ -88,7 +88,7 @@ export default function TrainerPerformance({ gymId }) {
               <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{t.name}</p>
               <p className="text-[11px] text-[#6B7280]">{t.clientCount} active client{t.clientCount !== 1 ? 's' : ''}</p>
             </div>
-            <div className="flex gap-4 text-right">
+            <div className="flex gap-4 text-right flex-shrink-0">
               <div>
                 <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.retention}%</p>
                 <p className="text-[10px] text-[#6B7280]">retention</p>

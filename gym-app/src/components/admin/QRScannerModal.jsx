@@ -95,7 +95,8 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
       <div className="relative flex items-center justify-center py-4 px-4 border-b border-white/[0.06]">
         <button
           onClick={onClose}
-          className="absolute left-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] text-[#9CA3AF] hover:text-white transition-colors"
+          aria-label="Close scanner"
+          className="absolute left-4 w-11 h-11 flex items-center justify-center rounded-full bg-white/[0.06] text-[#9CA3AF] hover:text-white transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
         >
           <X size={18} />
         </button>
@@ -164,6 +165,18 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
 function parseQRPayload(text) {
   if (!text || typeof text !== 'string') return null;
   const trimmed = text.trim();
+
+  // Try JSON-based QR payloads first (e.g. password_reset)
+  if (trimmed.startsWith('{')) {
+    try {
+      const json = JSON.parse(trimmed);
+      if (json.type === 'password_reset' && json.request_id && json.token) {
+        return { type: 'password_reset', request_id: json.request_id, token: json.token };
+      }
+    } catch {
+      // Not valid JSON — fall through to other parsers
+    }
+  }
 
   if (trimmed.startsWith('gym-purchase:')) {
     const parts = trimmed.split(':');

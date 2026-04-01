@@ -20,6 +20,76 @@ import {
 } from './progressConstants';
 import ChartTooltip from '../../components/ChartTooltip';
 import { takePhoto } from '../../lib/takePhoto';
+import { validateImageFile } from '../../lib/validateImage';
+import { useToast } from '../../contexts/ToastContext';
+
+// ── Goal-aware progress color helper ─────────────────────────────────────────
+
+/**
+ * Maps a measurement DB key to a canonical metric name for color logic.
+ */
+const toMetricKey = (dbKey) => {
+  if (dbKey === 'waist_cm') return 'waist';
+  if (dbKey === 'body_fat_pct') return 'body_fat';
+  if (dbKey === 'chest_cm') return 'chest';
+  if (dbKey === 'left_arm_cm' || dbKey === 'right_arm_cm' || dbKey === 'bicep_cm' || dbKey === 'arm_cm') return 'arms';
+  if (dbKey === 'left_thigh_cm' || dbKey === 'right_thigh_cm' || dbKey === 'thigh_cm') return 'thighs';
+  if (dbKey === 'hips_cm' || dbKey === 'hip_cm') return 'hips';
+  return dbKey;
+};
+
+/**
+ * Returns the appropriate color for a progress delta based on user's goal.
+ * @param {'weight'|'waist'|'body_fat'|'chest'|'arms'|'thighs'|'hips'} metric
+ * @param {number|null} delta - positive = increase, negative = decrease
+ * @param {'muscle_gain'|'fat_loss'|'strength'|'endurance'|'general_fitness'} primaryGoal
+ * @returns {string} color hex string
+ */
+const getProgressColor = (metric, delta, primaryGoal) => {
+  if (delta == null || delta === 0) return 'var(--color-text-muted)'; // neutral gray
+
+  const isUp = delta > 0;
+
+  // Fat-indicator metrics: waist and body fat — DOWN is always good
+  if (metric === 'waist' || metric === 'body_fat') {
+    return isUp ? 'var(--color-danger)' : 'var(--color-success)';
+  }
+
+  // Muscle-indicator metrics: chest, arms, thighs — UP is good for muscle/strength goals
+  if (['chest', 'arms', 'thighs'].includes(metric)) {
+    if (['muscle_gain', 'strength'].includes(primaryGoal)) {
+      return isUp ? 'var(--color-success)' : 'var(--color-danger)'; // up = good (gaining muscle)
+    }
+    if (primaryGoal === 'fat_loss') {
+      return isUp ? 'var(--color-success)' : 'var(--color-warning)'; // up = good, down = amber (expected during cut)
+    }
+    return isUp ? 'var(--color-success)' : 'var(--color-text-muted)'; // general: up = good, down = neutral
+  }
+
+  // Weight — depends entirely on goal
+  if (metric === 'weight') {
+    if (primaryGoal === 'muscle_gain') {
+      return isUp ? 'var(--color-success)' : 'var(--color-danger)'; // up = good (gaining mass)
+    }
+    if (primaryGoal === 'fat_loss') {
+      return isUp ? 'var(--color-danger)' : 'var(--color-success)'; // up = bad, down = good
+    }
+    if (primaryGoal === 'strength') {
+      return 'var(--color-accent)'; // gold/neutral — weight doesn't matter much
+    }
+    return 'var(--color-accent)'; // general_fitness, endurance — neutral gold
+  }
+
+  // Hips — similar to waist for fat loss, neutral otherwise
+  if (metric === 'hips') {
+    if (primaryGoal === 'fat_loss') {
+      return isUp ? 'var(--color-danger)' : 'var(--color-success)';
+    }
+    return 'var(--color-text-muted)'; // neutral
+  }
+
+  return 'var(--color-text-muted)'; // default neutral
+};
 
 // ── MeasurementsModal ────────────────────────────────────────────────────────
 
@@ -75,7 +145,7 @@ const MEASUREMENT_LABEL_KEYS = {
 };
 
 // ── Measurement Trend Chart ──────────────────────────────────────────────────
-const MeasurementChart = ({ history, metrics }) => {
+const MeasurementChart = ({ history, metrics, primaryGoal }) => {
   const { t, i18n } = useTranslation('pages');
   const [activeMetric, setActiveMetric] = useState(0);
   const metric = metrics[activeMetric];
@@ -111,7 +181,7 @@ const MeasurementChart = ({ history, metrics }) => {
       <div className="flex items-center justify-between mb-3">
         <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.12em]">{t('progressBody.progressTrends')}</p>
         {totalDelta !== 0 && (
-          <span className="text-[10px] font-bold tabular-nums" style={{ color: totalDelta > 0 ? (metric.key === 'waist_cm' || metric.key === 'body_fat_pct' ? '#EF4444' : '#10B981') : (metric.key === 'waist_cm' || metric.key === 'body_fat_pct' ? '#10B981' : '#EF4444') }}>
+          <span className="text-[10px] font-bold tabular-nums" style={{ color: getProgressColor(toMetricKey(metric.key), totalDelta, primaryGoal) }}>
             {totalDelta > 0 ? '+' : ''}{totalDelta}{metric.unit}
           </span>
         )}
@@ -521,7 +591,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   if (scanMode && !scanning) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" onClick={() => setScanMode(false)}>
-        <div className="relative w-full max-w-md mx-4 rounded-[28px] overflow-hidden"
+        <div role="dialog" aria-modal="true" aria-label="Body scan" className="relative w-full max-w-md mx-4 rounded-[28px] overflow-hidden"
           style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.3), 0 0 0 1px var(--color-border-subtle)' }}
           onClick={e => e.stopPropagation()}>
 
@@ -529,7 +599,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           <div className="px-6 pt-6 pb-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.15em]">{t('progressBody.bodyScan')}</p>
-              <button onClick={() => setScanMode(false)}>
+              <button onClick={() => setScanMode(false)} aria-label="Close body scan" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                 <X size={18} className="text-[var(--color-text-muted)]" />
               </button>
             </div>
@@ -541,7 +611,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           <div className="flex gap-2 px-6 mb-5">
             {SCAN_STEPS.map((s, i) => (
               <div key={s.id} className="flex-1 h-[3px] rounded-full" style={{
-                background: i < scanStep ? '#10B981' : i === scanStep ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                background: i < scanStep ? 'var(--color-success)' : i === scanStep ? 'var(--color-accent)' : 'var(--color-border-subtle)',
               }} />
             ))}
           </div>
@@ -614,15 +684,15 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   // ── Main modal (form + results) ──────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" onClick={handleClose}>
-      <div className="w-full max-w-md overflow-hidden rounded-t-[28px] md:rounded-[28px]"
+      <div role="dialog" aria-modal="true" aria-labelledby="measurements-modal-title" className="w-full max-w-md overflow-hidden rounded-t-[28px] md:rounded-[28px]"
         style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)]">
-          <p className="text-[17px] font-bold text-[var(--color-text-primary)]">
+          <p id="measurements-modal-title" className="text-[17px] font-bold text-[var(--color-text-primary)]">
             {existing ? t('progress.body.updateMeasurements') : t('progress.body.addMeasurements')}
           </p>
-          <button onClick={handleClose} aria-label="Close"><X size={18} className="text-[var(--color-text-muted)]" /></button>
+          <button onClick={handleClose} aria-label="Close" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={18} className="text-[var(--color-text-muted)]" /></button>
         </div>
 
         <div className="p-5 max-h-[65vh] overflow-y-auto">
@@ -657,17 +727,17 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                 {(scanResult.lean_mass_kg || scanResult.waist_to_hip || scanResult.ffmi) && (
                   <div className="px-4 pb-3.5 pt-0 flex gap-2 flex-wrap">
                     {scanResult.body_fat_pct != null && (
-                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(245,158,11,0.08)', color: '#F59E0B' }}>
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--color-warning)' }}>
                         {scanResult.body_fat_pct}% BF
                       </span>
                     )}
                     {scanResult.lean_mass_kg != null && (
-                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981' }}>
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(16,185,129,0.08)', color: 'var(--color-success)' }}>
                         {scanResult.lean_mass_kg}kg {t('progressBody.lean')}
                       </span>
                     )}
                     {scanResult.ffmi != null && (
-                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(96,165,250,0.08)', color: '#60A5FA' }}>
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold" style={{ background: 'rgba(96,165,250,0.08)', color: 'var(--color-blue-soft)' }}>
                         FFMI {scanResult.ffmi}
                       </span>
                     )}
@@ -701,7 +771,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           <div className="grid grid-cols-2 gap-3">
             {MEASUREMENT_FIELDS.map(f => (
               <div key={f.key}>
-                <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
+                <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
                   {MEASUREMENT_LABEL_KEYS[f.key] ? t(MEASUREMENT_LABEL_KEYS[f.key]) : f.label} ({f.unit})
                 </label>
                 <input
@@ -789,6 +859,7 @@ function bodyReducer(state, action) {
 export default function ProgressBody() {
   const { t, i18n } = useTranslation('pages');
   const { user, profile } = useAuth();
+  const { showToast } = useToast();
   const [state, dispatch] = useReducer(bodyReducer, bodyInitialState);
   const {
     weightLogs, chartData, period, weightInput, loggingWeight,
@@ -797,6 +868,13 @@ export default function ProgressBody() {
 
   const [progressPhotos, setProgressPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from('member_onboarding').select('primary_goal').eq('profile_id', user.id).maybeSingle()
+      .then(({ data }) => { if (data?.primary_goal) setPrimaryGoal(data.primary_goal); });
+  }, [user?.id]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -924,7 +1002,7 @@ export default function ProgressBody() {
       : null;
 
   const DeltaIcon = delta == null ? Minus : delta > 0 ? TrendingUp : TrendingDown;
-  const deltaColor = delta == null ? '#6B7280' : delta > 0 ? '#EF4444' : '#10B981';
+  const deltaColor = getProgressColor('weight', delta, primaryGoal);
 
   const yMin = chartData.length
     ? Math.floor(Math.min(...chartData.map(d => d.weight)) - 2)
@@ -1004,17 +1082,17 @@ export default function ProgressBody() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: t('progress.body.current'), value: currentW != null ? `${fmtW(currentW)} lbs` : '—', icon: Scale, color: '#D4AF37' },
+          { label: t('progress.body.current'), value: currentW != null ? `${fmtW(currentW)} lbs` : '—', icon: Scale, color: 'var(--color-accent)' },
           { label: `${t('progress.body.change')} (${period}d)`, value: delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)} lbs` : '—', icon: DeltaIcon, color: deltaColor },
-          { label: t('progress.body.entries'), value: weightLogs.length, icon: TrendingUp, color: '#60A5FA' },
+          { label: t('progress.body.entries'), value: weightLogs.length, icon: TrendingUp, color: 'var(--color-blue-soft)' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex flex-col items-center gap-1.5 text-center"
+            className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex flex-col items-center gap-1.5 text-center overflow-hidden"
           >
             <Icon size={16} style={{ color }} strokeWidth={2} />
-            <p className="text-[22px] font-black leading-none text-[var(--color-text-primary)]" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{label}</p>
+            <p className="text-[22px] font-black leading-none text-[var(--color-text-primary)] truncate" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] truncate">{label}</p>
           </div>
         ))}
       </div>
@@ -1050,8 +1128,8 @@ export default function ProgressBody() {
             <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" />
@@ -1072,7 +1150,7 @@ export default function ProgressBody() {
               <Area
                 type="monotone"
                 dataKey="weight"
-                stroke="#D4AF37"
+                stroke="var(--color-accent)"
                 strokeWidth={2}
                 fill="url(#wGrad)"
                 dot={false}
@@ -1121,14 +1199,11 @@ export default function ProgressBody() {
                 const prevRaw = prevMeasurements?.[f.key] != null ? parseFloat(prevMeasurements[f.key]) : null;
                 const prevDisplay = prevRaw != null ? (f.dbUnit === 'cm' ? cmToIn(prevRaw) : prevRaw) : null;
                 const delta = prevDisplay != null ? Math.round((displayVal - prevDisplay) * 10) / 10 : null;
-                // For waist — increasing is bad. For arms/thighs/chest — increasing is good (muscle). Body fat increasing is bad.
-                const isWaist = f.key === 'waist_cm' || f.key === 'body_fat_pct';
-                const deltaGood = delta != null && delta !== 0 ? (isWaist ? delta < 0 : delta > 0) : null;
-                const deltaColor = delta == null || delta === 0 ? '#4B5563' : deltaGood ? '#10B981' : '#EF4444';
+                const deltaColor = getProgressColor(toMetricKey(f.key), delta, primaryGoal);
 
                 return (
                   <div key={f.key} className="rounded-xl p-3 text-center" style={{ background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                    <p className="text-[18px] font-black text-[var(--color-text-primary)] leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <p className="text-[18px] font-black text-[var(--color-text-primary)] leading-none truncate" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {displayVal.toFixed(1)}
                       <span className="text-[10px] font-medium ml-0.5 text-[var(--color-text-muted)]">{f.unit}</span>
                     </p>
@@ -1148,12 +1223,12 @@ export default function ProgressBody() {
             {/* Measurement trend chart */}
             {measurementHistory.length > 1 && (() => {
               const CHART_METRICS = [
-                { key: 'body_fat_pct', label: t('progressBody.chartLabels.bodyFat'), color: '#F59E0B', unit: '%', convert: false },
-                { key: 'chest_cm', label: t('progressBody.chartLabels.chest'), color: '#D4AF37', unit: 'in', convert: true },
-                { key: 'waist_cm', label: t('progressBody.chartLabels.waist'), color: '#EF4444', unit: 'in', convert: true },
-                { key: 'left_arm_cm', label: t('progressBody.chartLabels.arms'), color: '#10B981', unit: 'in', convert: true, avg: ['left_arm_cm', 'right_arm_cm'] },
+                { key: 'body_fat_pct', label: t('progressBody.chartLabels.bodyFat'), color: 'var(--color-warning)', unit: '%', convert: false },
+                { key: 'chest_cm', label: t('progressBody.chartLabels.chest'), color: 'var(--color-accent)', unit: 'in', convert: true },
+                { key: 'waist_cm', label: t('progressBody.chartLabels.waist'), color: 'var(--color-danger)', unit: 'in', convert: true },
+                { key: 'left_arm_cm', label: t('progressBody.chartLabels.arms'), color: 'var(--color-success)', unit: 'in', convert: true, avg: ['left_arm_cm', 'right_arm_cm'] },
                 { key: 'left_thigh_cm', label: t('progressBody.chartLabels.thighs'), color: '#A78BFA', unit: 'in', convert: true, avg: ['left_thigh_cm', 'right_thigh_cm'] },
-                { key: 'hips_cm', label: t('progressBody.chartLabels.hips'), color: '#60A5FA', unit: 'in', convert: true },
+                { key: 'hips_cm', label: t('progressBody.chartLabels.hips'), color: 'var(--color-blue-soft)', unit: 'in', convert: true },
               ];
               // Filter to metrics that have data
               const available = CHART_METRICS.filter(m => measurementHistory.some(h => {
@@ -1166,6 +1241,7 @@ export default function ProgressBody() {
                 <MeasurementChart
                   history={measurementHistory}
                   metrics={available}
+                  primaryGoal={primaryGoal}
                 />
               );
             })()}
@@ -1189,6 +1265,12 @@ export default function ProgressBody() {
                 onClick={async () => {
                   const file = await takePhoto();
                   if (!file || !user) return;
+                  // Validate file type via magic bytes (not just MIME which can be spoofed)
+                  const validation = await validateImageFile(file);
+                  if (!validation.valid) {
+                    showToast(validation.error, 'error');
+                    return;
+                  }
                   setUploadingPhoto(true);
                   try {
                     const compressed = await compressImage(file, 1200);
@@ -1276,15 +1358,15 @@ export default function ProgressBody() {
       {showWeightHistory && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
           onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })}>
-          <div className="w-full max-w-md max-h-[75vh] overflow-hidden rounded-[24px]"
+          <div role="dialog" aria-modal="true" aria-labelledby="weight-history-title" className="w-full max-w-md max-h-[75vh] overflow-hidden rounded-[24px]"
             style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)]">
               <div>
-                <p className="text-[17px] font-bold text-[var(--color-text-primary)]">{t('progressBody.weightHistory')}</p>
+                <p id="weight-history-title" className="text-[17px] font-bold text-[var(--color-text-primary)]">{t('progressBody.weightHistory')}</p>
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{weightLogs.length} {t('progressBody.entries')}</p>
               </div>
-              <button onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })} aria-label="Close">
+              <button onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })} aria-label="Close" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                 <X size={18} className="text-[var(--color-text-muted)]" />
               </button>
             </div>
@@ -1299,12 +1381,12 @@ export default function ProgressBody() {
                       <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">
                         {isToday ? t('progress.body.today') : format(parseISO(log.logged_at), 'EEE, MMM d', { locale: i18n.language === 'es' ? esLocale : undefined })}
                       </p>
-                      {log.notes && <p className="text-[11px] mt-0.5 text-[var(--color-text-muted)]">{log.notes}</p>}
+                      {log.notes && <p className="text-[11px] mt-0.5 text-[var(--color-text-muted)]">{['Initial weight at signup', 'Peso inicial al registrarse'].includes(log.notes) ? t('progress.body.initialWeightNote') : log.notes}</p>}
                     </div>
                     <div className="flex items-center gap-3">
                       {diff != null && (
                         <span className="text-[11px] font-bold tabular-nums"
-                          style={{ color: diff === 0 ? '#4B5563' : diff > 0 ? '#EF4444' : '#10B981' }}>
+                          style={{ color: diff === 0 ? 'var(--color-text-muted)' : diff > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
                           {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                         </span>
                       )}

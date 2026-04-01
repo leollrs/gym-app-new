@@ -30,7 +30,7 @@ const TrainingAvatar = ({ friend, index, onTap }) => (
     {/* Avatar with pulsing green ring */}
     <div className="relative">
       <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-ping opacity-30" />
-      <div className="relative w-11 h-11 rounded-full border-2 border-emerald-400 flex items-center justify-center overflow-hidden bg-amber-900/40">
+      <div className="relative w-11 h-11 rounded-full border-2 border-emerald-400 flex items-center justify-center overflow-hidden bg-white/[0.06]">
         {friend.avatar_url ? (
           <img
             src={friend.avatar_url}

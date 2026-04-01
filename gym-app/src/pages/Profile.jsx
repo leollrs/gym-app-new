@@ -7,6 +7,7 @@ import {
   UtensilsCrossed, QrCode, Gift, Settings, ChevronRight, Trash2, AlertTriangle, Heart,
   Camera, X, Loader2, Sprout, Zap, Activity, Sparkles, Building2,
   Target, TrendingUp, UserPlus, Users, Brain, Medal, Gem, Rocket, RotateCw, CalendarCheck, Weight,
+  Share2, Copy, Link,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -14,11 +15,15 @@ import {
 import { supabase } from '../lib/supabase';
 import { validateImageFile } from '../lib/validateImage';
 import logger from '../lib/logger';
+import AvatarPicker from '../components/AvatarPicker';
+import GoalsSection from '../components/GoalsSection';
+import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAchievements, computeStreakFromSessions } from '../lib/achievements';
+import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAchievements } from '../lib/achievements';
 import { getRewardTier, getUserPoints } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
+import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
 
 // Map achievement icon names → lucide components
 const ICON_MAP = {
@@ -103,20 +108,24 @@ const MUSCLE_COLORS = {
 // ACHIEVEMENT_DEFS and ACHIEVEMENT_CATEGORIES are imported from ../lib/achievements
 
 // ── Hero stat block ───────────────────────────────────────────────────────────
-const HeroStat = ({ label, value, sub }) => (
-  <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-[var(--color-border-subtle)] last:border-r-0">
-    <p className="text-[32px] font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-1 flex-wrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
-      {value}
-      {sub && <span className="text-[12px] font-semibold text-[var(--color-text-muted)] normal-case">{sub}</span>}
-    </p>
-    <p className="text-[11px] font-medium mt-1.5 text-[var(--color-text-muted)] uppercase tracking-wider">{label}</p>
-  </div>
-);
+const HeroStat = ({ label, value, sub }) => {
+  const display = typeof value === 'number' ? formatStatNumber(value) : value;
+  const fontSize = statFontSize(display, 'text-[22px]');
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-5 px-1 min-w-0 border-r border-[var(--color-border-subtle)] last:border-r-0 overflow-hidden">
+      <p className={`${fontSize} font-black leading-none text-[#D4AF37] flex items-baseline justify-center gap-0.5 truncate max-w-full`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {display}
+        {sub && <span className="text-[10px] font-semibold text-[var(--color-text-muted)] normal-case">{sub}</span>}
+      </p>
+      <p className="text-[10px] font-medium mt-1.5 text-[var(--color-text-muted)] uppercase tracking-wider truncate max-w-full">{label}</p>
+    </div>
+  );
+};
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { t } = useTranslation('pages');
-  const { user, profile, signOut, deleteAccount, refreshProfile, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('achievements');
@@ -147,13 +156,20 @@ const Profile = () => {
   const [goalsDraft, setGoalsDraft]     = useState(null);
   const [savingGoals, setSavingGoals]   = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [monthlyCheckIns, setMonthlyCheckIns]     = useState(0);
   const [showGymInfo, setShowGymInfo] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  // Friend code & referral state
+  const [friendCode, setFriendCode] = useState(profile?.friend_code ?? null);
+  const [friendLinkCopied, setFriendLinkCopied] = useState(false);
+  const [referralCount, setReferralCount] = useState(0);
+
   // Avatar upload state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const avatarInputRef = React.useRef(null);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  // avatarInputRef removed — AvatarPicker handles its own file input
 
   // Name / username editing state
   const [editingIdentity, setEditingIdentity] = useState(false);
@@ -175,6 +191,30 @@ const Profile = () => {
       // Fetch user points for level display
       const ptsData = await getUserPoints(user.id);
       setUserPoints(ptsData.lifetime_points || 0);
+
+      // Friend code: check if profile has one, generate if not
+      if (profile?.friend_code) {
+        setFriendCode(profile.friend_code);
+      } else if (!friendCode) {
+        // Only generate once — guard against re-renders
+        const code = Math.random().toString(36).substring(2, 10);
+        const { error: fcErr } = await supabase
+          .from('profiles')
+          .update({ friend_code: code })
+          .eq('id', user.id);
+        if (!fcErr) {
+          setFriendCode(code);
+        }
+      }
+
+      // Referral count (table may not exist yet if migrations haven't run)
+      try {
+        const { count: refCount } = await supabase
+          .from('referrals')
+          .select('id', { count: 'exact', head: true })
+          .eq('referrer_id', user.id);
+        setReferralCount(refCount ?? 0);
+      } catch { setReferralCount(0); }
 
       // 2. Recent completed sessions (capped for performance)
       const { data: sessionData } = await supabase
@@ -228,6 +268,16 @@ const Profile = () => {
         .single();
       setOnboarding(ob ?? null);
 
+      // 5b. Check-ins this month
+      const monthStart = new Date();
+      monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+      const { count: ciCount } = await supabase
+        .from('check_ins')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .gte('checked_in_at', monthStart.toISOString());
+      setMonthlyCheckIns(ciCount ?? 0);
+
       // 6. Award any missing achievements, then load earned + stats
       await awardAchievements(user.id, profile.gym_id, supabase);
 
@@ -257,12 +307,8 @@ const Profile = () => {
   // ── Derived values ──────────────────────────────────────────────────────────
   const { level } = getLevel(userPoints);
   const tier = getRewardTier(userPoints);
-  const streak      = computeStreakFromSessions(sessions);
   const totalVolume = sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
-  const volumeStr   = totalVolume >= 1_000_000
-    ? `${(totalVolume / 1_000_000).toFixed(2)}M`
-    : totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(0)}k`
-    : `${Math.round(totalVolume)}`;
+  const volumeStr   = formatStatNumber(Math.round(totalVolume));
 
   const prGroups = prs.reduce((acc, pr) => {
     const group = pr.exercises?.muscle_group ?? 'Other';
@@ -318,65 +364,71 @@ const Profile = () => {
     }
   };
 
-  // ── Avatar upload ──────────────────────────────────────────────────────────
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type via magic bytes (not just MIME which can be spoofed)
-    const validation = await validateImageFile(file);
-    if (!validation.valid) {
-      showToast(validation.error, 'error');
-      return;
-    }
-
+  // ── Avatar save (from AvatarPicker) ──────────────────────────────────────
+  const handleAvatarSave = async ({ type, value, file }) => {
     setUploadingAvatar(true);
     try {
-      const ext = file.name.split('.').pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
+      if (type === 'photo' && file) {
+        // Validate file type via magic bytes (not just MIME which can be spoofed)
+        const validation = await validateImageFile(file);
+        if (!validation.valid) {
+          showToast(validation.error, 'error');
+          setUploadingAvatar(false);
+          return;
+        }
 
-      const { error: storageErr } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true });
-      if (storageErr) throw storageErr;
+        const ext = file.name.split('.').pop();
+        const path = `${user.id}/${Date.now()}.${ext}`;
 
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(path);
+        const { error: storageErr } = await supabase.storage
+          .from('avatars')
+          .upload(path, file, { upsert: true });
+        if (storageErr) throw storageErr;
 
-      const { error: updateErr } = await supabase
-        .from('profiles')
-        .update({ avatar_url: urlData.publicUrl })
-        .eq('id', user.id);
-      if (updateErr) throw updateErr;
+        const { data: urlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(path);
 
-      refreshProfile();
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({ avatar_url: urlData.publicUrl, avatar_type: 'photo', avatar_value: null })
+          .eq('id', user.id);
+        if (updateErr) throw updateErr;
+
+        // Optimistic local update so avatar renders instantly
+        patchProfile({ avatar_url: urlData.publicUrl, avatar_type: 'photo', avatar_value: null });
+      } else {
+        // Color or design — just update type + value
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({ avatar_type: type, avatar_value: value })
+          .eq('id', user.id);
+        if (updateErr) throw updateErr;
+
+        // Optimistic local update so avatar renders instantly
+        patchProfile({ avatar_type: type, avatar_value: value });
+      }
+
+      setAvatarPickerOpen(false);
       showToast(t('toasts.avatarUpdated'), 'success');
+      // Also refresh from DB to ensure full consistency
+      refreshProfile();
     } catch (err) {
       logger.error('Avatar upload error:', err);
       showToast(t('toasts.failedToUploadAvatar', { message: err.message ?? 'Unknown error' }), 'error');
     } finally {
       setUploadingAvatar(false);
-      // Reset the input so re-selecting the same file still triggers onChange
-      if (avatarInputRef.current) avatarInputRef.current.value = '';
     }
   };
+
+  // Legacy file-input handler removed — AvatarPicker handles photo uploads directly
 
   // ── Save name / username ──────────────────────────────────────────────────
   const saveIdentity = async () => {
     const trimmedName = identityDraft.full_name.trim();
-    const trimmedUsername = identityDraft.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
     if (!trimmedName) {
       showToast('Name cannot be empty', 'error');
-      return;
-    }
-    if (!trimmedUsername) {
-      showToast('Username cannot be empty', 'error');
-      return;
-    }
-    if (trimmedUsername.length > 30) {
-      showToast('Username must be 30 characters or less', 'error');
       return;
     }
 
@@ -384,7 +436,7 @@ const Profile = () => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ full_name: trimmedName, username: trimmedUsername })
+        .update({ full_name: trimmedName })
         .eq('id', user.id);
       if (error) {
         if (error.message?.includes('unique') || error.code === '23505') {
@@ -404,10 +456,33 @@ const Profile = () => {
     }
   };
 
+  // ── Share friend link ──────────────────────────────────────────────────────
+  const friendLink = friendCode ? `https://tugympr.app/add-friend/${friendCode}` : '';
+
+  const handleShareFriendLink = async () => {
+    if (!friendLink) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: t('profile.shareFriendLink'),
+          text: t('profile.shareFriendLink'),
+          url: friendLink,
+        });
+      } else {
+        await navigator.clipboard.writeText(friendLink);
+        setFriendLinkCopied(true);
+        showToast(t('profile.friendCodeCopied'), 'success');
+        setTimeout(() => setFriendLinkCopied(false), 2000);
+      }
+    } catch {
+      // user cancelled share sheet
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12">
-      <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8">
+      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-8">
 
       {/* ── Profile header card ──────────────────────────────────────────── */}
       <div className="rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] mb-6 overflow-hidden" data-tour="tour-profile-page">
@@ -415,61 +490,40 @@ const Profile = () => {
         {/* Identity row */}
         <div className="flex items-start justify-between p-6 pb-4">
           <div className="flex items-center gap-4">
-            {/* Avatar with upload overlay */}
+            {/* Avatar with customization overlay */}
             <button
               type="button"
-              onClick={() => avatarInputRef.current?.click()}
+              onClick={() => setAvatarPickerOpen(true)}
               disabled={uploadingAvatar}
-              className="relative flex-shrink-0 group"
-              title="Change avatar"
+              className="relative flex-shrink-0 group focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-2xl"
+              aria-label="Change avatar"
             >
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt={profile.full_name}
-                  className="w-[72px] h-[72px] rounded-2xl object-cover border-2 border-[#D4AF37]/40"
-                />
-              ) : (
-                <div className="w-[72px] h-[72px] rounded-2xl flex items-center justify-center font-black text-[28px] bg-amber-900/40 border-2 border-[#D4AF37]/30 text-[#D4AF37]">
-                  {(profile?.full_name?.[0] ?? '?').toUpperCase()}
+              <UserAvatar
+                user={profile}
+                size={72}
+                rounded="2xl"
+                className="border-2 border-[#D4AF37]/40"
+              />
+              {uploadingAvatar && (
+                <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center pointer-events-none">
+                  <Loader2 size={18} className="text-white animate-spin" />
                 </div>
               )}
-              {/* Camera overlay */}
-              <div className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                {uploadingAvatar ? (
-                  <Loader2 size={20} className="text-white animate-spin" />
-                ) : (
-                  <Camera size={20} className="text-white" />
-                )}
-              </div>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarUpload}
-              />
             </button>
 
             {/* Name / username — view or edit */}
             {editingIdentity ? (
               <div className="flex flex-col gap-1.5">
                 <input
+                  id="profile-full-name"
                   type="text"
                   value={identityDraft.full_name}
                   onChange={e => setIdentityDraft(d => ({ ...d, full_name: e.target.value }))}
                   placeholder="Full name"
-                  className="bg-[#0B1220] border border-white/10 rounded-lg px-3 py-1.5 text-[16px] font-bold text-[var(--color-text-primary)] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 w-full max-w-[200px]"
+                  aria-label="Full name"
+                  className="bg-[var(--color-bg-input)] border border-white/10 rounded-lg px-3 py-1.5 text-[16px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] w-full max-w-[200px]"
                 />
-                <div className="flex items-center gap-1">
-                  <span className="text-[13px] text-[var(--color-text-muted)]">@</span>
-                  <input
-                    type="text"
-                    value={identityDraft.username}
-                    onChange={e => setIdentityDraft(d => ({ ...d, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') }))}
-                    maxLength={30}
-                    placeholder="username"
-                    className="bg-[#0B1220] border border-white/10 rounded-lg px-2 py-1 text-[13px] text-[var(--color-text-muted)] placeholder-[#4B5563] focus:outline-none focus:border-[#D4AF37]/50 w-full max-w-[180px]"
-                  />
-                </div>
+                <p className="text-[13px] text-[var(--color-text-muted)]">@{profile?.username}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <button
                     type="button"
@@ -491,25 +545,9 @@ const Profile = () => {
               </div>
             ) : (
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-[22px] font-bold leading-tight text-[var(--color-text-primary)]">
-                    {loading ? '—' : profile?.full_name}
-                  </h1>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentityDraft({
-                        full_name: profile?.full_name ?? '',
-                        username: profile?.username ?? '',
-                      });
-                      setEditingIdentity(true);
-                    }}
-                    className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors duration-200 text-[var(--color-text-muted)] hover:text-[#D4AF37]"
-                    title="Edit name & username"
-                  >
-                    <Edit2 size={13} />
-                  </button>
-                </div>
+                <h1 className="text-[22px] font-bold leading-tight text-[var(--color-text-primary)]">
+                  {loading ? '—' : profile?.full_name}
+                </h1>
                 <p className="text-[13px] mt-0.5 text-[var(--color-text-muted)]">@{profile?.username}</p>
                 {gymName && (
                   <p className="text-[13px] mt-1.5 flex items-center gap-1.5 font-semibold text-[#D4AF37]">
@@ -523,19 +561,33 @@ const Profile = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate('/settings')}
-              className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-white/[0.06] border border-white/10 text-[var(--color-text-muted)]"
-              title="Settings"
+              onClick={() => {
+                setIdentityDraft({
+                  full_name: profile?.full_name ?? '',
+                  username: profile?.username ?? '',
+                });
+                setEditingIdentity(true);
+              }}
+              className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-white/[0.06] border border-white/10 text-[var(--color-text-muted)] hover:text-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label="Edit name"
             >
-              <Settings size={18} />
+              <Edit2 size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/settings')}
+              className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-white/[0.06] border border-white/10 text-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label="Settings"
+            >
+              <Settings size={17} />
             </button>
             <button
               type="button"
               onClick={signOut}
-              className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-red-900/30 border border-red-800 text-red-400"
-              title="Log out"
+              className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:opacity-80 active:scale-95 bg-red-500/10 border border-red-500/20 text-red-400 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label="Log out"
             >
-              <LogOut size={18} />
+              <LogOut size={17} />
             </button>
           </div>
         </div>
@@ -563,32 +615,49 @@ const Profile = () => {
           </span>
         </div>
 
+        {/* Friend code removed — handled via Invitar al Gym page */}
+
         {/* Hero stats */}
         <div className="border-t border-[var(--color-border-subtle)]">
           <div className="grid grid-cols-4 gap-0 w-full">
             <HeroStat label={t('profile.workouts')} value={loading ? '—' : sessions.length} />
-            <HeroStat label={t('profile.streak')}   value={loading ? '—' : streak} sub={t('profile.days')} />
+            <HeroStat label={t('profile.checkIns')} value={loading ? '—' : monthlyCheckIns} />
             <HeroStat label={t('profile.volume')}   value={loading ? '—' : volumeStr} sub="lbs" />
-            <div className="flex flex-col items-center justify-center text-center py-5 px-2 min-w-0 border-r border-[var(--color-border-subtle)] last:border-r-0">
-              <p className="text-[32px] font-black leading-none text-[#D4AF37]" style={{ fontVariantNumeric: 'tabular-nums' }}>{loading ? '—' : prs.length}</p>
-              <p className="text-[11px] font-medium mt-1.5 text-[var(--color-text-muted)] uppercase tracking-wider">{t('profile.records')}</p>
-            </div>
+            <HeroStat label={t('profile.records')} value={loading ? '—' : prs.length} />
           </div>
         </div>
       </div>
 
+      {/* ── Referral Program card ─────────────────────────────────────────── */}
+      <button
+        type="button"
+        onClick={() => navigate('/referrals')}
+        className="w-full flex items-center gap-4 p-4 mb-4 rounded-2xl border border-[#D4AF37]/25 bg-gradient-to-r from-[#D4AF37]/10 to-[#D4AF37]/5 hover:from-[#D4AF37]/15 hover:to-[#D4AF37]/8 transition-all duration-200 active:scale-[0.98]"
+      >
+        <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
+          <Gift size={20} className="text-[#D4AF37]" />
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          <p className="text-[14px] font-bold text-[#D4AF37]">{t('profile.referralProgram')}</p>
+          <p className="text-[12px] text-[var(--color-text-muted)] mt-0.5">
+            {t('profile.friendsReferred', { count: referralCount })}
+          </p>
+        </div>
+        <ChevronRight size={18} className="text-[#D4AF37]/60 flex-shrink-0" />
+      </button>
+
       {/* ── Quick-access cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4 mb-6 stagger-fade-in">
+      <div className="grid grid-cols-3 gap-3 mb-6 stagger-fade-in">
         {[
-          { to: '/checkin',    icon: QrCode,           label: t('profile.checkIn'),  color: '#3B82F6' },
-          { to: '/nutrition',  icon: UtensilsCrossed,  label: t('dashboard.nutrition'), color: '#10B981' },
-          { to: '/my-gym',     icon: Building2,        label: t('profile.myGym'),    color: '#D4AF37' },
+          { to: '/checkin',    icon: QrCode,           label: t('profile.checkIn'),       color: 'var(--color-blue)' },
+          { to: '/my-gym',     icon: Building2,        label: t('profile.myGym'),         color: 'var(--color-accent)' },
+          { to: '/referrals',  icon: UserPlus,         label: t('profile.inviteToGym'),   color: '#A78BFA' },
         ].map(item => (
           <button
             key={item.label}
             type="button"
             onClick={() => navigate(item.to)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] hover:bg-white/[0.06] transition-colors duration-200 active:scale-[0.98] transition-transform duration-150"
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] hover:bg-white/[0.06] transition-colors duration-200 active:scale-[0.98] transition-transform duration-150 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           >
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -596,7 +665,7 @@ const Profile = () => {
             >
               <item.icon size={18} style={{ color: item.color }} strokeWidth={2} />
             </div>
-            <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">{item.label}</span>
+            <span className="text-[11px] font-semibold text-[var(--color-text-muted)] text-center leading-tight">{item.label}</span>
           </button>
         ))}
       </div>
@@ -612,7 +681,7 @@ const Profile = () => {
             key={t.key}
             type="button"
             onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-all ${
+            className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-all focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
               activeTab === t.key
                 ? 'bg-[#D4AF37] text-black font-semibold'
                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)]'
@@ -630,7 +699,7 @@ const Profile = () => {
           {!loading && (
             <div className="rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] px-5 py-4 flex items-center justify-between">
               <div>
-                <p className="text-[22px] font-black text-[#D4AF37] leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <p className={`${statFontSize(Object.keys(earnedAchievements).length, 'text-[22px]')} font-black text-[#D4AF37] leading-none truncate`} style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {Object.keys(earnedAchievements).length}
                   <span className="text-[14px] font-semibold text-[var(--color-text-muted)] ml-1">
                     / {ACHIEVEMENT_DEFS.length}
@@ -722,13 +791,13 @@ const Profile = () => {
                               filter: earned ? 'none' : 'grayscale(1)',
                             }}
                           >
-                            <AchievementIcon name={a.icon} size={24} color={earned ? a.color : '#6B7280'} />
+                            <AchievementIcon name={a.icon} size={24} color={earned ? a.color : 'var(--color-text-subtle)'} />
                             {!earned && (
                               <div
                                 className="absolute inset-0 flex items-center justify-center rounded-[13px]"
                                 style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 55%, transparent)' }}
                               >
-                                <Lock size={14} style={{ color: '#6B7280' }} />
+                                <Lock size={14} style={{ color: 'var(--color-text-subtle)' }} />
                               </div>
                             )}
                           </div>
@@ -773,7 +842,7 @@ const Profile = () => {
                                 </div>
                                 <p className="text-[10px] mt-1" style={{ color: a.color + 'CC' }}>
                                   {a.progressOf.key === 'totalVolumeLbs'
-                                    ? `${Math.round(progressValue).toLocaleString()} / ${progressTarget.toLocaleString()} lbs`
+                                    ? `${formatStatNumber(Math.round(progressValue))} / ${formatStatNumber(progressTarget)} lbs`
                                     : `${progressValue} / ${progressTarget}`}
                                 </p>
                               </div>
@@ -815,7 +884,7 @@ const Profile = () => {
                       onClick={() => setGoalsDraft(d => ({ ...d, fitness_level: l.value }))}
                       className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
                         goalsDraft.fitness_level === l.value
-                          ? 'bg-amber-900/30 border-[#D4AF37]/50'
+                          ? 'bg-white/[0.05] border-[#D4AF37]/50'
                           : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
                       }`}
                     >
@@ -839,7 +908,7 @@ const Profile = () => {
                       onClick={() => setGoalsDraft(d => ({ ...d, primary_goal: g.value }))}
                       className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
                         goalsDraft.primary_goal === g.value
-                          ? 'bg-amber-900/30 border-[#D4AF37]/50'
+                          ? 'bg-white/[0.05] border-[#D4AF37]/50'
                           : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
                       }`}
                     >
@@ -863,7 +932,7 @@ const Profile = () => {
                       onClick={() => setGoalsDraft(d => ({ ...d, training_days_per_week: n }))}
                       className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all border ${
                         goalsDraft.training_days_per_week === n
-                          ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
+                          ? 'bg-white/[0.06] border-[#D4AF37]/50 text-[#D4AF37]'
                           : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
                       }`}
                     >
@@ -891,7 +960,7 @@ const Profile = () => {
                         }))}
                         className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all border ${
                           active
-                            ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
+                            ? 'bg-white/[0.06] border-[#D4AF37]/50 text-[#D4AF37]'
                             : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
                         }`}
                       >
@@ -918,7 +987,7 @@ const Profile = () => {
                         }))}
                         className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                           active
-                            ? 'bg-amber-900/40 border-[#D4AF37]/50 text-[#D4AF37]'
+                            ? 'bg-white/[0.06] border-[#D4AF37]/50 text-[#D4AF37]'
                             : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
                         }`}
                       >
@@ -1044,7 +1113,7 @@ const Profile = () => {
                         {onboarding.available_equipment.map(eq => {
                           const found = EQUIPMENT_OPTIONS.find(e => e.value === eq);
                           return (
-                            <span key={eq} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-amber-900/40 text-[#D4AF37] border border-[#D4AF37]/30">
+                            <span key={eq} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-white/[0.06] text-[#D4AF37] border border-[#D4AF37]/30">
                               {found ? t(`profile_options.equipment.${found.labelKey}`) : eq}
                             </span>
                           );
@@ -1073,6 +1142,11 @@ const Profile = () => {
                         </div>
                       ) : <p className="text-[14px] text-[var(--color-text-muted)]">{t('profile.noneNoted')}</p>;
                     })()}
+                  </div>
+
+                  {/* Specific measurable goals (e.g. "Bench 225 by April") */}
+                  <div className="md:col-span-2">
+                    <GoalsSection />
                   </div>
 
                   {/* Edit button */}
@@ -1174,6 +1248,18 @@ const Profile = () => {
           </div>
         </div>
       )}
+      {/* Avatar customization picker */}
+      <AvatarPicker
+        isOpen={avatarPickerOpen}
+        onClose={() => setAvatarPickerOpen(false)}
+        currentAvatar={{
+          type: profile?.avatar_type || (profile?.avatar_url ? 'photo' : 'color'),
+          value: profile?.avatar_value || '#6366F1',
+        }}
+        user={profile}
+        onSave={handleAvatarSave}
+        uploading={uploadingAvatar}
+      />
     </div>
   );
 };

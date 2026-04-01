@@ -35,7 +35,7 @@ export default function MostImprovedList({ entries, loading, userId }) {
         return (
           <div
             key={entry.id}
-            className={`flex items-center gap-3 px-4 py-3 rounded-[14px] transition-colors ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-[14px] transition-colors overflow-hidden ${
               isMe
                 ? 'bg-[#D4AF37]/8 border border-[#D4AF37]/20'
                 : 'bg-[#0F172A] border border-white/6'

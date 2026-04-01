@@ -120,7 +120,7 @@ export default function InviteModal({ gymId, onClose }) {
           <button
             onClick={handleGenerate}
             disabled={!name.trim() || loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
           >
             {loading ? (
               <>
@@ -143,7 +143,7 @@ export default function InviteModal({ gymId, onClose }) {
           </p>
 
           {/* Code display */}
-          <div className="bg-[#111827] border border-white/6 rounded-xl py-5 px-4 text-center">
+          <div className="bg-[#111827] border border-white/6 rounded-xl py-5 px-4 text-center overflow-hidden">
             <p className="text-[32px] font-bold tracking-[0.25em] text-[#E5E7EB] font-mono select-all">
               {result?.code}
             </p>

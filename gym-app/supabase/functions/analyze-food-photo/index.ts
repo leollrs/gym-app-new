@@ -80,14 +80,23 @@ serve(async (req) => {
     }
 
     const { image: rawImage, language } = await req.json();
-    const lang = language === 'es' ? 'es' : 'en';
+    const lang = (language || 'en').startsWith('es') ? 'es' : 'en';
     const langInstruction = lang === 'es'
-      ? '\n\nIMPORTANT: All text values in the JSON (food_name, item names) MUST be in Spanish. Responde completamente en español.'
+      ? '\n\nCRITICAL LANGUAGE RULE: You MUST respond with ALL text values in Spanish. The "food_name" field and every item "name" field MUST be in Spanish. Example: "Pechuga de pollo a la plancha" NOT "Grilled chicken breast". Responde completamente en español.'
       : '';
     if (!rawImage) {
       return new Response(
         JSON.stringify({ error: 'No image provided' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ── INPUT SIZE VALIDATION (max 10 MB) ─────────────────────
+    const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+    if (typeof rawImage !== 'string' || rawImage.length > MAX_PAYLOAD_BYTES) {
+      return new Response(
+        JSON.stringify({ error: 'Image payload too large. Maximum size is 10 MB.' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     // Strip EXIF metadata before sending to AI
@@ -114,7 +123,7 @@ serve(async (req) => {
         );
       }
 
-      supabase.from('ai_rate_limits').insert({
+      await supabase.from('ai_rate_limits').insert({
         profile_id: user.id,
         endpoint: ENDPOINT,
       });
@@ -165,7 +174,7 @@ IMPORTANT: If the image contains inappropriate, explicit, or offensive content t
 
 Return JSON: { "food_name": "short meal description", "items": [{ "name": "food name", "estimated_grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }], "confidence": "high"|"medium"|"low" }
 
-If no food or drink visible: { "error": "no_food_detected" }`,
+If no food or drink visible: { "error": "no_food_detected" }${lang === 'es' ? '\n\nREMEMBER: All text in the JSON response MUST be in Spanish.' : ''}`,
               },
             ],
           },
@@ -249,10 +258,9 @@ If no food or drink visible: { "error": "no_food_detected" }`,
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('analyze-food-photo error:', msg);
+    console.error('analyze-food-photo error:', err);
     return new Response(
-      JSON.stringify({ error: msg }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

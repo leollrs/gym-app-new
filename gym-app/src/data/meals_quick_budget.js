@@ -25,13 +25,13 @@ export const MEALS_QUICK_BUDGET = [
   {
     id: 'r203',
     title: 'Protein Shake & Banana',
-    title_es: 'Batido de Proteínas y Plátano',
+    title_es: 'Batido de Proteínas y Guineo',
     image: '/meals/protein_shake_and_banana.png',
     calories: 350, protein: 35, carbs: 45, fat: 4, prepTime: 3,
     tag: 'Quick', tag_es: 'Rápido y Económico', category: 'quick_meals', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['protein_powder', 'milk', 'banana', 'ice'],
     steps: ['Blend protein powder with milk and ice until smooth.', 'Serve shake alongside a banana.'],
-    steps_es: ['Licuar la proteína en polvo con leche y hielo hasta que quede suave.', 'Servir el batido acompañado de un plátano.'],
+    steps_es: ['Licuar la proteína en polvo con leche y hielo hasta que quede suave.', 'Servir el batido acompañado de un guineo.'],
   },
   {
     id: 'r204',
@@ -75,7 +75,7 @@ export const MEALS_QUICK_BUDGET = [
     tag: 'Quick', tag_es: 'Rápido y Económico', category: 'quick_meals', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'milk', 'chia_seeds', 'banana', 'peanut_butter'],
     steps: ['Mix oats, milk, and chia seeds in a jar.', 'Refrigerate overnight.', 'Top with banana slices and peanut butter before serving.'],
-    steps_es: ['Mezclar la avena, la leche y las semillas de chía en un frasco.', 'Refrigerar durante toda la noche.', 'Cubrir con rodajas de plátano y mantequilla de cacahuete antes de servir.'],
+    steps_es: ['Mezclar la avena, la leche y las semillas de chía en un frasco.', 'Refrigerar durante toda la noche.', 'Cubrir con rodajas de guineo y mantequilla de cacahuete antes de servir.'],
   },
   {
     id: 'r208',
@@ -130,7 +130,7 @@ export const MEALS_QUICK_BUDGET = [
     tag: 'Quick', tag_es: 'Rápido y Económico', category: 'quick_meals', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rice_cakes', 'peanut_butter', 'banana', 'honey'],
     steps: ['Spread peanut butter on rice cakes.', 'Top with banana slices and a drizzle of honey.'],
-    steps_es: ['Untar mantequilla de cacahuete en las tortitas de arroz.', 'Cubrir con rodajas de plátano y un chorrito de miel.'],
+    steps_es: ['Untar mantequilla de cacahuete en las tortitas de arroz.', 'Cubrir con rodajas de guineo y un chorrito de miel.'],
   },
   {
     id: 'r213',
@@ -330,7 +330,7 @@ export const MEALS_QUICK_BUDGET = [
     tag: 'Budget', tag_es: 'Rápido y Económico', category: 'budget', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'eggs', 'milk', 'banana', 'salt'],
     steps: ['Cook oats in milk until creamy.', 'Scramble or fry eggs separately.', 'Serve oatmeal topped with sliced banana alongside eggs.'],
-    steps_es: ['Cocinar la avena en leche hasta que quede cremosa.', 'Revolver o freír los huevos por separado.', 'Servir la avena cubierta con rodajas de plátano acompañada de los huevos.'],
+    steps_es: ['Cocinar la avena en leche hasta que quede cremosa.', 'Revolver o freír los huevos por separado.', 'Servir la avena cubierta con rodajas de guineo acompañada de los huevos.'],
   },
   {
     id: 'r231',
@@ -407,7 +407,7 @@ export const MEALS_QUICK_BUDGET = [
     tag: 'Budget', tag_es: 'Rápido y Económico', category: 'budget', difficulty: 'Easy', difficulty_es: 'Fácil', serves: 1,
     ingredients: ['rolled_oats', 'peanut_butter', 'banana', 'milk', 'honey'],
     steps: ['Cook oats in milk until thick.', 'Stir in peanut butter and honey.', 'Top with sliced banana.'],
-    steps_es: ['Cocinar la avena en leche hasta que espese.', 'Incorporar la mantequilla de cacahuete y la miel.', 'Cubrir con rodajas de plátano.'],
+    steps_es: ['Cocinar la avena en leche hasta que espese.', 'Incorporar la mantequilla de cacahuete y la miel.', 'Cubrir con rodajas de guineo.'],
   },
   {
     id: 'r238',

@@ -133,7 +133,7 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
       ) : (
         entries.map((e, i) => (
           <div key={e.id} className="flex items-center gap-3 py-2 px-3 bg-[#111827] rounded-xl">
-            <span className={`text-[13px] font-bold w-5 text-center ${i === 0 ? 'text-[#D4AF37]' : i === 1 ? 'text-[#9CA3AF]' : i === 2 ? 'text-amber-700' : 'text-[#4B5563]'}`}>
+            <span className={`text-[13px] font-bold w-5 text-center ${i === 0 ? 'text-[#D4AF37]' : i === 1 ? 'text-[#9CA3AF]' : i === 2 ? 'text-amber-700' : 'text-[#6B7280]'}`}>
               {i + 1}
             </span>
             <p className="flex-1 text-[13px] font-medium text-[#E5E7EB] truncate">{e.name}</p>
@@ -201,7 +201,7 @@ export default function AdminChallenges() {
   });
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Challenges"
         subtitle="Create and manage gym challenges"
@@ -220,9 +220,9 @@ export default function AdminChallenges() {
         </div>
       ) : challenges.length === 0 ? (
         <div className="text-center py-20">
-          <Trophy size={32} className="text-[#4B5563] mx-auto mb-3" />
+          <Trophy size={32} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">No challenges yet</p>
-          <p className="text-[12px] text-[#4B5563] mt-1">Create your first challenge to get members competing</p>
+          <p className="text-[12px] text-[#6B7280] mt-1">Create your first challenge to get members competing</p>
         </div>
       ) : (
         <div className="space-y-3">

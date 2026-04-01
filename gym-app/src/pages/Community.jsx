@@ -46,7 +46,7 @@ export default function Community({ defaultTab = 'feed' }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070B] pb-32 md:pb-12">
+    <div className="min-h-screen pb-28 md:pb-12" style={{ background: 'var(--color-bg-primary)' }}>
       <div data-tour="tour-community-page">
       <PageHeader title={t('community.title')}>
         <UnderlineTabs
@@ -58,7 +58,7 @@ export default function Community({ defaultTab = 'feed' }) {
       </div>
 
       {/* Tab content */}
-      <div className="max-w-[680px] md:max-w-4xl mx-auto px-4 sm:px-6 pt-4">
+      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-4">
         {tab === 'feed' && <SocialFeed embedded />}
         {tab === 'challenges' && <Challenges embedded />}
         {tab === 'leaderboard' && <Leaderboard embedded />}

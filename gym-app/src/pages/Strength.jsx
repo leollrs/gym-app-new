@@ -12,6 +12,7 @@ import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import CoachMark from '../components/CoachMark';
 import ChartTooltip from '../components/ChartTooltip';
+import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
 
 // ── Strength standards (bodyweight multipliers) ───────────────────────────────
 // Tiers: beginner → novice → intermediate → advanced → elite
@@ -43,9 +44,8 @@ const STANDARDS = [
   },
 ];
 
-const TIER_LABELS  = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
 const TIER_KEYS    = ['beginner', 'novice', 'intermediate', 'advanced', 'elite'];
-const TIER_COLORS  = ['#6B7280', '#60A5FA', '#10B981', '#D4AF37', '#EF4444'];
+const TIER_COLORS  = ['var(--color-text-subtle)', 'var(--color-blue-soft)', 'var(--color-success)', 'var(--color-accent)', 'var(--color-danger)'];
 
 
 // ── Helper: compute tier index (0 = below beginner, 5 = elite+) ──────────────
@@ -80,7 +80,7 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
       : t('strength.tierLabels.elite');
 
   const tierColor = tier < 0
-    ? '#4B5563'
+    ? 'var(--color-text-muted)'
     : TIER_COLORS[Math.min(tier, TIER_COLORS.length - 1)];
 
   const progress = orm != null
@@ -92,9 +92,9 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
     : null;
 
   return (
-    <div className="bg-[#0F172A] rounded-2xl border border-white/8 p-4">
+    <div className="rounded-2xl border border-white/8 overflow-hidden p-4" style={{ background: 'var(--color-bg-card)' }}>
       <div className="flex items-start justify-between mb-3">
-        <p className="text-[14px] font-semibold text-[#E5E7EB]">
+        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
           {standard.name}
         </p>
         <span
@@ -107,11 +107,11 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
 
       {orm != null ? (
         <>
-          <p className="text-[28px] font-black text-white leading-none mb-1">
-            {Math.round(orm)}
-            <span className="text-[13px] font-medium ml-1 text-[#9CA3AF]">{t('strength.lbs')}</span>
+          <p className={`${statFontSize(Math.round(orm), 'text-[24px]')} font-black leading-none mb-1 truncate`} style={{ color: 'var(--color-text-primary)' }}>
+            {formatStatNumber(Math.round(orm))}
+            <span className="text-[13px] font-medium ml-1" style={{ color: 'var(--color-text-muted)' }}>{t('strength.lbs')}</span>
           </p>
-          <p className="text-[11px] mb-3 text-[#9CA3AF]">
+          <p className="text-[11px] mb-3" style={{ color: 'var(--color-text-muted)' }}>
             {pr.weight_lbs} lbs × {pr.reps} reps
           </p>
 
@@ -127,7 +127,7 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
               />
             </div>
             {nextTierLbs && tier < TIER_KEYS.length - 1 && (
-              <p className="text-[10px] text-[#9CA3AF]">
+              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                 {t('strength.lbsTo', { count: nextTierLbs - Math.round(orm) })}{' '}
                 <span style={{ color: TIER_COLORS[Math.min(tier + 1, TIER_COLORS.length - 1)] }}>
                   {t(`strength.tierLabels.${TIER_KEYS[tier + 1]}`)}
@@ -149,7 +149,7 @@ const StandardCard = ({ standard, pr, bodyweight }) => {
           </div>
         </>
       ) : (
-        <p className="text-[12px] mt-1 text-[#9CA3AF]">
+        <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
           {t('strength.logLiftToSeeLevel')}
         </p>
       )}
@@ -162,10 +162,21 @@ const PRRow = ({ pr, history }) => {
   const { t } = useTranslation('pages');
   const [open, setOpen] = useState(false);
 
-  const chartData = (history ?? []).map(h => ({
-    date: format(parseISO(h.achieved_at.slice(0, 10)), 'MMM d'),
-    orm:  Math.round(parseFloat(h.estimated_1rm)),
-  }));
+  // Group by date and take max 1RM per day to avoid duplicate data points
+  const byDate = {};
+  (history ?? []).forEach(h => {
+    const dateKey = h.achieved_at.slice(0, 10);
+    const orm = parseFloat(h.estimated_1rm);
+    if (!byDate[dateKey] || orm > byDate[dateKey].orm) {
+      byDate[dateKey] = { dateKey, orm };
+    }
+  });
+  const chartData = Object.values(byDate)
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+    .map(d => ({
+      date: format(parseISO(d.dateKey), 'MMM d'),
+      orm:  Math.round(d.orm),
+    }));
 
   const yMin = chartData.length ? Math.floor(Math.min(...chartData.map(d => d.orm)) - 5) : undefined;
   const yMax = chartData.length ? Math.ceil(Math.max(...chartData.map(d => d.orm))  + 5) : undefined;
@@ -173,8 +184,9 @@ const PRRow = ({ pr, history }) => {
   return (
     <div>
       <button
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setOpen(o => !o)}
+        aria-label={`Toggle details for ${pr.exercises?.name ?? 'exercise'}`}
       >
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
@@ -183,21 +195,21 @@ const PRRow = ({ pr, history }) => {
           <Trophy size={15} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold truncate text-[#E5E7EB]">
+          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
             {pr.exercises?.name}
           </p>
-          <p className="text-[11px] text-[#9CA3AF]">
+          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
             {pr.weight_lbs} lbs × {pr.reps} · {format(parseISO(pr.achieved_at.slice(0, 10)), 'MMM d, yyyy')}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <p className="text-[17px] font-black text-[#D4AF37]">
-            {Math.round(parseFloat(pr.estimated_1rm))}
-            <span className="text-[11px] font-medium ml-0.5 text-[#9CA3AF]">lbs</span>
+          <p className={`${statFontSize(Math.round(parseFloat(pr.estimated_1rm)), 'text-[17px]')} font-black text-[#D4AF37] truncate`}>
+            {formatStatNumber(Math.round(parseFloat(pr.estimated_1rm)))}
+            <span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
           </p>
           <ChevronDown
             size={15}
-            className="text-[#9CA3AF]"
+            style={{ color: 'var(--color-text-muted)' }}
             style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
           />
         </div>
@@ -206,12 +218,12 @@ const PRRow = ({ pr, history }) => {
       {open && (
         <div className="px-4 pb-4 border-t border-white/4">
           {chartData.length < 2 ? (
-            <p className="text-[12px] pt-3 text-[#9CA3AF]">
+            <p className="text-[12px] pt-3" style={{ color: 'var(--color-text-muted)' }}>
               {t('strength.hitLiftAgainTrend')}
             </p>
           ) : (
             <div className="pt-3">
-              <p className="text-[12px] font-medium mb-2 text-[#9CA3AF]">
+              <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                 {t('strength.estimated1RMOverTime')}
               </p>
               <ResponsiveContainer width="100%" height={140}>
@@ -219,19 +231,19 @@ const PRRow = ({ pr, history }) => {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false} axisLine={false}
                     interval={Math.max(0, Math.floor(chartData.length / 4) - 1)}
                   />
                   <YAxis
                     domain={[yMin, yMax]}
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false} axisLine={false}
                   />
                   <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }} />
                   <Line
                     type="monotone" dataKey="orm"
-                    stroke="#D4AF37" strokeWidth={2}
+                    stroke="var(--color-accent)" strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 6, strokeWidth: 2 }}
                   />
@@ -305,19 +317,21 @@ export default function Strength() {
   const otherPrs = prs.filter(pr => !standardExerciseIds.has(pr.exercise_id));
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors bg-[#0F172A] border border-white/8"
+          aria-label="Go back"
+          className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors border border-white/8 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ background: 'var(--color-bg-card)' }}
         >
-          <ArrowLeft size={18} className="text-[#9CA3AF]" />
+          <ArrowLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
         <div>
-          <h1 className="text-[20px] font-bold text-[#E5E7EB]">{t('strength.pageTitle')}</h1>
-          <p className="text-[12px] text-[#9CA3AF]">{t('strength.pageSubtitle')}</p>
+          <h1 className="text-[20px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{t('strength.pageTitle')}</h1>
+          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('strength.pageSubtitle')}</p>
         </div>
       </div>
 
@@ -349,13 +363,13 @@ export default function Strength() {
           {showPRs && (
             <>
               {prs.length === 0 ? (
-                <div className="bg-[#0F172A] rounded-2xl border border-white/8 py-16 flex flex-col items-center gap-3 mb-7">
-                  <TrendingUp size={32} className="text-[#4B5563]" strokeWidth={1.5} />
-                  <p className="text-[14px] text-[#9CA3AF]">{t('strength.noPRsYet')}</p>
-                  <p className="text-[12px] text-[#6B7280]">{t('strength.completeWorkoutsToTrack')}</p>
+                <div className="rounded-2xl border border-white/8 py-16 flex flex-col items-center gap-3 mb-7" style={{ background: 'var(--color-bg-card)' }}>
+                  <TrendingUp size={32} style={{ color: 'var(--color-text-muted)' }} strokeWidth={1.5} />
+                  <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{t('strength.noPRsYet')}</p>
+                  <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('strength.completeWorkoutsToTrack')}</p>
                 </div>
               ) : (
-                <div className="bg-[#0F172A] rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/4 mb-7">
+                <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/4 mb-7" style={{ background: 'var(--color-bg-card)' }}>
                   {prs.map(pr => (
                     <PRRow
                       key={pr.exercise_id}
@@ -390,7 +404,7 @@ export default function Strength() {
           {/* ── Strength standards ──────────────────────────────────────── */}
           <div className="mb-2">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[15px] font-bold text-[#E5E7EB]">
+              <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
                 {t('strength.strengthStandards')}
               </p>
               {!bodyweight && (
@@ -404,7 +418,7 @@ export default function Strength() {
               )}
             </div>
             {bodyweight && (
-              <p className="text-[12px] mb-3 text-[#9CA3AF]">
+              <p className="text-[12px] mb-3" style={{ color: 'var(--color-text-muted)' }}>
                 {t('strength.basedOnBodyweight', { weight: bodyweight })}
               </p>
             )}

@@ -19,19 +19,21 @@ const getPlugin = () => {
  * Start a Live Activity when a workout begins.
  */
 export const startLiveActivity = async ({ routineName, totalSets, completedSets = 0, currentExerciseName = '', startTimestamp = 0 }) => {
-  if (!isIOS()) return;
+  if (!isIOS()) { console.log('[LiveActivity] Not iOS, skipping'); return; }
   const plugin = getPlugin();
-  if (!plugin) return;
+  if (!plugin) { console.warn('[LiveActivity] Plugin not found — check MainViewController registration'); return; }
+  console.log('[LiveActivity] Starting:', { routineName, totalSets, completedSets, currentExerciseName });
   try {
-    await plugin.startLiveActivity({
+    const result = await plugin.startLiveActivity({
       routineName,
       totalSets,
       completedSets,
       currentExerciseName,
       startTimestamp,
     });
+    console.log('[LiveActivity] Started successfully:', result);
   } catch (e) {
-    console.warn('Live Activity start failed:', e);
+    console.warn('[LiveActivity] Start failed:', e?.message || e);
   }
 };
 

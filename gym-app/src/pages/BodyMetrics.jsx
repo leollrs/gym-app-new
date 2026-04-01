@@ -5,11 +5,13 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { validateImageFile } from '../lib/validateImage';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { addPoints } from '../lib/rewardsEngine';
 import { writeWeight } from '../lib/healthSync';
 import { format, parseISO, subDays } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import ChartTooltip from '../components/ChartTooltip';
@@ -39,6 +41,7 @@ const PERIOD_OPTIONS = [
 
 // ── Measurements modal ───────────────────────────────────────────────────────
 const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showToast }) => {
+  const { t } = useTranslation('pages');
   const empty = MEASUREMENT_FIELDS.reduce((a, f) => ({ ...a, [f.key]: '' }), {});
   const [form, setForm]   = useState(() => {
     if (!existing) return empty;
@@ -64,7 +67,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
       .from('body_measurements')
       .upsert(payload, { onConflict: 'profile_id,measured_at' });
     if (err) { setError(err.message); setSaving(false); showToast?.(err.message, 'error'); return; }
-    showToast?.('Measurements saved', 'success');
+    showToast?.(t('body.measurementsSaved', 'Measurements saved'), 'success');
     onSaved();
     onClose();
   };
@@ -78,20 +81,21 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
         role="dialog"
         aria-modal="true"
         aria-labelledby="measurements-title"
-        className="bg-[#0F172A] border border-white/[0.06] rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden"
+        className="border border-white/[0.06] rounded-t-2xl md:rounded-2xl w-full max-w-md overflow-hidden"
+        style={{ background: 'var(--color-bg-card)' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
-          <p id="measurements-title" className="text-[16px] font-semibold text-[#E5E7EB]">
-            {existing ? 'Update Measurements' : 'Add Measurements'}
+          <p id="measurements-title" className="text-[16px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            {existing ? t('body.updateMeasurements') : t('body.addMeasurements')}
           </p>
-          <button onClick={onClose} aria-label="Close dialog"><X size={20} className="text-[#6B7280]" /></button>
+          <button onClick={onClose} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} style={{ color: 'var(--color-text-subtle)' }} /></button>
         </div>
 
         <div className="p-5 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
           {MEASUREMENT_FIELDS.map(f => (
             <div key={f.key}>
-              <label className="block text-[11px] font-medium text-[#9CA3AF] mb-1">
+              <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
                 {f.label} ({f.unit})
               </label>
               <input
@@ -103,7 +107,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
                   const n = parseFloat(v);
                   setForm(p => ({ ...p, [f.key]: (!isNaN(n) && n < 0) ? '0' : v }));
                 }}
-                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                className="w-full border border-white/[0.06] rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
               />
             </div>
           ))}
@@ -124,9 +129,23 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose, showT
   );
 };
 
+// ── Goal-aware progress color helper ─────────────────────────────────────────
+const getProgressColor = (metric, delta, primaryGoal) => {
+  if (delta == null || delta === 0) return 'var(--color-text-muted)';
+  const isUp = delta > 0;
+  if (metric === 'weight') {
+    if (primaryGoal === 'muscle_gain') return isUp ? 'var(--color-success)' : 'var(--color-danger)';
+    if (primaryGoal === 'fat_loss') return isUp ? 'var(--color-danger)' : 'var(--color-success)';
+    if (primaryGoal === 'strength') return 'var(--color-accent)';
+    return 'var(--color-accent)';
+  }
+  return 'var(--color-text-muted)';
+};
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function BodyMetrics() {
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const { showToast } = useToast();
 
@@ -141,6 +160,7 @@ export default function BodyMetrics() {
   // Measurements state
   const [latestMeasurements, setLatestMeasurements] = useState(null);
   const [showMeasurements,   setShowMeasurements]   = useState(false);
+  const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
 
   // Progress photos state (with signed URL cache to avoid re-signing on period change)
   const signedUrlCache = useRef({}); // { storage_path: { url, expiresAt } }
@@ -190,12 +210,15 @@ export default function BodyMetrics() {
         .limit(30),
       supabase
         .from('member_onboarding')
-        .select('sex, age, height_inches')
+        .select('sex, age, height_inches, primary_goal')
         .eq('profile_id', user.id)
         .maybeSingle(),
     ]);
 
-    if (ob) setPersonalInfo({ sex: ob.sex || '', age: ob.age || '', height_inches: ob.height_inches || '' });
+    if (ob) {
+      setPersonalInfo({ sex: ob.sex || '', age: ob.age || '', height_inches: ob.height_inches || '' });
+      if (ob.primary_goal) setPrimaryGoal(ob.primary_goal);
+    }
 
     const allLogs = logs ?? [];
     setWeightLogs([...allLogs].reverse()); // reverse for history list
@@ -274,9 +297,8 @@ export default function BodyMetrics() {
 
   const handlePhotoUpload = async () => {
     if (!uploadFile) { setPhotoError('Please select a photo'); return; }
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(uploadFile.type)) {
-      setPhotoError('Only JPEG, PNG, WebP, or HEIC photos are allowed'); return;
-    }
+    const validation = await validateImageFile(uploadFile);
+    if (!validation.valid) { setPhotoError(validation.error); return; }
     setUploading(true);
     setPhotoError('');
 
@@ -331,7 +353,7 @@ export default function BodyMetrics() {
     : null;
 
   const DeltaIcon = delta == null ? Minus : delta > 0 ? TrendingUp : TrendingDown;
-  const deltaColor = delta == null ? '#6B7280' : delta > 0 ? '#EF4444' : '#10B981';
+  const deltaColor = getProgressColor('weight', delta, primaryGoal);
 
   const yMin = chartData.length
     ? Math.floor(Math.min(...chartData.map(d => d.weight)) - 2)
@@ -370,19 +392,20 @@ export default function BodyMetrics() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors"
+          aria-label="Go back"
+          className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
         >
           <ArrowLeft size={18} style={{ color: 'var(--text-secondary)' }} />
         </button>
-        <div className="flex-1">
-          <h1 className="text-[28px] font-bold" style={{ color: 'var(--text-primary)' }}>Body Metrics</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[22px] font-bold truncate" style={{ color: 'var(--text-primary)' }}>Body Metrics</h1>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Weight & measurements over time</p>
         </div>
       </div>
@@ -392,9 +415,9 @@ export default function BodyMetrics() {
       ) : (
         <FadeIn>
           {/* ── Personal Info ──────────────────────────────────────────────── */}
-          <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-4 mb-5">
+          <div className="rounded-2xl border border-white/[0.06] p-4 mb-5 overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[13px] font-semibold text-[#E5E7EB]">Personal Info</p>
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>Personal Info</p>
               <button
                 onClick={() => {
                   setPersonalDraft({
@@ -405,23 +428,24 @@ export default function BodyMetrics() {
                   });
                   setEditingPersonal(true);
                 }}
-                className="text-[11px] font-medium text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+                className="text-[11px] font-medium transition-colors"
+                style={{ color: 'var(--color-text-subtle)' }}
               >
                 Edit
               </button>
             </div>
             <div className="flex items-center gap-6">
               <div>
-                <p className="text-[10px] text-[#4B5563] uppercase tracking-wider">Sex</p>
-                <p className="text-[14px] font-medium text-[#E5E7EB] mt-0.5 capitalize">{personalInfo.sex || '—'}</p>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Sex</p>
+                <p className="text-[14px] font-medium mt-0.5 capitalize" style={{ color: 'var(--color-text-primary)' }}>{personalInfo.sex || '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-[#4B5563] uppercase tracking-wider">Age</p>
-                <p className="text-[14px] font-medium text-[#E5E7EB] mt-0.5">{personalInfo.age || '—'}</p>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Age</p>
+                <p className="text-[14px] font-medium mt-0.5" style={{ color: 'var(--color-text-primary)' }}>{personalInfo.age || '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-[#4B5563] uppercase tracking-wider">Height</p>
-                <p className="text-[14px] font-medium text-[#E5E7EB] mt-0.5">
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Height</p>
+                <p className="text-[14px] font-medium mt-0.5" style={{ color: 'var(--color-text-primary)' }}>
                   {heightFt != null ? `${heightFt}'${heightIn}"` : '—'}
                 </p>
               </div>
@@ -431,15 +455,15 @@ export default function BodyMetrics() {
           {/* Edit Personal Info Modal */}
           {editingPersonal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setEditingPersonal(false)}>
-              <div className="bg-[#0F172A] rounded-[20px] w-full max-w-md p-6 border border-white/[0.06]" onClick={e => e.stopPropagation()}>
+              <div role="dialog" aria-modal="true" aria-labelledby="personal-info-title" className="rounded-[20px] w-full max-w-md p-6 border border-white/[0.06]" style={{ background: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-[16px] font-bold text-[#E5E7EB]">Personal Info</h3>
-                  <button onClick={() => setEditingPersonal(false)}><X size={18} className="text-[#6B7280]" /></button>
+                  <h3 id="personal-info-title" className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>Personal Info</h3>
+                  <button onClick={() => setEditingPersonal(false)} aria-label="Close dialog" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={18} style={{ color: 'var(--color-text-subtle)' }} /></button>
                 </div>
 
                 {/* Sex */}
                 <div className="mb-4">
-                  <label className="text-[11px] font-medium text-[#6B7280] mb-1.5 block">Biological Sex</label>
+                  <label className="text-[11px] font-medium mb-1.5 block" style={{ color: 'var(--color-text-subtle)' }}>Biological Sex</label>
                   <div className="flex gap-2">
                     {['male', 'female'].map(s => (
                       <button
@@ -448,8 +472,9 @@ export default function BodyMetrics() {
                         className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-all capitalize ${
                           personalDraft.sex === s
                             ? 'bg-[#10B981]/15 border-[#10B981]/40 text-[#10B981]'
-                            : 'bg-white/[0.03] border-white/[0.06] text-[#6B7280]'
+                            : 'bg-white/[0.03] border-white/[0.06]'
                         }`}
+                        style={personalDraft.sex !== s ? { color: 'var(--color-text-subtle)' } : undefined}
                       >
                         {s}
                       </button>
@@ -459,36 +484,39 @@ export default function BodyMetrics() {
 
                 {/* Age */}
                 <div className="mb-4">
-                  <label className="text-[11px] font-medium text-[#6B7280] mb-1.5 block">Age</label>
+                  <label className="text-[11px] font-medium mb-1.5 block" style={{ color: 'var(--color-text-subtle)' }}>Age</label>
                   <input
                     type="number" min="13" max="99" placeholder="25"
                     value={personalDraft.age}
                     onChange={e => setPersonalDraft(d => ({ ...d, age: e.target.value }))}
-                    className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06]"
+                    className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] outline-none focus:bg-white/[0.06]"
+                    style={{ color: 'var(--color-text-primary)' }}
                   />
                 </div>
 
                 {/* Height */}
                 <div className="mb-5">
-                  <label className="text-[11px] font-medium text-[#6B7280] mb-1.5 block">Height</label>
+                  <label className="text-[11px] font-medium mb-1.5 block" style={{ color: 'var(--color-text-subtle)' }}>Height</label>
                   <div className="flex gap-2">
                     <div className="flex-1 relative">
                       <input
                         type="number" min="3" max="8" placeholder="5"
                         value={personalDraft.height_feet}
                         onChange={e => setPersonalDraft(d => ({ ...d, height_feet: e.target.value }))}
-                        className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06]"
+                        className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] outline-none focus:bg-white/[0.06]"
+                    style={{ color: 'var(--color-text-primary)' }}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#4B5563]">ft</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>ft</span>
                     </div>
                     <div className="flex-1 relative">
                       <input
                         type="number" min="0" max="11" placeholder="10"
                         value={personalDraft.height_inches_part}
                         onChange={e => setPersonalDraft(d => ({ ...d, height_inches_part: e.target.value }))}
-                        className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:bg-white/[0.06]"
+                        className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] outline-none focus:bg-white/[0.06]"
+                    style={{ color: 'var(--color-text-primary)' }}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#4B5563]">in</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>in</span>
                     </div>
                   </div>
                 </div>
@@ -523,16 +551,16 @@ export default function BodyMetrics() {
                 label: 'Entries',
                 value: weightLogs.length,
                 icon: TrendingUp,
-                color: '#60A5FA',
+                color: 'var(--color-blue-soft)',
               },
             ].map(({ label, value, icon: Icon, color }) => (
               <div
                 key={label}
-                className="rounded-2xl p-4 flex flex-col items-center gap-1.5 text-center"
+                className="rounded-2xl p-4 flex flex-col items-center gap-1.5 text-center overflow-hidden min-w-0"
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
               >
                 <Icon size={16} style={{ color }} strokeWidth={2} />
-                <p className="text-[22px] font-black leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+                <p className="text-[18px] sm:text-[22px] font-black leading-none whitespace-nowrap truncate w-full" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{value}</p>
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                   {label}
                 </p>
@@ -542,7 +570,7 @@ export default function BodyMetrics() {
 
           {/* ── Weight chart ───────────────────────────────────────────────── */}
           <div
-            className="rounded-2xl p-5 mb-5"
+            className="rounded-2xl p-5 mb-5 overflow-hidden"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -572,26 +600,26 @@ export default function BodyMetrics() {
                 <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                   <defs>
                     <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#D4AF37" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="var(--color-accent)" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false} axisLine={false}
                     interval={Math.max(0, Math.floor(chartData.length / 5) - 1)}
                   />
                   <YAxis
                     domain={[yMin, yMax]}
-                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                     tickLine={false} axisLine={false}
                   />
                   <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }} />
                   <Area
                     type="monotone" dataKey="weight"
-                    stroke="#D4AF37" strokeWidth={2}
+                    stroke="var(--color-accent)" strokeWidth={2}
                     fill="url(#wGrad)"
                     dot={false} activeDot={{ r: 6, strokeWidth: 2 }}
                   />
@@ -602,7 +630,7 @@ export default function BodyMetrics() {
 
           {/* ── Log weight ─────────────────────────────────────────────────── */}
           <div
-            className="rounded-2xl p-5 mb-5"
+            className="rounded-2xl p-5 mb-5 overflow-hidden"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
           >
             <p className="text-[14px] font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
@@ -621,7 +649,9 @@ export default function BodyMetrics() {
                   setWeightInput((!isNaN(n) && n < 0) ? '0' : v);
                 }}
                 onKeyDown={e => e.key === 'Enter' && handleLogWeight()}
-                className="w-full bg-[#111827] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 pr-12"
+                aria-label="Body weight in pounds"
+                className="w-full border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none pr-12"
+                style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium" style={{ color: 'var(--text-muted)' }}>
                 lbs
@@ -650,7 +680,7 @@ export default function BodyMetrics() {
 
           {/* ── Body measurements ───────────────────────────────────────────── */}
           <div
-            className="rounded-2xl p-5 mb-5"
+            className="rounded-2xl p-5 mb-5 overflow-hidden"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -675,9 +705,9 @@ export default function BodyMetrics() {
                     <div
                       key={f.key}
                       className="rounded-xl p-3 text-center"
-                      style={{ background: '#111827' }}
+                      style={{ background: 'var(--color-bg-deep)' }}
                     >
-                      <p className="text-[18px] font-black text-white leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <p className="text-[18px] font-black leading-none truncate" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {parseFloat(latestMeasurements[f.key]).toFixed(1)}
                         <span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--text-muted)' }}>
                           {f.unit}
@@ -714,23 +744,23 @@ export default function BodyMetrics() {
                   return (
                     <div key={log.id} className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.06] transition-all">
                       <div>
-                        <p className="text-[13px] font-semibold text-[#E5E7EB]">
+                        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                           {format(parseISO(log.logged_at), 'EEE, MMM d')}
                         </p>
                         {log.notes && (
-                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{log.notes}</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{['Initial weight at signup', 'Peso inicial al registrarse'].includes(log.notes) ? t('progress.body.initialWeightNote') : log.notes}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-3">
                         {diff != null && (
                           <span
                             className="text-[11px] font-semibold"
-                            style={{ color: diff === 0 ? '#6B7280' : diff > 0 ? '#EF4444' : '#10B981' }}
+                            style={{ color: diff === 0 ? 'var(--color-text-subtle)' : diff > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}
                           >
                             {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                           </span>
                         )}
-                        <p className="text-[15px] font-bold text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                           {fmtW(log.weight_lbs)} <span className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>lbs</span>
                         </p>
                       </div>
@@ -742,7 +772,7 @@ export default function BodyMetrics() {
           )}
           {/* ── Progress Photos ─────────────────────────────────────────────── */}
           <div
-            className="rounded-2xl p-5 mt-5"
+            className="rounded-2xl p-5 mt-8 overflow-hidden"
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -759,7 +789,7 @@ export default function BodyMetrics() {
 
             {/* Upload panel */}
             {showPhotoUpload && (
-              <div className="mb-4 p-4 rounded-xl" style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="mb-4 p-4 rounded-xl" style={{ background: 'var(--color-bg-deep)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <p className="text-[12px] font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>View Angle</p>
                 <div className="flex gap-2 mb-3">
                   {['front', 'side', 'back'].map(angle => (
@@ -777,7 +807,7 @@ export default function BodyMetrics() {
                 </div>
                 <label
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl cursor-pointer transition-colors"
-                  style={{ border: '2px dashed rgba(255,255,255,0.1)', color: uploadFile ? '#10B981' : 'var(--text-muted)' }}
+                  style={{ border: '2px dashed rgba(255,255,255,0.1)', color: uploadFile ? 'var(--color-success)' : 'var(--text-muted)' }}
                 >
                   <Upload size={16} />
                   <span className="text-[13px] font-medium">
@@ -802,7 +832,7 @@ export default function BodyMetrics() {
             {/* Date list — photos only load when row is expanded */}
             {photos.length === 0 ? (
               <div className="py-8 text-center">
-                <Camera size={28} style={{ color: '#4B5563', margin: '0 auto 10px' }} strokeWidth={1.5} />
+                <Camera size={28} style={{ color: 'var(--color-text-muted)', margin: '0 auto 10px' }} strokeWidth={1.5} />
                 <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No progress photos yet</p>
                 <p className="text-[11px] mt-1" style={{ color: 'var(--text-subtle)' }}>Track your transformation over time</p>
               </div>
@@ -844,7 +874,7 @@ export default function BodyMetrics() {
                         {/* Expanded — 3-column photo grid, images only mount when open */}
                         {isOpen && (
                           <div className="pb-4">
-                            <div className="grid grid-cols-3 gap-2 mb-2">
+                            <div className="grid grid-cols-3 gap-2 mb-3">
                               {['Front', 'Side', 'Back'].map(a => (
                                 <p key={a} className="text-center text-[10px] font-bold uppercase tracking-widest"
                                   style={{ color: 'var(--text-muted)' }}>{a}</p>
@@ -858,7 +888,7 @@ export default function BodyMetrics() {
                                     key={angle}
                                     onClick={() => setViewingPhoto(photo)}
                                     className="relative w-full rounded-xl overflow-hidden active:scale-95 transition-transform"
-                                    style={{ aspectRatio: '3/4', background: '#111827' }}
+                                    style={{ aspectRatio: '3/4', background: 'var(--color-bg-deep)' }}
                                   >
                                     <img
                                       src={photo.url}
@@ -871,7 +901,7 @@ export default function BodyMetrics() {
                                   <div
                                     key={angle}
                                     className="w-full rounded-xl flex items-center justify-center"
-                                    style={{ aspectRatio: '3/4', background: '#111827', border: '1px dashed rgba(255,255,255,0.06)' }}
+                                    style={{ aspectRatio: '3/4', background: 'var(--color-bg-deep)', border: '1px dashed rgba(255,255,255,0.06)' }}
                                   >
                                     <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>—</span>
                                   </div>
@@ -900,7 +930,7 @@ export default function BodyMetrics() {
           <div className="flex items-center justify-between px-5 pt-safe-top pt-4 pb-3" onClick={e => e.stopPropagation()}>
             <div>
               <p className="text-[13px] font-semibold capitalize text-white">{viewingPhoto.view_angle}</p>
-              <p className="text-[11px] text-[#6B7280]">{format(new Date(viewingPhoto.taken_at), 'MMMM d, yyyy')}</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{format(new Date(viewingPhoto.taken_at), 'MMMM d, yyyy')}</p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -910,7 +940,7 @@ export default function BodyMetrics() {
               >
                 {deletingId === viewingPhoto.id ? 'Deleting…' : 'Delete'}
               </button>
-              <button onClick={() => setViewingPhoto(null)}>
+              <button onClick={() => setViewingPhoto(null)} aria-label="Close photo viewer" className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                 <X size={22} className="text-white" />
               </button>
             </div>

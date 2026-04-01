@@ -72,10 +72,10 @@ export default function RetentionChart({ gymId }) {
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">Retention Rate</p>
+        <p className="text-[13px] font-semibold text-[var(--color-text-primary)] min-w-0 flex-1 truncate">Retention Rate</p>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
           Export
@@ -99,9 +99,9 @@ export default function RetentionChart({ gymId }) {
                   </div>
                 );
               }}
-              cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }}
+              cursor={{ fill: 'var(--color-accent-glow)' }}
             />
-            <ReferenceLine y={BENCHMARKS.retentionRate} stroke="#D4AF37" strokeDasharray="6 4" strokeOpacity={0.5} label={{ value: `Industry avg ${BENCHMARKS.retentionRate}%`, position: 'right', fill: '#D4AF37', fontSize: 10, opacity: 0.7 }} />
+            <ReferenceLine y={BENCHMARKS.retentionRate} stroke="var(--color-accent)" strokeDasharray="6 4" strokeOpacity={0.5} label={{ value: `Industry avg ${BENCHMARKS.retentionRate}%`, position: 'right', fill: 'var(--color-accent)', fontSize: 10, opacity: 0.7 }} />
             <Bar dataKey="retention" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
           </BarChart>
         </ResponsiveContainer>

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Trophy, Zap, Activity, BarChart3, ChevronDown, ChevronRight, Clock, Dumbbell, Calendar,
+  Apple,
 } from 'lucide-react';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import Skeleton from '../../components/Skeleton';
@@ -20,6 +21,8 @@ import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import ChartTooltip from '../../components/ChartTooltip';
 import { sanitize } from '../../lib/sanitize';
+import { formatStatNumber, statFontSize } from '../../lib/formatStatValue';
+import GoalsSection from '../../components/GoalsSection';
 
 export default function ProgressOverview() {
   const { t, i18n } = useTranslation('pages');
@@ -180,42 +183,46 @@ export default function ProgressOverview() {
       {/* This week stats */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: t('progress.overview.sessions'), value: weekStats.sessions, icon: Activity, color: '#60A5FA' },
-          { label: t('progress.overview.volume'), value: `${volFormatted} lbs`, icon: Zap, color: '#D4AF37' },
-          { label: t('progress.overview.prsHit'), value: weekStats.prs, icon: Trophy, color: '#EF4444' },
+          { label: t('progress.overview.sessions'), value: weekStats.sessions, icon: Activity, color: 'var(--color-blue-soft)' },
+          { label: t('progress.overview.volume'), value: `${volFormatted} lbs`, icon: Zap, color: 'var(--color-accent)' },
+          { label: t('progress.overview.prsHit'), value: weekStats.prs, icon: Trophy, color: 'var(--color-danger)' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-3 flex flex-col items-center gap-1 text-center"
+            className="rounded-2xl border border-white/[0.06] p-3 flex flex-col items-center gap-1 text-center overflow-hidden min-w-0"
+            style={{ background: 'var(--color-bg-card)' }}
           >
             <Icon size={14} style={{ color }} strokeWidth={2} />
-            <p className="text-[28px] font-bold leading-none text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-[#6B7280]">{label}</p>
+            <p className={`${statFontSize(value, 'text-[24px]')} font-bold leading-none truncate`} style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{typeof value === 'number' ? formatStatNumber(value) : value}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--color-text-subtle)' }}>{label}</p>
           </div>
         ))}
       </div>
 
+      {/* Goals Section */}
+      <GoalsSection />
+
       {/* Weekly volume chart */}
       {volumeChart.length >= 2 && (
-        <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-5">
-          <p className="text-[14px] font-semibold text-[#E5E7EB] mb-3">{t('progress.overview.weeklyVolume')}</p>
+        <div className="rounded-2xl border border-white/[0.06] p-5 overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
+          <p className="text-[14px] font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.weeklyVolume')}</p>
           <ResponsiveContainer width="100%" height={150}>
             <AreaChart data={volumeChart} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis
                 dataKey="week"
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                 tickLine={false}
                 axisLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: '#6B7280' }}
+                tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
@@ -225,7 +232,7 @@ export default function ProgressOverview() {
                 type="monotone"
                 dataKey="volume"
                 name={t('progress.overview.volume')}
-                stroke="#D4AF37"
+                stroke="var(--color-accent)"
                 strokeWidth={2}
                 fill="url(#volGrad)"
                 dot={false}
@@ -235,6 +242,9 @@ export default function ProgressOverview() {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* Nutrition Impact Insight */}
+      <NutritionImpactCard userId={user?.id} />
 
       {/* Workout History — Monthly Timeline */}
       <div className="mt-6">
@@ -248,6 +258,162 @@ export default function ProgressOverview() {
         />,
         document.body
       )}
+    </div>
+  );
+}
+
+// ── Nutrition Impact Card ─────────────────────────────────────────────────
+function NutritionImpactCard({ userId }) {
+  const { t } = useTranslation('pages');
+  const [insight, setInsight] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+
+    const compute = async () => {
+      setLoading(true);
+
+      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+
+      const [targetsRes, logsRes, sessionsRes] = await Promise.all([
+        supabase.from('nutrition_targets').select('daily_calories, daily_protein_g').eq('profile_id', userId).maybeSingle(),
+        supabase.from('food_logs').select('log_date, calories, protein_g').eq('profile_id', userId).gte('log_date', format(subDays(new Date(), 30), 'yyyy-MM-dd')),
+        supabase.from('workout_sessions').select('completed_at, total_volume_lbs, session_exercises(session_sets(is_pr, is_completed))').eq('profile_id', userId).eq('status', 'completed').gte('completed_at', thirtyDaysAgo).order('completed_at', { ascending: true }),
+      ]);
+
+      if (cancelled) return;
+
+      const targets = targetsRes.data;
+      const logs = logsRes.data ?? [];
+      const sessions = sessionsRes.data ?? [];
+
+      // Aggregate food_logs per day
+      const dailyNutrition = {};
+      for (const log of logs) {
+        if (!dailyNutrition[log.log_date]) dailyNutrition[log.log_date] = { calories: 0, protein: 0 };
+        dailyNutrition[log.log_date].calories += parseFloat(log.calories) || 0;
+        dailyNutrition[log.log_date].protein += parseFloat(log.protein_g) || 0;
+      }
+
+      const nutritionDays = Object.keys(dailyNutrition);
+
+      // Not enough data
+      if (nutritionDays.length < 7) {
+        setInsight({ type: 'insufficient' });
+        setLoading(false);
+        return;
+      }
+
+      const calTarget = targets?.daily_calories || 2000;
+      const proTarget = targets?.daily_protein_g || 120;
+
+      // Build session list with date, volume, PR count
+      const sessionsByDate = sessions.map(s => ({
+        date: format(new Date(s.completed_at), 'yyyy-MM-dd'),
+        volume: parseFloat(s.total_volume_lbs) || 0,
+        prs: (s.session_exercises ?? []).flatMap(e => e.session_sets ?? []).filter(set => set.is_pr && set.is_completed).length,
+      }));
+
+      // For each nutrition day, find the NEXT workout session (same day or up to 2 days later)
+      const proteinHitVolumes = [];
+      const proteinMissVolumes = [];
+      const calHitVolumes = [];
+      const calMissVolumes = [];
+      const highProteinPRDays = [];
+
+      for (const day of nutritionDays) {
+        const dayDate = new Date(day + 'T12:00:00');
+        const nextWorkout = sessionsByDate.find(s => {
+          const sDate = new Date(s.date + 'T12:00:00');
+          return sDate >= dayDate && sDate <= new Date(dayDate.getTime() + 2 * 86400000);
+        });
+        if (!nextWorkout) continue;
+
+        const n = dailyNutrition[day];
+        if (n.protein >= proTarget) {
+          proteinHitVolumes.push(nextWorkout.volume);
+          if (nextWorkout.prs > 0) highProteinPRDays.push(Math.round(n.protein));
+        } else {
+          proteinMissVolumes.push(nextWorkout.volume);
+        }
+
+        if (n.calories >= calTarget) {
+          calHitVolumes.push(nextWorkout.volume);
+        } else {
+          calMissVolumes.push(nextWorkout.volume);
+        }
+      }
+
+      const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const results = [];
+
+      if (proteinHitVolumes.length >= 2 && proteinMissVolumes.length >= 2) {
+        const hitAvg = avg(proteinHitVolumes);
+        const missAvg = avg(proteinMissVolumes);
+        if (missAvg > 0) {
+          const pctDiff = Math.round(((hitAvg - missAvg) / missAvg) * 100);
+          if (pctDiff > 0) results.push({ key: 'proteinVolume', pct: pctDiff });
+        }
+      }
+
+      if (calHitVolumes.length >= 2 && calMissVolumes.length >= 2) {
+        const hitAvg = avg(calHitVolumes);
+        const missAvg = avg(calMissVolumes);
+        if (missAvg > 0) {
+          const pctDiff = Math.round(((hitAvg - missAvg) / missAvg) * 100);
+          if (pctDiff > 0) results.push({ key: 'calorieVolume', pct: pctDiff });
+        }
+      }
+
+      if (highProteinPRDays.length >= 2) {
+        const avgPro = Math.round(avg(highProteinPRDays.map(Number)));
+        results.push({ key: 'prProtein', grams: avgPro });
+      }
+
+      setInsight(results.length > 0 ? { type: 'data', results } : { type: 'noCorrelation' });
+      setLoading(false);
+    };
+
+    compute();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  if (loading || !insight) return null;
+
+  if (insight.type === 'insufficient') {
+    return (
+      <div className="rounded-2xl border border-white/[0.06] p-4 flex items-start gap-3" style={{ background: 'var(--color-bg-card)' }}>
+        <Apple size={16} className="text-[#10B981] flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[13px] font-semibold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.nutritionImpact')}</p>
+          <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{t('progress.overview.nutritionInsufficient')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (insight.type === 'noCorrelation') return null;
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] p-4" style={{ background: 'var(--color-bg-card)' }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Apple size={14} className="text-[#10B981]" />
+        <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.nutritionImpact')}</p>
+      </div>
+      <div className="flex flex-col gap-2">
+        {insight.results.map((r) => (
+          <div key={r.key} className="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style={{ backgroundColor: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.12)' }}>
+            <Zap size={12} className="text-[#10B981] flex-shrink-0 mt-0.5" />
+            <p className="text-[12px] text-[#D1D5DB] leading-relaxed">
+              {r.key === 'proteinVolume' && t('progress.overview.proteinVolumeInsight', { pct: r.pct })}
+              {r.key === 'calorieVolume' && t('progress.overview.calorieVolumeInsight', { pct: r.pct })}
+              {r.key === 'prProtein' && t('progress.overview.prProteinInsight', { grams: r.grams })}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -275,29 +441,30 @@ function SessionRow({ session }) {
   return (
     <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
       <button
-        className="w-full text-left px-4 py-3.5 flex items-start gap-3"
+        className="w-full text-left px-4 py-3.5 flex items-start gap-3 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setExpanded(e => !e)}
+        aria-label={`Toggle details for ${sanitize(session.name)}`}
       >
         <div className="flex-shrink-0 w-9 text-center pt-0.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37]">
             {new Date(session.completed_at).toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'short' })}
           </p>
-          <p className="text-[22px] font-bold leading-none text-[#E5E7EB]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <p className="text-[22px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
             {new Date(session.completed_at).getDate()}
           </p>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-tight truncate text-[#E5E7EB]">
+          <p className="font-semibold text-[15px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
             {sanitize(session.name)}
           </p>
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
-            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
               <Clock size={10} /> {formatDuration(session.duration_seconds)}
             </span>
-            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
               <Zap size={10} /> {volStr} lbs
             </span>
-            <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
               <Dumbbell size={10} /> {exercises.length}
             </span>
             {prCount > 0 && (
@@ -309,8 +476,11 @@ function SessionRow({ session }) {
         </div>
         <ChevronDown
           size={16}
-          className="flex-shrink-0 mt-1 transition-transform duration-200 text-[#9CA3AF]"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          className="flex-shrink-0 mt-1 transition-transform duration-200"
+          style={{
+            color: 'var(--color-text-muted)',
+            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
         />
       </button>
       {expanded && (
@@ -324,7 +494,7 @@ function SessionRow({ session }) {
                 return (
                   <div key={ex.id}>
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-[13px] text-[#E5E7EB]">{sanitize(ex.snapshot_name)}</p>
+                      <p className="font-semibold text-[13px]" style={{ color: 'var(--color-text-primary)' }}>{sanitize(ex.snapshot_name)}</p>
                       {hasPR && <Trophy size={12} className="text-[#D4AF37]" />}
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -337,7 +507,7 @@ function SessionRow({ session }) {
                             style={
                               set.is_pr
                                 ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
-                                : { background: '#111827', color: '#9CA3AF', border: '1px solid rgba(255,255,255,0.06)' }
+                                : { background: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid rgba(255,255,255,0.06)' }
                             }
                           >
                             {set.weight_lbs} × {set.reps}{set.is_pr && ' PR'}
@@ -370,12 +540,12 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
         className="flex items-center gap-2 w-full text-left py-2 group"
       >
         <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
-          <ChevronDown size={14} className="text-[#6B7280]" />
+          <ChevronDown size={14} style={{ color: 'var(--color-text-subtle)' }} />
         </div>
-        <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#9CA3AF] group-hover:text-[#E5E7EB] transition-colors">
+        <p className="text-[12px] font-bold uppercase tracking-[0.12em] transition-colors" style={{ color: 'var(--color-text-muted)' }}>
           {monthLabel}
         </p>
-        <span className="text-[11px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[11px] font-medium ml-1" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>
           {t('progress.overview.sessions_count', { count: sessions.length })}
         </span>
       </button>
@@ -395,7 +565,8 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
           {hasMore && showAll && (
             <button
               onClick={() => setShowAll(false)}
-              className="text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors pb-3 pl-1"
+              className="text-[12px] font-semibold transition-colors pb-3 pl-1"
+              style={{ color: 'var(--color-text-muted)' }}
             >
               {t('progress.overview.showLess')}
             </button>
@@ -423,13 +594,13 @@ function YearBlock({ year, monthsData }) {
         className="flex items-center gap-2 w-full text-left py-2.5 group"
       >
         <div className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
-          <ChevronDown size={16} className="text-[#6B7280]" />
+          <ChevronDown size={16} style={{ color: 'var(--color-text-subtle)' }} />
         </div>
         <Calendar size={14} className="text-[#D4AF37]" />
-        <p className="text-[14px] font-bold text-[#E5E7EB] group-hover:text-white transition-colors">
+        <p className="text-[14px] font-bold transition-colors" style={{ color: 'var(--color-text-primary)' }}>
           {year}
         </p>
-        <span className="text-[12px] font-medium text-[#6B7280] ml-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[12px] font-medium ml-1" style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>
           {t('progress.overview.sessions_count', { count: totalSessions })}
         </span>
       </button>
@@ -535,7 +706,7 @@ function MonthlyTimeline({ userId }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6B7280] mb-2">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-2" style={{ color: 'var(--color-text-subtle)' }}>
         {t('progress.overview.workoutHistory', { year: currentYear })}
       </p>
 
@@ -546,11 +717,11 @@ function MonthlyTimeline({ userId }) {
           // Empty month — show as disabled row
           return (
             <div key={monthIdx} className="flex items-center gap-2 py-2 opacity-40">
-              <ChevronRight size={14} className="text-[#4B5563]" />
-              <p className="text-[12px] font-semibold text-[#4B5563] uppercase tracking-[0.12em]">
+              <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} />
+              <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
                 {t(`months.${MONTH_KEYS[monthIdx]}`)}
               </p>
-              <span className="text-[11px] text-[#4B5563]">—</span>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
             </div>
           );
         }

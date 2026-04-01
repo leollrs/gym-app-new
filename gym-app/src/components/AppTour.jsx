@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { supabase } from '../lib/supabase';
 
 const TOUR_STEP_KEYS = [
   { route: '/', target: 'tour-my-plan', titleKey: 'appTour.step1Title', textKey: 'appTour.step1Text', position: 'below' },
@@ -40,12 +41,26 @@ export default function AppTour({ userId }) {
   const storageKey = `${STORAGE_PREFIX}${userId || 'anon'}`;
   const findRef = useRef(null);
 
-  // Show tour on first visit for this user
+  // Show tour on first visit for this user — check both localStorage and DB
   useEffect(() => {
     if (!userId) return;
     if (localStorage.getItem(storageKey)) return;
-    const timer = setTimeout(() => setShow(true), 2000);
-    return () => clearTimeout(timer);
+    // Also check the DB in case localStorage was wiped (app reinstall)
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('has_seen_tour')
+      .eq('id', userId)
+      .single()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.has_seen_tour) {
+          localStorage.setItem(storageKey, 'true');
+          return; // don't show
+        }
+        setTimeout(() => { if (!cancelled) setShow(true); }, 2000);
+      });
+    return () => { cancelled = true; };
   }, [userId, storageKey]);
 
   const findTarget = useCallback(() => {
@@ -123,8 +138,12 @@ export default function AppTour({ userId }) {
   const dismiss = useCallback(() => {
     setShow(false);
     localStorage.setItem(storageKey, 'true');
+    // Persist to DB so it survives app reinstalls
+    if (userId) {
+      supabase.from('profiles').update({ has_seen_tour: true }).eq('id', userId).then(() => {});
+    }
     navigate('/');
-  }, [storageKey, navigate]);
+  }, [storageKey, userId, navigate]);
 
   const next = () => {
     if (step < TOUR_STEP_KEYS.length - 1) {
@@ -209,7 +228,7 @@ export default function AppTour({ userId }) {
             width: rect.width + PAD * 2,
             height: rect.height + PAD * 2,
             borderRadius: 14,
-            boxShadow: '0 0 24px rgba(212,175,55,0.35)',
+            boxShadow: '0 0 24px var(--color-accent-glow)',
           }}
         />
       )}
@@ -229,7 +248,7 @@ export default function AppTour({ userId }) {
           style={{ ...tooltipStyle, width: TOOLTIP_W, pointerEvents: 'auto' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="bg-[#0A0F1A] border border-[#D4AF37]/30 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
+          <div className="border border-[#D4AF37]/30 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden" style={{ background: 'var(--color-bg-deep, #0A0F1A)' }}>
             {/* Progress dots */}
             <div className="flex items-center justify-between px-4 pt-3.5">
               <div className="flex items-center gap-1">
@@ -242,32 +261,32 @@ export default function AppTour({ userId }) {
                   />
                 ))}
               </div>
-              <span className="text-[10px] text-[#4B5563]">{step + 1}/{TOUR_STEP_KEYS.length}</span>
+              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{step + 1}/{TOUR_STEP_KEYS.length}</span>
             </div>
 
             {/* Content */}
             <div className="px-4 pt-2.5 pb-2">
-              <h3 className="text-[15px] font-black text-[#E5E7EB] mb-1">{t(current.titleKey)}</h3>
-              <p className="text-[12px] text-[#9CA3AF] leading-relaxed">{t(current.textKey)}</p>
+              <h3 className="text-[15px] font-black mb-1" style={{ color: 'var(--color-text-primary)' }}>{t(current.titleKey)}</h3>
+              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{t(current.textKey)}</p>
             </div>
 
             {/* Buttons */}
             <div className="px-4 pb-3.5 flex gap-2 mt-0.5">
               {step > 0 && (
-                <button onClick={back} className="flex-1 py-2.5 rounded-xl bg-white/5 text-[#9CA3AF] font-semibold text-[12px]">
+                <button onClick={back} className="flex-1 py-2.5 rounded-xl bg-white/5 font-semibold text-[12px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
                   {t('appTour.back')}
                 </button>
               )}
               <button
                 onClick={next}
-                className="flex-1 py-2.5 rounded-xl bg-[#D4AF37] text-black font-bold text-[12px] flex items-center justify-center gap-1"
+                className="flex-1 py-2.5 rounded-xl bg-[#D4AF37] text-black font-bold text-[12px] flex items-center justify-center gap-1 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 {step < TOUR_STEP_KEYS.length - 1 ? (
                   <>{t('appTour.next')} <ChevronRight size={14} /></>
                 ) : t('appTour.letsGo')}
               </button>
               {step === 0 && (
-                <button onClick={dismiss} className="py-2.5 px-3 rounded-xl bg-white/5 text-[#4B5563] font-semibold text-[11px]">
+                <button onClick={dismiss} className="py-2.5 px-3 rounded-xl bg-white/5 font-semibold text-[11px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
                   {t('appTour.skip')}
                 </button>
               )}

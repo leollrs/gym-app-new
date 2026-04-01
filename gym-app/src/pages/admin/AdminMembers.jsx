@@ -1,37 +1,57 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock } from 'lucide-react';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { createNotification } from '../../lib/notifications';
 import { format, subDays, formatDistanceToNow, differenceInDays } from 'date-fns';
-import { getRiskTier } from '../../lib/churnScore';
+import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
+import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics } from '../../lib/exportData';
 import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared components
-import { PageHeader, FilterBar, Avatar, TableSkeleton } from '../../components/admin';
+import { PageHeader, FilterBar, Avatar, TableSkeleton, AdminPageShell, AdminTable } from '../../components/admin';
 import { StatusBadge } from '../../components/admin/StatusBadge';
 
 // Sub-components
 import InviteModal from './components/InviteModal';
+import CreateInviteModal from './components/CreateInviteModal';
 import MemberDetail from './components/MemberDetail';
+import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
+
+// ── Churn signal translation map ─────────────────────────
+const SIGNAL_KEYS = {
+  'Never logged a workout': 'admin.churnSignals.neverLogged',
+  'No activity in 30+ days': 'admin.churnSignals.noActivity30',
+  'No activity in 14+ days': 'admin.churnSignals.noActivity14',
+  'No workouts in last 14 days': 'admin.churnSignals.noWorkouts14',
+};
+
+export function translateChurnSignal(t, signal) {
+  const key = SIGNAL_KEYS[signal];
+  return key ? t(key, signal) : signal;
+}
 
 // ── Churn risk badge ──────────────────────────────────────
 const ChurnRiskBadge = ({ member, navigate }) => {
   const score = member.score ?? 0;
-  const tier = getRiskTier(score >= 61 ? 72 : score >= 31 ? 50 : 20);
+  const tier = getRiskTier(score);
   if (score < 31) return null;
   return (
-    <button onClick={e => { e.stopPropagation(); navigate('/admin/churn'); }}
+    <span onClick={e => { e.stopPropagation(); navigate('/admin/churn'); }}
+      role="link"
+      tabIndex={0}
       title={`${tier.label} — click to view in Churn Intel`}
-      className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors hover:opacity-80 flex-shrink-0"
+      className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors hover:opacity-80 flex-shrink-0 cursor-pointer"
       style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
       {tier.label}
-    </button>
+    </span>
   );
 };
 
@@ -54,18 +74,26 @@ function estimateChurnScore(daysInactive, recentWorkouts, neverActive) {
 
 // ── Data fetcher ──────────────────────────────────────────
 async function fetchMembers(gymId) {
-  const [membersRes, churnRes, sessionsRes] = await Promise.all([
+  const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
     supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).limit(200),
-    supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals').eq('gym_id', gymId).order('score', { ascending: false }),
+    supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()),
+    fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
+      logger.error('AdminMembers: fetchMembersWithChurnScores:', err);
+      return [];
+    }),
   ]);
 
   if (membersRes.error) logger.error('AdminMembers: members:', membersRes.error);
-  if (churnRes.error) logger.error('AdminMembers: churn:', churnRes.error);
+  if (followupRes.error) logger.error('AdminMembers: churn followup:', followupRes.error);
   if (sessionsRes.error) logger.error('AdminMembers: sessions:', sessionsRes.error);
 
-  const churnMap = {};
-  (churnRes.data || []).forEach(row => { if (!churnMap[row.profile_id]) churnMap[row.profile_id] = row; });
+  const scoredMap = Object.fromEntries((scoredAll || []).map((s) => [s.id, s]));
+  const followupMap = {};
+  (followupRes.data || []).forEach((row) => {
+    const prev = followupMap[row.profile_id];
+    if (!prev || new Date(row.computed_at) > new Date(prev.computed_at)) followupMap[row.profile_id] = row;
+  });
 
   const sessionsLast14 = {};
   const lastSessionAt = {};
@@ -76,23 +104,23 @@ async function fetchMembers(gymId) {
 
   const nowMs = Date.now();
   return (membersRes.data || []).map(m => {
-    const churn = churnMap[m.id];
+    const scored = scoredMap[m.id];
     const effectiveLast = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
     const daysInactive = Math.floor((nowMs - new Date(effectiveLast)) / 86400000);
     const neverActive = !m.last_active_at && !lastSessionAt[m.id];
 
-    // Use DB score if available, otherwise estimate from activity data
-    const fallback = !churn ? estimateChurnScore(daysInactive, recentWorkouts, neverActive) : null;
+    const fallback = !scored ? estimateChurnScore(daysInactive, recentWorkouts, neverActive) : null;
+    const follow = followupMap[m.id];
 
     return {
       ...m,
       recentWorkouts,
       lastSessionAt: lastSessionAt[m.id] ?? null,
-      score: churn?.score ?? fallback.score,
-      risk_tier: churn?.risk_tier ?? fallback.risk_tier,
-      key_signals: churn?.key_signals ?? fallback.key_signals,
-      _hasDbScore: !!churn,
+      score: scored?.churnScore ?? fallback.score,
+      risk_tier: scored?.riskTier?.tier ?? fallback.risk_tier,
+      key_signals: scored?.keySignals ?? fallback.key_signals,
+      followup_sent_at: follow?.followup_sent_at ?? null,
       membership_status: m.membership_status ?? 'active',
       daysInactive,
       neverActive,
@@ -100,22 +128,31 @@ async function fetchMembers(gymId) {
   });
 }
 
-// ── Pending invites fetcher ──────────────────────────────
-async function fetchPendingInvites(gymId) {
+// ── All invites fetcher ──────────────────────────────────
+async function fetchAllInvites(gymId) {
   const { data, error } = await supabase
     .from('gym_invites')
     .select('id, member_name, phone, email, invite_code, created_at, expires_at, used_by, used_at')
     .eq('gym_id', gymId)
-    .is('used_by', null)
     .order('created_at', { ascending: false });
 
-  if (error) logger.error('AdminMembers: pending invites:', error);
+  if (error) logger.error('AdminMembers: invites:', error);
   return data || [];
+}
+
+function getInviteStatus(invite) {
+  if (invite.used_by) return 'claimed';
+  const now = new Date();
+  const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
+  if (expiresAt && expiresAt < now) return 'expired';
+  return 'pending';
 }
 
 export default function AdminMembers() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
+  const k = (key) => t(`admin.memberInvites.${key}`);
 
   // SECURITY: Always derive gymId from the authenticated user's profile.
   // Never accept gymId from URL params, query strings, or other user input.
@@ -126,8 +163,28 @@ export default function AdminMembers() {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [showCreateInvite, setShowCreateInvite] = useState(false);
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
+  const [resetApprovalId, setResetApprovalId] = useState(null);
+  const [inviteFilter, setInviteFilter] = useState('pending');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkAction, setBulkAction] = useState(null); // 'message' | 'freeze' | 'export' | 'assign_trainer'
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(m => m.id)));
+  };
+
+  const clearSelection = () => { setSelectedIds(new Set()); setBulkAction(null); };
 
   useEffect(() => { document.title = 'Admin - Members | TuGymPR'; }, []);
 
@@ -138,14 +195,76 @@ export default function AdminMembers() {
     staleTime: 30_000,
   });
 
-  const { data: pendingInvites = [], isLoading: pendingLoading, refetch: refetchPending } = useQuery({
-    queryKey: [...adminKeys.members.all(gymId), 'pending-invites'],
-    queryFn: () => fetchPendingInvites(gymId),
+  const { data: allInvites = [], isLoading: invitesLoading, refetch: refetchInvites } = useQuery({
+    queryKey: [...adminKeys.members.all(gymId), 'all-invites'],
+    queryFn: () => fetchAllInvites(gymId),
     enabled: !!gymId,
     staleTime: 30_000,
   });
 
+  // Derived invite lists
+  const pendingInvites = useMemo(() => allInvites.filter(i => getInviteStatus(i) === 'pending'), [allInvites]);
+  const claimedInvites = useMemo(() => allInvites.filter(i => getInviteStatus(i) === 'claimed'), [allInvites]);
+  const filteredInvites = useMemo(() => {
+    if (inviteFilter === 'all') return allInvites;
+    return allInvites.filter(i => getInviteStatus(i) === inviteFilter);
+  }, [allInvites, inviteFilter]);
+
+  // Pending password reset requests
+  const { data: pendingResets = [], refetch: refetchResets } = useQuery({
+    queryKey: [...adminKeys.members.all(gymId), 'pending-resets'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('password_reset_requests')
+        .select('id, profile_id, status, created_at, expires_at, profiles!inner(full_name, username, avatar_url)')
+        .eq('gym_id', gymId)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) return [];
+      return data || [];
+    },
+    enabled: !!gymId,
+    staleTime: 30_000,
+    retry: false,
+  });
+
   const [copiedId, setCopiedId] = useState(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(null);
+  const exportMenuRef = useRef(null);
+
+  // Close export menu on outside click
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handleClick = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setShowExportMenu(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showExportMenu]);
+
+  const handleExportWorkouts = async () => {
+    setExporting('workouts');
+    try { await exportGymWorkoutHistory(gymId); } catch (e) { logger.error('Export workouts failed:', e); }
+    setExporting(null);
+    setShowExportMenu(false);
+  };
+
+  const handleExportPRs = async () => {
+    setExporting('prs');
+    try { await exportGymPersonalRecords(gymId); } catch (e) { logger.error('Export PRs failed:', e); }
+    setExporting(null);
+    setShowExportMenu(false);
+  };
+
+  const handleExportBodyMetrics = async () => {
+    setExporting('body');
+    try { await exportGymBodyMetrics(gymId); } catch (e) { logger.error('Export body metrics failed:', e); }
+    setExporting(null);
+    setShowExportMenu(false);
+  };
 
   const handleCopyCode = async (invite) => {
     try {
@@ -160,23 +279,8 @@ export default function AdminMembers() {
   const handleRevokeInvite = async (inviteId) => {
     const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId);
     if (error) logger.error('Failed to revoke invite:', error);
-    else refetchPending();
+    else refetchInvites();
   };
-
-  // Auto-trigger server-side churn scoring once when most members lack DB scores
-  const churnComputeTriggered = useRef(false);
-  useEffect(() => {
-    if (!gymId || members.length === 0 || churnComputeTriggered.current) return;
-    const hasDbScore = members.filter(m => m._hasDbScore).length;
-    if (hasDbScore < members.length * 0.5) {
-      churnComputeTriggered.current = true;
-      supabase.rpc('compute_churn_scores', { p_gym_id: gymId })
-        .then(({ error }) => {
-          if (error) logger.error('Auto compute_churn_scores:', error);
-          else refetch();
-        });
-    }
-  }, [gymId, members.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNoteSaved = (memberId, newNote) => {
     setSelected(prev => prev?.id === memberId ? { ...prev, admin_note: newNote } : prev);
@@ -209,13 +313,52 @@ export default function AdminMembers() {
     setBulkSending(true);
     for (const m of atRiskFiltered) {
       const msg = `Hey ${m.full_name.split(' ')[0]}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`;
-      await createNotification({ profileId: m.id, gymId, type: 'churn_followup', title: 'Message from your gym', body: msg, data: { source: 'admin_bulk_followup' } });
+      await createNotification({ profileId: m.id, gymId, type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'admin_bulk_followup' } });
     }
     if (atRiskFiltered.length > 0) {
-      await supabase.from('churn_risk_scores').update({ followup_sent_at: new Date().toISOString() }).in('profile_id', atRiskFiltered.map(m => m.id)).eq('gym_id', gymId);
+      const ts = new Date().toISOString();
+      const rows = atRiskFiltered.map((m) => ({
+        profile_id: m.id,
+        gym_id: gymId,
+        score: m.score,
+        risk_tier: m.risk_tier,
+        key_signals: m.key_signals ?? [],
+        computed_at: ts,
+        followup_sent_at: ts,
+      }));
+      await supabase.from('churn_risk_scores').upsert(rows, { onConflict: 'profile_id,gym_id' });
     }
     setBulkSending(false);
     setBulkConfirm(false);
+  };
+
+  const handleBulkFreeze = async () => {
+    const ids = [...selectedIds];
+    await supabase.from('profiles').update({ membership_status: 'frozen' }).in('id', ids).eq('gym_id', gymId);
+    refetch();
+    clearSelection();
+  };
+
+  const handleBulkExportSelected = () => {
+    const selected = filtered.filter(m => selectedIds.has(m.id));
+    exportCSV({
+      filename: 'selected_members',
+      columns: [
+        { key: 'full_name', label: 'Name' }, { key: 'membership_status', label: 'Status' },
+        { key: 'created_at', label: 'Joined' }, { key: 'last_active_at', label: 'Last Active' },
+        { key: 'score', label: 'Churn Score' }, { key: 'risk_tier', label: 'Risk Tier' },
+      ],
+      data: selected,
+    });
+    clearSelection();
+  };
+
+  const handleBulkMessage = async (message) => {
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      await createNotification({ profileId: id, gymId, type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_bulk_message' } });
+    }
+    clearSelection();
   };
 
   const handleExport = () => {
@@ -232,6 +375,9 @@ export default function AdminMembers() {
   };
 
   const pendingCount = pendingInvites.length;
+  const totalInviteCount = allInvites.length;
+
+  const resetCount = pendingResets.length;
 
   const filterOptions = [
     { key: 'all', label: 'All', count: members.length },
@@ -239,6 +385,100 @@ export default function AdminMembers() {
     { key: 'watch', label: 'Watch', count: watchCount },
     { key: 'healthy', label: 'Healthy', count: healthyCount },
     { key: 'pending', label: 'Pending', count: pendingCount },
+    ...(resetCount > 0 ? [{ key: 'resets', label: 'Resets', count: resetCount }] : []),
+  ];
+
+  const memberTableColumns = [
+    {
+      key: 'select',
+      label: '',
+      width: '52px',
+      render: (m) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleSelect(m.id); }}
+          className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+          aria-label={selectedIds.has(m.id) ? 'Deselect member' : 'Select member'}
+        >
+          {selectedIds.has(m.id) ? (
+            <CheckSquare size={16} className="text-[#D4AF37]" />
+          ) : (
+            <Square size={16} />
+          )}
+        </button>
+      ),
+    },
+    {
+      key: 'full_name',
+      label: 'Member',
+      sortable: true,
+      sortValue: (m) => m.full_name?.toLowerCase() || '',
+      render: (m) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar name={m.full_name} />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
+            <p className="text-[12px] text-[#6B7280] truncate">
+              {(m.last_active_at || m.lastSessionAt)
+                ? `Active ${formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })}`
+                : 'Never active'}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'membership_status',
+      label: 'Status',
+      sortable: true,
+      render: (m) => <StatusBadge status={m.membership_status} />,
+    },
+    {
+      key: 'score',
+      label: 'Risk',
+      sortable: true,
+      sortValue: (m) => m.score ?? 0,
+      render: (m) => {
+        const tier = getRiskTier(m.score);
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+            style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: tier.color }} />
+            {m.score}%
+          </span>
+        );
+      },
+    },
+    {
+      key: 'recentWorkouts',
+      label: 'Workouts (14d)',
+      sortable: true,
+      sortValue: (m) => m.recentWorkouts ?? 0,
+      render: (m) => <span className="text-[13px] text-[#9CA3AF] font-semibold">{m.recentWorkouts ?? 0}</span>,
+      className: 'text-right',
+      headerClassName: 'text-right',
+    },
+    {
+      key: 'last_seen',
+      label: 'Last Active',
+      sortable: true,
+      sortValue: (m) => new Date(m.last_active_at ?? m.lastSessionAt ?? m.created_at).getTime(),
+      render: (m) => (
+        <span className="text-[12px] text-[#9CA3AF]">
+          {(m.last_active_at || m.lastSessionAt)
+            ? formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })
+            : 'Never'}
+        </span>
+      ),
+    },
+    {
+      key: 'created_at',
+      label: 'Joined',
+      sortable: true,
+      sortValue: (m) => new Date(m.created_at).getTime(),
+      render: (m) => <span className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</span>,
+    },
   ];
 
   // Guard: only admins/super_admins with a valid gym_id may access this page
@@ -251,7 +491,7 @@ export default function AdminMembers() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <AdminPageShell>
       <PageHeader
         title="Members"
         subtitle={`${members.length} total · ${atRiskCount} at risk${pendingCount > 0 ? ` · ${pendingCount} pending` : ''}`}
@@ -277,88 +517,227 @@ export default function AdminMembers() {
                 </button>
               )
             )}
+            <button onClick={() => setShowCreateInvite(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] transition-colors"
+              style={{ color: '#000' }}>
+              <UserPlus size={13} /> {k('inviteMember')}
+            </button>
             <button onClick={() => setShowInvite(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
-              <Link size={13} /> Add Member
+              <Link size={13} /> {k('addMember')}
             </button>
           </>
         }
       />
 
       {/* Search + filter */}
-      <div className="md:sticky md:top-0 md:z-20 md:bg-[#05070B]/95 md:backdrop-blur-xl md:-mx-8 md:px-8 md:py-3 flex flex-col sm:flex-row gap-3 mt-6 mb-4">
+      <div className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#05070B]/95 lg:backdrop-blur-xl lg:py-3 flex flex-col lg:flex-row gap-3 mt-6 mb-4">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
           <input type="text" placeholder="Search members…" aria-label="Search members" value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+            className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
         </div>
-        <button onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
-          <Download size={13} /> Export
-        </button>
+        <div className="relative" ref={exportMenuRef}>
+          <button onClick={() => setShowExportMenu(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+            <Download size={13} /> {t('admin.memberInvites.exportAll')} <ChevronDown size={11} />
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-[#0F172A] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+              <button onClick={handleExport}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.05] transition-colors text-left">
+                <Users size={13} className="text-[#9CA3AF]" /> Export Members
+              </button>
+              <button onClick={handleExportWorkouts} disabled={!!exporting}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.05] transition-colors text-left disabled:opacity-40">
+                <Download size={13} className="text-[#9CA3AF]" /> {exporting === 'workouts' ? 'Exporting…' : t('admin.memberInvites.exportWorkouts')}
+              </button>
+              <button onClick={handleExportPRs} disabled={!!exporting}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.05] transition-colors text-left disabled:opacity-40">
+                <Download size={13} className="text-[#9CA3AF]" /> {exporting === 'prs' ? 'Exporting…' : t('admin.memberInvites.exportPRs')}
+              </button>
+              <button onClick={handleExportBodyMetrics} disabled={!!exporting}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.05] transition-colors text-left disabled:opacity-40">
+                <Download size={13} className="text-[#9CA3AF]" /> {exporting === 'body' ? 'Exporting…' : t('admin.memberInvites.exportBodyMetrics')}
+              </button>
+            </div>
+          )}
+        </div>
         <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
       </div>
 
-      {/* Pending invites list */}
-      {filter === 'pending' ? (
-        pendingLoading ? (
-          <TableSkeleton rows={6} />
-        ) : pendingInvites.length === 0 ? (
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-xl mb-4">
+          <span className="text-[13px] font-semibold text-[#D4AF37]">{selectedIds.size} selected</span>
+          <div className="flex-1" />
+          <button onClick={handleBulkExportSelected}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+            <Download size={12} /> Export
+          </button>
+          <button onClick={() => setBulkAction('message')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+            <Mail size={12} /> Message
+          </button>
+          <button onClick={() => setBulkAction('freeze')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+            Freeze
+          </button>
+          <button onClick={clearSelection}
+            className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors p-1">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Pending password resets list */}
+      {filter === 'resets' ? (
+        pendingResets.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-[#6B7280] text-[14px]">No pending invites</p>
+            <p className="text-[#6B7280] text-[14px]">No pending password resets</p>
           </div>
         ) : (
           <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
             <div className="divide-y divide-white/4">
-              {pendingInvites.map(inv => {
-                const now = new Date();
-                const expiresAt = inv.expires_at ? new Date(inv.expires_at) : null;
-                const isExpired = expiresAt && expiresAt < now;
-                const daysLeft = expiresAt && !isExpired ? differenceInDays(expiresAt, now) : null;
-
-                return (
-                  <div key={inv.id}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all">
-                    <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
-                      <Clock size={15} className="text-[#D4AF37]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{inv.member_name || 'Unnamed'}</p>
-                        {isExpired ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EF4444]/12 text-[#EF4444] border border-[#EF4444]/25">
-                            Expired
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25">
-                            Active{daysLeft !== null ? ` · ${daysLeft}d left` : ''}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {inv.email || inv.phone || 'No contact'} · Created {format(new Date(inv.created_at), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <code className="text-[12px] font-mono text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-1 rounded-lg border border-[#D4AF37]/15 hidden sm:block">
-                        {inv.invite_code}
-                      </code>
-                      <button onClick={() => handleCopyCode(inv)}
-                        title="Copy invite code"
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
-                        <Copy size={12} />
-                        {copiedId === inv.id ? 'Copied!' : 'Copy'}
-                      </button>
-                      <button onClick={() => handleRevokeInvite(inv.id)}
-                        title="Revoke invite"
-                        className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[#EF4444]/8 border border-[#EF4444]/15 text-[#EF4444]/70 hover:text-[#EF4444] hover:border-[#EF4444]/30 transition-colors">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
+              {pendingResets.map(r => (
+                <div
+                  key={r.id}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all cursor-pointer"
+                  onClick={() => setResetApprovalId(r.id)}
+                >
+                  <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
+                    <KeyRound size={15} className="text-[#D4AF37]" />
                   </div>
-                );
-              })}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
+                        {r.profiles?.full_name || 'Unknown'}
+                      </p>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25">
+                        Pending Reset
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#6B7280]">
+                      {r.profiles?.username ? `@${r.profiles.username} · ` : ''}
+                      Requested {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); setResetApprovalId(r.id); }}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/18 transition-colors"
+                    >
+                      <CheckCircle size={12} />
+                      Review
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
+          </div>
+        )
+      ) : /* Pending invites list */
+      filter === 'pending' ? (
+        invitesLoading ? (
+          <TableSkeleton rows={6} />
+        ) : (
+          <div className="space-y-4">
+            {/* Invite sub-filter tabs */}
+            <div className="flex items-center gap-2">
+              {[
+                { key: 'pending', label: k('filterPending'), count: pendingInvites.length },
+                { key: 'claimed', label: k('filterClaimed'), count: claimedInvites.length },
+                { key: 'all', label: k('filterAll'), count: allInvites.length },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setInviteFilter(opt.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors border ${
+                    inviteFilter === opt.key
+                      ? 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25'
+                      : 'bg-white/4 text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  {opt.label}
+                  <span className="text-[10px] opacity-70">{opt.count}</span>
+                </button>
+              ))}
+            </div>
+
+            {filteredInvites.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-[#6B7280] text-[14px]">{k('noInvitesFound')}</p>
+              </div>
+            ) : (
+              <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+                <div className="divide-y divide-white/4">
+                  {filteredInvites.map(inv => {
+                    const status = getInviteStatus(inv);
+                    const now = new Date();
+                    const expiresAt = inv.expires_at ? new Date(inv.expires_at) : null;
+                    const daysLeft = expiresAt && status === 'pending' ? differenceInDays(expiresAt, now) : null;
+
+                    const statusColors = {
+                      pending: { bg: 'bg-[#D4AF37]/12', text: 'text-[#D4AF37]', border: 'border-[#D4AF37]/25' },
+                      claimed: { bg: 'bg-[#10B981]/12', text: 'text-[#10B981]', border: 'border-[#10B981]/25' },
+                      expired: { bg: 'bg-[#EF4444]/12', text: 'text-[#EF4444]', border: 'border-[#EF4444]/25' },
+                    };
+                    const sc = statusColors[status] || statusColors.pending;
+
+                    return (
+                      <div key={inv.id}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all">
+                        <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
+                          {status === 'claimed' ? (
+                            <CheckCircle size={15} className="text-[#10B981]" />
+                          ) : (
+                            <Clock size={15} className="text-[#D4AF37]" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{inv.member_name || k('unnamed')}</p>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sc.bg} ${sc.text} border ${sc.border}`}>
+                              {status === 'pending' && daysLeft !== null
+                                ? `${k('statusPending')} · ${daysLeft}${k('daysLeftShort')}`
+                                : status === 'claimed'
+                                ? k('statusClaimed')
+                                : status === 'expired'
+                                ? k('statusExpired')
+                                : k('statusPending')}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#6B7280]">
+                            {inv.email && <span className="inline-flex items-center gap-0.5 mr-2"><Mail size={9} /> {inv.email}</span>}
+                            {inv.phone && <span className="inline-flex items-center gap-0.5 mr-2"><Phone size={9} /> {inv.phone}</span>}
+                            {!inv.email && !inv.phone && k('noContact')}
+                            {' · '}{format(new Date(inv.created_at), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <code className="text-[12px] font-mono text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-1 rounded-lg border border-[#D4AF37]/15 hidden sm:block">
+                            {inv.invite_code}
+                          </code>
+                          <button onClick={() => handleCopyCode(inv)}
+                            title={k('copyInviteCode')}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+                            <Copy size={12} />
+                            {copiedId === inv.id ? k('copied') : k('copy')}
+                          </button>
+                          {status === 'pending' && (
+                            <button onClick={() => handleRevokeInvite(inv.id)}
+                              title={k('revokeInvite')}
+                              aria-label={k('revokeInvite')}
+                              className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[#EF4444]/8 border border-[#EF4444]/15 text-[#EF4444]/70 hover:text-[#EF4444] hover:border-[#EF4444]/30 transition-colors min-w-[44px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -370,45 +749,63 @@ export default function AdminMembers() {
             <p className="text-[#6B7280] text-[14px]">No members found</p>
           </div>
         ) : (
-          <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-            <div className="divide-y divide-white/4">
-              {filtered.map(m => {
-                const tier = getRiskTier(m.score);
-                return (
-                  <button key={m.id} onClick={() => setSelected(m)}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all text-left group">
-                    <Avatar name={m.full_name} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
-                        <StatusBadge status={m.membership_status} />
-                        <ChurnRiskBadge member={m} navigate={navigate} />
-                        {m.admin_note && <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 flex-shrink-0" title="Has note" />}
+          <div>
+            <div className="hidden lg:block">
+              <AdminTable
+                columns={memberTableColumns}
+                data={filtered}
+                onRowClick={(m) => setSelected(m)}
+                stickyHeader
+              />
+            </div>
+            <div className="lg:hidden bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+              <div className="divide-y divide-white/4">
+                {filtered.map(m => {
+                  const tier = getRiskTier(m.score);
+                  return (
+                    <button key={m.id} onClick={() => setSelected(m)}
+                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all text-left group">
+                      <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
+                        className="flex items-center justify-center w-5 h-5 flex-shrink-0 cursor-pointer">
+                        {selectedIds.has(m.id) ? (
+                          <CheckSquare size={16} className="text-[#D4AF37]" />
+                        ) : (
+                          <Square size={16} className="text-[#6B7280] group-hover:text-[#9CA3AF]" />
+                        )}
                       </div>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {(m.last_active_at || m.lastSessionAt)
-                          ? `Active ${formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })}`
-                          : 'Never active'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
-                      <div className="text-right hidden md:block">
-                        <p className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</p>
-                        <p className="text-[10px] text-[#4B5563]">joined</p>
+                      <Avatar name={m.full_name} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
+                          <StatusBadge status={m.membership_status} />
+                          <ChurnRiskBadge member={m} navigate={navigate} />
+                          {m.admin_note && <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/60 flex-shrink-0" title="Has note" />}
+                        </div>
+                        <p className="text-[11px] text-[#6B7280]">
+                          {(m.last_active_at || m.lastSessionAt)
+                            ? `Active ${formatDistanceToNow(new Date(m.last_active_at ?? m.lastSessionAt), { addSuffix: true })}`
+                            : 'Never active'}
+                        </p>
                       </div>
-                      <div className="text-right hidden sm:block">
-                        <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
+                      <div className="flex items-center gap-2.5 flex-shrink-0">
+                        <div className="text-right hidden md:block">
+                          <p className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy')}</p>
+                          <p className="text-[10px] text-[#6B7280]">joined</p>
+                        </div>
+                        <div className="text-right hidden sm:block">
+                          <p className="text-[12px] font-semibold text-[#9CA3AF]">{m.recentWorkouts}w / 14d</p>
+                        </div>
+                        <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+                          style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
+                          {m.score}%
+                        </span>
+                        <ChevronRight size={14} className="text-[#6B7280]" />
                       </div>
-                      <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
-                        style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
-                        {m.score}%
-                      </span>
-                      <ChevronRight size={14} className="text-[#4B5563]" />
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )
@@ -420,6 +817,56 @@ export default function AdminMembers() {
       )}
 
       {showInvite && <InviteModal gymId={gymId} onClose={() => setShowInvite(false)} />}
-    </div>
+
+      {showCreateInvite && (
+        <CreateInviteModal
+          gymId={gymId}
+          onClose={() => setShowCreateInvite(false)}
+          onCreated={() => refetchInvites()}
+        />
+      )}
+
+      {resetApprovalId && (
+        <PasswordResetApprovalModal
+          requestId={resetApprovalId}
+          onClose={() => setResetApprovalId(null)}
+          onComplete={() => {
+            setResetApprovalId(null);
+            refetchResets();
+          }}
+        />
+      )}
+
+      {bulkAction === 'message' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#0F172A] border border-white/8 rounded-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-[16px] font-bold text-[#E5E7EB] mb-4">Message {selectedIds.size} members</h3>
+            <textarea id="bulk-msg" rows={4} placeholder="Type your message..."
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 resize-none mb-4" />
+            <div className="flex gap-2">
+              <button onClick={() => setBulkAction(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6">Cancel</button>
+              <button onClick={() => { const msg = document.getElementById('bulk-msg').value; if (msg.trim()) handleBulkMessage(msg); }}
+                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-black bg-[#D4AF37]">Send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkAction === 'freeze' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#0F172A] border border-white/8 rounded-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-[16px] font-bold text-[#E5E7EB] mb-2">Freeze {selectedIds.size} members?</h3>
+            <p className="text-[13px] text-[#9CA3AF] mb-4">This will set their membership status to frozen. They can be reactivated later.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setBulkAction(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6">Cancel</button>
+              <button onClick={handleBulkFreeze}
+                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-white bg-red-500">Freeze All</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminPageShell>
   );
 }

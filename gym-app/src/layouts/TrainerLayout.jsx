@@ -1,18 +1,20 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Dumbbell, LogOut, CalendarDays, ClipboardList, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Users, Dumbbell, LogOut, CalendarDays, ClipboardList, TrendingUp, BookOpen } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
-const NAV = [
-  { to: '/trainer',           label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/trainer/clients',   label: 'Clients',   icon: Users },
-  { to: '/trainer/schedule',  label: 'Schedule',  icon: CalendarDays },
-  { to: '/trainer/plans',     label: 'Plans',     icon: ClipboardList },
-  { to: '/trainer/analytics', label: 'Analytics', icon: TrendingUp },
-  { to: '/trainer/programs',  label: 'Programs',  icon: Dumbbell },
+const BASE_NAV = [
+  { to: '/trainer',           labelKey: 'trainerNav.dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/trainer/clients',   labelKey: 'trainerNav.clients',   icon: Users },
+  { to: '/trainer/schedule',  labelKey: 'trainerNav.schedule',  icon: CalendarDays },
+  { to: '/trainer/plans',     labelKey: 'trainerNav.plans',     icon: ClipboardList },
+  { to: '/trainer/analytics', labelKey: 'trainerNav.analytics', icon: TrendingUp },
+  { to: '/trainer/programs',  labelKey: 'trainerNav.programs',  icon: Dumbbell },
 ];
 
-// Show top 5 on mobile bottom nav (exclude Programs)
-const MOBILE_NAV = NAV.slice(0, 5);
+const CLASSES_NAV_ITEM = { to: '/trainer/classes', labelKey: 'trainerNav.classes', icon: BookOpen };
+
+// MOBILE_NAV is built dynamically below
 
 const linkClass = (active) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
@@ -22,7 +24,11 @@ const linkClass = (active) =>
   }`;
 
 export default function TrainerLayout({ children }) {
-  const { profile, gymName, gymLogoUrl, signOut } = useAuth();
+  const { t } = useTranslation('common');
+  const { profile, gymName, gymLogoUrl, signOut, gymConfig } = useAuth();
+  const classesEnabled = gymConfig?.classesEnabled ?? false;
+  const NAV = classesEnabled ? [...BASE_NAV, CLASSES_NAV_ITEM] : BASE_NAV;
+  const MOBILE_NAV = NAV.slice(0, 5);
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -54,9 +60,9 @@ export default function TrainerLayout({ children }) {
           </div>
         </div>
         <nav aria-label="Trainer sidebar navigation" className="flex-1 px-3 py-4 space-y-0.5">
-          {NAV.map(({ to, label, icon: Icon, exact }) => (
+          {NAV.map(({ to, labelKey, icon: Icon, exact }) => (
             <NavLink key={to} to={to} end={exact} className={({ isActive }) => linkClass(isActive)}>
-              <Icon size={17} /> {label}
+              <Icon size={17} /> {t(labelKey)}
             </NavLink>
           ))}
         </nav>
@@ -86,7 +92,7 @@ export default function TrainerLayout({ children }) {
           style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: '12px', height: 'calc(52px + env(safe-area-inset-top))' }}
         >
           <p className="text-[15px] font-bold text-[#E5E7EB]">Trainer</p>
-          <button onClick={handleSignOut} aria-label="Sign out" className="text-[#6B7280] hover:text-[#EF4444] transition-colors">
+          <button onClick={handleSignOut} aria-label="Sign out" className="text-[#6B7280] hover:text-[#EF4444] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
             <LogOut size={18} />
           </button>
         </header>
@@ -98,13 +104,13 @@ export default function TrainerLayout({ children }) {
       {/* ── Mobile bottom nav ───────────────────────── */}
       <nav aria-label="Trainer mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        {MOBILE_NAV.map(({ to, label, icon: Icon, exact }) => (
+        {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink key={to} to={to} end={exact}
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors ${isActive ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`
             }>
             <Icon size={20} />
-            <span className="text-[10px] font-medium">{label}</span>
+            <span className="text-[10px] font-medium">{t(labelKey)}</span>
           </NavLink>
         ))}
       </nav>

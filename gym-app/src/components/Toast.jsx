@@ -18,7 +18,7 @@ const Toast = () => {
   const { toasts, dismissToast } = useToast();
 
   return (
-    <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[9999] flex flex-col-reverse gap-2 items-end max-sm:left-4 max-sm:right-4 max-sm:items-stretch">
+    <div aria-live="polite" className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[9999] flex flex-col-reverse gap-2 items-end max-sm:left-4 max-sm:right-4 max-sm:items-stretch">
       <AnimatePresence mode="popLayout">
         {toasts.map(toast => (
           <motion.div
@@ -30,17 +30,20 @@ const Toast = () => {
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             className={`
               flex items-center gap-3 px-4 py-3 rounded-xl
-              bg-[#0F172A]/80 backdrop-blur-2xl
+              backdrop-blur-2xl
               border ${accents[toast.type]}
               shadow-lg shadow-black/30
               min-w-[280px] max-w-[400px] max-sm:max-w-full
             `}
+            style={{ background: 'color-mix(in srgb, var(--color-bg-card) 80%, transparent)' }}
           >
             {icons[toast.type]}
-            <p className="text-[13px] text-[#E5E7EB] flex-1 leading-snug">{toast.message}</p>
+            <p className="text-[13px] flex-1 leading-snug" style={{ color: 'var(--color-text-primary)' }}>{toast.message}</p>
             <button
               onClick={() => dismissToast(toast.id)}
-              className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors flex-shrink-0"
+              aria-label="Dismiss"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+              style={{ color: 'var(--color-text-subtle)' }}
             >
               <X size={14} />
             </button>

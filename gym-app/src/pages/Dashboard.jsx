@@ -3,19 +3,20 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
-  Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2,
+  Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle,
 } from 'lucide-react';
-import { programTemplates } from '../data/programTemplates';
+import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
 import { getCached, setCache } from '../lib/queryCache';
-import { computeStreakFromSessions } from '../lib/achievements';
-import { getRewardTier, getUserPoints } from '../lib/rewardsEngine';
+import { getStreakWithProtections } from '../lib/achievements';
+import { getRewardTier } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { exercises as exerciseLibrary } from '../data/exercises';
+import { localizeRoutineName } from '../lib/exerciseName';
 import GymPulse from '../components/GymPulse';
 import { getTodayChallenge } from '../lib/dailyChallenges';
 
@@ -24,6 +25,7 @@ import WorkoutHeroCard from '../components/WorkoutHeroCard';
 import RoutinePickerModal from '../components/RoutinePickerModal';
 import CoachMark from '../components/CoachMark';
 import QRCodeModal from '../components/QRCodeModal';
+import ReferralRewardBanner from '../components/ReferralRewardBanner';
 // AppTour moved to App.jsx to persist across page navigations
 
 // Build a lookup: exercise_id → videoUrl
@@ -118,7 +120,7 @@ const DashboardSkeleton = () => (
 const Dashboard = () => {
   const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
 
   const [state, dispatch] = useReducer(dashReducer, initialState);
   const {
@@ -138,6 +140,7 @@ const Dashboard = () => {
   const [allActiveDrafts, setAllActiveDrafts] = useState(() => readAllActiveSessions());
   const [refreshKey, setRefreshKey] = useState(0);
   const [liveChallenge, setLiveChallenge] = useState(null);
+  const [gymClosedDays, setGymClosedDays] = useState(new Set());
   const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
   useEffect(() => { if (ctxLifetimePoints != null) setUserPoints(ctxLifetimePoints); }, [ctxLifetimePoints]);
   const handleSkipSuggestion = async () => {
@@ -152,6 +155,14 @@ const Dashboard = () => {
   const [showQR, setShowQR] = useState(false);
   const [planWeek, setPlanWeek] = useState(1);
   const [planSelectedDay, setPlanSelectedDay] = useState(null);
+  const [fullTemplates, setFullTemplates] = useState(null);
+
+  // Lazy-load full programTemplates only when plan info panel is opened
+  useEffect(() => {
+    if (showPlanInfo && !fullTemplates) {
+      import('../data/programTemplates').then(m => setFullTemplates(m.programTemplates || m.default?.programTemplates || []));
+    }
+  }, [showPlanInfo, fullTemplates]);
 
   const activeSetsCompleted = activeSession
     ? Object.values(activeSession.loggedSets).flat().filter(s => s.completed).length
@@ -220,54 +231,24 @@ const Dashboard = () => {
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
       if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
-      const [sessionsRes, routinesRes, scheduleRes, progRes] = await Promise.all([
-        supabase
-          .from('workout_sessions')
-          .select('id, name, completed_at, total_volume_lbs, duration_seconds, routine_id')
-          .eq('profile_id', user.id)
-          .eq('status', 'completed')
-          .order('completed_at', { ascending: false })
-          .limit(50),
-        supabase
-          .from('routines')
-          .select('id, name, description, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name, name_es, video_url))')
-          .eq('created_by', user.id)
-          .eq('is_template', false)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('workout_schedule')
-          .select('day_of_week, routine_id')
-          .eq('profile_id', user.id),
-        supabase
-          .from('generated_programs')
-          .select('id, program_start, split_type, expires_at, routines_a_count')
-          .eq('profile_id', user.id)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
+      // Single RPC call replaces 5+ sequential/parallel queries
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_data');
+      if (rpcError) { console.error('get_dashboard_data RPC error:', rpcError); return; }
 
-      const scheduleData = !scheduleRes.error ? (scheduleRes.data || []) : [];
+      const allSessions = rpcData?.sessions || [];
+      const fetchedRoutines = rpcData?.routines || [];
+      const scheduleData = rpcData?.schedule || [];
+      const gymHoursData = rpcData?.gym_hours || [];
 
-      const allSessions = sessionsRes.data || [];
-      const fetchedRoutines = routinesRes.data || [];
+      // Apply gym closed days from RPC result
+      const closed = new Set((gymHoursData).filter(h => h.is_closed).map(h => h.day_of_week));
+      setGymClosedDays(closed);
 
-      // Fetch training days and gym hours for smart streak
-      const [{ data: prefData }, { data: gymData }] = await Promise.all([
-        supabase.from('profiles').select('preferred_training_days').eq('id', user.id).maybeSingle(),
-        supabase.from('gyms').select('open_days').eq('id', profile.gym_id).maybeSingle(),
-      ]);
-      const DAY_NAME_TO_DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
-      const prefDays = prefData?.preferred_training_days || [];
-      const restDays = prefDays.length > 0
-        ? [0,1,2,3,4,5,6].filter(d => !prefDays.some(name => DAY_NAME_TO_DOW[name] === d))
-        : [];
-      const gymOpenDays = gymData?.open_days || [];
-      const gymClosedDays = gymOpenDays.length > 0
-        ? [0,1,2,3,4,5,6].filter(d => !gymOpenDays.includes(d))
-        : [];
-      const streak = computeStreakFromSessions(allSessions, { restDays, gymClosedDays, userId: user.id });
+      // Use streak from streak_cache if available, otherwise compute with protections
+      let streak = rpcData?.streak?.current_streak_days ?? 0;
+      if (!rpcData?.streak) {
+        streak = await getStreakWithProtections(user.id, profile.gym_id, allSessions, supabase, { scheduleData });
+      }
 
       const todaySessionsFiltered = allSessions.filter(s => {
         const d = new Date(s.completed_at);
@@ -277,7 +258,7 @@ const Dashboard = () => {
       const today = new Date();
 
       // Resolve active program early so we can filter schedule entries
-      const fetchedProgram = !progRes.error ? progRes.data : null;
+      const fetchedProgram = rpcData?.program || null;
       setActiveProgram(fetchedProgram || null);
       const programStart = fetchedProgram ? new Date(fetchedProgram.program_start) : null;
 
@@ -294,7 +275,7 @@ const Dashboard = () => {
           }
           scheduleMap[row.day_of_week] = {
             routineId: row.routine_id,
-            label: routine.name.replace('Auto: ', '').replace(/ [AB]$/, ''),
+            label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
           };
         }
       }
@@ -390,23 +371,9 @@ const Dashboard = () => {
       setCache(`dash:${user.id}`, payload);
       runNotificationScheduler(user.id, profile.gym_id).catch(() => {});
 
-      // Fetch actual points for level display
-      const pointsData = await getUserPoints(user.id);
-      if (!cancelled) setUserPoints(pointsData.lifetime_points || 0);
-
-      // Fetch first active challenge
-      const { data: challengeData } = await supabase
-        .from('challenges')
-        .select('id, name, type, start_date, end_date')
-        .eq('gym_id', profile.gym_id)
-        .lte('start_date', new Date().toISOString())
-        .gte('end_date', new Date().toISOString())
-        .order('start_date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (challengeData) {
-        setLiveChallenge(challengeData);
+      // Use challenge from RPC result (already fetched in single call)
+      if (rpcData?.challenge) {
+        setLiveChallenge(rpcData.challenge);
       }
     };
 
@@ -455,7 +422,7 @@ const Dashboard = () => {
       ...schedule,
       [dow]: {
         routineId,
-        label: routine ? routine.name.replace('Auto: ', '').replace(/ [AB]$/, '') : 'Workout',
+        label: routine ? localizeRoutineName(routine.name).replace(/ [AB]$/, '') : 'Workout',
       },
     };
     dispatch({ type: 'SET_SCHEDULE', payload: newSchedule });
@@ -517,9 +484,13 @@ const Dashboard = () => {
   const selectedDayName = t(`days.${DAY_KEYS[selectedDate.getDay()]}`, { ns: 'common' });
   const isToday = isSameDay(selectedDate, new Date());
 
-  const workoutType = selectedRoutine
-    ? selectedRoutine.name.replace('Auto: ', '').replace(/ [AB]$/, '')
-    : t('dashboard.restDay');
+  const isGymClosedToday = gymClosedDays.has(selectedDate.getDay());
+
+  const workoutType = isGymClosedToday
+    ? t('dashboard.gymClosed', 'Gym Closed')
+    : selectedRoutine
+      ? localizeRoutineName(selectedRoutine.name).replace(/ [AB]$/, '')
+      : t('dashboard.restDay');
 
   const allExercisesWithMedia = useMemo(() => {
     return selectedRoutineExercises.map(ex => {
@@ -553,7 +524,10 @@ const Dashboard = () => {
   /* ── Render ────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)]">
-      <div className="mx-auto w-full max-w-[680px] md:max-w-4xl px-5 pt-6 pb-28 space-y-0">
+      {/* Referral reward celebration banner */}
+      <ReferralRewardBanner />
+
+      <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 space-y-0">
 
         {/* ════════════════════════════════════════════════════
             HEADER — My Plan + Icons
@@ -562,15 +536,15 @@ const Dashboard = () => {
           <button
             type="button"
             onClick={() => setShowPlanInfo(true)}
-            className="flex items-center gap-1.5 active:scale-[0.97] transition-transform"
+            className="flex items-center gap-1.5 active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
           >
             <span className="text-[16px] font-bold text-[var(--color-text-primary)]">{t('dashboard.myPlan')}</span>
             <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
           </button>
 
           <div className="flex items-center gap-2" data-tour="tour-quick-buttons">
-            <Link to="/nutrition"
-              className="flex items-center gap-1.5 px-3 h-[34px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
+            <Link to="/progress?tab=nutrition"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               aria-label="Nutrition">
               <Apple size={14} className="text-[#10B981]" />
               <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.nutrition')}</span>
@@ -578,12 +552,20 @@ const Dashboard = () => {
             <button
               type="button"
               onClick={() => setShowQR(true)}
-              className="flex items-center gap-1.5 px-3 h-[34px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               aria-label="QR Code"
             >
               <QrCode size={14} className="text-[#D4AF37]" />
               <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.qr')}</span>
             </button>
+            <Link
+              to="/messages"
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label="Messages"
+            >
+              <MessageCircle size={14} style={{ color: 'var(--color-accent, #D4AF37)' }} />
+              <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.messages', 'Messages')}</span>
+            </Link>
           </div>
         </header>
 
@@ -618,20 +600,21 @@ const Dashboard = () => {
               <section className="mb-3">
                 <div className="flex items-end justify-between mb-1">
                   <div>
-                    <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.12em]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
                       {isToday ? t('dashboard.today') : selectedDayName}
                     </p>
-                    <h1 className="text-[28px] font-bold text-[var(--color-text-primary)] tracking-tight leading-tight mt-0.5">
+                    <h1 className="text-[20px] font-bold tracking-tight leading-tight mt-0.5 truncate" style={{ color: 'var(--color-text-primary)' }}>
                       {workoutType}
                     </h1>
                   </div>
 
-                  {selectedRoutine ? (
+                  {selectedRoutine && !isGymClosedToday ? (
                     <div className="flex items-center gap-1 mb-1">
                       <button
                         type="button"
                         onClick={() => handleAssignDay(selectedDate.getDay())}
-                        className="w-11 h-11 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] hover:bg-white/[0.06] transition-colors duration-200"
+                        className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        style={{ color: 'var(--color-text-subtle)' }}
                         aria-label="Change workout"
                       >
                         <ChevronDown size={14} />
@@ -639,7 +622,8 @@ const Dashboard = () => {
                       <button
                         type="button"
                         onClick={() => navigate(`/workouts/${selectedRoutine.id}/edit?from=/`)}
-                        className="w-11 h-11 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] hover:bg-white/[0.06] transition-colors duration-200"
+                        className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        style={{ color: 'var(--color-text-subtle)' }}
                         aria-label="Edit workout"
                       >
                         <Pencil size={14} />
@@ -652,17 +636,17 @@ const Dashboard = () => {
               {/* ════════════════════════════════════════════════
                   2b. WORKOUT STATS — Compact inline row
                  ════════════════════════════════════════════════ */}
-              {selectedRoutine && (
+              {selectedRoutine && !isGymClosedToday && (
                 <section className="mb-5">
                   <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1.5 bg-white/[0.04] rounded-lg px-2.5 py-1.5">
-                      <Dumbbell size={11} className="text-[var(--color-text-muted)]" />
+                    <span className="text-[11px] flex items-center gap-1.5 bg-white/[0.04] rounded-lg px-2.5 py-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                      <Dumbbell size={11} style={{ color: 'var(--color-text-subtle)' }} />
                       {liftCount} {t('dashboard.exercises')}
                     </span>
-                    <span className="text-[11px] text-[var(--color-text-muted)] bg-white/[0.04] rounded-lg px-2.5 py-1.5">
+                    <span className="text-[11px] bg-white/[0.04] rounded-lg px-2.5 py-1.5" style={{ color: 'var(--color-text-subtle)' }}>
                       {estimatedMin} {t('dashboard.min')}
                     </span>
-                    <span className="text-[11px] text-[var(--color-text-muted)] bg-white/[0.04] rounded-lg px-2.5 py-1.5">
+                    <span className="text-[11px] bg-white/[0.04] rounded-lg px-2.5 py-1.5" style={{ color: 'var(--color-text-subtle)' }}>
                       ~{estimatedCal} {t('dashboard.cal')}
                     </span>
                   </div>
@@ -681,8 +665,8 @@ const Dashboard = () => {
                     <div className="w-14 h-14 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-4">
                       <CheckCircle2 size={28} className="text-[#10B981]" />
                     </div>
-                    <p className="font-bold text-[18px] text-[var(--color-text-primary)]">{t('dashboard.workoutAlreadyCompleted')}</p>
-                    <p className="text-[13px] text-[var(--color-text-muted)] mt-1.5 mb-5">
+                    <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>{t('dashboard.workoutAlreadyCompleted')}</p>
+                    <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-muted)' }}>
                       {t('dashboard.greatJobToday')} <span className="text-[#10B981] font-semibold">{workoutType}</span> {t('dashboard.sessionIsDone')}
                     </p>
 
@@ -708,10 +692,10 @@ const Dashboard = () => {
                             <Trophy size={16} className="text-[#10B981]" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{doneSession.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-text-muted)]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{doneSession.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                               <span>{Math.round((doneSession.duration_seconds || 0) / 60)}m</span>
-                              <span className="text-[var(--color-border-subtle)]">&middot;</span>
+                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
                               <span>{volStr} lbs</span>
                             </div>
                           </div>
@@ -749,14 +733,14 @@ const Dashboard = () => {
                                   <Dumbbell size={13} className="text-[#D4AF37]" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">{session.name}</p>
-                                  <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                                  <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                                     <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                                    <span className="text-[var(--color-border-subtle)]">&middot;</span>
+                                    <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
                                     <span>{volStr} lbs</span>
                                   </div>
                                 </div>
-                                <ChevronRight size={12} className="text-[var(--color-text-muted)]" />
+                                <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
                               </Link>
                             );
                           })}
@@ -781,10 +765,10 @@ const Dashboard = () => {
                               className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#60A5FA]/10 border border-[#60A5FA]/20 hover:bg-[#60A5FA]/15 transition-colors mb-1.5"
                             >
                               <div className="w-8 h-8 rounded-lg bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
-                                <Play size={13} fill="#60A5FA" className="text-[#60A5FA]" />
+                                <Play size={13} fill="var(--color-blue-soft)" className="text-[#60A5FA]" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">{draft.routineName || t('dashboard.workout')}</p>
+                                <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{draft.routineName || t('dashboard.workout')}</p>
                                 <p className="text-[10px] text-[#60A5FA]" style={{ fontVariantNumeric: 'tabular-nums' }}>
                                   {completed}/{total} {t('dashboard.sets')} · {t('dashboard.tapToResume')}
                                 </p>
@@ -798,7 +782,8 @@ const Dashboard = () => {
 
                     <button
                       onClick={() => navigate('/workouts')}
-                      className="w-full py-3.5 rounded-2xl text-[13px] font-bold text-[var(--color-text-primary)] bg-white/[0.06] hover:bg-white/[0.10] transition-colors"
+                      className="w-full py-3.5 rounded-2xl text-[13px] font-bold bg-white/[0.06] hover:bg-white/[0.10] transition-colors"
+                      style={{ color: 'var(--color-text-primary)' }}
                     >
                       {t('dashboard.doAnotherWorkout')}
                     </button>
@@ -811,20 +796,21 @@ const Dashboard = () => {
                         <Flame size={20} className="text-[#D4AF37]" />
                       </div>
                       <div>
-                        <p className="font-bold text-[15px] text-[var(--color-text-primary)]">{t('dashboard.alreadyTrainedToday')}</p>
-                        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{t('dashboard.butPrefix')} <span className="text-[#D4AF37] font-semibold">{workoutType}</span> {t('dashboard.butSuffix')}</p>
+                        <p className="font-bold text-[15px]" style={{ color: 'var(--color-text-primary)' }}>{t('dashboard.alreadyTrainedToday')}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('dashboard.butPrefix')} <span className="text-[#D4AF37] font-semibold">{workoutType}</span> {t('dashboard.butSuffix')}</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <Link
                         to={`/session/${selectedRoutine.id}`}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[13px] font-bold text-white bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.98] transition-all"
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[12px] font-bold text-white bg-[#D4AF37] hover:bg-[#C4A030] active:scale-[0.98] transition-all min-w-0 overflow-hidden"
                       >
-                        <Play size={14} fill="white" /> {t('dashboard.finishWorkout', { workout: workoutType })}
+                        <Play size={14} fill="white" className="flex-shrink-0" /> <span className="truncate">{t('dashboard.finishWorkout', { workout: workoutType })}</span>
                       </Link>
                       <button
                         onClick={handleSkipSuggestion}
-                        className="px-4 py-3.5 rounded-2xl text-[12px] font-semibold text-[var(--color-text-muted)] bg-white/[0.06] hover:bg-white/[0.10] transition-colors"
+                        className="px-4 py-3.5 rounded-2xl text-[12px] font-semibold bg-white/[0.06] hover:bg-white/[0.10] transition-colors"
+                        style={{ color: 'var(--color-text-muted)' }}
                       >
                         {t('dashboard.skip')}
                       </button>
@@ -846,19 +832,20 @@ const Dashboard = () => {
                           className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-1.5 text-left"
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">{session.name}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                               <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                              <span className="text-[var(--color-border-subtle)]">&middot;</span>
+                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
                               <span>{volStr} lbs</span>
                             </div>
                           </div>
-                          <ChevronRight size={12} className="text-[var(--color-text-muted)]" />
+                          <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
                         </Link>
                       );
                     })}
                     <button onClick={() => navigate('/workouts')}
-                      className="w-full mt-2 py-3 rounded-xl text-[12px] font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] bg-white/[0.04] hover:bg-white/[0.06] transition-colors">
+                      className="w-full mt-2 py-3 rounded-xl text-[12px] font-semibold bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+                      style={{ color: 'var(--color-text-subtle)' }}>
                       {t('dashboard.doAnotherWorkout')}
                     </button>
                   </div>
@@ -889,10 +876,10 @@ const Dashboard = () => {
                             <Trophy size={16} className="text-[#C9A227]" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{session.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-text-muted)]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
                               <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                              <span className="text-[var(--color-border-subtle)]">&middot;</span>
+                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
                               <span>{volStr} lbs</span>
                             </div>
                           </div>
@@ -906,6 +893,23 @@ const Dashboard = () => {
                   <div className="w-full rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 text-center">
                     <p className="text-[14px] text-[var(--color-text-muted)]">{t('dashboard.thisDayHasPassed')}</p>
                     <p className="text-[11px] text-[var(--color-text-muted)] mt-1">{t('dashboard.noWorkoutLogged')}</p>
+                  </div>
+                ) : isGymClosedToday ? (
+                  <div className="w-full rounded-2xl bg-red-500/5 border border-red-500/15 p-5 text-center">
+                    <p className="text-[32px] mb-3">🔒</p>
+                    <p className="font-bold text-red-400 text-[16px]">{t('dashboard.gymClosed', 'Gym Closed')}</p>
+                    <p className="text-[12px] text-[var(--color-text-muted)] mt-1.5 mb-4">
+                      {t('dashboard.gymClosedMessage', 'The gym is closed today. Rest up and come back stronger!')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/workouts')}
+                      className="inline-flex items-center gap-2 py-3 px-5 rounded-2xl text-[13px] font-bold transition-colors"
+                      style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                    >
+                      <Dumbbell size={15} />
+                      {t('dashboard.trainOutsideGym', 'Want to train outside the gym?')}
+                    </button>
                   </div>
                 ) : selectedRoutine ? (
                   <WorkoutHeroCard
@@ -961,7 +965,7 @@ const Dashboard = () => {
                   {/* Level / XP */}
                   <Link
                     to="/rewards"
-                    className="flex-1 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
+                    className="flex-1 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-[13px] font-bold text-[var(--color-text-primary)]">
@@ -974,13 +978,13 @@ const Dashboard = () => {
                           color: tier.color,
                         }}
                       >
-                        {tier.name}
+                        {t(`rewards.tiers.${tier.nameKey}`)}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(128,128,128,0.15)', border: '1.5px solid rgba(128,128,128,0.3)' }}>
                       <div
                         className="h-full rounded-full transition-all duration-700 ease-out"
-                        style={{ width: `${xpProgress}%`, backgroundColor: tier.color }}
+                        style={{ width: `${Math.max(xpProgress, 2)}%`, backgroundColor: tier.color }}
                       />
                     </div>
                     <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
@@ -991,7 +995,7 @@ const Dashboard = () => {
                   {/* Challenge of the Day */}
                   <Link
                     to="/community?tab=challenges"
-                    className="flex-1 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200"
+                    className="flex-1 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                   >
                     <div className="flex items-center gap-1.5 mb-2">
                       <Flame size={11} className="text-orange-400/70" />
@@ -1034,14 +1038,16 @@ const Dashboard = () => {
         const daysElapsed = prog ? Math.floor((new Date() - new Date(prog.program_start)) / 86400000) : 0;
         const daysTotal = prog ? Math.max(1, Math.floor((new Date(prog.expires_at) - new Date(prog.program_start)) / 86400000)) : 1;
         const progress = Math.min(Math.round((daysElapsed / daysTotal) * 100), 100);
-        const programName = prog?.split_type
-          ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-          : null;
-
-        // Find template to get week data
+        // Find template to get week data and localized name
         const templateId = prog?.split_type ? `tmpl_${prog.split_type}` : null;
-        const template = templateId ? programTemplates.find(t => t.id === templateId) : null;
-        const templateWeeks = template?.weeks || {};
+        const nameEntry = templateId ? programTemplateNames[templateId] : null;
+        const fullTemplate = templateId && fullTemplates ? fullTemplates.find(t => t.id === templateId) : null;
+        const programName = nameEntry
+          ? (i18n.language === 'es' && nameEntry.name_es ? nameEntry.name_es : nameEntry.name)
+          : prog?.split_type
+            ? prog.split_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            : null;
+        const templateWeeks = fullTemplate?.weeks || {};
         const weekKeys = Object.keys(templateWeeks).map(Number).sort((a, b) => a - b);
         const hasTemplateData = weekKeys.length > 0;
 
@@ -1054,9 +1060,11 @@ const Dashboard = () => {
         // Build 7-day view for current week
         const DAY_LABELS = [t('days.sunday', { ns: 'common' }), t('days.monday', { ns: 'common' }), t('days.tuesday', { ns: 'common' }), t('days.wednesday', { ns: 'common' }), t('days.thursday', { ns: 'common' }), t('days.friday', { ns: 'common' }), t('days.saturday', { ns: 'common' })];
         const fullWeek = DAY_LABELS.map((label, i) => {
+          const isClosed = gymClosedDays.has(i);
+          if (isClosed) return { label, name: label, exercises: [], isRest: false, isClosed: true };
           const workoutDay = currentWeekDays[i];
-          if (workoutDay) return { label, name: workoutDay.name, exercises: workoutDay.exercises || [], isRest: false };
-          return { label, name: label, exercises: [], isRest: true };
+          if (workoutDay) return { label, name: (i18n.language === 'es' && workoutDay.name_es ? workoutDay.name_es : workoutDay.name), exercises: workoutDay.exercises || [], isRest: false, isClosed: false };
+          return { label, name: label, exercises: [], isRest: true, isClosed: false };
         });
 
         return (
@@ -1070,7 +1078,8 @@ const Dashboard = () => {
                 <div className="w-8 h-[3px] rounded-full bg-[var(--color-border-subtle)]" />
                 <button
                   onClick={() => setShowPlanInfo(false)}
-                  className="absolute right-4 top-3 w-11 h-11 rounded-full bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] flex items-center justify-center text-[var(--color-text-muted)] transition-colors duration-200"
+                  className="absolute right-4 top-3 w-11 h-11 rounded-full bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] flex items-center justify-center text-[var(--color-text-muted)] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                  aria-label="Close"
                 >
                   <span className="text-[16px]">✕</span>
                 </button>
@@ -1105,9 +1114,10 @@ const Dashboard = () => {
                           <button
                             onClick={() => canPrev && setPlanWeek(w => w - 1)}
                             disabled={!canPrev}
-                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 ${
+                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                               canPrev ? 'bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'
                             }`}
+                            aria-label="Previous week"
                           >
                             <ChevronLeft size={16} />
                           </button>
@@ -1117,9 +1127,10 @@ const Dashboard = () => {
                           <button
                             onClick={() => canNext && setPlanWeek(w => w + 1)}
                             disabled={!canNext}
-                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 ${
+                            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                               canNext ? 'bg-[var(--color-surface-hover)] hover:bg-[var(--color-bg-deep)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'
                             }`}
+                            aria-label="Next week"
                           >
                             <ChevronRight size={16} />
                           </button>
@@ -1149,10 +1160,12 @@ const Dashboard = () => {
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <span className={`text-[13px] font-medium w-20 ${day.isRest ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>
+                                <span className={`text-[13px] font-medium w-20 ${day.isClosed ? 'text-red-400' : day.isRest ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>
                                   {day.label}
                                 </span>
-                                {day.isRest ? (
+                                {day.isClosed ? (
+                                  <span className="text-[11px] text-red-400 flex items-center gap-1">🔒 {t('dashboard.gymClosed', 'Gym Closed')}</span>
+                                ) : day.isRest ? (
                                   <span className="text-[11px] text-[var(--color-text-muted)]">{t('dashboard.restDay')}</span>
                                 ) : (
                                   <span className="text-[11px] text-[var(--color-text-muted)]">
@@ -1160,13 +1173,27 @@ const Dashboard = () => {
                                   </span>
                                 )}
                               </div>
-                              {!day.isRest && (
+                              {!day.isRest && !day.isClosed && (
                                 <ChevronRight size={14} className={`text-[var(--color-text-muted)] transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                               )}
                             </button>
 
+                            {/* Gym closed — offer to train outside */}
+                            {isExpanded && day.isClosed && (
+                              <div className="mx-3.5 mb-1 px-3.5 py-3 rounded-lg bg-red-500/5 border border-red-500/15 text-center">
+                                <p className="text-[11px] text-[var(--color-text-muted)] mb-2">{t('dashboard.gymClosedMessage', 'The gym is closed today. Rest up and come back stronger!')}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/workouts')}
+                                  className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors"
+                                >
+                                  {t('dashboard.trainOutsideGym', 'Want to train outside the gym?')}
+                                </button>
+                              </div>
+                            )}
+
                             {/* Expanded exercises */}
-                            {isExpanded && !day.isRest && (
+                            {isExpanded && !day.isRest && !day.isClosed && (
                               <div className="mx-3.5 mb-1 px-3.5 py-2.5 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border-subtle)]">
                                 <div className="space-y-1.5">
                                   {day.exercises.map((ex, ei) => (

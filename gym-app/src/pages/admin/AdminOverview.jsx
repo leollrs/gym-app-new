@@ -3,23 +3,157 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, TrendingUp, AlertTriangle, ChevronRight, Activity,
   UserPlus, Trophy, Clock, RefreshCw, CalendarCheck, Dumbbell,
+  ShieldCheck, CheckCircle, XCircle, KeyRound, Share2,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import ChartTooltip from '../../components/ChartTooltip';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
-import { format, subDays, formatDistanceToNow } from 'date-fns';
+import { format, subDays, startOfMonth, formatDistanceToNow } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared admin components
-import { FadeIn, StatCard, AdminCard, SectionLabel, CardSkeleton } from '../../components/admin';
+import { FadeIn, StatCard, AdminCard, SectionLabel, CardSkeleton, Avatar, AdminPageShell } from '../../components/admin';
 
 // Sub-components
 import AtRiskPreview from './components/AtRiskPreview';
 import RecentActivity from './components/RecentActivity';
 import FollowUpSettings from './components/FollowUpSettings';
+import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
+
+// ── Referral Stats fetcher ────────────────────────────────
+async function fetchReferralStats(gymId) {
+  const now = new Date();
+  const monthStart = startOfMonth(now).toISOString();
+
+  const [allTimeRes, thisMonthRes, completedAllRes, completedMonthRes] = await Promise.all([
+    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId),
+    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).gte('created_at', monthStart),
+    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'completed'),
+    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'completed').gte('created_at', monthStart),
+  ]);
+
+  // Top referrer this month
+  const { data: topReferrerRows } = await supabase
+    .from('referrals')
+    .select('referrer_id, profiles!referrals_referrer_id_fkey(full_name)')
+    .eq('gym_id', gymId)
+    .eq('status', 'completed')
+    .gte('created_at', monthStart);
+
+  let topReferrer = null;
+  if (topReferrerRows?.length) {
+    const counts = {};
+    const names = {};
+    topReferrerRows.forEach(r => {
+      counts[r.referrer_id] = (counts[r.referrer_id] || 0) + 1;
+      names[r.referrer_id] = r.profiles?.full_name || 'Unknown';
+    });
+    const topId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    if (topId) topReferrer = { name: names[topId[0]], count: topId[1] };
+  }
+
+  const totalAll = allTimeRes.count ?? 0;
+  const totalMonth = thisMonthRes.count ?? 0;
+  const completedAll = completedAllRes.count ?? 0;
+  const conversionRate = totalAll > 0 ? Math.round((completedAll / totalAll) * 100) : 0;
+
+  return { totalAll, totalMonth, completedAll, completedMonth: completedMonthRes.count ?? 0, conversionRate, topReferrer };
+}
+
+// ── Referral Leaderboard fetcher ─────────────────────────
+async function fetchReferralLeaderboard(gymId, period) {
+  const now = new Date();
+  let query = supabase
+    .from('referrals')
+    .select('referrer_id, profiles!referrals_referrer_id_fkey(full_name, avatar_url)')
+    .eq('gym_id', gymId)
+    .eq('status', 'completed');
+
+  if (period === 'month') {
+    query = query.gte('created_at', startOfMonth(now).toISOString());
+  }
+
+  const { data, error } = await query;
+  if (error) { logger.error('Referral leaderboard:', error); return []; }
+
+  // Group by referrer
+  const map = {};
+  (data || []).forEach(r => {
+    if (!map[r.referrer_id]) {
+      map[r.referrer_id] = {
+        id: r.referrer_id,
+        name: r.profiles?.full_name || 'Unknown',
+        avatar_url: r.profiles?.avatar_url || null,
+        count: 0,
+      };
+    }
+    map[r.referrer_id].count++;
+  });
+
+  return Object.values(map)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+}
+
+// ── Referral Leaderboard Component ───────────────────────
+function ReferralLeaderboard({ gymId, t }) {
+  const [period, setPeriod] = useState('month');
+
+  const { data: leaderboard = [], isLoading } = useQuery({
+    queryKey: adminKeys.referrals.leaderboard(gymId, period),
+    queryFn: () => fetchReferralLeaderboard(gymId, period),
+    enabled: !!gymId,
+    staleTime: 60_000,
+  });
+
+  return (
+    <AdminCard hover>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.referral.leaderboardTitle')}</p>
+        <div className="flex gap-1">
+          {['month', 'all'].map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors ${
+                period === p
+                  ? 'bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25'
+                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
+              }`}
+            >
+              {p === 'month' ? t('admin.referral.thisMonth') : t('admin.referral.allTime')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+        </div>
+      ) : leaderboard.length === 0 ? (
+        <p className="text-[12px] text-[#6B7280] text-center py-6">{t('admin.referral.noReferrals')}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {leaderboard.map((m, i) => (
+            <div key={m.id} className="flex items-center gap-3 px-3 py-2 bg-[#111827]/60 rounded-xl">
+              <span className={`text-[12px] font-bold w-5 text-center flex-shrink-0 ${i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>
+                {i + 1}
+              </span>
+              <Avatar name={m.name} size="sm" src={m.avatar_url} />
+              <p className="text-[13px] font-medium text-[#E5E7EB] flex-1 truncate">{m.name}</p>
+              <span className="text-[12px] font-bold text-[#D4AF37] tabular-nums">{m.count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </AdminCard>
+  );
+}
 
 // ── Risk tier mini-bar ────────────────────────────────────
 const TierRow = ({ label, count, color, total }) => {
@@ -47,7 +181,7 @@ async function fetchOverviewData(gymId) {
     membersRes, sessionsRes, churnScoresRes, fupRes,
     notOnboardedRes, challengesEndingSoonRes, dripStepsRes, checkInsRes,
   ] = await Promise.all([
-    supabase.from('mv_gym_member_summary').select('*').eq('gym_id', gymId).limit(2000),
+    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id').eq('gym_id', gymId).eq('role', 'member'),
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(5000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
     supabase.from('churn_followup_settings').select('*').eq('gym_id', gymId).single(),
@@ -63,9 +197,9 @@ async function fetchOverviewData(gymId) {
   [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, challengesEndingSoonRes, dripStepsRes, checkInsRes]
     .forEach((res, i) => { if (res.error) logger.error(`AdminOverview fetch ${i}:`, res.error); });
 
-  const { data: topExRows } = await supabase.from('mv_gym_exercise_popularity').select('*').eq('gym_id', gymId).order('usage_count', { ascending: false }).limit(6);
+  const { data: topExRows } = await supabase.rpc('get_gym_exercise_popularity', { p_gym_id: gymId });
 
-  const members = (membersRes.data || []).map(m => ({ ...m, id: m.profile_id }));
+  const members = membersRes.data || [];
   const sessions = sessionsRes.data || [];
   const churnScores = churnScoresRes.data || [];
   const checkIns = checkInsRes.data || [];
@@ -198,7 +332,7 @@ async function fetchOverviewData(gymId) {
     },
     riskTiers, atRisk, chartData, recentActivity, actionItems,
     _dbScoreCount: churnScores.length, _totalMembers: total,
-    topExercises: (topExRows || []).map(r => ({ id: r.exercise_id, name: r.exercise_name, count: r.usage_count })),
+    topExercises: (topExRows || []).sort((a, b) => b.usage_count - a.usage_count).slice(0, 6).map(r => ({ id: r.exercise_id, name: r.exercise_name, count: r.usage_count })),
     fupSettings: fupRes.data || null,
     dripSteps: dripStepsRes.data || [],
   };
@@ -207,9 +341,9 @@ async function fetchOverviewData(gymId) {
 // ── Overview Loading Skeleton ─────────────────────────────
 function OverviewSkeleton() {
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto space-y-4">
+    <AdminPageShell className="space-y-4">
       <div className="h-7 bg-white/6 rounded-lg w-64 animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 h-[80px] animate-pulse">
             <div className="h-6 bg-white/6 rounded w-16 mb-2" />
@@ -217,11 +351,11 @@ function OverviewSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid md:grid-cols-[1fr_320px] gap-3">
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3">
         <CardSkeleton h="h-[240px]" />
         <CardSkeleton h="h-[240px]" />
       </div>
-    </div>
+    </AdminPageShell>
   );
 }
 
@@ -234,8 +368,38 @@ export default function AdminOverview() {
   const gymId = profile?.gym_id;
   const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
+  const { t } = useTranslation('pages');
   const [refreshingChurn, setRefreshingChurn] = useState(false);
   const [greetingHour] = useState(() => new Date().getHours());
+  const [resetApprovalId, setResetApprovalId] = useState(null);
+
+  // Referral stats
+  const { data: referralStats } = useQuery({
+    queryKey: adminKeys.referrals.stats(gymId),
+    queryFn: () => fetchReferralStats(gymId),
+    enabled: !!gymId,
+    staleTime: 60_000,
+  });
+
+  // Fetch pending password reset requests for this gym
+  const { data: pendingResets = [], refetch: refetchResets } = useQuery({
+    queryKey: [...adminKeys.overview(gymId), 'pending-resets'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('password_reset_requests')
+        .select('id, profile_id, status, created_at, expires_at, profiles!inner(full_name, username, avatar_url)')
+        .eq('gym_id', gymId)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) return [];
+      return data || [];
+    },
+    enabled: !!gymId,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   useEffect(() => { document.title = 'Admin - Overview | TuGymPR'; }, []);
 
@@ -289,14 +453,14 @@ export default function AdminOverview() {
     : null;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <AdminPageShell>
       {/* Page header */}
       <FadeIn>
         <div className="flex items-baseline justify-between mb-4">
-          <h1 className="text-[20px] font-bold text-[#E5E7EB]">
+          <h1 className="text-[20px] font-bold text-[#E5E7EB] truncate min-w-0 flex-1">
             Good {greetingLabel}{firstName ? `, ${firstName}` : ''}
           </h1>
-          <span className="text-[12px] text-[#6B7280]">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
+          <span className="text-[12px] text-[#6B7280] flex-shrink-0">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
         </div>
       </FadeIn>
 
@@ -311,7 +475,7 @@ export default function AdminOverview() {
                   onClick={() => navigate(item.link)}>
                   <item.icon size={13} className={item.iconColor} />
                   <p className="text-[12px] text-[#E5E7EB] flex-1">{item.text}</p>
-                  <ChevronRight size={13} className="text-[#4B5563]" />
+                  <ChevronRight size={13} className="text-[#6B7280]" />
                 </div>
               ))}
             </div>
@@ -319,39 +483,96 @@ export default function AdminOverview() {
         </FadeIn>
       )}
 
+      {/* Pending password resets */}
+      {pendingResets.length > 0 && (
+        <FadeIn delay={80}>
+          <AdminCard className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/12 flex items-center justify-center">
+                <KeyRound size={13} className="text-[#D4AF37]" />
+              </div>
+              <SectionLabel>Pending Password Resets</SectionLabel>
+              <span className="ml-auto text-[11px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 rounded-full px-2 py-0.5">
+                {pendingResets.length}
+              </span>
+            </div>
+            <div className="space-y-1.5 mt-3">
+              {pendingResets.map(r => (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 px-3 py-2.5 bg-[#111827]/60 rounded-xl hover:bg-[#111827] transition-all cursor-pointer"
+                  onClick={() => setResetApprovalId(r.id)}
+                >
+                  <Avatar name={r.profiles?.full_name} size="sm" src={r.profiles?.avatar_url} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+                      {r.profiles?.full_name || 'Unknown'}
+                    </p>
+                    <p className="text-[11px] text-[#6B7280]">
+                      {r.profiles?.username ? `@${r.profiles.username}` : ''} · {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); setResetApprovalId(r.id); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/18 transition-colors"
+                    >
+                      <CheckCircle size={12} />
+                      Review
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </AdminCard>
+        </FadeIn>
+      )}
+
+      {/* Password reset approval modal */}
+      {resetApprovalId && (
+        <PasswordResetApprovalModal
+          requestId={resetApprovalId}
+          onClose={() => setResetApprovalId(null)}
+          onComplete={() => {
+            setResetApprovalId(null);
+            refetchResets();
+          }}
+        />
+      )}
+
       {/* Stat cards — hero size for Total Members */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
         <StatCard label="Total Members" value={stats.totalMembers} sub="registered" borderColor="#6366F1" delay={100} size="hero" icon={Users} />
         <StatCard label="Active (30d)" value={`${stats.activePct ?? 0}%`} sub={`${stats.activeMembers ?? 0} checked in`} borderColor="#3B82F6" delay={130} icon={CalendarCheck} />
         <StatCard label={`Retention (${stats.retentionDays ?? 30}d)`} value={`${stats.retentionPct ?? 0}%`} sub={stats.retentionDetail ?? ''} borderColor="#10B981" delay={160} icon={TrendingUp} />
         <StatCard label="At Risk" value={stats.atRiskCount} sub="critical + high" borderColor="#EF4444" delay={190} icon={AlertTriangle} />
         <StatCard label="Check-ins Today" value={stats.checkInsToday ?? 0} sub="gym visits" borderColor="#8B5CF6" delay={220} />
-        <StatCard label="Workouts (30d)" value={stats.workoutsMonth} sub="completed sessions" borderColor="#D4AF37" delay={250} icon={Dumbbell} />
+        <StatCard label="Workouts (30d)" value={stats.workoutsMonth} sub="completed sessions" borderColor="var(--color-accent)" delay={250} icon={Dumbbell} />
       </div>
 
       {/* Chart + Churn Risk Summary */}
       <FadeIn delay={350}>
-        <div className="grid md:grid-cols-[1fr_320px] gap-3 mb-4">
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3 mb-4">
           <AdminCard hover>
             <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">Activity — Last 14 Days</p>
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                 <defs>
                   <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.2} />
                     <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} interval={2} />
-                <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#9CA3AF', paddingTop: 4 }} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} interval={2} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--color-text-muted)', paddingTop: 4 }} />
                 <Area type="monotone" dataKey="checkins" name="Check-ins" stroke="#8B5CF6" strokeWidth={2} fill="url(#purpleGrad)" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} animationDuration={1200} animationEasing="ease-out" />
-                <Area type="monotone" dataKey="workouts" name="Workouts" stroke="#D4AF37" strokeWidth={2} fill="url(#goldGrad)" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} animationDuration={1200} animationEasing="ease-out" />
+                <Area type="monotone" dataKey="workouts" name="Workouts" stroke="var(--color-accent)" strokeWidth={2} fill="url(#goldGrad)" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} animationDuration={1200} animationEasing="ease-out" />
               </AreaChart>
             </ResponsiveContainer>
           </AdminCard>
@@ -362,7 +583,8 @@ export default function AdminOverview() {
               <div className="flex items-center gap-2">
                 <p className="text-[13px] font-semibold text-[#E5E7EB]">Churn Risk</p>
                 <button onClick={handleRefreshChurn} disabled={refreshingChurn} title="Recompute churn scores"
-                  className="p-1 rounded-md text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/5 transition-colors disabled:opacity-40">
+                  aria-label="Recompute churn scores"
+                  className="p-1 rounded-md text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/5 transition-colors disabled:opacity-40 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                   <RefreshCw size={12} className={refreshingChurn ? 'animate-spin' : ''} />
                 </button>
               </div>
@@ -372,9 +594,9 @@ export default function AdminOverview() {
             </div>
             {totalScored === 0 ? (
               <div className="flex flex-col items-center justify-center h-28 text-center">
-                <Clock size={18} className="text-[#4B5563] mb-2" />
+                <Clock size={18} className="text-[#6B7280] mb-2" />
                 <p className="text-[12px] text-[#6B7280]">No scores yet</p>
-                <p className="text-[11px] text-[#4B5563] mt-1">Scores are computed daily at 2 AM UTC</p>
+                <p className="text-[11px] text-[#6B7280] mt-1">Scores are computed daily at 2 AM UTC</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -398,7 +620,7 @@ export default function AdminOverview() {
 
       {/* At-risk members + Top exercises */}
       <FadeIn delay={420}>
-        <div className="grid md:grid-cols-[1fr_300px] gap-3 mb-4">
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_340px] gap-3 mb-4">
           <AtRiskPreview atRisk={atRisk} />
 
           <AdminCard hover>
@@ -417,7 +639,7 @@ export default function AdminOverview() {
                       </div>
                       <div className="h-1 rounded-full bg-white/6 overflow-hidden">
                         <div className="h-full rounded-full transition-all"
-                          style={{ width: `${Math.round((ex.count / maxCount) * 100)}%`, background: i === 0 ? '#D4AF37' : 'rgba(212,175,55,0.4)' }} />
+                          style={{ width: `${Math.round((ex.count / maxCount) * 100)}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
                       </div>
                     </div>
                   );
@@ -431,6 +653,53 @@ export default function AdminOverview() {
       {/* Recent Activity */}
       <RecentActivity activity={recentActivity} delay={490} />
 
+      {/* Referral Stats + Leaderboard */}
+      {referralStats && referralStats.totalAll > 0 && (
+        <FadeIn delay={530}>
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3 mt-4">
+            {/* Referral Stats Card */}
+            <AdminCard hover>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded-lg bg-[#8B5CF6]/12 flex items-center justify-center">
+                  <Share2 size={13} className="text-[#8B5CF6]" />
+                </div>
+                <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.referral.statsTitle')}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#111827]/60 rounded-xl p-3">
+                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.totalMonth}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.thisMonth')}</p>
+                </div>
+                <div className="bg-[#111827]/60 rounded-xl p-3">
+                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.totalAll}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.allTime')}</p>
+                </div>
+                <div className="bg-[#111827]/60 rounded-xl p-3">
+                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.conversionRate}%</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.conversionRate')}</p>
+                </div>
+                <div className="bg-[#111827]/60 rounded-xl p-3">
+                  {referralStats.topReferrer ? (
+                    <>
+                      <p className="text-[13px] font-bold text-[#E5E7EB] truncate">{referralStats.topReferrer.name}</p>
+                      <p className="text-[11px] text-[#6B7280]">{t('admin.referral.topReferrer')} ({referralStats.topReferrer.count})</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[13px] font-medium text-[#6B7280]">--</p>
+                      <p className="text-[11px] text-[#6B7280]">{t('admin.referral.topReferrer')}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </AdminCard>
+
+            {/* Referral Leaderboard */}
+            <ReferralLeaderboard gymId={gymId} t={t} />
+          </div>
+        </FadeIn>
+      )}
+
       {/* Follow-Up Settings */}
       <div className="mt-4">
         <FollowUpSettings
@@ -441,6 +710,6 @@ export default function AdminOverview() {
           delay={560}
         />
       </div>
-    </div>
+    </AdminPageShell>
   );
 }

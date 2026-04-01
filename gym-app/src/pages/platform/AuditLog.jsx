@@ -223,17 +223,17 @@ export default function AuditLog() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-[20px] font-semibold text-[#E5E7EB]">Audit Log</h1>
+        <h1 className="text-[20px] font-semibold text-[#E5E7EB] truncate">Audit Log</h1>
         <p className="text-[13px] text-[#6B7280] mt-1">
           Chronological log of all important actions across the platform
         </p>
       </div>
 
       {/* Filters */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
           <Filter size={14} className="text-[#6B7280]" />
           <span className="text-[12px] text-[#6B7280] font-medium uppercase tracking-wider">Filters</span>
@@ -295,7 +295,7 @@ export default function AuditLog() {
       </div>
 
       {/* Log entries */}
-      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />

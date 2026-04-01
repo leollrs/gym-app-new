@@ -77,13 +77,13 @@ export default function ActivityChart({ gymId }) {
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">Engagement</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">% of signed members who logged &ge;1 workout that month</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">Engagement</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 truncate">% of signed members who logged &ge;1 workout that month</p>
         </div>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
           Export
@@ -107,7 +107,7 @@ export default function ActivityChart({ gymId }) {
                   </div>
                 );
               }}
-              cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }}
+              cursor={{ fill: 'var(--color-accent-glow)' }}
             />
             <Bar dataKey="engagement" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
           </BarChart>

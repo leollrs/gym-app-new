@@ -221,7 +221,7 @@ export default function AdminTrainers() {
   const demoteClientCount = confirmDemote ? (clientMap[confirmDemote] || []).length : 0;
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Trainers"
         subtitle="Manage trainers and their client assignments"
@@ -230,14 +230,14 @@ export default function AdminTrainers() {
           <>
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
             >
               <Download size={13} />
               Export
             </button>
             <button
               onClick={() => setShowAddTrainer(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors whitespace-nowrap"
             >
               <Plus size={13} />
               Add Trainer
@@ -254,12 +254,12 @@ export default function AdminTrainers() {
         <ErrorCard message="Failed to load trainer data" onRetry={refetch} />
       ) : trainers.length === 0 ? (
         <AdminCard className="p-12 text-center">
-          <Users size={28} className="text-[#4B5563] mx-auto mb-3" />
+          <Users size={28} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#9CA3AF] font-medium">No trainers yet</p>
           <p className="text-[12px] text-[#6B7280] mt-1">Promote a member to get started</p>
           <button
             onClick={() => setShowAddTrainer(true)}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors"
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors whitespace-nowrap"
           >
             <Plus size={13} />
             Add Trainer
@@ -276,8 +276,8 @@ export default function AdminTrainers() {
               { label: 'Client Sessions (30d)', value: trainers.reduce((s, t) => s + t.totalSessions, 0), color: '#8B5CF6' },
             ].map((s, i) => (
               <AdminCard key={i} hover borderLeft={s.color}>
-                <p className="text-[22px] font-bold text-[#E5E7EB] leading-none tabular-nums">{s.value}</p>
-                <p className="text-[12px] text-[#9CA3AF] mt-1">{s.label}</p>
+                <p className="text-[22px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{s.value}</p>
+                <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{s.label}</p>
               </AdminCard>
             ))}
           </div>
@@ -288,7 +288,7 @@ export default function AdminTrainers() {
               const isExpanded = expanded === t.id;
               const clients = clientMap[t.id] || [];
               return (
-                <AdminCard key={t.id} hover padding="p-0">
+                <AdminCard key={t.id} hover padding="p-0" className="overflow-hidden">
                   {/* Trainer header */}
                   <div
                     className="flex items-center gap-3 px-4 py-3.5 cursor-pointer"
@@ -297,7 +297,7 @@ export default function AdminTrainers() {
                     <Avatar name={t.name} size="md" variant="accent" />
                     <div className="flex-1 min-w-0">
                       <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{t.name}</p>
-                      <p className="text-[11px] text-[#6B7280]">{t.email}</p>
+                      <p className="text-[11px] text-[#6B7280] truncate">{t.email}</p>
                     </div>
                     <div className="flex items-center gap-4 mr-2">
                       <div className="text-center">
@@ -325,14 +325,14 @@ export default function AdminTrainers() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={(e) => { e.stopPropagation(); setConfirmDemote(t.id); }}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#EF4444]/70 hover:bg-[#EF4444]/10 hover:text-[#EF4444] transition-colors"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#EF4444]/70 hover:bg-[#EF4444]/10 hover:text-[#EF4444] transition-colors whitespace-nowrap"
                             >
                               <X size={12} />
                               Remove Trainer
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === t.id ? null : t.id); setSearch(''); }}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap"
                             >
                               <UserPlus size={12} />
                               Assign Client
@@ -351,10 +351,10 @@ export default function AdminTrainers() {
                                 onChange={e => setSearch(e.target.value)}
                                 placeholder="Search members..."
                                 aria-label="Search members"
-                                className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#4B5563] outline-none"
+                                className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
                                 autoFocus
                               />
-                              <button onClick={() => setShowAssign(null)} className="text-[#6B7280] hover:text-[#9CA3AF]">
+                              <button onClick={() => setShowAssign(null)} aria-label="Close member search" className="text-[#6B7280] hover:text-[#9CA3AF] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                                 <X size={14} />
                               </button>
                             </div>
@@ -371,7 +371,7 @@ export default function AdminTrainers() {
                                     <p className="text-[12px] text-[#E5E7EB] truncate">{m.full_name}</p>
                                     <p className="text-[10px] text-[#6B7280] truncate">{m.email}</p>
                                   </div>
-                                  <UserPlus size={12} className="text-[#4B5563] flex-shrink-0" />
+                                  <UserPlus size={12} className="text-[#6B7280] flex-shrink-0" />
                                 </button>
                               ))}
                               {unassignedMembers(t.id).length === 0 && (
@@ -418,8 +418,9 @@ export default function AdminTrainers() {
                                     />
                                     <button
                                       onClick={() => unassignClient(t.id, c.id)}
-                                      className="opacity-0 group-hover:opacity-100 text-[#6B7280] hover:text-[#EF4444] transition-all"
+                                      className="opacity-0 group-hover:opacity-100 text-[#6B7280] hover:text-[#EF4444] transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                                       title="Unassign client"
+                                      aria-label="Unassign client"
                                     >
                                       <X size={13} />
                                     </button>

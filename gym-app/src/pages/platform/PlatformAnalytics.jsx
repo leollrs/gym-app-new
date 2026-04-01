@@ -29,14 +29,14 @@ const FadeIn = ({ delay = 0, children, className = '' }) => (
 // ── Stat Card ────────────────────────────────────────────────
 const StatCard = ({ value, label, icon: Icon, color = '#6366F1', delay = 0 }) => (
   <FadeIn delay={delay}>
-    <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2" style={{ borderLeftColor: color }}>
+    <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 overflow-hidden" style={{ borderLeftColor: color }}>
       <div className="flex items-center justify-between mb-2">
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}18` }}>
           <Icon className="w-4 h-4" style={{ color }} />
         </div>
       </div>
-      <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums">{value}</p>
-      <p className="text-[12px] text-[#9CA3AF] mt-1">{label}</p>
+      <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{value}</p>
+      <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{label}</p>
     </div>
   </FadeIn>
 );
@@ -301,17 +301,17 @@ export default function PlatformAnalytics() {
   );
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <FadeIn>
-        <h1 className="text-[22px] md:text-[28px] font-bold text-[#E5E7EB] mb-1">Platform Analytics</h1>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-1 truncate">Platform Analytics</h1>
         <p className="text-[13px] text-[#6B7280] mb-6">Cross-platform metrics across all gyms</p>
       </FadeIn>
 
       {/* ── Top Stats ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
         <StatCard value={totalGyms} label="Total Gyms" icon={Building2} color="#6366F1" delay={0} />
-        <StatCard value={totalMembers.toLocaleString()} label="Total Members" icon={Users} color="#D4AF37" delay={50} />
+        <StatCard value={totalMembers.toLocaleString()} label="Total Members" icon={Users} color="var(--color-accent)" delay={50} />
         <StatCard value={totalSessions.toLocaleString()} label="Sessions (30d)" icon={Dumbbell} color="#3B82F6" delay={100} />
         <StatCard value={`${retentionRate}%`} label="Retention Rate" icon={TrendingUp} color="#10B981" delay={150} />
         <StatCard value={newMembers30d.toLocaleString()} label="New Members (30d)" icon={UserPlus} color="#8B5CF6" delay={200} />
@@ -330,20 +330,20 @@ export default function PlatformAnalytics() {
                 <AreaChart data={growthData}>
                   <defs>
                     <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#D4AF37" stopOpacity={0} />
+                      <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="week" tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
+                  <XAxis dataKey="week" tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'var(--color-text-muted)' }} />
                   <Area
                     type="monotone"
                     dataKey="newMembers"
                     name="New Members"
-                    stroke="#D4AF37"
+                    stroke="var(--color-accent)"
                     strokeWidth={2}
                     fill="url(#goldGrad)"
                     dot={false}
@@ -369,7 +369,7 @@ export default function PlatformAnalytics() {
       {/* ── Monthly Income Chart + Per-Gym Revenue ─────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 mb-6">
         <FadeIn delay={140}>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">Monthly Income (Last 12 Months)</h2>
             <div className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -381,11 +381,11 @@ export default function PlatformAnalytics() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="month" tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
+                  <XAxis dataKey="month" tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
                   <Tooltip
                     content={<ChartTooltip formatter={(v) => `$${v.toLocaleString()}`} />}
-                    cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }}
+                    cursor={{ fill: 'var(--color-accent-glow)' }}
                   />
                   <Bar dataKey="income" fill="url(#incomeGrad)" radius={[4, 4, 0, 0]} barSize={28} />
                 </BarChart>
@@ -395,7 +395,7 @@ export default function PlatformAnalytics() {
         </FadeIn>
 
         <FadeIn delay={160}>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-3">Revenue by Gym</h2>
             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
               {revenueByGym.map(gym => (
@@ -444,7 +444,7 @@ export default function PlatformAnalytics() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Top Gyms */}
         <FadeIn delay={150}>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[15px] font-semibold text-[#E5E7EB]">Top Gyms</h2>
               <div className="flex gap-1">
@@ -470,20 +470,20 @@ export default function PlatformAnalytics() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={topGyms} layout="vertical" margin={{ left: 10, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                    <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <XAxis type="number" tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis
                       type="category"
                       dataKey="name"
-                      tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                      tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                       width={100}
                     />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
                     <Bar
                       dataKey={topGymsBarKey}
                       name={topMetric === 'members' ? 'Members' : topMetric === 'activity' ? 'Sessions' : 'Retention %'}
-                      fill="#D4AF37"
+                      fill="var(--color-accent)"
                       radius={[0, 4, 4, 0]}
                       barSize={18}
                     />
@@ -496,7 +496,7 @@ export default function PlatformAnalytics() {
 
         {/* Struggling Gyms */}
         <FadeIn delay={200}>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="w-4 h-4 text-amber-400" />
               <h2 className="text-[15px] font-semibold text-[#E5E7EB]">Struggling Gyms</h2>

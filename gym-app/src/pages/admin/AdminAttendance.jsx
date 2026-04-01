@@ -125,7 +125,7 @@ export default function AdminAttendance() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
+    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
         title="Attendance"
         subtitle="Check-ins and workout activity"
@@ -166,7 +166,7 @@ export default function AdminAttendance() {
           {/* Summary stat cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <StatCard label="Total Check-ins" value={summaryStats.totalCheckins} borderColor="#8B5CF6" icon={CalendarCheck} delay={0} />
-            <StatCard label="Total Workouts" value={summaryStats.totalWorkouts} borderColor="#D4AF37" icon={Dumbbell} delay={60} />
+            <StatCard label="Total Workouts" value={summaryStats.totalWorkouts} borderColor="var(--color-accent)" icon={Dumbbell} delay={60} />
             <StatCard label="Unique Visitors" value={summaryStats.uniqueVisitors} borderColor="#10B981" icon={Users} delay={120} />
             <StatCard label="Avg Check-ins / Day" value={summaryStats.avgPerDay} borderColor="#3B82F6" icon={CalendarCheck} delay={180} />
           </div>
@@ -178,17 +178,17 @@ export default function AdminAttendance() {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false}
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false}
                     interval={Math.floor(dailyData.length / 6)} />
-                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
+                  <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
                   <Legend
                     iconType="circle"
                     iconSize={8}
-                    wrapperStyle={{ fontSize: 11, color: '#9CA3AF', paddingTop: 8 }}
+                    wrapperStyle={{ fontSize: 11, color: 'var(--color-text-muted)', paddingTop: 8 }}
                   />
                   <Line type="monotone" dataKey="checkins" name="Check-ins" stroke="#8B5CF6" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
-                  <Line type="monotone" dataKey="workouts" name="Workouts" stroke="#D4AF37" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="workouts" name="Workouts" stroke="var(--color-accent)" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
             </AdminCard>

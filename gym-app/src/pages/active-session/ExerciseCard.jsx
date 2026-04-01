@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { CheckCircle, Trophy, Plus, Clock, Play, X } from 'lucide-react';
+import { CheckCircle, Trophy, Plus, Clock, Play, X, MessageSquare, ArrowLeftRight } from 'lucide-react';
 import { exercises as exerciseLibrary } from '../../data/exercises';
 import { supabase } from '../../lib/supabase';
 import CoachMark from '../../components/CoachMark';
@@ -21,13 +21,94 @@ for (const ex of exerciseLibrary) {
 
 const REP_QUICK_SELECT = [6, 8, 10, 12, 15];
 
+/* ── RPE color helpers ─────────────────────────────────────── */
+const rpeColor = (v) => {
+  if (v <= 3) return { bg: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/30', bgFaint: 'bg-emerald-500/10' };
+  if (v <= 6) return { bg: 'bg-yellow-500', text: 'text-yellow-400', border: 'border-yellow-500/30', bgFaint: 'bg-yellow-500/10' };
+  if (v <= 8) return { bg: 'bg-orange-500', text: 'text-orange-400', border: 'border-orange-500/30', bgFaint: 'bg-orange-500/10' };
+  return { bg: 'bg-red-500', text: 'text-red-400', border: 'border-red-500/30', bgFaint: 'bg-red-500/10' };
+};
+
+const rpeLabel = (v, t) => {
+  if (v <= 3) return t?.('activeSession.rpeEasy') ?? 'Easy';
+  if (v <= 6) return t?.('activeSession.rpeModerate') ?? 'Moderate';
+  if (v <= 8) return t?.('activeSession.rpeHard') ?? 'Hard';
+  return t?.('activeSession.rpeMax') ?? 'Max';
+};
+
+/* ── RPE Selector (horizontal 1–10 circles) ───────────────── */
+const RpeSelector = ({ value, onChange, t }) => (
+  <div className="rounded-2xl border border-white/[0.06] px-3 py-3" style={{ background: 'var(--color-bg-card)' }}>
+    <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: 'var(--color-text-subtle)' }}>
+      {t?.('activeSession.rpeLabel') ?? 'RPE — How hard was it?'}
+    </p>
+    <div className="flex items-center justify-between gap-1">
+      {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
+        const c = rpeColor(n);
+        const selected = value === n;
+        return (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(selected ? null : n)}
+            className={`w-[28px] h-[28px] rounded-full text-[11px] font-bold transition-all duration-150 flex items-center justify-center ${
+              selected
+                ? `${c.bg} text-white scale-110 shadow-lg`
+                : 'bg-white/[0.04] border border-white/[0.06] hover:border-white/[0.12]'
+            }`}
+            style={!selected ? { color: 'var(--color-text-subtle)' } : undefined}
+            aria-label={`RPE ${n}`}
+          >
+            {n}
+          </button>
+        );
+      })}
+    </div>
+    {/* Labels row */}
+    <div className="flex justify-between mt-1.5 px-0.5">
+      <span className="text-[9px] text-emerald-400/70 font-medium w-[84px]">{t?.('activeSession.rpeEasy') ?? 'Easy'}</span>
+      <span className="text-[9px] text-yellow-400/70 font-medium w-[84px] text-center">{t?.('activeSession.rpeModerate') ?? 'Moderate'}</span>
+      <span className="text-[9px] text-orange-400/70 font-medium w-[56px] text-center">{t?.('activeSession.rpeHard') ?? 'Hard'}</span>
+      <span className="text-[9px] text-red-400/70 font-medium w-[56px] text-right">{t?.('activeSession.rpeMax') ?? 'Max'}</span>
+    </div>
+  </div>
+);
+
+/* ── Set Note Input ────────────────────────────────────────── */
+const SetNoteInput = ({ value, onChange, onClose, t }) => (
+  <div className="rounded-xl border border-white/[0.06] px-3 py-2 mt-1" style={{ background: 'var(--color-bg-card)' }}>
+    <div className="flex items-center gap-2">
+      <MessageSquare size={12} className="shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
+      <input
+        type="text"
+        maxLength={100}
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder={t?.('activeSession.notePlaceholder') ?? 'Add a note... (e.g. "felt easy", "elbow pain")'}
+        className="flex-1 text-[12px] bg-transparent placeholder:text-[#4B5563] focus:outline-none"
+        style={{ color: 'var(--color-text-primary)' }}
+        autoFocus
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        className="hover:opacity-80 transition-colors p-1"
+        style={{ color: 'var(--color-text-subtle)' }}
+        aria-label="Close note"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  </div>
+);
+
 /* ── Exercise Info Card (video hidden by default) ─────────────── */
-const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t }) => {
+const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap }) => {
   const [showVideo, setShowVideo] = useState(false);
   const resolvedSrc = showVideo ? resolveVideoSrc(videoUrl) : null;
 
   return (
-    <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] overflow-hidden">
+    <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
       {/* Expanded: full video */}
       {showVideo && resolvedSrc && (
         <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
@@ -36,69 +117,68 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t }) => {
             autoPlay loop muted playsInline
             className="w-full h-full object-cover"
           />
-          {/* Close button — high z-index, large tap target */}
           <button
             onClick={(e) => { e.stopPropagation(); setShowVideo(false); }}
-            className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full bg-black/70 backdrop-blur-md flex items-center justify-center text-white active:scale-90 transition-transform"
+            className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full bg-black/70 flex items-center justify-center text-white active:scale-90 transition-transform"
             aria-label="Hide demo"
           >
             <X size={18} strokeWidth={2.5} />
           </button>
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0F172A] to-transparent z-10" />
         </div>
       )}
-      {/* Exercise details row */}
-      <div className="px-4 py-3.5">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[18px] font-black text-[#E5E7EB] leading-tight">
-              {exName(exercise)}
-            </h2>
-            <div className="flex items-center gap-2 mt-1">
-              {muscle && (
-                <span className="text-[12px] text-[#9CA3AF] font-medium">{muscle}</span>
-              )}
-              <span className="text-[12px] text-[#4B5563]">•</span>
-              <span className="text-[12px] text-[#6B7280]">
-                {exercise.targetSets} sets × {exercise.targetReps} reps
-              </span>
-            </div>
-            {exInstructions(exercise) && (
-              <p className="text-[12px] leading-[1.5] text-[#8B95A5] mt-2">
-                {exInstructions(exercise)}
-              </p>
-            )}
-          </div>
-
-          {/* Right side: PR badge or Demo button */}
-          <div className="flex items-center gap-2 shrink-0">
-            {knownPR && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/20">
-                <Trophy size={11} className="text-[#D4AF37]" />
-                <span className="text-[10px] font-bold text-[#D4AF37]">
-                  {knownPR.weight}×{knownPR.reps}
-                </span>
+      {/* Exercise details — centered layout */}
+      <div className="px-4 py-3.5 text-center">
+        <h2 className="text-[18px] font-black leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+          {exName(exercise)}
+        </h2>
+        <div className="flex items-center justify-center gap-2 mt-1">
+          {muscle && (
+            <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{muscle}</span>
+          )}
+          <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>•</span>
+          <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            {exercise.targetSets} sets × {exercise.targetReps} reps
+          </span>
+          {knownPR && (
+            <>
+              <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>•</span>
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#D4AF37]/10 border border-[#D4AF37]/20">
+                <Trophy size={10} className="text-[#D4AF37]" />
+                <span className="text-[10px] font-bold text-[#D4AF37]">{knownPR.weight}×{knownPR.reps}</span>
               </div>
-            )}
-            {videoUrl && (
-              <button
-                onClick={() => setShowVideo(v => !v)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:border-white/[0.12] transition-colors active:scale-95"
-              >
-                {showVideo ? (
-                  <>
-                    <X size={12} className="text-[#9CA3AF]" />
-                    <span className="text-[11px] font-semibold text-[#9CA3AF]">{t?.('activeSession.hide') ?? 'Hide'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Play size={12} className="text-[#9CA3AF]" fill="#9CA3AF" strokeWidth={0} />
-                    <span className="text-[11px] font-semibold text-[#9CA3AF]">{t?.('activeSession.demo') ?? 'Demo'}</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+            </>
+          )}
+        </div>
+        {/* Action buttons — centered below */}
+        <div className="flex items-center justify-center gap-2 mt-3">
+          {videoUrl && (
+            <button
+              onClick={() => setShowVideo(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.12] transition-colors active:scale-95"
+            >
+              {showVideo ? (
+                <>
+                  <X size={13} style={{ color: 'var(--color-text-primary)' }} />
+                  <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.hide') ?? 'Hide'}</span>
+                </>
+              ) : (
+                <>
+                  <Play size={13} style={{ color: 'var(--color-text-primary)' }} fill="var(--color-text-primary)" strokeWidth={0} />
+                  <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.demo') ?? 'Demo'}</span>
+                </>
+              )}
+            </button>
+          )}
+          {onSwap && (
+            <button
+              onClick={onSwap}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-[#D4AF37]/30 transition-colors active:scale-95"
+              aria-label={t?.('activeSession.swapExercise') ?? 'Swap exercise'}
+            >
+              <ArrowLeftRight size={13} style={{ color: 'var(--color-text-primary)' }} />
+              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.swap') ?? 'Swap'}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -115,15 +195,23 @@ const ExerciseCard = ({
   onRemoveSet,
   onDuplicateLastSet,
   onFillSuggestion,
+  onSwap,
   // Accept but don't use — keeps parent compat
   showPlateCalc, onTogglePlateCalc, showHeatmap, onToggleHeatmap,
   workedRegions, completedSetsCount, expandedNotesSet, onSetExpandedNotesSet,
   showProgressChart, onShowProgressChart, isPRCheck, livePRs, touchStartXRef,
+  // Superset/circuit context
+  nextInGroup, groupType,
+  adjustedRestSeconds,
 }) => {
   const { t } = useTranslation('pages');
   // Track which sets just completed for pulse animation
   const [justCompleted, setJustCompleted] = useState(new Set());
   const prevCompletedRef = useRef(new Set());
+  // Track which completed set has an open note input
+  const [openNoteIndex, setOpenNoteIndex] = useState(null);
+  // Show RPE selector for the most recently completed set
+  const [showRpeForSet, setShowRpeForSet] = useState(null);
 
   useEffect(() => {
     const nowCompleted = new Set();
@@ -133,6 +221,9 @@ const ExerciseCard = ({
     prevCompletedRef.current = nowCompleted;
     if (newlyDone.size > 0) {
       setJustCompleted(newlyDone);
+      // Auto-show RPE selector for the newly completed set
+      const lastDone = Math.max(...newlyDone);
+      setShowRpeForSet(lastDone);
       const t = setTimeout(() => setJustCompleted(new Set()), 350);
       return () => clearTimeout(t);
     }
@@ -166,27 +257,28 @@ const ExerciseCard = ({
         videoUrl={videoUrl}
         knownPR={knownPR}
         t={t}
+        onSwap={onSwap}
       />
 
       {/* ── MAIN INSTRUCTION ──────────────────────────────────── */}
       <div className="text-center py-2">
         {allComplete ? (
           <>
-            <p className="text-[32px] font-black text-emerald-400 tracking-tight">
+            <p className="text-[24px] font-black text-emerald-400 tracking-tight truncate">
               {t('activeSession.allSetsDone')}
             </p>
-            <p className="text-[14px] text-[#6B7280] mt-1">
+            <p className="text-[14px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
               {t('activeSession.swipeToNext')}
             </p>
           </>
         ) : (
           <>
-            <p className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-[0.15em] mb-1">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--color-text-subtle)' }}>
               {t('activeSession.currentSet')}
             </p>
-            <p className="text-[40px] font-black text-[#E5E7EB] tracking-tight leading-none">
+            <p className="text-[24px] font-black tracking-tight leading-none" style={{ color: 'var(--color-text-primary)' }}>
               {t('activeSession.set')} {activeSetIndex + 1}
-              <span className="text-[#4B5563]"> / {totalSetsForExercise}</span>
+              <span style={{ color: 'var(--color-text-muted)' }}> / {totalSetsForExercise}</span>
             </p>
             <p className="text-[15px] text-[#D4AF37] font-semibold mt-2">
               {t('activeSession.target')}: {exercise.targetReps} {t('activeSession.reps')}
@@ -195,7 +287,8 @@ const ExerciseCard = ({
               <button
                 type="button"
                 onClick={() => onRemoveSet(exercise.id, activeSetIndex)}
-                className="mt-3 text-[12px] font-medium text-[#4B5563] hover:text-red-400 transition-colors"
+                className="mt-3 text-[12px] font-medium hover:text-red-400 transition-colors"
+                style={{ color: 'var(--color-text-muted)' }}
               >
                 {t('activeSession.skipThisSet')}
               </button>
@@ -215,8 +308,8 @@ const ExerciseCard = ({
             {/* Last session reference */}
             {historyForActiveSet && (
               <div className="text-center">
-                <p className="text-[11px] text-[#4B5563]">
-                  {t('activeSession.lastSession')}: <span className="text-[#9CA3AF] font-semibold">{historyForActiveSet.reps} reps @ {historyForActiveSet.weight} lb</span>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('activeSession.lastSession')}: <span className="font-semibold" style={{ color: 'var(--color-text-muted)' }}>{historyForActiveSet.reps} reps @ {historyForActiveSet.weight} lb</span>
                 </p>
                 {suggestedWeight && (
                   <CoachMark
@@ -234,32 +327,36 @@ const ExerciseCard = ({
             )}
 
             {/* Weight input */}
-            <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-4">
-              <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider block mb-2">
+            <div className="rounded-2xl border border-white/[0.06] p-4" style={{ background: 'var(--color-bg-card)' }}>
+              <label htmlFor={`weight-${activeExId}`} className="text-[11px] font-semibold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-subtle)' }}>
                 {t('activeSession.weightLbs')}
               </label>
               <input
+                id={`weight-${activeExId}`}
                 type="number"
                 inputMode="decimal"
                 value={set.weight}
                 onChange={e => onUpdateSet(activeExId, activeSetIndex, 'weight', e.target.value)}
                 placeholder={suggestedWeight ? String(suggestedWeight) : '0'}
-                className="w-full text-center text-[32px] font-black text-[#E5E7EB] bg-transparent outline-none placeholder:text-[#4B5563] tabular-nums"
+                className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+                style={{ color: 'var(--color-text-primary)' }}
               />
             </div>
 
             {/* Reps input + quick select */}
-            <div className="rounded-2xl bg-[#0F172A] border border-white/[0.06] p-4">
-              <label className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider block mb-2">
+            <div className="rounded-2xl border border-white/[0.06] p-4" style={{ background: 'var(--color-bg-card)' }}>
+              <label htmlFor={`reps-${activeExId}`} className="text-[11px] font-semibold uppercase tracking-wider block mb-2" style={{ color: 'var(--color-text-subtle)' }}>
                 {t('activeSession.repsCompleted')}
               </label>
               <input
+                id={`reps-${activeExId}`}
                 type="number"
                 inputMode="numeric"
                 value={set.reps}
                 onChange={e => onUpdateSet(activeExId, activeSetIndex, 'reps', e.target.value)}
                 placeholder={suggestedReps ? String(suggestedReps) : '0'}
-                className="w-full text-center text-[32px] font-black text-[#E5E7EB] bg-transparent outline-none placeholder:text-[#4B5563] tabular-nums"
+                className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+                style={{ color: 'var(--color-text-primary)' }}
               />
               {/* Quick select */}
               <div className="flex items-center justify-center gap-2 mt-3">
@@ -268,11 +365,13 @@ const ExerciseCard = ({
                     key={r}
                     type="button"
                     onClick={() => onUpdateSet(activeExId, activeSetIndex, 'reps', String(r))}
-                    className={`w-10 h-8 rounded-lg text-[13px] font-bold transition-colors ${
+                    aria-label={`${r} reps`}
+                    className={`min-w-[44px] min-h-[44px] rounded-lg text-[13px] font-bold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                       String(set.reps) === String(r)
                         ? 'bg-[#D4AF37] text-black'
-                        : 'bg-white/[0.04] text-[#9CA3AF] border border-white/[0.06]'
+                        : 'bg-white/[0.04] border border-white/[0.06]'
                     }`}
+                    style={String(set.reps) !== String(r) ? { color: 'var(--color-text-muted)' } : undefined}
                   >
                     {r}
                   </button>
@@ -285,23 +384,43 @@ const ExerciseCard = ({
 
       {/* ── COMING UP NEXT ────────────────────────────────────── */}
       {!allComplete && (
-        <div className="rounded-2xl bg-[#0F172A]/60 border border-white/[0.04] px-4 py-3">
-          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-2">{t('activeSession.comingUpNext')}</p>
+        <div className="rounded-2xl border border-white/[0.06] px-4 py-3" style={{ background: 'var(--color-bg-card)' }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.comingUpNext')}</p>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04]">
-              <Clock size={12} className="text-[#6B7280]" />
-              <span className="text-[12px] font-semibold text-[#9CA3AF]">
-                REST {exercise.restSeconds ? `${Math.floor(exercise.restSeconds / 60)}:${String(exercise.restSeconds % 60).padStart(2, '0')}` : '1:30'}
-              </span>
-            </div>
-            {activeSetIndex < totalSetsForExercise - 1 ? (
-              <span className="text-[12px] text-[#6B7280]">
-                → Set {activeSetIndex + 2}
-              </span>
+            {nextInGroup && groupType ? (
+              <>
+                <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ${
+                  groupType === 'superset' ? 'bg-purple-500/10' : 'bg-blue-500/10'
+                }`}>
+                  <Play size={12} className={groupType === 'superset' ? 'text-purple-400' : 'text-blue-400'} fill="currentColor" strokeWidth={0} />
+                  <span className={`text-[12px] font-semibold ${groupType === 'superset' ? 'text-purple-400' : 'text-blue-400'}`}>
+                    {groupType === 'superset' ? t('activeSession.noRestSuperset') : t('activeSession.noRestCircuit')}
+                  </span>
+                </div>
+              </>
             ) : (
-              <span className="text-[12px] text-[#6B7280]">
-                → {t('activeSession.nextExercise')}
-              </span>
+              <>
+                {(() => {
+                  const rest = adjustedRestSeconds ?? exercise.restSeconds ?? 90;
+                  return (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.06]">
+                      <Clock size={12} style={{ color: 'var(--color-text-muted)' }} />
+                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                        {t('activeSession.rest')} {Math.floor(rest / 60)}:{String(rest % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {activeSetIndex < totalSetsForExercise - 1 ? (
+                  <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                    → {t('activeSession.set')} {activeSetIndex + 2}
+                  </span>
+                ) : (
+                  <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                    → {t('activeSession.nextExercise')}
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -310,25 +429,81 @@ const ExerciseCard = ({
       {/* ── COMPLETED SETS LOG ─────────────────────────────────── */}
       {completedCount > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider px-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider px-1" style={{ color: 'var(--color-text-muted)' }}>
             {t('activeSession.completed')}
           </p>
           {currentSets.map((set, i) => {
             if (!set.completed) return null;
+            const c = set.rpe ? rpeColor(set.rpe) : null;
             return (
-              <div
-                key={i}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/10${justCompleted.has(i) ? ' animate-set-complete' : ''}`}
-              >
-                <CheckCircle size={16} className="text-emerald-400 shrink-0" />
-                <span className="text-[13px] font-semibold text-[#E5E7EB] flex-1">
-                  Set {i + 1}
-                </span>
-                <span className="text-[13px] text-[#9CA3AF] tabular-nums">
-                  {set.weight} lb × {set.reps}
-                </span>
-                {set.isPR && (
-                  <Trophy size={12} className="text-[#D4AF37]" />
+              <div key={i} className="space-y-0">
+                {/* Set row */}
+                <div
+                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/10${justCompleted.has(i) ? ' animate-set-complete' : ''}`}
+                >
+                  <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+                  <span className="text-[13px] font-semibold flex-1 min-w-0 truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    Set {i + 1}
+                  </span>
+                  <span className="text-[13px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                    {set.weight} lb × {set.reps}
+                  </span>
+                  {/* RPE badge */}
+                  {set.rpe && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRpeForSet(showRpeForSet === i ? null : i)}
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${c.bgFaint} ${c.text} ${c.border} border`}
+                      aria-label={`RPE ${set.rpe}`}
+                    >
+                      RPE {set.rpe}
+                    </button>
+                  )}
+                  {set.isPR && (
+                    <Trophy size={12} className="text-[#D4AF37] shrink-0" />
+                  )}
+                  {/* Note icon toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setOpenNoteIndex(openNoteIndex === i ? null : i)}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                      set.notes ? 'bg-[#D4AF37]/10 text-[#D4AF37]' : 'bg-white/[0.04] hover:opacity-80'
+                    }`}
+                    style={!set.notes ? { color: 'var(--color-text-subtle)' } : undefined}
+                    aria-label={t('activeSession.addNote') ?? 'Add note'}
+                  >
+                    <MessageSquare size={12} />
+                  </button>
+                </div>
+
+                {/* RPE selector — shown for the most recently completed set or when tapped */}
+                {showRpeForSet === i && (
+                  <div className="mt-1.5 animate-fade-in">
+                    <RpeSelector
+                      value={set.rpe}
+                      onChange={(v) => onUpdateSet(exercise.id, i, 'rpe', v)}
+                      t={t}
+                    />
+                  </div>
+                )}
+
+                {/* Note input */}
+                {openNoteIndex === i && (
+                  <div className="animate-fade-in">
+                    <SetNoteInput
+                      value={set.notes}
+                      onChange={(v) => onUpdateSet(exercise.id, i, 'notes', v)}
+                      onClose={() => setOpenNoteIndex(null)}
+                      t={t}
+                    />
+                  </div>
+                )}
+
+                {/* Show existing note text below the set row */}
+                {set.notes && openNoteIndex !== i && (
+                  <p className="text-[11px] italic pl-9 mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>
+                    {set.notes}
+                  </p>
                 )}
               </div>
             );
@@ -340,7 +515,8 @@ const ExerciseCard = ({
       {allComplete && (
         <button
           onClick={() => onAddSet(exercise.id)}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.1] text-[#6B7280] hover:border-[#D4AF37]/30 hover:text-[#D4AF37] transition-colors"
+          className="w-full flex items-center justify-center gap-2 min-h-[44px] py-3 rounded-2xl border border-dashed border-white/[0.1] hover:border-[#D4AF37]/30 hover:text-[#D4AF37] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-subtle)' }}
         >
           <Plus size={16} />
           <span className="text-[13px] font-semibold">{t('activeSession.addSet')}</span>

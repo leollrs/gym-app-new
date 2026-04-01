@@ -152,7 +152,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Challenge Name</label>
           <input value={form.name} onChange={e => set('name', e.target.value)}
             placeholder="e.g. March Volume Wars"
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
         </div>
 
         <div>
@@ -177,12 +177,12 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Start Date</label>
             <input type="datetime-local" value={form.starts_at} onChange={e => set('starts_at', e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
           <div>
             <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">End Date</label>
             <input type="datetime-local" value={form.ends_at} onChange={e => set('ends_at', e.target.value)}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
         </div>
 
@@ -190,7 +190,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Description (optional)</label>
           <textarea value={form.description} onChange={e => set('description', e.target.value)}
             rows={2} placeholder="Tell members what this challenge is about..."
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none" />
+            className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
         </div>
 
         {/* Rewards toggle */}
@@ -209,7 +209,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
         </div>
 
         {form.enableRewards && (
-          <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6">
+          <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6 overflow-hidden">
             <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide">Reward per placement</p>
             {form.rewards.map((r, i) => (
               <div key={r.place} className="flex items-center gap-3">
@@ -225,7 +225,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                       }}
                       className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"
                     />
-                    <p className="text-[10px] text-[#4B5563] text-center mt-0.5">points</p>
+                    <p className="text-[10px] text-[#6B7280] text-center mt-0.5">points</p>
                   </div>
                   <div className="flex-1">
                     <input
@@ -236,9 +236,9 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                         set('rewards', updated);
                       }}
                       placeholder="e.g. Free smoothie, 1 PT session..."
-                      className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+                      className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
-                    <p className="text-[10px] text-[#4B5563] mt-0.5">prize (optional)</p>
+                    <p className="text-[10px] text-[#6B7280] mt-0.5">prize (optional)</p>
                   </div>
                 </div>
               </div>

@@ -1,20 +1,178 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Flag, Gift,
+  Image, Link, MoreHorizontal, EyeOff, VolumeX,
+  AlertTriangle, Trash2, PenSquare,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '../contexts/ToastContext';
 import ReactionPicker from '../components/ReactionPicker';
+import ProfilePreview from '../components/ProfilePreview';
+import UserAvatar from '../components/UserAvatar';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import LoadMoreButton from '../components/LoadMoreButton';
 import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
+import { takePhoto } from '../lib/takePhoto';
 
 import { sanitize } from '../lib/sanitize';
+import { validateImageFile } from '../lib/validateImage';
+import { ACHIEVEMENT_DEFS } from '../lib/achievements';
+import { exName } from '../lib/exerciseName';
+
+// ── Muted users (localStorage) ──────────────────────────────────────────────
+const MUTED_KEY = 'social_muted_users';
+const getMutedUsers = () => {
+  try { return JSON.parse(localStorage.getItem(MUTED_KEY) || '[]'); } catch { return []; }
+};
+const addMutedUser = (userId) => {
+  const list = getMutedUsers();
+  if (!list.includes(userId)) { list.push(userId); localStorage.setItem(MUTED_KEY, JSON.stringify(list)); }
+  return list;
+};
+
+// ── Report reasons ──────────────────────────────────────────────────────────
+const REPORT_REASONS = ['spam', 'inappropriate', 'harassment', 'other'];
+
+// ── Report Modal ────────────────────────────────────────────────────────────
+const ReportModal = ({ open, onClose, onSubmit, t }) => {
+  const [selected, setSelected] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!open) return null;
+
+  const handleSubmit = async () => {
+    if (!selected || submitting) return;
+    setSubmitting(true);
+    await onSubmit(selected);
+    setSelected(null);
+    setSubmitting(false);
+  };
+
+  const handleClose = () => {
+    setSelected(null);
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={handleClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-[420px] mx-4 mb-4 sm:mb-0 rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+        style={{ background: 'var(--color-bg-card)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+            <AlertTriangle size={20} className="text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('social.report.title')}</h3>
+            <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('social.report.subtitle')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Reason options */}
+        <div className="px-5 pb-3 flex flex-col gap-2">
+          {REPORT_REASONS.map(reason => (
+            <button
+              key={reason}
+              type="button"
+              onClick={() => setSelected(reason)}
+              className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-medium transition-all duration-150 border ${
+                selected === reason
+                  ? 'bg-red-500/15 border-red-500/40 text-red-300'
+                  : 'bg-white/[0.04] border-white/[0.06] hover:bg-white/[0.06]'
+              }`}
+              style={selected !== reason ? { color: 'var(--color-text-primary)' } : undefined}
+            >
+              {t(`social.report.reasons.${reason}`)}
+            </button>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 px-5 pb-5 pt-2">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('social.report.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!selected || submitting}
+            className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {submitting ? t('social.report.submitting') : t('social.report.submit')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// ── Engagement-based ranking ────────────────────────────────────────────────
+const scoreFeedItem = (item, friendIds) => {
+  const ageMs = Date.now() - new Date(item.created_at).getTime();
+  const ageHours = ageMs / 3_600_000;
+  // Recency: 10 points at 0h, decays to 0 over 24h
+  const recency = Math.max(0, 10 * (1 - ageHours / 24));
+  const reactionCount = Object.values(item.reactionCounts ?? {}).reduce((a, b) => a + b, 0);
+  const commentCount = item.commentCount ?? 0;
+  const isFriend = friendIds.has(item.actor_id) ? 5 : 0;
+  const isPR = item.type === 'pr_hit' ? 3 : 0;
+  return recency + reactionCount * 2 + commentCount * 3 + isFriend + isPR;
+};
+
+// ── Mention parser ──────────────────────────────────────────────────────────
+const MENTION_RE = /@(\w+)/g;
+const parseMentions = (text) => {
+  const parts = [];
+  let lastIdx = 0;
+  let match;
+  while ((match = MENTION_RE.exec(text)) !== null) {
+    if (match.index > lastIdx) parts.push({ type: 'text', value: text.slice(lastIdx, match.index) });
+    parts.push({ type: 'mention', value: match[1] });
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastIdx < text.length) parts.push({ type: 'text', value: text.slice(lastIdx) });
+  return parts;
+};
+
+const RichText = ({ text }) => {
+  const parts = parseMentions(text);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.type === 'mention' ? (
+          <span key={i} className="text-[#D4AF37] font-semibold cursor-pointer">@{p.value}</span>
+        ) : (
+          <span key={i}>{p.value}</span>
+        )
+      )}
+    </>
+  );
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,28 +185,28 @@ const fmtVolume = (lbs) => {
 const FeedContent = ({ type, data, t }) => {
   if (type === 'workout_completed') {
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-[#D4AF37] bg-amber-900/20">
-        <p className="font-bold text-[16px] leading-tight mb-3 text-[#E5E7EB]">
-          {sanitize(data.routine_name ?? 'Workout')}
+      <div className="rounded-2xl p-4 border-l-4 border-[#D4AF37] bg-white/[0.05]">
+        <p className="font-bold text-[16px] leading-tight mb-3" style={{ color: 'var(--color-text-primary)' }}>
+          {sanitize(data.routine_name ?? t('social.feedContent.workout'))}
         </p>
         <div className="flex flex-wrap gap-4">
           {data.duration_seconds > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Clock size={12} /> {fmtDuration(data.duration_seconds)}
             </span>
           )}
           {data.total_volume_lbs > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
               <Zap size={12} /> {fmtVolume(data.total_volume_lbs)}
             </span>
           )}
           {data.exercise_count > 0 && (
-            <span className="flex items-center gap-1.5 text-[12px] text-[#9CA3AF]">
-              <Dumbbell size={12} /> {data.exercise_count} exercise{data.exercise_count !== 1 ? 's' : ''}
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+              <Dumbbell size={12} /> {data.exercise_count} {data.exercise_count !== 1 ? t('social.feedContent.exercises') : t('social.feedContent.exercise')}
             </span>
           )}
           {data.set_count > 0 && (
-            <span className="text-[12px] text-[#9CA3AF]">{data.set_count} sets</span>
+            <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{data.set_count} {t('social.feedContent.setsLabel')}</span>
           )}
         </div>
       </div>
@@ -56,17 +214,19 @@ const FeedContent = ({ type, data, t }) => {
   }
 
   if (type === 'pr_hit') {
+    // Use localized exercise name: prefer exName helper if exercise object shape is available
+    const localizedExName = exName({ name: data.exercise_name, name_es: data.exercise_name_es }) || data.exercise_name;
     return (
-      <div className="rounded-2xl p-4 border-l-4 border-[#D4AF37] bg-amber-900/20">
+      <div className="rounded-2xl p-4 border-l-4 border-[#D4AF37] bg-white/[0.05]">
         <div className="flex items-center gap-2 mb-1">
           <Trophy size={14} className="text-[#D4AF37] flex-shrink-0" />
           <p className="font-bold text-[13px] text-[#D4AF37]">{t('social.feedContent.newPR')}</p>
         </div>
-        <p className="font-black text-[20px] text-[#E5E7EB]">{sanitize(data.exercise_name)}</p>
+        <p className="font-black text-[20px]" style={{ color: 'var(--color-text-primary)' }}>{sanitize(localizedExName)}</p>
         <p className="text-[15px] font-semibold mt-1 text-[#D4AF37]">
           {data.weight_lbs} lbs × {data.reps}{' '}
           {data.estimated_1rm > 0 && (
-            <span className="font-normal text-[13px] text-[#9CA3AF]">· e1RM {Math.round(data.estimated_1rm)} lbs</span>
+            <span className="font-normal text-[13px]" style={{ color: 'var(--color-text-muted)' }}>· e1RM {Math.round(data.estimated_1rm)} lbs</span>
           )}
         </p>
       </div>
@@ -74,12 +234,20 @@ const FeedContent = ({ type, data, t }) => {
   }
 
   if (type === 'achievement_unlocked') {
+    // Use i18n keys stored in the feed item data; fall back to raw English strings
+    const achDef = ACHIEVEMENT_DEFS.find(d => d.key === data.achievement_key);
+    const achName = achDef?.labelKey
+        ? t(achDef.labelKey, achDef.label)
+        : data.achievement_name ?? t('social.feedContent.newAchievement');
+    const achDesc = achDef?.descKey
+        ? t(achDef.descKey, achDef.desc)
+        : data.achievement_desc;
     return (
       <div className="rounded-2xl p-4 border-l-4 border-purple-500 bg-purple-900/20">
-        <p className="font-bold text-[13px] text-purple-300 mb-1">{t('social.feedContent.achievementUnlocked')} 🎖️</p>
-        <p className="font-bold text-[16px] text-[#E5E7EB]">{sanitize(data.achievement_name ?? 'New Achievement')}</p>
-        {data.achievement_desc && (
-          <p className="text-[13px] mt-0.5 text-[#9CA3AF]">{sanitize(data.achievement_desc)}</p>
+        <p className="font-bold text-[13px] mb-1" style={{ color: 'var(--color-text-primary)' }}>{t('social.feedContent.achievementUnlocked')} 🎖️</p>
+        <p className="font-bold text-[16px]" style={{ color: 'var(--color-text-primary)' }}>{sanitize(achName)}</p>
+        {achDesc && (
+          <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{sanitize(achDesc)}</p>
         )}
       </div>
     );
@@ -88,7 +256,7 @@ const FeedContent = ({ type, data, t }) => {
   if (type === 'check_in') {
     return (
       <div className="rounded-2xl p-4 border-l-4 border-emerald-500 bg-emerald-900/20">
-        <p className="font-semibold text-[15px] text-[#E5E7EB]">
+        <p className="font-semibold text-[15px]" style={{ color: 'var(--color-text-primary)' }}>
           ✅ {t('social.feedContent.checkedIn')}{data.gym_name ? ` — ${sanitize(data.gym_name)}` : ''}
         </p>
       </div>
@@ -98,34 +266,62 @@ const FeedContent = ({ type, data, t }) => {
   if (type === 'program_started') {
     return (
       <div className="rounded-2xl p-4 border-l-4 border-blue-500 bg-blue-900/20">
-        <p className="font-semibold text-[15px] text-[#E5E7EB]">
+        <p className="font-semibold text-[15px]" style={{ color: 'var(--color-text-primary)' }}>
           {t('social.feedContent.started')} <span className="font-bold">{sanitize(data.program_name ?? t('social.feedContent.aNewProgram'))}</span>
         </p>
       </div>
     );
   }
 
+  if (type === 'user_post') {
+    return (
+      <div className="space-y-3">
+        {data.body && (
+          <p className="text-[14px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text-primary)' }}>
+            <RichText text={sanitize(data.body)} />
+          </p>
+        )}
+        {data.photo_url && (
+          <img
+            src={data.photo_url}
+            alt="Post"
+            className="w-full rounded-xl object-cover max-h-[400px]"
+            loading="lazy"
+          />
+        )}
+        {data.workout_name && (
+          <div className="rounded-2xl p-3 border-l-4 border-[#D4AF37] bg-white/[0.05]">
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{sanitize(data.workout_name)}</p>
+            <div className="flex gap-3 mt-1">
+              {data.duration_seconds > 0 && (
+                <span className="text-[12px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><Clock size={11} /> {fmtDuration(data.duration_seconds)}</span>
+              )}
+              {data.total_volume_lbs > 0 && (
+                <span className="text-[12px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><Zap size={11} /> {fmtVolume(data.total_volume_lbs)}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-2xl p-4 bg-[#111827]">
-      <p className="text-[14px] text-[#9CA3AF]">{type.replace(/_/g, ' ')}</p>
+    <div className="rounded-2xl p-4" style={{ background: 'var(--color-bg-card)' }}>
+      <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{type.replace(/_/g, ' ')}</p>
     </div>
   );
 };
 
-// ── Avatar ────────────────────────────────────────────────────────────────────
-const Avatar = React.memo(({ src, name, size = 44 }) => {
-  const initial = (name ?? '?')[0].toUpperCase();
-  return src ? (
-    <img src={src} alt={name} loading="lazy" className="rounded-full object-cover flex-shrink-0 border-2 border-white/[0.06]"
-      style={{ width: size, height: size }} />
-  ) : (
-    <div
-      className="rounded-full flex items-center justify-center flex-shrink-0 font-bold bg-amber-900/40 text-[#D4AF37] border-2 border-[#D4AF37]/20"
-      style={{ width: size, height: size, fontSize: size * 0.38 }}
-    >
-      {initial}
-    </div>
-  );
+// ── Avatar (delegates to shared UserAvatar) ──────────────────────────────────
+const Avatar = React.memo(({ src, name, size = 44, avatarType, avatarValue }) => {
+  const user = {
+    avatar_url: src,
+    avatar_type: avatarType || (src ? 'photo' : 'color'),
+    avatar_value: avatarValue || '#6366F1',
+    full_name: name,
+  };
+  return <UserAvatar user={user} size={size} />;
 });
 
 // ── Friend status badge ───────────────────────────────────────────────────────
@@ -139,7 +335,7 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
   }
   if (status === 'pending_sent') {
     return (
-      <span className="flex items-center gap-1 text-[12px] font-medium text-[#6B7280] flex-shrink-0">
+      <span className="flex items-center gap-1 text-[12px] font-medium flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
         <Clock size={12} /> {t('social.friendStatus.pending')}
       </span>
     );
@@ -169,25 +365,80 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
 // ── Comment Item ──────────────────────────────────────────────────────────────
 const CommentRow = ({ comment }) => (
   <div className="flex gap-3 py-2">
-    <Avatar src={comment.profiles?.avatar_url} name={comment.profiles?.full_name ?? '?'} size={32} />
-    <div className="flex-1 rounded-2xl px-4 py-2.5 bg-[#111827] border border-white/[0.06]">
-      <span className="font-semibold text-[13px] text-[#E5E7EB]">
+    <Avatar src={comment.profiles?.avatar_url} name={comment.profiles?.full_name ?? '?'} size={32} avatarType={comment.profiles?.avatar_type} avatarValue={comment.profiles?.avatar_value} />
+    <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/[0.06]" style={{ background: 'var(--color-bg-card)' }}>
+      <span className="font-semibold text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
         {comment.profiles?.full_name ?? 'Member'}{' '}
       </span>
-      <span className="text-[13px] text-[#9CA3AF]">{sanitize(comment.content)}</span>
+      <span className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}><RichText text={sanitize(comment.content)} /></span>
     </div>
   </div>
 );
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
-const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, t }) => {
+const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onDelete, onProfilePreview, reportedIds, t }) => {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
   const [submitting, setSubmitting]     = useState(false);
   const [commentError, setCommentError] = useState('');
+  const [showMenu, setShowMenu]         = useState(false);
+  const [mentionQuery, setMentionQuery] = useState(null);
+  const [mentionResults, setMentionResults] = useState([]);
   const inputRef = useRef(null);
   const lastCommentTime = useRef(0);
+  const menuRef = useRef(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClick = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showMenu]);
+
+  // Mention autocomplete — search friends when user types @
+  useEffect(() => {
+    if (mentionQuery === null || mentionQuery.length < 1) { setMentionResults([]); return; }
+    const timer = setTimeout(async () => {
+      const pattern = `%${mentionQuery}%`;
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
+        .ilike('username', pattern)
+        .limit(5);
+      setMentionResults(data ?? []);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [mentionQuery]);
+
+  const handleCommentChange = (e) => {
+    const val = e.target.value;
+    setCommentText(val);
+    // Detect @mention at caret
+    const caret = e.target.selectionStart;
+    const before = val.slice(0, caret);
+    const atMatch = before.match(/@(\w*)$/);
+    if (atMatch) {
+      setMentionQuery(atMatch[1]);
+    } else {
+      setMentionQuery(null);
+      setMentionResults([]);
+    }
+  };
+
+  const insertMention = (username) => {
+    const caret = inputRef.current?.selectionStart ?? commentText.length;
+    const before = commentText.slice(0, caret);
+    const after = commentText.slice(caret);
+    const atIdx = before.lastIndexOf('@');
+    const newText = before.slice(0, atIdx) + `@${username} ` + after;
+    setCommentText(newText);
+    setMentionQuery(null);
+    setMentionResults([]);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
 
   const loadComments = async () => {
     if (comments !== null) return;
@@ -228,12 +479,37 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     lastCommentTime.current = now;
     setSubmitting(true);
     setCommentText('');
+    setMentionQuery(null);
+    setMentionResults([]);
     const { data: newComment, error } = await supabase
       .from('feed_comments')
       .insert({ feed_item_id: item.id, profile_id: currentUserId, content })
       .select('id, content, created_at, profiles(full_name, avatar_url)')
       .single();
-    if (!error && newComment) setComments(prev => [...(prev ?? []), newComment]);
+    if (!error && newComment) {
+      setComments(prev => [...(prev ?? []), newComment]);
+      // Send notifications for @mentions
+      const mentions = [...content.matchAll(/@(\w+)/g)].map(m => m[1]);
+      if (mentions.length > 0) {
+        const { data: mentionedUsers } = await supabase
+          .from('profiles')
+          .select('id, username')
+          .in('username', mentions)
+          .limit(10);
+        for (const mu of (mentionedUsers ?? [])) {
+          if (mu.id !== currentUserId) {
+            supabase.from('notifications').insert({
+              profile_id: mu.id,
+              type: 'mention',
+              title: 'You were mentioned',
+              body: content.slice(0, 100),
+              data: { feed_item_id: item.id, commenter_id: currentUserId },
+              dedup_key: `mention_${newComment.id}_${mu.id}`,
+            }).then(() => {});
+          }
+        }
+      }
+    }
     setSubmitting(false);
   };
 
@@ -242,14 +518,72 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 
       {/* Header */}
       <div className="flex items-center gap-4 p-5 pb-4">
-        <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} />
+        <button type="button" onClick={() => onProfilePreview?.(item.actor_id)} className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
+          <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} avatarType={item.profiles?.avatar_type} avatarValue={item.profiles?.avatar_value} />
+        </button>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[15px] leading-snug text-[#E5E7EB] truncate max-w-[140px]">
+          <button
+            type="button"
+            onClick={() => onProfilePreview?.(item.actor_id)}
+            className="font-semibold text-[15px] leading-snug truncate max-w-[140px] block text-left hover:text-[#D4AF37] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4AF37] rounded"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
             {item.profiles?.full_name ?? 'Gym Member'}
-          </p>
-          <p className="text-[12px] text-[#9CA3AF] mt-0.5">
+          </button>
+          <button
+            type="button"
+            onClick={() => onProfilePreview?.(item.actor_id)}
+            className="text-[12px] mt-0.5 hover:text-[#D4AF37] transition-colors text-left focus:outline-none rounded block"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             @{item.profiles?.username ?? '—'} · {timeAgo(item.created_at)}
-          </p>
+          </button>
+        </div>
+        {/* More menu */}
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setShowMenu(s => !s)}
+            aria-label={t('social.moreOptions')}
+            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            <MoreHorizontal size={18} />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-10 z-30 w-48 rounded-xl border border-white/10 shadow-xl overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
+              <button
+                type="button"
+                onClick={() => { onHide(item.id); setShowMenu(false); }}
+                className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] hover:bg-white/[0.06] transition-colors text-left"
+                style={{ color: 'var(--color-text-primary)' }}
+              >
+                <EyeOff size={15} style={{ color: 'var(--color-text-muted)' }} />
+                {t('social.hidePost')}
+              </button>
+              {item.actor_id !== currentUserId && (
+                <button
+                  type="button"
+                  onClick={() => { onMute(item.actor_id, item.profiles?.full_name); setShowMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] hover:bg-white/[0.06] transition-colors text-left border-t border-white/[0.06]"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  <VolumeX size={15} style={{ color: 'var(--color-text-muted)' }} />
+                  {t('social.muteUser', { name: item.profiles?.full_name?.split(' ')[0] ?? '' })}
+                </button>
+              )}
+              {item.actor_id === currentUserId && (
+                <button
+                  type="button"
+                  onClick={() => { setConfirmDelete(true); setShowMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors text-left border-t border-white/[0.06]"
+                >
+                  <Trash2 size={15} className="text-red-400" />
+                  {t('social.deletePost')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -270,7 +604,8 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         <button
           type="button"
           onClick={handleToggleComments}
-          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ${showComments ? 'text-blue-400' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}
+          className={`flex items-center gap-2 text-[13px] font-semibold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg ${showComments ? 'text-blue-400' : ''}`}
+          style={!showComments ? { color: 'var(--color-text-subtle)' } : undefined}
         >
           <MessageCircle size={16} />
           {item.commentCount > 0 ? item.commentCount : t('social.comment')}
@@ -279,21 +614,48 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           <button
             type="button"
             onClick={() => onReport(item.id)}
-            className="flex items-center gap-2 text-[13px] font-semibold text-[#6B7280] hover:text-red-400 transition-colors ml-auto"
+            aria-label="Report post"
+            className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ml-auto min-w-[44px] min-h-[44px] justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg ${
+              reportedIds?.has(item.id) ? 'text-red-500' : 'text-[var(--color-text-muted,#6B7280)] hover:text-red-400'
+            }`}
           >
-            <Flag size={14} />
+            <Flag size={14} fill={reportedIds?.has(item.id) ? 'currentColor' : 'none'} />
           </button>
         )}
       </div>
 
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="px-5 py-4 border-t border-red-500/20 bg-red-900/10">
+          <p className="text-[13px] text-red-300 font-semibold mb-3">{t('social.deleteConfirm')}</p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {t('social.report.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { onDelete(item.id); setConfirmDelete(false); }}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors"
+            >
+              {t('social.deletePost')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Comments section */}
       {showComments && (
-        <div className="px-5 pb-5 pt-1 border-t border-white/[0.06] bg-[#111827]/50">
+        <div className="px-5 pb-5 pt-1 border-t border-white/[0.06]" style={{ background: 'color-mix(in srgb, var(--color-bg-card) 50%, transparent)' }}>
           <div className="pt-3 flex flex-col">
             {comments === null ? (
-              <p className="text-[13px] py-3 text-center text-[#9CA3AF]">{t('social.loading')}</p>
+              <p className="text-[13px] py-3 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('social.loading')}</p>
             ) : comments.length === 0 ? (
-              <p className="text-[13px] py-2 text-[#9CA3AF]">{t('social.noCommentsYet')}</p>
+              <p className="text-[13px] py-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.noCommentsYet')}</p>
             ) : (
               comments.map(c => <CommentRow key={c.id} comment={c} />)
             )}
@@ -301,24 +663,48 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           {commentError && (
             <p className="text-[12px] text-red-400 mt-2 px-1">{commentError}</p>
           )}
-          <div className="flex gap-2 mt-3">
-            <input
-              ref={inputRef}
-              value={commentText}
-              onChange={e => setCommentText(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmitComment()}
-              placeholder={t('social.writeComment')}
-              maxLength={500}
-              className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 bg-[#111827] border border-white/[0.06] text-[#E5E7EB] placeholder-[#4B5563]"
-            />
-            <button
-              type="button"
-              onClick={handleSubmitComment}
-              disabled={!commentText.trim() || submitting}
-              className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold"
-            >
-              <Send size={16} />
-            </button>
+          <div className="relative">
+            {/* Mention autocomplete dropdown */}
+            {mentionResults.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-white/10 shadow-xl overflow-hidden z-20 max-h-[180px] overflow-y-auto" style={{ background: 'var(--color-bg-card)' }}>
+                {mentionResults.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => insertMention(u.username)}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Avatar src={u.avatar_url} name={u.full_name ?? '?'} size={28} avatarType={u.avatar_type} avatarValue={u.avatar_value} />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{u.full_name}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>@{u.username}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                value={commentText}
+                onChange={handleCommentChange}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSubmitComment()}
+                placeholder={t('social.writeComment')}
+                maxLength={500}
+                aria-label={t('social.writeComment')}
+                className="flex-1 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] border border-white/[0.06]"
+                style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+              />
+              <button
+                type="button"
+                onClick={handleSubmitComment}
+                disabled={!commentText.trim() || submitting}
+                aria-label="Send comment"
+                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -358,7 +744,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
     const ids = accepted.map((f) => (f.requester_id === userId ? f.addressee_id : f.requester_id));
     supabase
       .from('profiles')
-      .select('id, full_name, username, avatar_url')
+      .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
       .in('id', ids)
       .limit(200)
       .then(({ data, error }) => {
@@ -375,7 +761,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
     const ids = incoming.map((f) => f.requester_id);
     supabase
       .from('profiles')
-      .select('id, full_name, username, avatar_url')
+      .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
       .in('id', ids)
       .limit(100)
       .then(({ data, error }) => {
@@ -398,7 +784,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
       const pattern = `%${raw.replace(/'/g, "''")}%`;
       supabase
         .from('profiles')
-        .select('id, full_name, username, avatar_url')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
         .eq('gym_id', gymId)
         .neq('id', userId)
         .in('role', ['member', 'trainer'])
@@ -441,16 +827,18 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4">
-        <p className="font-semibold text-[20px] text-[#E5E7EB]">
+        <p className="font-semibold text-[18px] truncate" style={{ color: 'var(--color-text-primary)' }}>
           {t('social.friendsButton')}
           {accepted.length > 0 && (
-            <span className="font-normal ml-1.5 text-[#6B7280]">· {accepted.length}</span>
+            <span className="font-normal ml-1.5" style={{ color: 'var(--color-text-subtle)' }}>· {accepted.length}</span>
           )}
         </p>
         <button
           type="button"
           onClick={onClose}
-          className="w-11 h-11 rounded-xl hover:bg-white/[0.06] text-[#6B7280] transition-colors duration-200 flex items-center justify-center"
+          aria-label="Close friends panel"
+          className="w-11 h-11 rounded-xl hover:bg-white/[0.06] transition-colors duration-200 flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          style={{ color: 'var(--color-text-subtle)' }}
         >
           <X size={18} />
         </button>
@@ -459,23 +847,24 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
       <div className="px-5 pb-5 space-y-6">
         {/* Add Friends — search same-gym members only */}
         <div>
-          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('social.addFriends')}</p>
-          <p className="text-[12px] text-[#9CA3AF] mb-2">{t('social.searchMembers')}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.addFriends')}</p>
+          <p className="text-[12px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.searchMembers')}</p>
           {!gymId ? (
-            <div className="rounded-2xl bg-amber-900/20 border border-[#D4AF37]/30 px-4 py-3 text-[13px] text-[#D4AF37]">
+            <div className="rounded-2xl bg-white/[0.05] border border-[#D4AF37]/30 px-4 py-3 text-[13px] text-[#D4AF37]">
               {t('social.noGymForFriends')}
             </div>
           ) : (
             <>
           <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('social.searchPlaceholder')}
               aria-label={t('social.addFriends')}
-              className="w-full rounded-xl border border-white/[0.06] bg-[#111827] pl-11 pr-4 py-3 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:border-[#D4AF37]/40"
+              className="w-full rounded-xl border border-white/[0.06] pl-11 pr-4 py-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
+              style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
             />
           </div>
           {searching && (
@@ -486,18 +875,18 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
           {!searching && searchQuery.trim() && (
             <div className="mt-3 space-y-1 max-h-[240px] overflow-y-auto">
               {searchResults.length === 0 ? (
-                <p className="text-[13px] text-[#9CA3AF] py-4 text-center">{t('social.noSearchResults')}</p>
+                <p className="text-[13px] py-4 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('social.noSearchResults')}</p>
               ) : (
                 searchResults.map((p) => {
                   const status = getFriendStatus(friendships, userId, p.id);
                   const isAdding = addingId === p.id;
                   return (
                     <div key={p.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-                      <Avatar src={p.avatar_url} name={p.full_name} size={40} />
+                      <Avatar src={p.avatar_url} name={p.full_name} size={40} avatarType={p.avatar_type} avatarValue={p.avatar_value} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
+                        <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</p>
                         {p.username && (
-                          <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
+                          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
                         )}
                       </div>
                       {status === 'accepted' ? (
@@ -505,7 +894,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
                           <Check size={12} strokeWidth={2.5} /> {t('social.friendStatus.friends')}
                         </span>
                       ) : status === 'pending_sent' ? (
-                        <span className="flex items-center gap-1 text-[12px] font-medium text-[#6B7280] flex-shrink-0">
+                        <span className="flex items-center gap-1 text-[12px] font-medium flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
                           <Clock size={12} /> {t('social.friendStatus.pending')}
                         </span>
                       ) : (
@@ -531,7 +920,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
         {/* Incoming requests */}
         {incomingWithRequester.length > 0 && (
           <div>
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('social.requests')}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.requests')}</p>
             <div className="space-y-1">
               {incomingWithRequester.map((f) => (
                 <IncomingRequestRow
@@ -548,14 +937,14 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
 
         {/* Your friends list */}
         <div>
-          <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-2">{t('social.yourFriends')}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('social.yourFriends')}</p>
           {accepted.length === 0 ? (
-            <div className="py-8 text-center rounded-2xl bg-[#111827]">
-              <div className="w-12 h-12 rounded-2xl bg-[#0F172A] flex items-center justify-center mx-auto mb-3">
-                <Users size={24} className="text-[#6B7280]" />
+            <div className="py-8 text-center rounded-2xl" style={{ background: 'var(--color-bg-card)' }}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'var(--color-bg-card)' }}>
+                <Users size={24} style={{ color: 'var(--color-text-subtle)' }} />
               </div>
-              <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('social.noFriendsYet')}</p>
-              <p className="text-[13px] text-[#9CA3AF] mt-1">{t('social.noFriendsHint')}</p>
+              <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('social.noFriendsYet')}</p>
+              <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('social.noFriendsHint')}</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -564,13 +953,13 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
                 const p = profiles[otherId];
                 return (
                   <div key={f.id} className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-                    <Avatar src={p?.avatar_url} name={p?.full_name ?? '?'} size={44} />
+                    <Avatar src={p?.avatar_url} name={p?.full_name ?? '?'} size={44} avatarType={p?.avatar_type} avatarValue={p?.avatar_value} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[15px] truncate text-[#E5E7EB]">
-                        {p?.full_name ?? <span className="text-[#6B7280]">Loading…</span>}
+                      <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {p?.full_name ?? <span style={{ color: 'var(--color-text-subtle)' }}>Loading…</span>}
                       </p>
                       {p?.username && (
-                        <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
+                        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
                       )}
                     </div>
                     <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400 flex-shrink-0 px-3 py-1.5 rounded-full bg-emerald-900/40">
@@ -594,10 +983,10 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting, t }) => {
 
   return (
     <div className="flex items-center gap-4 py-3 px-3 rounded-2xl hover:bg-white/[0.06] transition-colors">
-      <Avatar src={p.avatar_url} name={p.full_name} size={40} />
+      <Avatar src={p.avatar_url} name={p.full_name} size={40} avatarType={p.avatar_type} avatarValue={p.avatar_value} />
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[14px] truncate text-[#E5E7EB]">{p.full_name}</p>
-        <p className="text-[12px] text-[#9CA3AF]">@{p.username}</p>
+        <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</p>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>@{p.username}</p>
       </div>
       <button
         type="button"
@@ -614,21 +1003,44 @@ const IncomingRequestRow = ({ friendship, onAccept, isAccepting, t }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const SocialFeed = ({ embedded = false }) => {
   const { t } = useTranslation('pages');
-  const { user, profile, gymName } = useAuth();
+  const { user, profile, gymName, gymLogoUrl } = useAuth();
+  const { showToast } = useToast();
   const [feed, setFeed]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]         = useState(true);
   const [friendships, setFriendships] = useState([]);
   const [showFriends, setShowFriends]   = useState(false);
-  const FEED_TABS = ['friends', 'mine'];
-  const [tab, setTab]                 = useState('friends');
+  const FEED_TABS = ['forYou', 'recent', 'mine'];
+  const [tab, setTab]                 = useState('forYou');
   const [friendStreaks, setFriendStreaks] = useState([]);
   const [reportedIds, setReportedIds] = useState(new Set());
+  const [hiddenIds, setHiddenIds]     = useState(new Set());
+  const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [previewUserId, setPreviewUserId] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
   useEffect(() => { document.title = 'Social Feed | TuGymPR'; }, []);
+
+  // Pre-load previously reported feed item IDs so flags render red on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('content_reports')
+      .select('feed_item_id')
+      .eq('reporter_id', user.id)
+      .eq('content_type', 'activity')
+      .in('status', ['pending', 'reviewed'])
+      .not('feed_item_id', 'is', null)
+      .then(({ data }) => {
+        if (data?.length) {
+          setReportedIds(new Set(data.map(r => r.feed_item_id)));
+        }
+      });
+  }, [user?.id]);
 
   // Load friendships for current user
   const loadFriendships = useCallback(async () => {
@@ -764,17 +1176,130 @@ const SocialFeed = ({ embedded = false }) => {
     }
   };
 
-  const handleReport = async (feedItemId) => {
-    if (reportedIds.has(feedItemId)) return;
-    const { error } = await supabase.from('content_reports').insert({
-      reporter_id: user.id,
-      feed_item_id: feedItemId,
-      gym_id: profile.gym_id,
-      reason: 'inappropriate',
-    });
-    if (!error) {
-      setReportedIds(prev => new Set([...prev, feedItemId]));
+  const handleReport = useCallback(async (feedItemId) => {
+    if (reportedIds.has(feedItemId)) {
+      // Unflag — remove the report
+      const { error, count } = await supabase
+        .from('content_reports')
+        .delete({ count: 'exact' })
+        .eq('reporter_id', user.id)
+        .eq('feed_item_id', feedItemId);
+      if (!error && count > 0) {
+        setReportedIds(prev => { const next = new Set(prev); next.delete(feedItemId); return next; });
+        showToast(t('social.report.removed', 'Report removed'), 'success');
+      } else if (!error && count === 0) {
+        // Row was already gone (e.g. admin dismissed it) — clear local flag anyway
+        setReportedIds(prev => { const next = new Set(prev); next.delete(feedItemId); return next; });
+      } else {
+        showToast(t('social.report.error', 'Could not remove report'), 'error');
+      }
+      return;
     }
+    setReportTarget(feedItemId);
+  }, [reportedIds, user?.id, showToast, t]);
+
+  const handleReportSubmit = async (reason) => {
+    if (!reportTarget) return;
+    // Use only columns from the original content_reports table (migration 0038):
+    // id, reporter_id, feed_item_id, gym_id, reason, status, created_at, reviewed_at
+    const payload = {
+      reporter_id: user.id,
+      feed_item_id: reportTarget,
+      gym_id: profile.gym_id,
+      reason: reason || 'inappropriate',
+    };
+
+    const { error } = await supabase.from('content_reports').insert(payload);
+
+    if (error) {
+      if (error.code === '23505') {
+        setReportedIds(prev => new Set([...prev, reportTarget]));
+        showToast(t('social.report.alreadyReported'), 'info');
+      } else {
+        console.error('Report error:', error);
+        showToast(t('social.report.error'), 'error');
+      }
+    } else {
+      setReportedIds(prev => new Set([...prev, reportTarget]));
+      setHiddenIds(prev => new Set([...prev, reportTarget]));
+      showToast(t('social.report.success'), 'success');
+    }
+    setReportTarget(null);
+  };
+
+  const handleHide = useCallback((itemId) => {
+    setHiddenIds(prev => new Set([...prev, itemId]));
+  }, []);
+
+  const handleMute = useCallback((userId) => {
+    const updated = addMutedUser(userId);
+    setMutedUsers(new Set(updated));
+  }, []);
+
+  const handleDelete = useCallback(async (itemId) => {
+    const { error } = await supabase
+      .from('activity_feed_items')
+      .delete()
+      .eq('id', itemId)
+      .eq('actor_id', user.id);
+    if (!error) {
+      setFeed(prev => prev.filter(item => item.id !== itemId));
+      showToast(t('social.postDeleted'), 'success');
+    } else {
+      showToast(t('social.deleteError'), 'error');
+    }
+  }, [user, showToast, t]);
+
+  const handleCreatePost = async ({ body, photoFile, workoutSession }) => {
+    if (!user || !profile) return;
+    let photo_url = null;
+    if (photoFile) {
+      const validation = await validateImageFile(photoFile);
+      if (!validation.valid) {
+        showToast(validation.error, 'error');
+        return;
+      }
+      const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic' };
+      const ext = mimeToExt[validation.mime] || 'jpg';
+      const path = `social-posts/${user.id}/${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(path, photoFile);
+      if (!uploadErr) {
+        const { data: urlData } = supabase.storage.from('social-posts').getPublicUrl(path);
+        photo_url = urlData?.publicUrl ?? null;
+      }
+    }
+    const itemData = {
+      body: body || null,
+      photo_url,
+      ...(workoutSession ? {
+        workout_name: workoutSession.routine_name,
+        duration_seconds: workoutSession.duration_seconds,
+        total_volume_lbs: workoutSession.total_volume_lbs,
+        session_id: workoutSession.id,
+      } : {}),
+    };
+    const { data: newItem, error } = await supabase
+      .from('activity_feed_items')
+      .insert({
+        actor_id: user.id,
+        gym_id: profile.gym_id,
+        type: 'user_post',
+        post_type: 'user',
+        data: itemData,
+        body: body || null,
+        photo_url,
+      })
+      .select('id, actor_id, gym_id, type, data, body, photo_url, created_at, post_type, profiles(full_name, username, avatar_url, avatar_type, avatar_value)')
+      .single();
+    if (!error && newItem) {
+      setFeed(prev => [{
+        ...newItem,
+        reactionCounts: {},
+        currentReaction: null,
+        commentCount: 0,
+      }, ...prev]);
+    }
+    setShowCreatePost(false);
   };
 
   const handleLoadMore = useCallback(() => {
@@ -788,34 +1313,69 @@ const SocialFeed = ({ embedded = false }) => {
     f => f.addressee_id === user?.id && f.status === 'pending'
   ).length;
 
-  const friendsFeed = feed.filter(item => item.actor_id !== user?.id);
-  const myFeed      = feed.filter(item => item.actor_id === user?.id);
-  const activeFeed  = tab === 'friends' ? friendsFeed : myFeed;
+  // Build friend IDs set for scoring
+  const friendIds = useMemo(() => {
+    const ids = new Set();
+    friendships.filter(f => f.status === 'accepted').forEach(f => {
+      ids.add(f.requester_id === user?.id ? f.addressee_id : f.requester_id);
+    });
+    return ids;
+  }, [friendships, user?.id]);
+
+  // Filter hidden and muted
+  const visibleFeed = useMemo(
+    () => feed.filter(item => !hiddenIds.has(item.id) && !mutedUsers.has(item.actor_id)),
+    [feed, hiddenIds, mutedUsers]
+  );
+
+  // Ranked feed (For You) — engagement scored
+  const rankedFeed = useMemo(() => {
+    const items = visibleFeed.filter(item => item.actor_id !== user?.id);
+    return [...items].sort((a, b) => scoreFeedItem(b, friendIds) - scoreFeedItem(a, friendIds));
+  }, [visibleFeed, friendIds, user?.id]);
+
+  // Recent feed — pure chronological
+  const recentFeed = useMemo(
+    () => visibleFeed.filter(item => item.actor_id !== user?.id),
+    [visibleFeed, user?.id]
+  );
+
+  const myFeed = useMemo(
+    () => visibleFeed.filter(item => item.actor_id === user?.id),
+    [visibleFeed, user?.id]
+  );
+
+  const activeFeed = tab === 'forYou' ? rankedFeed : tab === 'recent' ? recentFeed : myFeed;
 
   return (
-    <div className={`${embedded ? '' : 'min-h-screen bg-[#05070B] pb-32 md:pb-12'}`}>
-      <div className={`${embedded ? '' : 'max-w-[680px] md:max-w-4xl mx-auto px-4 pt-6 pb-8'}`}>
+    <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={!embedded ? { background: 'var(--color-bg-primary)' } : undefined}>
+      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-900/40 flex items-center justify-center">
-              <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
-            </div>
+            {gymLogoUrl ? (
+              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-12 h-12 rounded-2xl object-cover" />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] flex items-center justify-center">
+                <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
+              </div>
+            )}
             <div>
-              <h1 className="text-[28px] font-bold text-[#E5E7EB] tracking-tight">{t('social.title')}</h1>
-              <p className="text-[14px] text-[#9CA3AF] mt-0.5">{t('social.subtitle')}</p>
+              <h1 className="text-[22px] font-bold tracking-tight truncate" style={{ color: 'var(--color-text-primary)' }}>{t('social.title')}</h1>
+              <p className="text-[14px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('social.subtitle')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowFriends(s => !s)}
-            className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold active:scale-95 transition-all ${
+            className={`relative flex items-center gap-2 px-5 py-2.5 rounded-full text-[14px] font-semibold whitespace-nowrap active:scale-95 transition-all flex-shrink-0 ${
               showFriends
                 ? 'bg-[#D4AF37] text-black'
-                : 'bg-[#111827] border border-white/[0.06] text-[#E5E7EB] hover:bg-[#0F172A]'
+                : 'border border-white/[0.06]'
             }`}
+            style={!showFriends ? { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' } : undefined}
           >
             <Users size={16} />
             {t('social.friendsButton')}
@@ -848,8 +1408,8 @@ const SocialFeed = ({ embedded = false }) => {
                 <Gift size={20} className="text-[#D4AF37]" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-[#E5E7EB]">{t('social.inviteTitle')}</p>
-                <p className="text-[11px] text-[#9CA3AF] mt-0.5">{t('social.inviteSubtitle')}</p>
+                <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('social.inviteTitle')}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('social.inviteSubtitle')}</p>
               </div>
               <button
                 type="button"
@@ -862,7 +1422,7 @@ const SocialFeed = ({ embedded = false }) => {
                     navigator.clipboard?.writeText(text);
                   }
                 }}
-                className="px-4 py-2 rounded-xl bg-[#D4AF37] text-black text-[12px] font-bold flex-shrink-0 active:scale-95 transition-transform"
+                className="px-4 py-2 rounded-xl bg-[#D4AF37] text-black text-[12px] font-bold whitespace-nowrap flex-shrink-0 active:scale-95 transition-transform"
               >
                 {t('social.invite')}
               </button>
@@ -874,7 +1434,8 @@ const SocialFeed = ({ embedded = false }) => {
         <div className="mb-6">
           <UnderlineTabs
             tabs={[
-              { key: 'friends', label: t('social.tabs.friends') },
+              { key: 'forYou', label: t('social.tabs.forYou') },
+              { key: 'recent', label: t('social.tabs.recent') },
               { key: 'mine', label: t('social.tabs.mine') },
             ]}
             activeIndex={feedTabIndex}
@@ -885,28 +1446,14 @@ const SocialFeed = ({ embedded = false }) => {
         {/* Friends Streaks (shared, above swipeable area) */}
         {friendStreaks.length > 0 && (
           <div className="mb-6">
-            <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-widest mb-3">{t('social.friendsStreaks')}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('social.friendsStreaks')}</p>
             <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
               {friendStreaks.map(f => (
-                <div key={f.id} className="flex flex-col items-center flex-shrink-0" style={{ width: 64 }}>
-                  {f.avatar_url ? (
-                    <img
-                      src={f.avatar_url}
-                      alt={f.name}
-                      className="rounded-full object-cover border-2 border-[#D4AF37]/30"
-                      style={{ width: 40, height: 40 }}
-                    />
-                  ) : (
-                    <div
-                      className="rounded-full flex items-center justify-center font-bold bg-amber-900/40 text-[#D4AF37] border-2 border-[#D4AF37]/20"
-                      style={{ width: 40, height: 40, fontSize: 15 }}
-                    >
-                      {(f.name ?? '?')[0].toUpperCase()}
-                    </div>
-                  )}
-                  <p className="text-[11px] text-[#9CA3AF] mt-1.5 truncate w-full text-center">{f.name.split(' ')[0]}</p>
+                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
+                  <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
+                  <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{f.name.split(' ')[0]}</p>
                   <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -919,10 +1466,10 @@ const SocialFeed = ({ embedded = false }) => {
 
         {/* Swipeable feed panels */}
         {!loading && (
-          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['friends', 'mine']}>
-            {/* Friends tab */}
+          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['forYou', 'recent', 'mine']}>
+            {/* For You tab (ranked) */}
             <div>
-              {friendsFeed.length === 0 ? (
+              {rankedFeed.length === 0 ? (
                 <EmptyState
                   icon={Users}
                   title={t('social.noFriendActivity')}
@@ -932,7 +1479,7 @@ const SocialFeed = ({ embedded = false }) => {
                 />
               ) : (
                 <div className="flex flex-col gap-5">
-                  {friendsFeed.map((item) => (
+                  {rankedFeed.map((item) => (
                     <FeedCard
                       key={item.id}
                       item={item}
@@ -940,17 +1487,66 @@ const SocialFeed = ({ embedded = false }) => {
                       onToggleLike={handleReact}
                       onReact={handleReact}
                       onReport={handleReport}
+                      onHide={handleHide}
+                      onMute={handleMute}
+                      onDelete={handleDelete}
+                      onProfilePreview={setPreviewUserId}
+                      reportedIds={reportedIds}
                       t={t}
                     />
                   ))}
                   <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
-                  {!hasMore && <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">{t('social.allCaughtUp')}</p>}
+                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Recent tab (chronological) */}
+            <div>
+              {recentFeed.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title={t('social.noFriendActivity')}
+                  description={t('social.noFriendActivityHint')}
+                  actionLabel={t('social.findFriends')}
+                  onAction={() => setShowFriends(true)}
+                />
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {recentFeed.map((item) => (
+                    <FeedCard
+                      key={item.id}
+                      item={item}
+                      currentUserId={user.id}
+                      onToggleLike={handleReact}
+                      onReact={handleReact}
+                      onReport={handleReport}
+                      onHide={handleHide}
+                      onMute={handleMute}
+                      onDelete={handleDelete}
+                      onProfilePreview={setPreviewUserId}
+                      reportedIds={reportedIds}
+                      t={t}
+                    />
+                  ))}
+                  <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
+                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
                 </div>
               )}
             </div>
 
             {/* My Posts tab */}
             <div>
+              {/* Create post button */}
+              <button
+                type="button"
+                onClick={() => setShowCreatePost(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 mb-5 rounded-2xl active:scale-[0.98] transition-all"
+                style={{ backgroundColor: 'var(--color-accent, #D4AF37)' }}
+              >
+                <PenSquare size={16} className="text-black" />
+                <span className="text-[14px] font-semibold text-black">{t('social.createPost')}</span>
+              </button>
               {myFeed.length === 0 ? (
                 <EmptyState
                   icon={Dumbbell}
@@ -967,16 +1563,204 @@ const SocialFeed = ({ embedded = false }) => {
                       onToggleLike={handleReact}
                       onReact={handleReact}
                       onReport={handleReport}
+                      onHide={handleHide}
+                      onMute={handleMute}
+                      onDelete={handleDelete}
+                      onProfilePreview={setPreviewUserId}
+                      reportedIds={reportedIds}
                       t={t}
                     />
                   ))}
                   <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
-                  {!hasMore && <p className="text-center text-[13px] py-8 text-[#6B7280] font-medium">{t('social.allCaughtUp')}</p>}
+                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
                 </div>
               )}
             </div>
+
           </SwipeableTabView>
         )}
+
+        {/* Create Post Modal */}
+        {showCreatePost && (
+          <CreatePostModal
+            onClose={() => setShowCreatePost(false)}
+            onSubmit={handleCreatePost}
+            userId={user.id}
+            t={t}
+          />
+        )}
+
+        {/* Profile Preview Popup */}
+        <ProfilePreview
+          userId={previewUserId}
+          isOpen={!!previewUserId}
+          onClose={() => setPreviewUserId(null)}
+        />
+
+        {/* Report Modal */}
+        <ReportModal
+          open={!!reportTarget}
+          onClose={() => setReportTarget(null)}
+          onSubmit={handleReportSubmit}
+          t={t}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ── Create Post Modal ───────────────────────────────────────────────────────
+const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
+  const [body, setBody] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [workoutSession, setWorkoutSession] = useState(null);
+  const [recentSessions, setRecentSessions] = useState([]);
+  const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Load recent workout sessions for tagging
+    supabase
+      .from('workout_sessions')
+      .select('id, routine_name, duration_seconds, total_volume_lbs, created_at')
+      .eq('profile_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => setRecentSessions(data ?? []));
+  }, [userId]);
+
+  const handlePhoto = async () => {
+    const file = await takePhoto();
+    if (file) {
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!body.trim() && !photoFile) return;
+    setSubmitting(true);
+    await onSubmit({ body: body.trim(), photoFile, workoutSession });
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-2xl border border-white/10 overflow-hidden"
+        style={{ background: 'var(--color-bg-card, #0F172A)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+          <h2 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('social.createPost')}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06]"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder={t('social.postPlaceholder')}
+            maxLength={500}
+            rows={4}
+            className="w-full rounded-xl px-4 py-3 text-[14px] border border-white/[0.06] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] resize-none"
+            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{body.length}/500</span>
+          </div>
+
+          {/* Photo preview */}
+          {photoPreview && (
+            <div className="relative">
+              <img src={photoPreview} alt="Preview" className="w-full max-h-[200px] object-cover rounded-xl" />
+              <button
+                type="button"
+                onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Tagged workout */}
+          {workoutSession && (
+            <div className="rounded-xl p-3 border border-[#D4AF37]/30 bg-white/[0.05] flex items-center justify-between">
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{workoutSession.routine_name}</p>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {workoutSession.duration_seconds > 0 && fmtDuration(workoutSession.duration_seconds)}
+                  {workoutSession.total_volume_lbs > 0 && ` · ${fmtVolume(workoutSession.total_volume_lbs)}`}
+                </p>
+              </div>
+              <button type="button" onClick={() => setWorkoutSession(null)} style={{ color: 'var(--color-text-subtle)' }}><X size={14} /></button>
+            </div>
+          )}
+
+          {/* Workout picker */}
+          {showWorkoutPicker && (
+            <div className="rounded-xl border border-white/[0.06] max-h-[160px] overflow-y-auto" style={{ background: 'var(--color-bg-card)' }}>
+              {recentSessions.length === 0 ? (
+                <p className="text-[13px] text-center py-4" style={{ color: 'var(--color-text-subtle)' }}>{t('social.noRecentWorkouts')}</p>
+              ) : (
+                recentSessions.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { setWorkoutSession(s); setShowWorkoutPicker(false); }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.04] last:border-0"
+                  >
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.routine_name ?? 'Workout'}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{timeAgo(s.created_at)}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handlePhoto}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] hover:bg-white/[0.06] transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <Image size={16} /> {t('social.addPhoto')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowWorkoutPicker(s => !s)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] hover:bg-white/[0.06] transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <Link size={16} /> {t('social.tagWorkout')}
+            </button>
+          </div>
+        </div>
+
+        {/* Submit */}
+        <div className="px-5 py-4 border-t border-white/[0.06]">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || (!body.trim() && !photoFile)}
+            className="w-full py-3 rounded-xl bg-[#D4AF37] text-black font-bold text-[15px] disabled:opacity-40 active:scale-[0.98] transition-all"
+          >
+            {submitting ? t('social.posting') : t('social.post')}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -47,15 +47,19 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
           key={label}
           type="button"
           onClick={() => onSelectDate?.(date)}
-          className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95"
+          aria-label={`${label} ${dayNum}`}
+          className="relative flex flex-col items-center flex-1 py-1 transition-all active:scale-95 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
         >
           {/* Weekday label — small, quiet */}
-          <span className={`text-[9px] font-medium uppercase tracking-[0.08em] mb-1 ${
-            isSelected && hasCompleted ? 'text-[#D4AF37]'
-            : isSelected ? 'text-[#10B981]'
-            : hasCompleted ? 'text-[#D4AF37]/70'
-            : 'text-[#3B3F4A]'
-          }`}>
+          <span
+            className={`text-[9px] font-medium uppercase tracking-[0.08em] mb-1 ${
+              isSelected && hasCompleted ? 'text-[#D4AF37]'
+              : isSelected ? 'text-[#10B981]'
+              : hasCompleted ? 'text-[#D4AF37]/70'
+              : ''
+            }`}
+            style={!(isSelected || hasCompleted) ? { color: 'var(--color-text-subtle)' } : undefined}
+          >
             {label}
           </span>
 
@@ -63,7 +67,7 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
           <div className="relative w-9 h-9 flex items-center justify-center">
             {/* Layer 1: Past day gray ring (lowest) */}
             {!isSelected && isPast && !hasCompleted && (
-              <div className="absolute inset-0.5 rounded-full border border-[#4B5563]/40" />
+              <div className="absolute inset-0.5 rounded-full border border-[#9CA3AF]/40" />
             )}
 
             {/* Layer 2: Selected fill — gold if completed, otherwise subtle */}
@@ -81,14 +85,15 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
             )}
 
             {/* Layer 4: Day number — highest z */}
-            <span className={`relative z-30 text-[14px] font-bold ${
-              isSelected && hasCompleted ? 'text-black'
-              : isSelected ? 'text-white'
-              : hasCompleted ? 'text-[#D4AF37]'
-              : isToday ? 'text-[#E5E7EB]'
-              : state === 'scheduled' ? 'text-[#9CA3AF]'
-              : 'text-[#3B3F4A]'
-            }`}>
+            <span
+              className={`relative z-30 text-[14px] font-bold ${
+                isSelected && hasCompleted ? 'text-black'
+                : isSelected ? 'text-white'
+                : hasCompleted ? 'text-[#D4AF37]'
+                : ''
+              }`}
+              style={!(isSelected || hasCompleted) ? { color: isToday ? 'var(--color-text-primary)' : state === 'scheduled' ? 'var(--color-text-muted)' : 'var(--color-text-subtle)' } : undefined}
+            >
               {dayNum}
             </span>
           </div>
@@ -101,7 +106,7 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
             ) : state === 'completed' ? (
               <div className="w-[3px] h-[3px] rounded-full bg-[#C9A227]/70" />
             ) : state === 'scheduled' ? (
-              <div className="w-[3px] h-[3px] rounded-full bg-white/[0.15]" />
+              <div className="w-[3px] h-[3px] rounded-full" style={{ backgroundColor: 'var(--color-text-subtle)' }} />
             ) : null}
           </div>
         </button>

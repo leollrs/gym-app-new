@@ -77,7 +77,7 @@ export default function AchievementToast({ achievements, onDone }) {
       <div
         className="relative flex flex-col items-center text-center px-8 py-10 mx-6"
         style={{
-          background: 'linear-gradient(160deg, #0F172A 0%, #111827 100%)',
+          background: 'linear-gradient(160deg, var(--color-bg-card) 0%, var(--color-bg-deep) 100%)',
           border: `1.5px solid ${current.color}55`,
           borderRadius: 28,
           boxShadow: `0 0 0 1px ${current.color}22, 0 8px 64px ${current.color}33, 0 0 120px ${current.color}18`,
@@ -128,7 +128,7 @@ export default function AchievementToast({ achievements, onDone }) {
         <h2
           className="text-[26px] font-black leading-tight mb-2"
           style={{
-            color: '#E5E7EB',
+            color: 'var(--color-text-primary)',
             fontFamily: "'Barlow Condensed', sans-serif",
             letterSpacing: '-0.01em',
           }}
@@ -137,12 +137,12 @@ export default function AchievementToast({ achievements, onDone }) {
         </h2>
 
         {/* Description */}
-        <p className="text-[14px] leading-relaxed mb-8" style={{ color: '#9CA3AF' }}>
+        <p className="text-[14px] leading-relaxed mb-8" style={{ color: 'var(--color-text-muted)' }}>
           {t(current.descKey, current.desc)}
         </p>
 
         {/* Dismiss hint */}
-        <p className="text-[11px]" style={{ color: '#4B5563' }}>
+        <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
           {t('profile.tapToContinue', 'Tap anywhere to continue')}
         </p>
 
