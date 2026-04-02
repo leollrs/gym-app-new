@@ -2,6 +2,7 @@
  * Create / Edit program modal with full week/day/exercise builder.
  */
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronDown, Trash2, Copy, Clock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
@@ -14,6 +15,7 @@ import {
 } from './programHelpers';
 
 export default function ProgramBuilderModal({ program, initialData, onClose, onSave, saving, saveError }) {
+  const { t } = useTranslation('pages');
   const isEdit = !!program;
   const init = program || initialData || {};
   const [name, setName]           = useState(init.name ?? '');
@@ -115,7 +117,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
 
   // ── Save ──
   const handleSave = () => {
-    if (!name.trim()) { setLocalError('Program name is required.'); return; }
+    if (!name.trim()) { setLocalError(t('admin.programs.builder.nameRequired', 'Program name is required.')); return; }
     setLocalError('');
     onSave({ name: name.trim(), description: description.trim(), durationWeeks, weeks });
   };
@@ -159,7 +161,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
           <div>
-            <p id="edit-program-title" className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? 'Edit Program' : 'New Program'}</p>
+            <p id="edit-program-title" className="text-[16px] font-bold text-[#E5E7EB]">{isEdit ? t('admin.programs.builder.editProgram', 'Edit Program') : t('admin.programs.builder.newProgram', 'New Program')}</p>
             {avgSessionSecs > 0 && (
               <p className="text-[11px] text-[#6B7280] mt-0.5 flex items-center gap-1">
                 <Clock size={10} /> avg {fmtTime(avgSessionSecs)} per session
@@ -174,30 +176,30 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
 
           {/* Name */}
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Program Name</label>
+            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.programs.builder.programName', 'Program Name')}</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="e.g. 8-Week Strength Builder"
+              placeholder={t('admin.programs.builder.programNamePlaceholder', 'e.g. 8-Week Strength Builder')}
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Description</label>
+            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.programs.builder.description', 'Description')}</label>
             <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
-              placeholder="What will members achieve?"
+              placeholder={t('admin.programs.builder.descriptionPlaceholder', 'What will members achieve?')}
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
           </div>
 
           {/* Duration */}
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Duration</label>
+            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.programs.builder.duration', 'Duration')}</label>
             <div className="flex gap-2">
               {[4, 6, 8, 10, 12].map(w => (
                 <button key={w} onClick={() => setDuration(w)}
                   className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
                     durationWeeks === w ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
                   }`}>
-                  {w}w
+                  {w}{t('admin.programs.weeksShort', 'w')}
                 </button>
               ))}
             </div>
@@ -205,7 +207,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
 
           {/* Weekly schedule */}
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-3">Weekly Schedule</label>
+            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-3">{t('admin.programs.builder.weeklySchedule', 'Weekly Schedule')}</label>
             <div className="space-y-2">
               {allWeekNums.map(wk => {
                 const isOpen   = expandedWeeks.has(wk);
@@ -223,7 +225,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                         className="flex items-center gap-2 flex-1 text-left"
                       >
                         <ChevronDown size={14} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? '' : '-rotate-90'}`} />
-                        <span className="text-[13px] font-semibold text-[#E5E7EB]">Week {wk}</span>
+                        <span className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.programs.builder.weekN', 'Week {{n}}', { n: wk })}</span>
                         {!isOpen && (
                           <span className="text-[11px] text-[#6B7280] ml-1">
                             {days.length} day{days.length !== 1 ? 's' : ''}{totalEx > 0 ? ` \u00b7 ${totalEx} ex` : ''}{wkTime > 0 ? ` \u00b7 ~${fmtTime(wkTime / Math.max(days.length, 1))} avg` : ''}
@@ -237,20 +239,20 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                           onClick={() => { setCopyWeekMenu(showCopyWeek ? null : wk); setCopyDayMenu(null); }}
                           className="flex items-center gap-1 text-[11px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] px-2 py-1 rounded-lg hover:bg-white/6 transition-colors"
                         >
-                          <Copy size={11} /> Copy week
+                          <Copy size={11} /> {t('admin.programs.builder.copyWeek', 'Copy week')}
                         </button>
                         {showCopyWeek && (
                           <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[130px]">
-                            <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy Wk {wk} to...</p>
+                            <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">{t('admin.programs.builder.copyWkTo', 'Copy Wk {{n}} to...', { n: wk })}</p>
                             {allWeekNums.filter(w => w !== wk).map(targetWk => (
                               <button
                                 key={targetWk}
                                 onClick={() => copyWeekTo(wk, targetWk)}
                                 className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors"
                               >
-                                Week {targetWk}
+                                {t('admin.programs.builder.weekN', 'Week {{n}}', { n: targetWk })}
                                 {(weeks[targetWk] || []).length > 0 && (
-                                  <span className="text-[#6B7280] ml-1">(overwrite)</span>
+                                  <span className="text-[#6B7280] ml-1">({t('admin.programs.builder.overwrite', 'overwrite')})</span>
                                 )}
                               </button>
                             ))}
@@ -263,7 +265,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                     {isOpen && (
                       <div className="p-3 space-y-2">
                         {days.length === 0 && (
-                          <p className="text-[12px] text-[#6B7280] text-center py-2">No days yet — add one below</p>
+                          <p className="text-[12px] text-[#6B7280] text-center py-2">{t('admin.programs.builder.noDaysYet', 'No days yet — add one below')}</p>
                         )}
 
                         {days.map((day, di) => {
@@ -291,20 +293,20 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                   <button
                                     onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
                                     className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors p-0.5"
-                                    title="Copy day"
+                                    title={t('admin.programs.builder.copyDay', 'Copy day')}
                                   >
                                     <Copy size={12} />
                                   </button>
                                   {showCopyDay && (
                                     <div className="absolute right-0 top-full mt-1 z-20 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden min-w-[160px] max-h-48 overflow-y-auto">
-                                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">Copy day to...</p>
-                                      {dayTargets.map((t, idx) => (
+                                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest px-3 pt-2 pb-1">{t('admin.programs.builder.copyDayTo', 'Copy day to...')}</p>
+                                      {dayTargets.map((target, idx) => (
                                         <button
                                           key={idx}
-                                          onClick={() => copyDayTo(wk, di, t.wk, t.di)}
+                                          onClick={() => copyDayTo(wk, di, target.wk, target.di)}
                                           className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors"
                                         >
-                                          {t.label}
+                                          {target.label}
                                         </button>
                                       ))}
                                     </div>
@@ -321,7 +323,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                               {/* Exercises */}
                               <div className="px-3 pb-3 pt-1 space-y-1">
                                 {day.exercises.length === 0 && (
-                                  <p className="text-[11px] text-[#6B7280] py-1">No exercises yet</p>
+                                  <p className="text-[11px] text-[#6B7280] py-1">{t('admin.programs.builder.noExercisesYet', 'No exercises yet')}</p>
                                 )}
                                 {day.exercises.map((ex, ei) => (
                                   <div key={ei} className="flex items-center gap-2 md:gap-3 py-1.5 border-b border-white/4 last:border-0">
@@ -337,7 +339,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                         onClick={() => updateExercise(wk, di, ei, 'sets', (ex.sets ?? DEFAULT_SETS) + 1)}
                                         className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
                                       >+</button>
-                                      <span className="text-[10px] text-[#6B7280] w-5">sets</span>
+                                      <span className="text-[10px] text-[#6B7280] w-5">{t('admin.programs.builder.sets', 'sets')}</span>
                                     </div>
                                     {/* Rest */}
                                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -350,7 +352,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                         onClick={() => updateExercise(wk, di, ei, 'rest_seconds', (ex.rest_seconds ?? DEFAULT_REST) + 15)}
                                         className="w-5 h-5 rounded-md bg-white/6 text-[#9CA3AF] hover:bg-white/10 text-[11px] flex items-center justify-center"
                                       >+</button>
-                                      <span className="text-[10px] text-[#6B7280] w-5">rest</span>
+                                      <span className="text-[10px] text-[#6B7280] w-5">{t('admin.programs.builder.rest', 'rest')}</span>
                                     </div>
                                     <button
                                       onClick={() => removeExercise(wk, di, ei)}
@@ -367,7 +369,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                   onChange={e => { addExercise(wk, di, e.target.value); e.target.value = ''; }}
                                   className="w-full bg-transparent border border-white/6 rounded-lg px-3 py-1.5 text-[11px] text-[#6B7280] outline-none mt-1"
                                 >
-                                  <option value="">+ Add exercise</option>
+                                  <option value="">{t('admin.programs.builder.addExercise', '+ Add exercise')}</option>
                                   {exercises.map(ex => (
                                     <option key={ex.id} value={ex.id}>{ex.name}</option>
                                   ))}
@@ -381,7 +383,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                           onClick={() => addDay(wk)}
                           className="w-full py-2 text-[12px] font-semibold text-[#D4AF37] border border-[#D4AF37]/20 rounded-xl hover:bg-[#D4AF37]/5 transition-colors whitespace-nowrap"
                         >
-                          + Add Day
+                          {t('admin.programs.builder.addDay', '+ Add Day')}
                         </button>
                       </div>
                     )}
@@ -398,7 +400,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
         <div className="p-5 border-t border-white/6 flex-shrink-0">
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-50 hover:bg-[#C4A030] transition-colors">
-            {saving ? 'Saving\u2026' : isEdit ? 'Save Changes' : 'Create Program'}
+            {saving ? t('admin.programs.builder.saving', 'Saving\u2026') : isEdit ? t('admin.programs.builder.saveChanges', 'Save Changes') : t('admin.programs.builder.createProgram', 'Create Program')}
           </button>
         </div>
       </div>

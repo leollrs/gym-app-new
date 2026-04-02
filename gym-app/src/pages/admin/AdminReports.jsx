@@ -9,7 +9,9 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { downloadCSV } from '../../lib/exportData';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton } from '../../components/admin';
+import {
+  PageHeader, AdminCard, SectionLabel, FadeIn, AdminPageShell,
+} from '../../components/admin';
 
 // ── CSV helpers ──────────────────────────────────────────────
 function esc(value) {
@@ -102,7 +104,6 @@ async function exportMembers(gymId, from, to) {
   const { data, error } = await query;
   if (error) throw error;
 
-  // Try to join churn scores
   let churnMap = {};
   try {
     const { data: scores } = await supabase
@@ -288,9 +289,9 @@ async function exportPurchases(gymId, from, to) {
 
 async function exportClassBookings(gymId, from, to) {
   let query = supabase
-    .from('class_bookings')
-    .select('status, booked_at, checked_in_at, rating, class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
-    .eq('class_schedules.gym_classes.gym_id', gymId)
+    .from('gym_class_bookings')
+    .select('status, booked_at, checked_in_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
+    .eq('gym_class_schedules.gym_classes.gym_id', gymId)
     .order('booked_at', { ascending: false })
     .limit(10000);
   query = applyDateFilter(query, 'booked_at', from, to);
@@ -299,8 +300,8 @@ async function exportClassBookings(gymId, from, to) {
 
   const header = ['Member', 'Class', 'Day', 'Time', 'Status', 'Booked At', 'Checked In', 'Rating'].map(esc).join(',');
   const rows = (data ?? []).map(b => [
-    b.profiles?.full_name || '', b.class_schedules?.gym_classes?.name || '',
-    b.class_schedules?.day_of_week ?? '', b.class_schedules?.start_time || '',
+    b.profiles?.full_name || '', b.gym_class_schedules?.gym_classes?.name || '',
+    b.gym_class_schedules?.day_of_week ?? '', b.gym_class_schedules?.start_time || '',
     b.status || '', fmtDate(b.booked_at), fmtDate(b.checked_in_at), b.rating ?? '',
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
@@ -320,6 +321,61 @@ const EXPORT_FNS = {
   class_bookings: exportClassBookings,
 };
 
+// ── Report Card ─────────────────────────────────────────────
+function ReportCard({ def, exporting, onExport, t, delay }) {
+  const { key, icon: Icon, labelKey, descKey } = def;
+  const isActive = exporting === key;
+
+  return (
+    <FadeIn delay={delay}>
+      <AdminCard hover className="flex flex-col h-full">
+        {/* Icon + Title */}
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+            <Icon size={18} className="text-[#D4AF37]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-semibold text-[#E5E7EB] leading-tight mb-0.5">
+              {t(labelKey)}
+            </p>
+            <p className="text-[12px] text-[#6B7280] leading-relaxed">
+              {t(descKey)}
+            </p>
+          </div>
+        </div>
+
+        {/* Spacer to push button to bottom */}
+        <div className="flex-1" />
+
+        {/* Export button */}
+        <button
+          onClick={() => onExport(key)}
+          disabled={!!exporting}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all mt-3 ${
+            isActive
+              ? 'bg-[#D4AF37]/20 text-[#D4AF37] cursor-wait'
+              : exporting
+                ? 'bg-white/[0.02] text-[#6B7280] cursor-not-allowed opacity-50'
+                : 'bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 border border-[#D4AF37]/20 hover:border-[#D4AF37]/40'
+          }`}
+        >
+          {isActive ? (
+            <>
+              <div className="w-3.5 h-3.5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+              {t('admin.reports.exporting')}
+            </>
+          ) : (
+            <>
+              <Download size={14} />
+              {t('admin.reports.exportCSV')}
+            </>
+          )}
+        </button>
+      </AdminCard>
+    </FadeIn>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────
 export default function AdminReports() {
   const { t } = useTranslation('pages');
@@ -330,7 +386,7 @@ export default function AdminReports() {
   const [rangeKey, setRangeKey] = useState('30d');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [exporting, setExporting] = useState(null); // key of currently exporting
+  const [exporting, setExporting] = useState(null);
   const [history, setHistory] = useState(() => getExportHistory());
 
   const refreshHistory = useCallback(() => setHistory(getExportHistory()), []);
@@ -366,13 +422,9 @@ export default function AdminReports() {
     refreshHistory();
   }, [refreshHistory]);
 
-  const rangeLabel = useMemo(() => {
-    const preset = RANGE_PRESETS.find(r => r.key === rangeKey);
-    return preset ? t(preset.labelKey) : '';
-  }, [rangeKey, t]);
-
   return (
-    <div className="px-4 md:px-8 py-6 md:py-8 max-w-6xl mx-auto space-y-8">
+    <AdminPageShell size="narrow">
+      {/* ── Header ─────────────────────────────────────────── */}
       <FadeIn>
         <PageHeader
           title={t('admin.reports.title')}
@@ -380,165 +432,138 @@ export default function AdminReports() {
         />
       </FadeIn>
 
-      {/* ── Date Range Filter ─────────────────────────────────── */}
-      <FadeIn delay={0.05}>
-        <AdminCard>
-          <div className="flex items-center gap-2 mb-4">
-            <CalendarRange size={16} className="text-[#D4AF37]" />
-            <SectionLabel>{t('admin.reports.dateRange')}</SectionLabel>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {RANGE_PRESETS.map(preset => (
-              <button
-                key={preset.key}
-                onClick={() => setRangeKey(preset.key)}
-                className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
-                  rangeKey === preset.key
-                    ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                    : 'bg-white/[0.03] text-[#9CA3AF] border border-white/6 hover:border-white/10 hover:text-[#E5E7EB]'
-                }`}
-              >
-                {t(preset.labelKey)}
-              </button>
-            ))}
-          </div>
-          {rangeKey === 'custom' && (
-            <div className="flex flex-wrap gap-3 mt-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.from')}</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={e => setCustomFrom(e.target.value)}
-                  className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.to')}</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={e => setCustomTo(e.target.value)}
-                  className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
-                />
-              </div>
+      <div className="mt-6 space-y-8">
+        {/* ── Global Date Range ─────────────────────────────── */}
+        <FadeIn delay={0.05}>
+          <AdminCard>
+            <div className="flex items-center gap-2 mb-4">
+              <CalendarRange size={16} className="text-[#D4AF37]" />
+              <SectionLabel>{t('admin.reports.dateRange')}</SectionLabel>
             </div>
-          )}
-        </AdminCard>
-      </FadeIn>
-
-      {/* ── Quick Export Cards ─────────────────────────────────── */}
-      <FadeIn delay={0.1}>
-        <div className="flex items-center gap-2 mb-4">
-          <FileSpreadsheet size={16} className="text-[#D4AF37]" />
-          <SectionLabel>{t('admin.reports.quickExports')}</SectionLabel>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {EXPORT_DEFS.map(({ key, icon: Icon, labelKey, descKey }) => {
-            const isActive = exporting === key;
-            return (
-              <AdminCard key={key} className="flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-2.5 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                      <Icon size={16} className="text-[#D4AF37]" />
-                    </div>
-                    <p className="text-[13px] font-semibold text-[#E5E7EB] leading-tight">{t(labelKey)}</p>
-                  </div>
-                  <p className="text-[11px] text-[#6B7280] leading-relaxed mb-3">{t(descKey)}</p>
-                </div>
+            <div className="flex flex-wrap gap-2">
+              {RANGE_PRESETS.map(preset => (
                 <button
-                  onClick={() => handleExport(key)}
-                  disabled={!!exporting}
-                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all ${
-                    isActive
-                      ? 'bg-[#D4AF37]/20 text-[#D4AF37] cursor-wait'
-                      : exporting
-                        ? 'bg-white/[0.02] text-[#6B7280] cursor-not-allowed opacity-50'
-                        : 'bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 border border-[#D4AF37]/20 hover:border-[#D4AF37]/40'
+                  key={preset.key}
+                  onClick={() => setRangeKey(preset.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
+                    rangeKey === preset.key
+                      ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
+                      : 'bg-white/[0.03] text-[#9CA3AF] border border-white/6 hover:border-white/10 hover:text-[#E5E7EB]'
                   }`}
                 >
-                  {isActive ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-                      {t('admin.reports.exporting')}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={13} />
-                      {t('admin.reports.exportCSV')}
-                    </>
-                  )}
+                  {t(preset.labelKey)}
                 </button>
-              </AdminCard>
-            );
-          })}
-        </div>
-      </FadeIn>
+              ))}
+            </div>
+            {rangeKey === 'custom' && (
+              <div className="flex flex-wrap gap-3 mt-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.from')}</label>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={e => setCustomFrom(e.target.value)}
+                    className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.to')}</label>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={e => setCustomTo(e.target.value)}
+                    className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                  />
+                </div>
+              </div>
+            )}
+          </AdminCard>
+        </FadeIn>
 
-      {/* ── Export History ─────────────────────────────────────── */}
-      <FadeIn delay={0.15}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Clock size={16} className="text-[#D4AF37]" />
-            <SectionLabel>{t('admin.reports.exportHistory')}</SectionLabel>
+        {/* ── Report Cards Grid ────────────────────────────── */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <FileSpreadsheet size={16} className="text-[#D4AF37]" />
+            <SectionLabel>{t('admin.reports.quickExports')}</SectionLabel>
           </div>
-          {history.length > 0 && (
-            <button
-              onClick={handleClearHistory}
-              className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#EF4444] transition-colors"
-            >
-              <Trash2 size={12} />
-              {t('admin.reports.clearHistory')}
-            </button>
-          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {EXPORT_DEFS.map((def, idx) => (
+              <ReportCard
+                key={def.key}
+                def={def}
+                exporting={exporting}
+                onExport={handleExport}
+                t={t}
+                delay={0.08 + idx * 0.03}
+              />
+            ))}
+          </div>
         </div>
-        <AdminCard>
-          {history.length === 0 ? (
-            <div className="py-8 text-center">
-              <Clock size={24} className="mx-auto mb-2 text-[#6B7280]/40" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.reports.noHistory')}</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/6">
-              {history.map((entry, idx) => {
-                const def = EXPORT_DEFS.find(d => d.key === entry.key);
-                const Icon = def?.icon || FileSpreadsheet;
-                return (
-                  <div key={idx} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <div className="w-7 h-7 rounded-md bg-white/[0.04] flex items-center justify-center flex-shrink-0">
-                      <Icon size={14} className="text-[#9CA3AF]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{entry.filename}</p>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {entry.rows} {t('admin.reports.rows')} &middot; {new Date(entry.exportedAt).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </AdminCard>
-      </FadeIn>
 
-      {/* ── Scheduled Reports (Coming Soon) ───────────────────── */}
-      <FadeIn delay={0.2}>
-        <div className="flex items-center gap-2 mb-4">
-          <Timer size={16} className="text-[#D4AF37]" />
-          <SectionLabel>{t('admin.reports.scheduledReports')}</SectionLabel>
-        </div>
-        <AdminCard>
-          <div className="py-10 text-center">
-            <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
-              <Timer size={24} className="text-[#D4AF37]/50" />
+        {/* ── Export History ────────────────────────────────── */}
+        <FadeIn delay={0.2}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-[#D4AF37]" />
+              <SectionLabel>{t('admin.reports.exportHistory')}</SectionLabel>
             </div>
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">{t('admin.reports.comingSoon')}</p>
-            <p className="text-[12px] text-[#6B7280] max-w-xs mx-auto">{t('admin.reports.scheduledDesc')}</p>
+            {history.length > 0 && (
+              <button
+                onClick={handleClearHistory}
+                className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#EF4444] transition-colors"
+              >
+                <Trash2 size={12} />
+                {t('admin.reports.clearHistory')}
+              </button>
+            )}
           </div>
-        </AdminCard>
-      </FadeIn>
-    </div>
+          <AdminCard>
+            {history.length === 0 ? (
+              <div className="py-8 text-center">
+                <Clock size={24} className="mx-auto mb-2 text-[#6B7280]/40" />
+                <p className="text-[13px] text-[#6B7280]">{t('admin.reports.noHistory')}</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/6">
+                {history.map((entry, idx) => {
+                  const def = EXPORT_DEFS.find(d => d.key === entry.key);
+                  const EntryIcon = def?.icon || FileSpreadsheet;
+                  return (
+                    <div key={idx} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                        <EntryIcon size={14} className="text-[#9CA3AF]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{entry.filename}</p>
+                        <p className="text-[11px] text-[#6B7280]">
+                          {entry.rows} {t('admin.reports.rows')} &middot; {new Date(entry.exportedAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </AdminCard>
+        </FadeIn>
+
+        {/* ── Scheduled Reports (Coming Soon) ──────────────── */}
+        <FadeIn delay={0.25}>
+          <div className="flex items-center gap-2 mb-4">
+            <Timer size={16} className="text-[#D4AF37]" />
+            <SectionLabel>{t('admin.reports.scheduledReports')}</SectionLabel>
+          </div>
+          <AdminCard>
+            <div className="py-10 text-center">
+              <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
+                <Timer size={24} className="text-[#D4AF37]/50" />
+              </div>
+              <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">{t('admin.reports.comingSoon')}</p>
+              <p className="text-[12px] text-[#6B7280] max-w-xs mx-auto">{t('admin.reports.scheduledDesc')}</p>
+            </div>
+          </AdminCard>
+        </FadeIn>
+      </div>
+    </AdminPageShell>
   );
 }

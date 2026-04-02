@@ -216,9 +216,12 @@ export default function SmsManagement() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">SMS Management</h1>
-          <p className="text-[13px] text-[#6B7280] mt-0.5">{activeGyms} gym{activeGyms !== 1 ? 's' : ''} with number bundle · {totalSent} messages this month</p>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">SMS</h1>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">Messaging infrastructure and cost management</p>
         </div>
+        <button onClick={loadData} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors">
+          Refresh
+        </button>
       </div>
 
       {/* Summary cards */}

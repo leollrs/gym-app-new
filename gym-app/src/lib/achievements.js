@@ -407,6 +407,7 @@ export async function fetchAchievementData(userId, gymId, supabase) {
     { data: friendRows },
     { data: challengeRows },
     { data: profileRow },
+    { data: streakRow },
   ] = await Promise.all([
     supabase
       .from('workout_sessions')
@@ -432,11 +433,17 @@ export async function fetchAchievementData(userId, gymId, supabase) {
       .select('created_at')
       .eq('id', userId)
       .single(),
+    supabase
+      .from('streak_cache')
+      .select('current_streak_days')
+      .eq('profile_id', userId)
+      .maybeSingle(),
   ]);
 
   const sessions = sessionRows ?? [];
   const totalSessions = sessions.length;
-  const currentStreak = await getStreakWithProtections(userId, gymId, sessions, supabase);
+  // Read streak from streak_cache (single source of truth)
+  const currentStreak = streakRow?.current_streak_days ?? 0;
   const totalPRs = (prRows ?? []).length;
   const friendCount = (friendRows ?? []).length;
   const totalVolumeLbs = sessions.reduce(

@@ -5,8 +5,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { format, subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
+import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, AdminCard, Avatar, SectionLabel, ErrorCard, Skeleton } from '../../components/admin';
 import AddTrainerModal from './components/AddTrainerModal';
@@ -18,19 +20,20 @@ const fetchTrainerData = async (gymId) => {
   const now = new Date();
   const thirtyDaysAgo = subDays(now, 30).toISOString();
 
-  const [
-    { data: trainerRows },
-    { data: tcRows },
-    { data: recentSessions },
-    { data: memberRows },
-    { data: churnRows },
-  ] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, email, created_at').eq('gym_id', gymId).eq('role', 'trainer'),
-    supabase.from('trainer_clients').select('trainer_id, client_id, is_active, notes, created_at').eq('gym_id', gymId),
+  const results = await Promise.allSettled([
+    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'trainer'),
+    supabase.from('trainer_clients').select('trainer_id, client_id, is_active, notes, assigned_at').eq('gym_id', gymId),
     supabase.from('workout_sessions').select('profile_id').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', thirtyDaysAgo),
-    supabase.from('profiles').select('id, full_name, email').eq('gym_id', gymId).eq('role', 'member'),
+    supabase.from('profiles').select('id, full_name, username').eq('gym_id', gymId).eq('role', 'member'),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier').eq('gym_id', gymId),
   ]);
+
+  const extract = (r) => (r.status === 'fulfilled' ? r.value?.data ?? [] : []);
+  const trainerRows = extract(results[0]);
+  const tcRows = extract(results[1]);
+  const recentSessions = extract(results[2]);
+  const memberRows = extract(results[3]);
+  const churnRows = extract(results[4]);
 
   const members = memberRows || [];
 
@@ -61,12 +64,12 @@ const fetchTrainerData = async (gymId) => {
       return {
         id: tc.client_id,
         name: member?.full_name || 'Unknown',
-        email: member?.email || '',
+        username: member?.username || '',
         sessions30d: sessionCountMap[tc.client_id] || 0,
         isActive: activeMembers.has(tc.client_id),
         churnScore: churn?.score ?? null,
         churnTier: churn?.risk_tier ?? null,
-        assignedAt: tc.created_at,
+        assignedAt: tc.assigned_at,
         notes: tc.notes,
       };
     });
@@ -79,7 +82,7 @@ const fetchTrainerData = async (gymId) => {
     return {
       id: t.id,
       name: t.full_name || 'Unnamed',
-      email: t.email || '',
+      username: t.username || '',
       createdAt: t.created_at,
       clientCount,
       retention,
@@ -105,11 +108,13 @@ const tierColor = (tier) => {
 // ── MAIN ──────────────────────────────────────────────────────────────────
 
 export default function AdminTrainers() {
+  const { t } = useTranslation('pages');
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
+  const { showToast } = useToast();
 
-  useEffect(() => { document.title = 'Admin - Trainers | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('admin.trainers.pageTitle', 'Admin - Trainers | TuGymPR'); }, [t]);
 
   const [expanded, setExpanded]         = useState(null);
   const [showAssign, setShowAssign]     = useState(null);
@@ -131,53 +136,75 @@ export default function AdminTrainers() {
   // Assign a member to a trainer
   const assignClient = async (trainerId, memberId) => {
     setAssigning(true);
-    await supabase.from('trainer_clients').upsert({
-      trainer_id: trainerId,
-      client_id: memberId,
-      gym_id: gymId,
-      is_active: true,
-    }, { onConflict: 'trainer_id,client_id' });
-    await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
-    setAssigning(false);
+    try {
+      const { error } = await supabase.from('trainer_clients').upsert({
+        trainer_id: trainerId,
+        client_id: memberId,
+        gym_id: gymId,
+        is_active: true,
+      }, { onConflict: 'trainer_id,client_id' });
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    } catch (err) {
+      showToast(err.message || t('admin.trainers.assignError', 'Failed to assign client'), 'error');
+    } finally {
+      setAssigning(false);
+    }
   };
 
   // Unassign a client from a trainer
   const unassignClient = async (trainerId, clientId) => {
-    await supabase
-      .from('trainer_clients')
-      .update({ is_active: false })
-      .eq('trainer_id', trainerId)
-      .eq('client_id', clientId)
-      .eq('gym_id', gymId);
-    await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    try {
+      const { error } = await supabase
+        .from('trainer_clients')
+        .update({ is_active: false })
+        .eq('trainer_id', trainerId)
+        .eq('client_id', clientId)
+        .eq('gym_id', gymId);
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    } catch (err) {
+      showToast(err.message || t('admin.trainers.unassignError', 'Failed to unassign client'), 'error');
+    }
   };
 
   // Promote a member to trainer role
   const promoteToTrainer = async (memberId) => {
-    await supabase
-      .from('profiles')
-      .update({ role: 'trainer' })
-      .eq('id', memberId)
-      .eq('gym_id', gymId);
-    setShowAddTrainer(false);
-    await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: 'trainer' })
+        .eq('id', memberId)
+        .eq('gym_id', gymId);
+      if (error) throw error;
+      setShowAddTrainer(false);
+      await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    } catch (err) {
+      showToast(err.message || t('admin.trainers.promoteError', 'Failed to promote member'), 'error');
+    }
   };
 
   // Demote trainer back to member
   const demoteToMember = async (trainerId) => {
-    await supabase
-      .from('trainer_clients')
-      .update({ is_active: false })
-      .eq('trainer_id', trainerId)
-      .eq('gym_id', gymId);
-    await supabase
-      .from('profiles')
-      .update({ role: 'member' })
-      .eq('id', trainerId)
-      .eq('gym_id', gymId);
-    setConfirmDemote(null);
-    setExpanded(null);
-    await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    try {
+      const { error: deactivateErr } = await supabase
+        .from('trainer_clients')
+        .update({ is_active: false })
+        .eq('trainer_id', trainerId)
+        .eq('gym_id', gymId);
+      if (deactivateErr) throw deactivateErr;
+      const { error: demoteErr } = await supabase
+        .from('profiles')
+        .update({ role: 'member' })
+        .eq('id', trainerId)
+        .eq('gym_id', gymId);
+      if (demoteErr) throw demoteErr;
+      setConfirmDemote(null);
+      setExpanded(null);
+      await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
+    } catch (err) {
+      showToast(err.message || t('admin.trainers.demoteError', 'Failed to demote trainer'), 'error');
+    }
   };
 
   // Members not assigned to this trainer
@@ -185,18 +212,18 @@ export default function AdminTrainers() {
     const assigned = new Set((clientMap[trainerId] || []).map(c => c.id));
     return allMembers.filter(m =>
       !assigned.has(m.id) &&
-      (m.full_name?.toLowerCase().includes(search.toLowerCase()) || m.email?.toLowerCase().includes(search.toLowerCase()))
+      (m.full_name?.toLowerCase().includes(search.toLowerCase()) || m.username?.toLowerCase().includes(search.toLowerCase()))
     );
   };
 
   const handleExport = () => {
     const rows = [];
-    trainers.forEach(t => {
-      (clientMap[t.id] || []).forEach(c => {
+    trainers.forEach(tr => {
+      (clientMap[tr.id] || []).forEach(c => {
         rows.push({
-          trainer: t.name,
+          trainer: tr.name,
           client: c.name,
-          email: c.email,
+          username: c.username,
           sessions30d: c.sessions30d,
           churnScore: c.churnScore ?? '',
           churnTier: c.churnTier ?? '',
@@ -206,25 +233,25 @@ export default function AdminTrainers() {
     exportCSV({
       filename: 'trainers',
       columns: [
-        { key: 'trainer', label: 'Trainer' },
-        { key: 'client', label: 'Client' },
-        { key: 'email', label: 'Email' },
-        { key: 'sessions30d', label: 'Sessions (30d)' },
-        { key: 'churnScore', label: 'Churn Score' },
-        { key: 'churnTier', label: 'Churn Tier' },
+        { key: 'trainer', label: t('admin.trainers.csvTrainer') },
+        { key: 'client', label: t('admin.trainers.csvClient') },
+        { key: 'email', label: t('admin.trainers.csvEmail') },
+        { key: 'sessions30d', label: t('admin.trainers.csvSessions30d') },
+        { key: 'churnScore', label: t('admin.trainers.csvChurnScore') },
+        { key: 'churnTier', label: t('admin.trainers.csvChurnTier') },
       ],
       data: rows,
     });
   };
 
-  const demoteTrainer = confirmDemote ? trainers.find(t => t.id === confirmDemote) : null;
+  const demoteTrainer = confirmDemote ? trainers.find(tr => tr.id === confirmDemote) : null;
   const demoteClientCount = confirmDemote ? (clientMap[confirmDemote] || []).length : 0;
 
   return (
     <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
-        title="Trainers"
-        subtitle="Manage trainers and their client assignments"
+        title={t('admin.trainers.title')}
+        subtitle={t('admin.trainers.subtitle')}
         className="mb-6"
         actions={
           <>
@@ -233,14 +260,14 @@ export default function AdminTrainers() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
             >
               <Download size={13} />
-              Export
+              {t('admin.trainers.export')}
             </button>
             <button
               onClick={() => setShowAddTrainer(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors whitespace-nowrap"
             >
               <Plus size={13} />
-              Add Trainer
+              {t('admin.trainers.addTrainer')}
             </button>
           </>
         }
@@ -251,18 +278,18 @@ export default function AdminTrainers() {
           <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : error ? (
-        <ErrorCard message="Failed to load trainer data" onRetry={refetch} />
+        <ErrorCard message={t('admin.trainers.loadError')} onRetry={refetch} />
       ) : trainers.length === 0 ? (
         <AdminCard className="p-12 text-center">
           <Users size={28} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#9CA3AF] font-medium">No trainers yet</p>
-          <p className="text-[12px] text-[#6B7280] mt-1">Promote a member to get started</p>
+          <p className="text-[14px] text-[#9CA3AF] font-medium">{t('admin.trainers.emptyTitle')}</p>
+          <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.trainers.emptyDesc')}</p>
           <button
             onClick={() => setShowAddTrainer(true)}
             className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] text-[#0A0D14] hover:bg-[#E5C44D] transition-colors whitespace-nowrap"
           >
             <Plus size={13} />
-            Add Trainer
+            {t('admin.trainers.addTrainer')}
           </button>
         </AdminCard>
       ) : (
@@ -270,10 +297,10 @@ export default function AdminTrainers() {
           {/* Summary stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             {[
-              { label: 'Total Trainers', value: trainers.length, color: '#D4AF37' },
-              { label: 'Total Clients', value: trainers.reduce((s, t) => s + t.clientCount, 0), color: '#3B82F6' },
-              { label: 'Avg Client Retention', value: `${trainers.length > 0 ? Math.round(trainers.reduce((s, t) => s + t.retention, 0) / trainers.length) : 0}%`, color: '#10B981' },
-              { label: 'Client Sessions (30d)', value: trainers.reduce((s, t) => s + t.totalSessions, 0), color: '#8B5CF6' },
+              { label: t('admin.trainers.totalTrainers'), value: trainers.length, color: '#D4AF37' },
+              { label: t('admin.trainers.totalClients'), value: trainers.reduce((s, tr) => s + tr.clientCount, 0), color: '#3B82F6' },
+              { label: t('admin.trainers.avgRetention'), value: `${trainers.length > 0 ? Math.round(trainers.reduce((s, tr) => s + tr.retention, 0) / trainers.length) : 0}%`, color: '#10B981' },
+              { label: t('admin.trainers.clientSessions30d'), value: trainers.reduce((s, tr) => s + tr.totalSessions, 0), color: '#8B5CF6' },
             ].map((s, i) => (
               <AdminCard key={i} hover borderLeft={s.color}>
                 <p className="text-[22px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{s.value}</p>
@@ -284,33 +311,33 @@ export default function AdminTrainers() {
 
           {/* Trainer cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {trainers.map(t => {
-              const isExpanded = expanded === t.id;
-              const clients = clientMap[t.id] || [];
+            {trainers.map(tr => {
+              const isExpanded = expanded === tr.id;
+              const clients = clientMap[tr.id] || [];
               return (
-                <AdminCard key={t.id} hover padding="p-0" className="overflow-hidden">
+                <AdminCard key={tr.id} hover padding="p-0" className="overflow-hidden">
                   {/* Trainer header */}
                   <div
                     className="flex items-center gap-3 px-4 py-3.5 cursor-pointer"
-                    onClick={() => setExpanded(isExpanded ? null : t.id)}
+                    onClick={() => setExpanded(isExpanded ? null : tr.id)}
                   >
-                    <Avatar name={t.name} size="md" variant="accent" />
+                    <Avatar name={tr.name} size="md" variant="accent" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{t.name}</p>
-                      <p className="text-[11px] text-[#6B7280] truncate">{t.email}</p>
+                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{tr.name}</p>
+                      {tr.username && <p className="text-[11px] text-[#6B7280] truncate">@{tr.username}</p>}
                     </div>
                     <div className="flex items-center gap-4 mr-2">
                       <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{t.clientCount}</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">clients</p>
+                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.clientCount}</p>
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.clients')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#10B981] leading-none tabular-nums">{t.retention}%</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">retention</p>
+                        <p className="text-[16px] font-bold text-[#10B981] leading-none tabular-nums">{tr.retention}%</p>
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.retention')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{t.avgWorkouts}</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">wk/client</p>
+                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.avgWorkouts}</p>
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.wkPerClient')}</p>
                       </div>
                     </div>
                     <ChevronDown size={16} className={`text-[#6B7280] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -321,27 +348,27 @@ export default function AdminTrainers() {
                     <div className="overflow-hidden">
                       <div className="px-4 pb-4 border-t border-white/6">
                         <div className="flex items-center justify-between mt-3 mb-2">
-                          <SectionLabel>Clients ({clients.length})</SectionLabel>
+                          <SectionLabel>{t('admin.trainers.clientsCount', { count: clients.length })}</SectionLabel>
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={(e) => { e.stopPropagation(); setConfirmDemote(t.id); }}
+                              onClick={(e) => { e.stopPropagation(); setConfirmDemote(tr.id); }}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#EF4444]/70 hover:bg-[#EF4444]/10 hover:text-[#EF4444] transition-colors whitespace-nowrap"
                             >
                               <X size={12} />
-                              Remove Trainer
+                              {t('admin.trainers.removeTrainer')}
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === t.id ? null : t.id); setSearch(''); }}
+                              onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === tr.id ? null : tr.id); setSearch(''); }}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap"
                             >
                               <UserPlus size={12} />
-                              Assign Client
+                              {t('admin.trainers.assignClient')}
                             </button>
                           </div>
                         </div>
 
                         {/* Assign client dropdown */}
-                        {showAssign === t.id && (
+                        {showAssign === tr.id && (
                           <div className="mb-3 bg-[#111827] border border-white/8 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-2">
                               <Search size={13} className="text-[#6B7280]" />
@@ -349,34 +376,34 @@ export default function AdminTrainers() {
                                 type="text"
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
-                                placeholder="Search members..."
-                                aria-label="Search members"
+                                placeholder={t('admin.trainers.searchMembers')}
+                                aria-label={t('admin.trainers.searchMembers')}
                                 className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
                                 autoFocus
                               />
-                              <button onClick={() => setShowAssign(null)} aria-label="Close member search" className="text-[#6B7280] hover:text-[#9CA3AF] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+                              <button onClick={() => setShowAssign(null)} aria-label={t('admin.trainers.closeMemberSearch')} className="text-[#6B7280] hover:text-[#9CA3AF] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                                 <X size={14} />
                               </button>
                             </div>
                             <div className="max-h-40 overflow-y-auto space-y-0.5">
-                              {unassignedMembers(t.id).slice(0, 20).map(m => (
+                              {unassignedMembers(tr.id).slice(0, 20).map(m => (
                                 <button
                                   key={m.id}
                                   disabled={assigning}
-                                  onClick={() => assignClient(t.id, m.id)}
+                                  onClick={() => assignClient(tr.id, m.id)}
                                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left hover:bg-white/5 transition-colors disabled:opacity-50"
                                 >
                                   <Avatar name={m.full_name} size="sm" variant="neutral" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-[12px] text-[#E5E7EB] truncate">{m.full_name}</p>
-                                    <p className="text-[10px] text-[#6B7280] truncate">{m.email}</p>
+                                    {m.username && <p className="text-[10px] text-[#6B7280] truncate">@{m.username}</p>}
                                   </div>
                                   <UserPlus size={12} className="text-[#6B7280] flex-shrink-0" />
                                 </button>
                               ))}
-                              {unassignedMembers(t.id).length === 0 && (
+                              {unassignedMembers(tr.id).length === 0 && (
                                 <p className="text-[11px] text-[#6B7280] text-center py-2">
-                                  {search ? 'No matching members' : 'All members assigned'}
+                                  {search ? t('admin.trainers.noMatchingMembers') : t('admin.trainers.allMembersAssigned')}
                                 </p>
                               )}
                             </div>
@@ -385,7 +412,7 @@ export default function AdminTrainers() {
 
                         {/* Client rows */}
                         {clients.length === 0 ? (
-                          <p className="text-[12px] text-[#6B7280] text-center py-4">No clients assigned</p>
+                          <p className="text-[12px] text-[#6B7280] text-center py-4">{t('admin.trainers.noClientsAssigned')}</p>
                         ) : (
                           <div className="space-y-1">
                             {clients.map(c => {
@@ -395,7 +422,7 @@ export default function AdminTrainers() {
                                   <Avatar name={c.name} size="sm" variant="neutral" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{c.name}</p>
-                                    <p className="text-[10px] text-[#6B7280] truncate">{c.email}</p>
+                                    {c.username && <p className="text-[10px] text-[#6B7280] truncate">@{c.username}</p>}
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <div className="text-right hidden md:block">
@@ -403,7 +430,7 @@ export default function AdminTrainers() {
                                     </div>
                                     <div className="text-right">
                                       <p className="text-[12px] font-semibold text-[#E5E7EB] tabular-nums">{c.sessions30d}</p>
-                                      <p className="text-[9px] text-[#6B7280]">sessions</p>
+                                      <p className="text-[9px] text-[#6B7280]">{t('admin.trainers.sessions')}</p>
                                     </div>
                                     {tier && c.churnScore !== null && (
                                       <span
@@ -414,13 +441,13 @@ export default function AdminTrainers() {
                                       </span>
                                     )}
                                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.isActive ? 'bg-emerald-400' : 'bg-[#4B5563]'}`}
-                                      title={c.isActive ? 'Active (30d)' : 'Inactive'}
+                                      title={c.isActive ? t('admin.trainers.active30d') : t('admin.trainers.inactive')}
                                     />
                                     <button
-                                      onClick={() => unassignClient(t.id, c.id)}
+                                      onClick={() => unassignClient(tr.id, c.id)}
                                       className="opacity-0 group-hover:opacity-100 text-[#6B7280] hover:text-[#EF4444] transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                                      title="Unassign client"
-                                      aria-label="Unassign client"
+                                      title={t('admin.trainers.unassignClient')}
+                                      aria-label={t('admin.trainers.unassignClient')}
                                     >
                                       <X size={13} />
                                     </button>

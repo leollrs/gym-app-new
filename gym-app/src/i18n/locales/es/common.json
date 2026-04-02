@@ -30,7 +30,6 @@
   "somethingWentWrong": "Algo salió mal. Por favor, inténtalo de nuevo.",
   "required": "Requerido",
   "optional": "opcional",
-
   "nav": {
     "home": "Inicio",
     "workouts": "Entrenos",
@@ -41,7 +40,6 @@
     "notifications": "Notificaciones",
     "profile": "Perfil"
   },
-
   "adminNav": {
     "main": "PRINCIPAL",
     "overview": "Resumen",
@@ -63,6 +61,7 @@
     "segments": "Segmentos",
     "referrals": "Referidos",
     "nps": "Opiniones",
+    "emailTemplates": "Plantillas de Email",
     "system": "SISTEMA",
     "moderation": "Moderación",
     "auditLog": "Registro de Acciones",
@@ -73,9 +72,11 @@
     "signOut": "Cerrar sesión",
     "morePages": "Más Páginas",
     "more": "Más",
-    "skipToMain": "Saltar al contenido principal"
+    "skipToMain": "Saltar al contenido principal",
+    "abTesting": "Pruebas A/B",
+    "rewards": "Recompensas",
+    "search": "Buscar páginas..."
   },
-
   "days": {
     "mon": "Lun",
     "tue": "Mar",
@@ -91,15 +92,21 @@
     "friday": "Viernes",
     "saturday": "Sábado",
     "sunday": "Domingo",
-    "initials": ["D", "L", "M", "M", "J", "V", "S"]
+    "initials": [
+      "D",
+      "L",
+      "M",
+      "M",
+      "J",
+      "V",
+      "S"
+    ]
   },
-
   "language": {
     "label": "Language / Idioma",
     "en": "English",
     "es": "Español"
   },
-
   "trainerNav": {
     "dashboard": "Panel",
     "clients": "Clientes",
@@ -109,29 +116,27 @@
     "programs": "Programas",
     "classes": "Mis Clases"
   },
-
   "platformNav": {
     "main": "PRINCIPAL",
     "tools": "HERRAMIENTAS",
     "system": "SISTEMA",
+    "operations": "Operaciones",
     "gyms": "Gimnasios",
+    "support": "Soporte",
     "analytics": "Analíticas",
     "members": "Buscar Miembro",
     "sms": "SMS",
     "auditLog": "Registro de Auditoría",
-    "errorLogs": "Registro de Errores",
+    "errorLogs": "Errores",
     "settings": "Configuración"
   },
-
   "filters": "Filtros",
   "collapse": "Contraer",
   "expand": "Expandir",
   "enable": "Activar",
   "disable": "Desactivar",
-
   "privacyPolicy": "Política de Privacidad",
   "termsOfService": "Términos de Servicio",
-
   "notifications": {
     "timeToTrain": "¡Hora de entrenar!",
     "todayIsTrainingDay": "Hoy es {{day}} — uno de tus días de entrenamiento. ¡Vamos a por ello!",

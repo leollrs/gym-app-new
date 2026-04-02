@@ -226,11 +226,36 @@ export default function AuditLog() {
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-[20px] font-semibold text-[#E5E7EB] truncate">Audit Log</h1>
-        <p className="text-[13px] text-[#6B7280] mt-1">
-          Chronological log of all important actions across the platform
-        </p>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Audit Log</h1>
+        <p className="text-[12px] text-[#6B7280] mt-0.5">Important platform actions and changes</p>
       </div>
+
+      {/* Summary strip */}
+      {!loading && entries.length > 0 && (
+        <div className="grid grid-cols-3 md:grid-cols-3 gap-2.5 mb-6">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount}</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Total Actions</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
+              {[...new Set(entries.map(e => e.actor?.full_name).filter(Boolean))].length}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Active Actors</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums truncate">
+              {(() => {
+                const actionCounts = {};
+                entries.forEach(e => { actionCounts[e.action] = (actionCounts[e.action] || 0) + 1; });
+                const top = Object.entries(actionCounts).sort((a, b) => b[1] - a[1])[0];
+                return top ? (ACTION_CONFIG[top[0]]?.label || top[0]) : '—';
+              })()}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Top Action</p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">

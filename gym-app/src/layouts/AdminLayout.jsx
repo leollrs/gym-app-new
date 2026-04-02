@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Target, Search,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +24,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/admin/churn',        labelKey: 'adminNav.churnIntel',   icon: AlertTriangle },
       { to: '/admin/segments',    labelKey: 'adminNav.segments',      icon: Filter },
+      { to: '/admin/ab-testing', labelKey: 'adminNav.abTesting',    icon: FlaskConical },
       { to: '/admin/analytics',    labelKey: 'adminNav.analytics',     icon: TrendingUp },
     ],
   },
@@ -38,10 +39,12 @@ const NAV_SECTIONS = [
       { to: '/admin/messages',      labelKey: 'adminNav.messages',      icon: MessageSquare },
       { to: '/admin/classes',      labelKey: 'adminNav.classes',       icon: CalendarDays, requiresConfig: 'classesEnabled' },
       { to: '/admin/store',        labelKey: 'adminNav.store',         icon: ShoppingBag },
+      { to: '/admin/rewards',      labelKey: 'adminNav.rewards',       icon: Award },
       { to: '/admin/revenue',     labelKey: 'adminNav.revenue',       icon: DollarSign },
       { to: '/admin/announcements',labelKey: 'adminNav.announcements', icon: Megaphone },
       { to: '/admin/referrals',  labelKey: 'adminNav.referrals',     icon: Gift },
       { to: '/admin/nps',        labelKey: 'adminNav.nps',            icon: MessageCircle },
+      { to: '/admin/email-templates', labelKey: 'adminNav.emailTemplates', icon: Palette },
     ],
   },
   {

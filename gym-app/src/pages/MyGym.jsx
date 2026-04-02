@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, Clock, MapPin, Calendar, Megaphone, Info, CalendarCheck, ChevronRight } from 'lucide-react';
+import { ChevronLeft, Clock, MapPin, Calendar, Megaphone, Info, CalendarCheck, ChevronRight, Tag } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { sanitize } from '../lib/sanitize';
@@ -15,6 +15,15 @@ const ANN_COLOR = {
   challenge: 'var(--color-success)',
   maintenance: 'var(--color-danger)',
   news: 'var(--color-blue)',
+};
+
+const OFFER_TYPE_COLOR = {
+  discount: '#EF4444',
+  free_trial: '#10B981',
+  bundle: '#8B5CF6',
+  class_pass: '#3B82F6',
+  bring_friend: '#F59E0B',
+  custom: '#6B7280',
 };
 
 const fmtTime = (timeStr, use24h) => {
@@ -38,6 +47,7 @@ export default function MyGym() {
   const [holidays, setHolidays] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [upcomingClasses, setUpcomingClasses] = useState([]);
+  const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -72,6 +82,16 @@ export default function MyGym() {
           .limit(3);
         setUpcomingClasses(classRes.data || []);
       }
+
+      // Fetch active offers
+      const offersRes = await supabase
+        .from('gym_offers')
+        .select('*')
+        .eq('gym_id', profile.gym_id)
+        .eq('is_active', true)
+        .or('valid_until.is.null,valid_until.gte.' + new Date().toISOString().slice(0, 10))
+        .order('sort_order');
+      setOffers(offersRes.data || []);
 
       setLoading(false);
     };
@@ -282,6 +302,60 @@ export default function MyGym() {
             </div>
           )}
         </section>
+
+        {/* Offers */}
+        {offers.length > 0 && (
+          <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <Tag size={16} style={{ color: 'var(--color-accent)' }} />
+              <h2 className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('myGym.offers')}</h2>
+            </div>
+            <div className="space-y-3">
+              {offers.map(offer => {
+                const title = isEs && offer.title_es ? offer.title_es : offer.title;
+                const description = isEs && offer.description_es ? offer.description_es : offer.description;
+                const typeColor = OFFER_TYPE_COLOR[offer.offer_type] || OFFER_TYPE_COLOR.custom;
+                return (
+                  <div
+                    key={offer.id}
+                    className="relative rounded-xl p-4"
+                    style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+                  >
+                    {/* Badge label */}
+                    {offer.badge_label && (
+                      <span
+                        className="absolute top-3 right-3 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-white"
+                        style={{ backgroundColor: typeColor }}
+                      >
+                        {offer.badge_label}
+                      </span>
+                    )}
+                    {/* Title */}
+                    <p className="text-[14px] font-semibold pr-16 mb-1" style={{ color: 'var(--color-text-primary)' }}>{title}</p>
+                    {/* Description */}
+                    {description && (
+                      <p className="text-[12px] leading-relaxed mb-2" style={{ color: 'var(--color-text-muted)' }}>{description}</p>
+                    )}
+                    {/* Footer: valid date + type badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px]" style={{ color: 'var(--color-text-faint)' }}>
+                        {offer.valid_until
+                          ? `${t('myGym.validUntil')} ${format(new Date(offer.valid_until + 'T00:00:00'), 'MMM d', dateFnsLocale)}`
+                          : t('myGym.noExpiry')}
+                      </span>
+                      <span
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: `${typeColor}18`, color: typeColor }}
+                      >
+                        {offer.offer_type?.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
       </div>
     </div>

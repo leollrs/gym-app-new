@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trophy, Gift } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Trophy, Gift, ChevronDown } from 'lucide-react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
@@ -14,9 +14,9 @@ const CHALLENGE_TYPES = [
 ];
 
 const DEFAULT_REWARDS = [
-  { place: '1st', points: 500, prize: '' },
-  { place: '2nd', points: 300, prize: '' },
-  { place: '3rd', points: 150, prize: '' },
+  { place: '1st', points: 500, prize: '', product_id: null, prizeType: 'none' },
+  { place: '2nd', points: 300, prize: '', product_id: null, prizeType: 'none' },
+  { place: '3rd', points: 150, prize: '', product_id: null, prizeType: 'none' },
 ];
 
 /**
@@ -28,6 +28,21 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!challenge;
+
+  // ── Fetch gym products for prize selector ──
+  const { data: gymProducts = [] } = useQuery({
+    queryKey: ['gym_products', gymId, 'active'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('gym_products')
+        .select('id, name, emoji_icon')
+        .eq('gym_id', gymId)
+        .eq('is_active', true)
+        .order('name');
+      return data || [];
+    },
+    enabled: !!gymId,
+  });
 
   // ── Derive initial form values ──
   const initialForm = () => {
@@ -44,11 +59,18 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
       const parsed = challenge.reward_description ? JSON.parse(challenge.reward_description) : null;
       if (parsed && Array.isArray(parsed)) {
         enableRewards = true;
-        rewards = parsed.map((r, i) => ({
-          place: r.place || ['1st', '2nd', '3rd'][i],
-          points: r.points || 0,
-          prize: r.prize || '',
-        }));
+        rewards = parsed.map((r, i) => {
+          let prizeType = 'none';
+          if (r.product_id) prizeType = 'product';
+          else if (r.prize) prizeType = 'custom';
+          return {
+            place: r.place || ['1st', '2nd', '3rd'][i],
+            points: r.points || 0,
+            prize: r.prize || '',
+            product_id: r.product_id || null,
+            prizeType,
+          };
+        });
       }
     } catch { /* ignore parse errors */ }
     const toLocal = (iso) => {
@@ -108,7 +130,17 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
     }
     setError('');
     const rewardData = form.enableRewards
-      ? JSON.stringify(form.rewards.map(r => ({ place: r.place, points: r.points, prize: r.prize || null })))
+      ? JSON.stringify(form.rewards.map(r => {
+          const entry = { place: r.place, points: r.points, prize: null, product_id: null };
+          if (r.prizeType === 'product' && r.product_id) {
+            const product = gymProducts.find(p => p.id === r.product_id);
+            entry.prize = product?.name || 'Product';
+            entry.product_id = r.product_id;
+          } else if (r.prizeType === 'custom' && r.prize) {
+            entry.prize = r.prize;
+          }
+          return entry;
+        }))
       : null;
 
     const payload = {
@@ -133,6 +165,23 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
   };
 
   const medals = ['🥇', '🥈', '🥉'];
+
+  const handlePrizeTypeChange = (index, prizeType) => {
+    const updated = [...form.rewards];
+    updated[index] = {
+      ...updated[index],
+      prizeType,
+      prize: prizeType === 'custom' ? updated[index].prize : '',
+      product_id: prizeType === 'product' ? updated[index].product_id : null,
+    };
+    set('rewards', updated);
+  };
+
+  const handleProductChange = (index, productId) => {
+    const updated = [...form.rewards];
+    updated[index] = { ...updated[index], product_id: productId || null };
+    set('rewards', updated);
+  };
 
   return (
     <AdminModal
@@ -212,22 +261,66 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6 overflow-hidden">
             <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide">Reward per placement</p>
             {form.rewards.map((r, i) => (
-              <div key={r.place} className="flex items-center gap-3">
-                <span className="text-[16px] w-6 text-center">{medals[i]}</span>
-                <div className="flex-1 flex gap-2">
-                  <div className="w-24">
-                    <input
-                      type="number" min={0} value={r.points}
-                      onChange={e => {
-                        const updated = [...form.rewards];
-                        updated[i] = { ...r, points: parseInt(e.target.value) || 0 };
-                        set('rewards', updated);
-                      }}
-                      className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"
-                    />
-                    <p className="text-[10px] text-[#6B7280] text-center mt-0.5">points</p>
+              <div key={r.place} className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-[16px] w-6 text-center">{medals[i]}</span>
+                  <div className="flex-1 flex gap-2">
+                    <div className="w-24">
+                      <input
+                        type="number" min={0} value={r.points}
+                        onChange={e => {
+                          const updated = [...form.rewards];
+                          updated[i] = { ...r, points: parseInt(e.target.value) || 0 };
+                          set('rewards', updated);
+                        }}
+                        className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"
+                      />
+                      <p className="text-[10px] text-[#6B7280] text-center mt-0.5">points</p>
+                    </div>
+                    <div className="flex-1">
+                      <div className="relative">
+                        <select
+                          value={r.prizeType}
+                          onChange={e => handlePrizeTypeChange(i, e.target.value)}
+                          className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none pr-8 cursor-pointer"
+                        >
+                          <option value="none">{t('admin.challenges.noPrize', 'Points only')}</option>
+                          {gymProducts.length > 0 && (
+                            <option value="product">{t('admin.challenges.selectProduct', 'Select product')}</option>
+                          )}
+                          <option value="custom">{t('admin.challenges.customPrize', 'Custom prize')}</option>
+                        </select>
+                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
+                      </div>
+                      <p className="text-[10px] text-[#6B7280] mt-0.5">prize (optional)</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
+                </div>
+
+                {/* Product selector */}
+                {r.prizeType === 'product' && gymProducts.length > 0 && (
+                  <div className="ml-9 pl-3">
+                    <div className="relative">
+                      <select
+                        value={r.product_id || ''}
+                        onChange={e => handleProductChange(i, e.target.value)}
+                        className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none pr-8 cursor-pointer"
+                      >
+                        <option value="">{t('admin.challenges.selectProduct', 'Select product')}...</option>
+                        {gymProducts.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.emoji_icon ? `${p.emoji_icon} ` : ''}{p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom prize text input */}
+                {r.prizeType === 'custom' && (
+                  <div className="ml-9 pl-3">
                     <input
                       value={r.prize}
                       onChange={e => {
@@ -238,9 +331,8 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                       placeholder="e.g. Free smoothie, 1 PT session..."
                       className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
-                    <p className="text-[10px] text-[#6B7280] mt-0.5">prize (optional)</p>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>

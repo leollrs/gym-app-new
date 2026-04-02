@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest } from '../lib/healthSync';
+import { generateProgram } from '../lib/workoutGenerator';
 
 // ── DATA ───────────────────────────────────────────────────
 // values are stored in DB; labels come from translation files
@@ -170,6 +171,10 @@ const Onboarding = () => {
     health_linked:              false,
     known_maxes:                { ex_bp: '', ex_sq: '', ex_dl: '', ex_ohp: '' },
   });
+
+  // Generate plan screen state (shown after onboarding completes)
+  const [showGeneratePlan, setShowGeneratePlan] = useState(false); // 'ask' | 'generating' | 'done' | false
+  const [generateError, setGenerateError] = useState('');
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
   const setMax = (exerciseId, value) =>
@@ -420,12 +425,88 @@ const Onboarding = () => {
       posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
 
       refreshProfile();
-      navigate('/welcome');
+      // Show the generate plan offer instead of navigating directly
+      setShowGeneratePlan('ask');
     } catch (err) {
       setError(err.message || t('common:somethingWentWrong'));
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── GENERATE PERSONAL PLAN ──────────────────────────────────
+  const handleGeneratePlan = async () => {
+    setShowGeneratePlan('generating');
+    setGenerateError('');
+    try {
+      const { data: profileRow } = await supabase
+        .from('profiles').select('gym_id').eq('id', user.id).single();
+      const gymId = profileRow?.gym_id;
+
+      // Map onboarding goal values to generator format
+      const onboardingForGenerator = {
+        fitness_level: data.fitness_level || 'beginner',
+        primary_goal: data.primary_goal || 'general_fitness',
+        training_days_per_week: data.training_days_per_week || 3,
+        available_equipment: data.available_equipment?.length > 0
+          ? data.available_equipment
+          : ['Bodyweight'],
+        injuries_notes: data.injury_areas?.length > 0
+          ? data.injury_areas.join(', ')
+          : '',
+        sex: data.sex || 'male',
+        age: data.age ? parseInt(data.age) : 30,
+      };
+
+      const result = generateProgram(onboardingForGenerator);
+
+      // Save routines A set as personal routines
+      for (const routine of result.routinesA) {
+        const { data: saved, error: rErr } = await supabase
+          .from('routines')
+          .insert({
+            name: routine.name,
+            gym_id: gymId,
+            created_by: user.id,
+          })
+          .select('id')
+          .single();
+        if (rErr) throw rErr;
+
+        if (routine.exercises.length > 0) {
+          const rows = routine.exercises.map((ex, i) => ({
+            routine_id: saved.id,
+            exercise_id: ex.exerciseId,
+            position: i + 1,
+            target_sets: ex.sets,
+            target_reps: ex.reps,
+            rest_seconds: ex.restSeconds,
+          }));
+          const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
+          if (exErr) throw exErr;
+        }
+      }
+
+      posthog?.capture('onboarding_plan_generated', {
+        split: result.splitLabel,
+        goal: data.primary_goal,
+        days: data.training_days_per_week,
+        routines_count: result.routinesA.length,
+      });
+
+      setShowGeneratePlan('done');
+    } catch (err) {
+      setGenerateError(err.message || t('common:somethingWentWrong'));
+      setShowGeneratePlan('ask');
+    }
+  };
+
+  const handleSkipGeneratePlan = () => {
+    navigate('/welcome');
+  };
+
+  const handlePlanDone = () => {
+    navigate('/welcome');
   };
 
   // Helper to get translated day name abbreviation
@@ -437,16 +518,18 @@ const Onboarding = () => {
     <div className="min-h-screen px-4 py-10 pb-28 md:pb-12 flex flex-col items-center" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[480px] mx-auto md:max-w-4xl">
 
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
-            <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
+        {/* Header — hidden during generate plan screens */}
+        {!showGeneratePlan && (
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
+              <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
+            </div>
+            <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('title')}</h1>
+            <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
           </div>
-          <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('title')}</h1>
-          <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
-        </div>
+        )}
 
-        <StepIndicator current={step} />
+        {!showGeneratePlan && <StepIndicator current={step} />}
 
         {/* ── STEP 0: INVITE CODE ── */}
         {step === 0 && (
@@ -1142,14 +1225,14 @@ const Onboarding = () => {
         )}
 
         {/* ── Health disclaimer ── */}
-        {step === TOTAL_STEPS - 1 && (
+        {step === TOTAL_STEPS - 1 && !showGeneratePlan && (
           <p className="text-[11px] text-center leading-relaxed mt-4" style={{ color: "var(--color-text-subtle)" }}>
             {t('disclaimer')}
           </p>
         )}
 
-        {/* ── NAV BUTTONS (hidden on invite code step which has its own buttons) ── */}
-        {step > 0 && (
+        {/* ── NAV BUTTONS (hidden on invite code step and generate plan screens) ── */}
+        {step > 0 && !showGeneratePlan && (
         <div className="flex gap-3 mt-8">
           <button
             type="button"
@@ -1184,7 +1267,7 @@ const Onboarding = () => {
         )}
 
         {/* Skip on body stats or health step */}
-        {(step === 6 || step === 7) && (
+        {(step === 6 || step === 7) && !showGeneratePlan && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
@@ -1192,6 +1275,80 @@ const Onboarding = () => {
           >
             {step === 7 ? t('health.skip') : t('common:skip')}
           </button>
+        )}
+
+        {/* ── GENERATE PLAN: Ask screen ── */}
+        {showGeneratePlan === 'ask' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25">
+              <Sparkles size={28} className="text-[#D4AF37]" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+                {t('generatePlan.title')}
+              </h2>
+              <p className="text-[14px] leading-relaxed max-w-sm mx-auto" style={{ color: "var(--color-text-subtle)" }}>
+                {t('generatePlan.desc')}
+              </p>
+            </div>
+
+            {generateError && (
+              <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                <p className="text-[13px] text-red-400 text-center">{generateError}</p>
+              </div>
+            )}
+
+            <div className="w-full space-y-3">
+              <button
+                type="button"
+                onClick={handleGeneratePlan}
+                className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
+              >
+                <Sparkles size={16} /> {t('generatePlan.generate')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSkipGeneratePlan}
+                className="w-full text-center text-[13px] py-2.5 transition-colors" style={{ color: "var(--color-text-muted)" }}
+              >
+                {t('generatePlan.skip')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── GENERATE PLAN: Generating screen ── */}
+        {showGeneratePlan === 'generating' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
+            <Loader2 size={36} className="text-[#D4AF37] animate-spin" />
+            <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+              {t('generatePlan.generating')}
+            </p>
+          </div>
+        )}
+
+        {/* ── GENERATE PLAN: Done screen ── */}
+        {showGeneratePlan === 'done' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
+              <Check size={28} className="text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+                {t('generatePlan.ready')}
+              </h2>
+              <p className="text-[14px] leading-relaxed max-w-sm mx-auto" style={{ color: "var(--color-text-subtle)" }}>
+                {t('generatePlan.readyDesc')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handlePlanDone}
+              className="w-full max-w-xs flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
+            >
+              {t('generatePlan.goToDashboard')} <ChevronRight size={17} />
+            </button>
+          </div>
         )}
       </div>
     </div>

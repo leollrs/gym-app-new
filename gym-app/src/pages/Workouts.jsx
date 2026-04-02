@@ -18,6 +18,7 @@ import { exercises as exerciseLibrary } from '../data/exercises';
 import { useTranslation } from 'react-i18next';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
 import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/programAdaptation';
+import { programImageUrl } from '../lib/imageUrl';
 import { getExerciseReasoning } from '../lib/exerciseReasoning';
 
 // Expandable description text — shows 2 lines with "Read more" toggle
@@ -1413,7 +1414,7 @@ const Workouts = () => {
                 <div className="absolute inset-0">
                   {tmpl.image && (
                     <img
-                      src={tmpl.image}
+                      src={programImageUrl(tmpl.image)}
                       alt={progName(tmpl)}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => { e.target.style.display = 'none'; }}

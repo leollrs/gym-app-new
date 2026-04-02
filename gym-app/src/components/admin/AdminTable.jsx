@@ -12,6 +12,7 @@ export default function AdminTable({
   loading = false,
   emptyState,
   onRowClick,
+  activeRowId,
   keyField = 'id',
   stickyHeader = false,
   skeletonRows = 5,
@@ -84,9 +85,11 @@ export default function AdminTable({
               <tr
                 key={row[keyField] || i}
                 className={`border-b border-white/4 last:border-0 transition-colors ${
-                  onRowClick
-                    ? 'cursor-pointer hover:bg-[#111827] hover:border-l-2 hover:border-l-[#D4AF37]/40'
-                    : 'hover:bg-white/[0.02]'
+                  activeRowId != null && row[keyField] === activeRowId
+                    ? 'bg-[#D4AF37]/[0.07] border-l-2 border-l-[#D4AF37]'
+                    : onRowClick
+                      ? 'cursor-pointer hover:bg-[#111827] hover:border-l-2 hover:border-l-[#D4AF37]/40'
+                      : 'hover:bg-white/[0.02]'
                 }`}
                 onClick={() => onRowClick?.(row)}
               >

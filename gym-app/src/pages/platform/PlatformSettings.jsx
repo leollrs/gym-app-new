@@ -454,15 +454,16 @@ export default function PlatformSettings() {
   const tp = (key) => t(`platformSettings.${key}`);
 
   /* ── section open/close ── */
+  const [settingsTab, setSettingsTab] = useState('content');
   const [accountOpen, setAccountOpen] = useState(true);
-  const [exercisesOpen, setExercisesOpen] = useState(false);
+  const [exercisesOpen, setExercisesOpen] = useState(true);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [programsOpen, setProgramsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [flagsOpen, setFlagsOpen] = useState(false);
-  const [defaultsOpen, setDefaultsOpen] = useState(false);
-  const [healthOpen, setHealthOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(true);
+  const [flagsOpen, setFlagsOpen] = useState(true);
+  const [defaultsOpen, setDefaultsOpen] = useState(true);
+  const [healthOpen, setHealthOpen] = useState(true);
 
   /* ── data ── */
   const [exercises, setExercises] = useState([]);
@@ -644,10 +645,36 @@ export default function PlatformSettings() {
 
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl space-y-4 pb-28 md:pb-12">
-      <h1 className="text-[18px] font-bold text-[#E5E7EB] mb-2 truncate">{tp('title')}</h1>
-      <p className="text-[13px] text-[#6B7280] mb-6">
-        {tp('subtitle')}
+      <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">Platform Settings</h1>
+      <p className="text-[12px] text-[#6B7280] mb-4">
+        Shared configuration and global systems
       </p>
+
+      {/* Category tabs */}
+      <div className="flex gap-1 border-b border-white/6 mb-5 overflow-x-auto scrollbar-hide">
+        {[
+          { key: 'content', label: 'Shared Content' },
+          { key: 'comms', label: 'Communications' },
+          { key: 'defaults', label: 'Defaults' },
+          { key: 'system', label: 'System' },
+          { key: 'health', label: 'Health' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setSettingsTab(t.key)}
+            className={`px-4 py-2.5 text-[12px] font-medium transition-colors whitespace-nowrap ${
+              settingsTab === t.key
+                ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] bg-white/[0.02]'
+                : 'text-[#6B7280] hover:text-[#9CA3AF]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Shared Content tab ── */}
+      {settingsTab === 'content' && (<>
 
       {/* ──────── 1. Your Account ──────── */}
       <CollapsibleSection
@@ -830,6 +857,11 @@ export default function PlatformSettings() {
         )}
       </CollapsibleSection>
 
+      </>)}
+
+      {/* ── Communications tab ── */}
+      {settingsTab === 'comms' && (<>
+
       {/* ──────── 5. Platform Info ──────── */}
       <CollapsibleSection
         title={tp('platformInfo')}
@@ -898,6 +930,11 @@ export default function PlatformSettings() {
         <p className="text-[11px] text-[#4B5563] italic">{tp('perGymNote')}</p>
       </CollapsibleSection>
 
+      </>)}
+
+      {/* ── System tab ── */}
+      {settingsTab === 'system' && (<>
+
       {/* ──────── 7. Feature Flags ──────── */}
       <CollapsibleSection
         title={tp('featureFlags')}
@@ -931,6 +968,11 @@ export default function PlatformSettings() {
           ))}
         </div>
       </CollapsibleSection>
+
+      </>)}
+
+      {/* ── Defaults tab ── */}
+      {settingsTab === 'defaults' && (<>
 
       {/* ──────── 8. Default Gym Configuration ──────── */}
       <CollapsibleSection
@@ -996,6 +1038,11 @@ export default function PlatformSettings() {
           </button>
         </div>
       </CollapsibleSection>
+
+      </>)}
+
+      {/* ── Health tab ── */}
+      {settingsTab === 'health' && (<>
 
       {/* ──────── 9. System Health ──────── */}
       <CollapsibleSection
@@ -1090,6 +1137,8 @@ export default function PlatformSettings() {
           </>
         )}
       </CollapsibleSection>
+
+      </>)}
 
       {/* ══════════ MODALS ══════════ */}
 

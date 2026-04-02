@@ -266,21 +266,57 @@ export default function ErrorLogs() {
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
-      <div className="mb-6 flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-[20px] font-semibold text-[#E5E7EB] truncate">Error Logs</h1>
-            {!loading && totalCount > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/15 text-red-400">
-                {totalCount.toLocaleString()} error{totalCount !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <p className="text-[13px] text-[#6B7280] mt-1">
-            Runtime errors and crashes across all gyms
-          </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Errors</h1>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">Platform failures and crash analysis</p>
         </div>
+        <button
+          onClick={() => window.open('/platform/operations', '_self')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors flex-shrink-0"
+        >
+          Open Operations
+        </button>
       </div>
+
+      {/* Failure summary */}
+      {!loading && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-6">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount.toLocaleString()}</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Total Errors</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
+              {[...new Set(entries.map(e => e.gym_id).filter(Boolean))].length}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Gyms Affected</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
+              {[...new Set(entries.map(e => e.profile_id).filter(Boolean))].length}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Users Affected</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-red-400 tabular-nums">
+              {entries.filter(e => e.type === 'react_crash' || e.type === 'auth_error').length}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Critical Errors</p>
+          </div>
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums truncate">
+              {(() => {
+                const typeCounts = {};
+                entries.forEach(e => { typeCounts[e.type] = (typeCounts[e.type] || 0) + 1; });
+                const top = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+                return top ? (TYPE_CONFIG[top[0]]?.label || top[0]) : '—';
+              })()}
+            </p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">Top Error Type</p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">

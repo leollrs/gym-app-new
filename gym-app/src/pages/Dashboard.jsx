@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
 import { getCached, setCache } from '../lib/queryCache';
-import { getStreakWithProtections } from '../lib/achievements';
+// getStreakWithProtections removed — streak_cache is now the single source of truth
 import { getRewardTier } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { exercises as exerciseLibrary } from '../data/exercises';
@@ -26,6 +26,7 @@ import RoutinePickerModal from '../components/RoutinePickerModal';
 import CoachMark from '../components/CoachMark';
 import QRCodeModal from '../components/QRCodeModal';
 import ReferralRewardBanner from '../components/ReferralRewardBanner';
+import NPSSurveyModal from '../components/NPSSurveyModal';
 // AppTour moved to App.jsx to persist across page navigations
 
 // Build a lookup: exercise_id → videoUrl
@@ -156,6 +157,7 @@ const Dashboard = () => {
   const [planWeek, setPlanWeek] = useState(1);
   const [planSelectedDay, setPlanSelectedDay] = useState(null);
   const [fullTemplates, setFullTemplates] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   // Lazy-load full programTemplates only when plan info panel is opened
   useEffect(() => {
@@ -228,12 +230,20 @@ const Dashboard = () => {
     let cancelled = false;
 
     const load = async () => {
+      setLoadError('');
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
       if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
       // Single RPC call replaces 5+ sequential/parallel queries
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_data');
-      if (rpcError) { console.error('get_dashboard_data RPC error:', rpcError); return; }
+      if (rpcError) {
+        console.error('get_dashboard_data RPC error:', rpcError);
+        if (!cancelled) {
+          dispatch({ type: 'SET_LOADING', payload: false });
+          setLoadError(t('dashboard.loadError', 'We could not load your dashboard right now. Pull to refresh or try again in a moment.'));
+        }
+        return;
+      }
 
       const allSessions = rpcData?.sessions || [];
       const fetchedRoutines = rpcData?.routines || [];
@@ -244,11 +254,8 @@ const Dashboard = () => {
       const closed = new Set((gymHoursData).filter(h => h.is_closed).map(h => h.day_of_week));
       setGymClosedDays(closed);
 
-      // Use streak from streak_cache if available, otherwise compute with protections
-      let streak = rpcData?.streak?.current_streak_days ?? 0;
-      if (!rpcData?.streak) {
-        streak = await getStreakWithProtections(user.id, profile.gym_id, allSessions, supabase, { scheduleData });
-      }
+      // Streak comes from streak_cache (single source of truth, updated by complete_workout RPC + daily cron)
+      const streak = rpcData?.streak?.current_streak_days ?? 0;
 
       const todaySessionsFiltered = allSessions.filter(s => {
         const d = new Date(s.completed_at);
@@ -571,6 +578,15 @@ const Dashboard = () => {
 
         {loading ? (
           <DashboardSkeleton />
+        ) : loadError ? (
+          <div className="rounded-3xl border border-red-500/20 bg-red-500/5 px-5 py-6 text-center">
+            <p className="text-[15px] font-semibold text-[var(--color-text-primary)] mb-2">
+              {t('dashboard.unavailable', 'Dashboard unavailable')}
+            </p>
+            <p className="text-[13px] text-[var(--color-text-muted)]">
+              {loadError}
+            </p>
+          </div>
         ) : (
           <AnimatePresence mode="wait">
             <motion.div
@@ -1261,6 +1277,9 @@ const Dashboard = () => {
       />
 
       {/* App Tour moved to PlatformLayout so it persists across page navigations */}
+
+      {/* ── NPS SURVEY MODAL ─────────────────────────────── */}
+      <NPSSurveyModal />
 
     </div>
   );

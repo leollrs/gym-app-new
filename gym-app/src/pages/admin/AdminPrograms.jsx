@@ -3,6 +3,7 @@ import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users } from 'lucide
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import {
   PageHeader,
@@ -23,6 +24,7 @@ import ProgramBuilderModal from './components/ProgramBuilderModal';
 
 // ── Main ──────────────────────────────────────────────────
 export default function AdminPrograms() {
+  const { t } = useTranslation('pages');
   const { profile, user } = useAuth();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
@@ -35,7 +37,7 @@ export default function AdminPrograms() {
   const [enrolledMembers, setEnrolledMembers] = useState({});
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Programs | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('admin.programs.pageTitle', 'Admin - Programs | TuGymPR'); }, [t]);
 
   // ── Queries ──────────────────────────────────────────────
 
@@ -141,7 +143,8 @@ export default function AdminPrograms() {
   };
 
   const handleTemplateSelect = (template) => {
-    const builtWeeks = buildWeeksFromPattern(template.weekPattern, template.durationWeeks);
+    // Auto-generated programs pass weeks directly; manual templates use weekPattern
+    const builtWeeks = template.weeks || buildWeeksFromPattern(template.weekPattern, template.durationWeeks);
     setPrefillProgram({
       name: template.name,
       description: template.description,
@@ -178,14 +181,14 @@ export default function AdminPrograms() {
   return (
     <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
-        title="Programs"
-        subtitle="Gym-branded workout programs for members"
+        title={t('admin.programs.title', 'Programs')}
+        subtitle={t('admin.programs.subtitle', 'Gym-branded workout programs for members')}
         actions={
           <button
             onClick={() => { setPrefillProgram(null); setShowTemplates(true); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors"
           >
-            <Plus size={15} /> New Program
+            <Plus size={15} /> {t('admin.programs.newProgram', 'New Program')}
           </button>
         }
         className="mb-6"
@@ -195,12 +198,12 @@ export default function AdminPrograms() {
       {!loading && programs.length > 0 && (
         <FadeIn>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatCard label="Published Programs" value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
-            <StatCard label="Active Enrollments" value={programStats.activeEnrollments} borderColor="#3B82F6" delay={50} />
-            <StatCard label="Completion Rate" value={`${programStats.completionRate}%`} borderColor="#10B981" delay={100} />
+            <StatCard label={t('admin.programs.publishedPrograms', 'Published Programs')} value={programStats.totalPrograms} borderColor="var(--color-accent)" delay={0} />
+            <StatCard label={t('admin.programs.activeEnrollments', 'Active Enrollments')} value={programStats.activeEnrollments} borderColor="#3B82F6" delay={50} />
+            <StatCard label={t('admin.programs.completionRate', 'Completion Rate')} value={`${programStats.completionRate}%`} borderColor="#10B981" delay={100} />
             <AdminCard className="overflow-hidden">
               <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{programStats.topProgram}</p>
-              <p className="text-[11px] text-[#9CA3AF] truncate">Most Popular</p>
+              <p className="text-[11px] text-[#9CA3AF] truncate">{t('admin.programs.mostPopular', 'Most Popular')}</p>
             </AdminCard>
           </div>
         </FadeIn>
@@ -216,8 +219,8 @@ export default function AdminPrograms() {
         <FadeIn>
           <div className="text-center py-20">
             <Dumbbell size={32} className="text-[#4B5563] mx-auto mb-3" />
-            <p className="text-[14px] text-[#6B7280]">No programs yet</p>
-            <p className="text-[12px] text-[#4B5563] mt-1">Create structured programs for your members to follow</p>
+            <p className="text-[14px] text-[#6B7280]">{t('admin.programs.noPrograms', 'No programs yet')}</p>
+            <p className="text-[12px] text-[#4B5563] mt-1">{t('admin.programs.noProgramsHint', 'Create structured programs for your members to follow')}</p>
           </div>
         </FadeIn>
       ) : (
@@ -242,28 +245,28 @@ export default function AdminPrograms() {
                         <div className="min-w-0">
                           <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{p.name}</p>
                           <p className="text-[11px] text-[#6B7280]">
-                            {p.duration_weeks}w · {totalDays} days · {totalEx} exercises
-                            {avgTime > 0 && ` · ~${fmtTime(avgTime)}/session`}
+                            {p.duration_weeks}{t('admin.programs.weeksShort', 'w')} · {totalDays} {t('admin.programs.days', 'days')} · {totalEx} {t('admin.programs.exercises', 'exercises')}
+                            {avgTime > 0 && ` · ~${fmtTime(avgTime)}/${t('admin.programs.session', 'session')}`}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${p.is_published ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#6B7280] bg-white/6'}`}>
-                          {p.is_published ? 'Published' : 'Draft'}
+                          {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
                         </span>
                         <button onClick={() => setEditing(p)} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors p-1">
                           <ChevronRight size={16} />
                         </button>
                         {confirmDeleteId === p.id ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-[#9CA3AF]">Delete?</span>
+                            <span className="text-[11px] text-[#9CA3AF]">{t('admin.programs.deleteConfirm')}</span>
                             <button onClick={() => deleteMutation.mutate(p.id)}
                               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
-                              Confirm
+                              {t('admin.programs.confirm')}
                             </button>
                             <button onClick={() => setConfirmDeleteId(null)}
                               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
-                              Cancel
+                              {t('admin.programs.cancel')}
                             </button>
                           </div>
                         ) : (
@@ -283,7 +286,7 @@ export default function AdminPrograms() {
                       className="ml-12 mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
                     >
                       <Users size={11} />
-                      <span>{enrollmentCounts[p.id] ?? 0} enrolled</span>
+                      <span>{enrollmentCounts[p.id] ?? 0} {t('admin.programs.enrolled', 'enrolled')}</span>
                       <ChevronDown size={11} className={`transition-transform ${expandedEnroll === p.id ? 'rotate-180' : ''}`} />
                     </button>
                   </div>
@@ -291,13 +294,13 @@ export default function AdminPrograms() {
                   {/* Enrolled members panel */}
                   {expandedEnroll === p.id && (
                     <div className="px-4 pb-4 border-t border-white/4 pt-3">
-                      <SectionLabel className="mb-2">Enrolled Members</SectionLabel>
+                      <SectionLabel className="mb-2">{t('admin.programs.enrolledMembers', 'Enrolled Members')}</SectionLabel>
                       {!enrolledMembers[p.id] ? (
                         <div className="flex justify-center py-3">
                           <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
                         </div>
                       ) : enrolledMembers[p.id].length === 0 ? (
-                        <p className="text-[12px] text-[#6B7280] text-center py-2">No members enrolled yet</p>
+                        <p className="text-[12px] text-[#6B7280] text-center py-2">{t('admin.programs.noEnrolled', 'No members enrolled yet')}</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {enrolledMembers[p.id].map(e => {

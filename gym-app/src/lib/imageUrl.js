@@ -9,12 +9,21 @@ import { supabase } from './supabase';
  */
 export function foodImageUrl(path) {
   if (!path) return null;
-  // Already a full URL — leave untouched
   if (path.startsWith('http')) return path;
-  // Strip leading slash: "/foods/xxx.jpg" → "foods/xxx.jpg"
   let clean = path.startsWith('/') ? path.slice(1) : path;
-  // All images are now .jpg — correct any .png references
   clean = clean.replace(/\.png$/i, '.jpg');
   const { data } = supabase.storage.from('food-images').getPublicUrl(clean);
+  return data?.publicUrl || null;
+}
+
+/**
+ * Convert a local program image path (e.g. "/programs/starting-strength.jpg")
+ * to its Supabase Storage public URL.
+ */
+export function programImageUrl(path) {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  let clean = path.startsWith('/') ? path.slice(1) : path;
+  const { data } = supabase.storage.from('program-images').getPublicUrl(clean);
   return data?.publicUrl || null;
 }

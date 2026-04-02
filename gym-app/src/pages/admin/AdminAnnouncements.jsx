@@ -6,28 +6,42 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { broadcastNotification } from '../../lib/notifications';
 import { format, isFuture } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
+import { useTranslation } from 'react-i18next';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton } from '../../components/admin';
 
 // Must match the announcement_type enum in the DB schema
 const TYPE_OPTS = [
-  { value: 'news',        label: 'News',        color: 'text-blue-400 bg-blue-500/10' },
-  { value: 'event',       label: 'Event',       color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
-  { value: 'challenge',   label: 'Challenge',   color: 'text-emerald-400 bg-emerald-500/10' },
-  { value: 'maintenance', label: 'Maintenance', color: 'text-red-400 bg-red-500/10' },
+  { value: 'news',        labelKey: 'news',        color: 'text-blue-400 bg-blue-500/10' },
+  { value: 'event',       labelKey: 'event',       color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
+  { value: 'challenge',   labelKey: 'challenge',   color: 'text-emerald-400 bg-emerald-500/10' },
+  { value: 'maintenance', labelKey: 'maintenance', color: 'text-red-400 bg-red-500/10' },
 ];
 
 const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
+  const { t, i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
   const [error, setError] = useState('');
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  const DAY_LABELS = [
+    t('admin.announcements.daySun', 'Sun'),
+    t('admin.announcements.dayMon', 'Mon'),
+    t('admin.announcements.dayTue', 'Tue'),
+    t('admin.announcements.dayWed', 'Wed'),
+    t('admin.announcements.dayThu', 'Thu'),
+    t('admin.announcements.dayFri', 'Fri'),
+    t('admin.announcements.daySat', 'Sat'),
+  ];
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!form.title || !form.message) throw new Error('Title and message are required.');
+      if (!form.title || !form.message) throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
       const { error: err } = await supabase.from('announcements').insert({
         gym_id:      gymId,
         created_by:  adminId,
@@ -46,7 +60,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
-      showToast('Announcement published', 'success');
+      showToast(t('admin.announcements.published', 'Announcement published'), 'success');
       broadcastNotification({
         gymId,
         type: 'announcement',
@@ -60,43 +74,43 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
   });
 
   return (
-    <AdminModal isOpen={isOpen} onClose={onClose} title="New Announcement" titleIcon={Megaphone}
+    <AdminModal isOpen={isOpen} onClose={onClose} title={t('admin.announcements.newAnnouncement', 'New Announcement')} titleIcon={Megaphone}
       footer={
         <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}
           className="w-full py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] disabled:opacity-50">
-          {createMutation.isPending ? 'Publishing...' : form.scheduled_for ? 'Schedule' : 'Publish Now'}
+          {createMutation.isPending ? t('admin.announcements.publishing', 'Publishing...') : form.scheduled_for ? t('admin.announcements.schedule', 'Schedule') : t('admin.announcements.publishNow', 'Publish Now')}
         </button>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Title</label>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
           <input value={form.title} onChange={e => set('title', e.target.value)}
-            placeholder="e.g. New equipment arriving Friday!"
+            placeholder={t('admin.announcements.titlePlaceholder')}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
         </div>
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Message</label>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
           <textarea value={form.message} onChange={e => set('message', e.target.value)} rows={3}
-            placeholder="Your message to members..."
+            placeholder={t('admin.announcements.messagePlaceholder')}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
         </div>
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
           <div className="flex gap-2 flex-wrap">
-            {TYPE_OPTS.map(t => (
-              <button key={t.value} onClick={() => set('type', t.value)}
+            {TYPE_OPTS.map(opt => (
+              <button key={opt.value} onClick={() => set('type', opt.value)}
                 className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                  form.type === t.value ? t.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                  form.type === opt.value ? opt.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
                 }`}>
-                {t.label}
+                {t(`admin.announcementTypes.${opt.labelKey}`)}
               </button>
             ))}
           </div>
         </div>
         <div>
           <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
-            Schedule (optional -- leave blank to publish now)
+            {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
           </label>
           <input type="datetime-local" value={form.scheduled_for} onChange={e => set('scheduled_for', e.target.value)}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
@@ -104,7 +118,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
         {/* Recurring toggle */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-[12px] font-medium text-[#9CA3AF]">Recurring</label>
+            <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.announcements.recurring', 'Recurring')}</label>
             <button
               onClick={() => set('is_recurring', !form.is_recurring)}
               className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
@@ -117,21 +131,21 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
           {form.is_recurring && (
             <div className="space-y-3 bg-[#0D1117] rounded-xl p-3 border border-white/4">
               <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">Frequency</label>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
                 <div className="flex gap-2">
                   {['daily', 'weekly', 'biweekly', 'monthly'].map(r => (
                     <button key={r} onClick={() => set('recurrence_rule', r)}
                       className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors ${
                         form.recurrence_rule === r ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/25' : 'bg-white/4 text-[#6B7280] border border-white/6'
-                      }`}>{r}</button>
+                      }`}>{t(`admin.announcements.recurrence.${r}`, r)}</button>
                   ))}
                 </div>
               </div>
               {form.recurrence_rule === 'weekly' || form.recurrence_rule === 'biweekly' ? (
                 <div>
-                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">Day of week</label>
+                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
                   <div className="flex gap-1.5">
-                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => (
+                    {DAY_LABELS.map((d, i) => (
                       <button key={d} onClick={() => set('recurrence_day', i)}
                         className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors ${
                           form.recurrence_day === i ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-white/4 text-[#6B7280]'
@@ -141,14 +155,14 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
                 </div>
               ) : form.recurrence_rule === 'monthly' ? (
                 <div>
-                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">Day of month</label>
+                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
                   <input type="number" min="1" max="28" value={form.recurrence_day || 1}
                     onChange={e => set('recurrence_day', parseInt(e.target.value) || 1)}
                     className="w-20 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
                 </div>
               ) : null}
               <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">End date (optional)</label>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
                 <input type="date" value={form.recurrence_end} onChange={e => set('recurrence_end', e.target.value)}
                   className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
               </div>
@@ -162,6 +176,9 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
 };
 
 export default function AdminAnnouncements() {
+  const { t, i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const { profile, user } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -172,7 +189,7 @@ export default function AdminAnnouncements() {
   const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Announcements | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('admin.announcements.pageTitle', 'Admin - Announcements | TuGymPR'); }, [t]);
 
   // ── Fetch announcements ──
   const { data: announcements = [], isLoading } = useQuery({
@@ -204,7 +221,7 @@ export default function AdminAnnouncements() {
   // ── Edit mutation ──
   const editMutation = useMutation({
     mutationFn: async () => {
-      if (!editForm.title || !editForm.message) throw new Error('Title and message required');
+      if (!editForm.title || !editForm.message) throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
       const { error: err } = await supabase
         .from('announcements')
         .update({ title: editForm.title, message: editForm.message, type: editForm.type, is_recurring: editForm.is_recurring, recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null, recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null, recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null })
@@ -229,17 +246,17 @@ export default function AdminAnnouncements() {
   };
 
   const typeStyle = (type) =>
-    TYPE_OPTS.find(t => t.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
+    TYPE_OPTS.find(opt => opt.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
 
   return (
     <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
-        title="Announcements"
-        subtitle="Messages broadcast to all members"
+        title={t('admin.announcements.title', 'Announcements')}
+        subtitle={t('admin.announcements.subtitle', 'Messages broadcast to all members')}
         actions={
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0">
-            <Plus size={15} /> New
+            <Plus size={15} /> {t('admin.announcements.new', 'New')}
           </button>
         }
         className="mb-6"
@@ -252,7 +269,7 @@ export default function AdminAnnouncements() {
       ) : announcements.length === 0 ? (
         <div className="text-center py-20">
           <Megaphone size={32} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">No announcements yet</p>
+          <p className="text-[14px] text-[#6B7280]">{t('admin.announcements.noAnnouncements', 'No announcements yet')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -265,24 +282,24 @@ export default function AdminAnnouncements() {
                   {isEditing ? (
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Title</label>
+                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
                         <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
                           className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Message</label>
+                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.messageLabel')}</label>
                         <textarea value={editForm.message} onChange={e => setEditForm(p => ({ ...p, message: e.target.value }))} rows={3}
                           className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
                       </div>
                       <div>
-                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Type</label>
+                        <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
                         <div className="flex gap-2 flex-wrap">
-                          {TYPE_OPTS.map(t => (
-                            <button key={t.value} onClick={() => setEditForm(p => ({ ...p, type: t.value }))}
+                          {TYPE_OPTS.map(opt => (
+                            <button key={opt.value} onClick={() => setEditForm(p => ({ ...p, type: opt.value }))}
                               className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                                editForm.type === t.value ? t.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
+                                editForm.type === opt.value ? opt.color : 'bg-[#111827] border border-white/6 text-[#9CA3AF]'
                               }`}>
-                              {t.label}
+                              {t(`admin.announcementTypes.${opt.labelKey}`)}
                             </button>
                           ))}
                         </div>
@@ -290,11 +307,11 @@ export default function AdminAnnouncements() {
                       <div className="flex gap-2">
                         <button onClick={cancelEditing}
                           className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors">
-                          Cancel
+                          {t('admin.announcements.cancel', 'Cancel')}
                         </button>
                         <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending || !editForm.title || !editForm.message}
                           className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-black bg-[#D4AF37] disabled:opacity-50">
-                          {editMutation.isPending ? 'Saving...' : 'Save'}
+                          {editMutation.isPending ? t('admin.announcements.saving', 'Saving...') : t('admin.announcements.save', 'Save')}
                         </button>
                       </div>
                     </div>
@@ -304,16 +321,16 @@ export default function AdminAnnouncements() {
                         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                           <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{sanitize(a.title)}</p>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${typeStyle(a.type)}`}>
-                            {a.type}
+                            {t(`admin.announcementTypes.${a.type}`, a.type)}
                           </span>
                           {isScheduled && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-400 bg-amber-500/10">
-                              Scheduled
+                              {t('admin.announcements.scheduled', 'Scheduled')}
                             </span>
                           )}
                           {a.is_recurring && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-blue-400 bg-blue-500/10 flex items-center gap-1">
-                              <Repeat size={9} /> {a.recurrence_rule}
+                              <Repeat size={9} /> {t(`admin.announcements.recurrence.${a.recurrence_rule}`, a.recurrence_rule)}
                             </span>
                           )}
                         </div>
@@ -322,8 +339,8 @@ export default function AdminAnnouncements() {
                           <div className="flex items-center gap-1 mt-2">
                             <Calendar size={11} className="text-[#6B7280]" />
                             <p className="text-[11px] text-[#6B7280]">
-                              {isScheduled ? 'Scheduled for' : 'Published'}{' '}
-                              {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a')}
+                              {isScheduled ? t('admin.announcements.scheduledFor', 'Scheduled for') : t('admin.announcements.publishedOn', 'Published')}{' '}
+                              {format(new Date(a.published_at), 'MMM d, yyyy · h:mm a', dateFnsLocale)}
                             </p>
                           </div>
                         )}
@@ -331,22 +348,22 @@ export default function AdminAnnouncements() {
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {confirmDeleteId === a.id ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-[#9CA3AF]">Delete?</span>
+                            <span className="text-[11px] text-[#9CA3AF]">{t('admin.announcements.deleteConfirm')}</span>
                             <button onClick={() => deleteMutation.mutate(a.id)}
                               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
-                              Confirm
+                              {t('admin.announcements.confirm', 'Confirm')}
                             </button>
                             <button onClick={() => setConfirmDeleteId(null)}
                               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors">
-                              Cancel
+                              {t('admin.announcements.cancel', 'Cancel')}
                             </button>
                           </div>
                         ) : (
                           <>
-                            <button onClick={() => startEditing(a)} aria-label="Edit announcement" className="text-[#6B7280] hover:text-[#D4AF37] transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+                            <button onClick={() => startEditing(a)} aria-label={t('admin.announcements.editAria', 'Edit announcement')} className="text-[#6B7280] hover:text-[#D4AF37] transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                               <Pencil size={15} />
                             </button>
-                            <button onClick={() => setConfirmDeleteId(a.id)} aria-label="Delete announcement" className="text-[#6B7280] hover:text-red-400 transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+                            <button onClick={() => setConfirmDeleteId(a.id)} aria-label={t('admin.announcements.deleteAria', 'Delete announcement')} className="text-[#6B7280] hover:text-red-400 transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
                               <Trash2 size={15} />
                             </button>
                           </>

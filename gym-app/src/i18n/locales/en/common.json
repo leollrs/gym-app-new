@@ -30,7 +30,6 @@
   "somethingWentWrong": "Something went wrong. Please try again.",
   "required": "Required",
   "optional": "optional",
-
   "nav": {
     "home": "Home",
     "workouts": "Workouts",
@@ -41,7 +40,6 @@
     "notifications": "Notifications",
     "profile": "Profile"
   },
-
   "adminNav": {
     "main": "MAIN",
     "overview": "Overview",
@@ -63,6 +61,7 @@
     "segments": "Segments",
     "referrals": "Referrals",
     "nps": "Feedback",
+    "emailTemplates": "Email Templates",
     "system": "SYSTEM",
     "moderation": "Moderation",
     "auditLog": "Audit Log",
@@ -73,9 +72,11 @@
     "signOut": "Sign out",
     "morePages": "More Pages",
     "more": "More",
-    "skipToMain": "Skip to main content"
+    "skipToMain": "Skip to main content",
+    "abTesting": "A/B Testing",
+    "rewards": "Rewards",
+    "search": "Search pages..."
   },
-
   "days": {
     "mon": "Mon",
     "tue": "Tue",
@@ -91,15 +92,21 @@
     "friday": "Friday",
     "saturday": "Saturday",
     "sunday": "Sunday",
-    "initials": ["S", "M", "T", "W", "T", "F", "S"]
+    "initials": [
+      "S",
+      "M",
+      "T",
+      "W",
+      "T",
+      "F",
+      "S"
+    ]
   },
-
   "language": {
     "label": "Language / Idioma",
     "en": "English",
     "es": "Español"
   },
-
   "trainerNav": {
     "dashboard": "Dashboard",
     "clients": "Clients",
@@ -109,29 +116,27 @@
     "programs": "Programs",
     "classes": "My Classes"
   },
-
   "platformNav": {
     "main": "MAIN",
     "tools": "TOOLS",
     "system": "SYSTEM",
+    "operations": "Operations",
     "gyms": "Gyms",
+    "support": "Support",
     "analytics": "Analytics",
     "members": "Member Lookup",
     "sms": "SMS",
     "auditLog": "Audit Log",
-    "errorLogs": "Error Logs",
+    "errorLogs": "Errors",
     "settings": "Settings"
   },
-
   "filters": "Filters",
   "collapse": "Collapse",
   "expand": "Expand",
   "enable": "Enable",
   "disable": "Disable",
-
   "privacyPolicy": "Privacy Policy",
   "termsOfService": "Terms of Service",
-
   "notifications": {
     "timeToTrain": "Time to train!",
     "todayIsTrainingDay": "Today is {{day}} — one of your training days. Let's get after it!",

@@ -11,6 +11,38 @@ import i18n from '../i18n/i18n';
 
 const AuthContext = createContext({});
 
+const clearPersistedUserData = () => {
+  try {
+    const sensitiveKeyPrefixes = [
+      'gym_session_',
+      'notification_prefs_',
+      'saved_recipes',
+      'grocery_list',
+      'tugympr_health_',
+      'health_sync_',
+      'churn_contacted_',
+      'challenge_joined_',
+      'streak_freeze_',
+      'app_tour_',
+      'coachmark_',
+      'watchPendingNav',
+      'sb-',
+    ];
+    const exactKeys = ['offline_profile', 'offline_gym', 'tugympr-query-cache'];
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (exactKeys.includes(key) || sensitiveKeyPrefixes.some(prefix => key.startsWith(prefix))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch { /* localStorage may be unavailable */ }
+
+  try { sessionStorage.clear(); } catch {}
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(() => {
@@ -34,7 +66,8 @@ export const AuthProvider = ({ children }) => {
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profileId)
-      .is('read_at', null);
+      .is('read_at', null)
+      .is('dismissed_at', null);
     if (!error) setUnreadNotifications(count || 0);
   };
 
@@ -315,6 +348,14 @@ export const AuthProvider = ({ children }) => {
         fetchProfile(session.user.id);
       } else {
         setProfile(null);
+        setGymName('');
+        setGymLogoUrl('');
+        setGymDeactivated(false);
+        setGymConfig({});
+        setMemberBlocked(null);
+        setLifetimePoints(null);
+        setUnreadNotifications(0);
+        setMfaRequired(false);
         setLoading(false);
         resetToDefault();
         try { posthog.reset(); } catch {}
@@ -419,35 +460,7 @@ export const AuthProvider = ({ children }) => {
     // Remove push tokens so the device stops receiving notifications
     if (user?.id) await removePushTokens(user.id);
 
-    // Clear ALL user-related data from localStorage to prevent data leakage
-    try {
-      const sensitiveKeyPrefixes = [
-        'gym_session_',
-        'notification_prefs_',
-        'saved_recipes',
-        'grocery_list',
-        'tugympr_health_',
-        'health_sync_',
-        'churn_contacted_',
-        'challenge_joined_',
-        'streak_freeze_',
-        'app_tour_',
-        'coachmark_',
-        'watchPendingNav',
-        'sb-',             // Supabase auth tokens
-      ];
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && sensitiveKeyPrefixes.some(prefix => key.startsWith(prefix))) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch { /* localStorage may be unavailable */ }
-
-    // Also clear sessionStorage
-    try { sessionStorage.clear(); } catch {}
+    clearPersistedUserData();
 
     await supabase.auth.signOut();
   };
@@ -458,35 +471,7 @@ export const AuthProvider = ({ children }) => {
     const { error } = await supabase.rpc('delete_user_account');
     if (error) throw new Error(error.message || 'Failed to delete account. Please try again.');
 
-    // Clear ALL user-related data from localStorage to prevent data leakage
-    try {
-      const sensitiveKeyPrefixes = [
-        'gym_session_',
-        'notification_prefs_',
-        'saved_recipes',
-        'grocery_list',
-        'tugympr_health_',
-        'health_sync_',
-        'churn_contacted_',
-        'challenge_joined_',
-        'streak_freeze_',
-        'app_tour_',
-        'coachmark_',
-        'watchPendingNav',
-        'sb-',             // Supabase auth tokens
-      ];
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && sensitiveKeyPrefixes.some(prefix => key.startsWith(prefix))) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch { /* localStorage may be unavailable */ }
-
-    // Also clear sessionStorage
-    try { sessionStorage.clear(); } catch {}
+    clearPersistedUserData();
 
     await supabase.auth.signOut();
   };

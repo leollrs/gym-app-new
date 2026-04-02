@@ -5,34 +5,18 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
+import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, AdminCard, FadeIn, FilterBar } from '../../components/admin';
 
-const METRICS = [
-  { key: 'volume',      label: 'Total Volume',     scoreLabel: 'lbs' },
-  { key: 'workouts',    label: 'Workout Count',    scoreLabel: 'sessions' },
-  { key: 'pr_count',    label: 'Personal Records', scoreLabel: 'PRs' },
-  { key: 'checkins',    label: 'Check-Ins',        scoreLabel: 'check-ins' },
-  { key: 'improved',    label: 'Most Improved',    scoreLabel: '%' },
-  { key: 'consistency', label: 'Consistency',       scoreLabel: '%' },
-];
-
-const PERIODS = [
-  { key: '7',   label: 'This Week' },
-  { key: '30',  label: 'This Month' },
-  { key: 'all', label: 'All Time' },
-];
-
-const TIERS = [
-  { key: 'all',          label: 'All Tiers' },
-  { key: 'beginner',     label: 'Beginner' },
-  { key: 'intermediate', label: 'Intermediate' },
-  { key: 'advanced',     label: 'Advanced' },
-];
+const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
+const PERIOD_KEYS = ['7', '30', 'all'];
+const TIER_KEYS = ['all', 'beginner', 'intermediate', 'advanced'];
 
 const MEDAL = ['🥇', '🥈', '🥉'];
 
 export default function AdminLeaderboard() {
+  const { t } = useTranslation('pages');
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
@@ -99,9 +83,8 @@ export default function AdminLeaderboard() {
     return () => supabase.removeChannel(channel);
   }, [gymId, queryClient]);
 
-  const currentMetric = METRICS.find(m => m.key === metric);
-  const scoreLabel = currentMetric?.scoreLabel ?? 'pts';
-  const metricLabel = currentMetric?.label ?? 'Score';
+  const scoreLabel = t(`admin.leaderboard.scoreLabel.${metric}`, 'pts');
+  const metricLabel = t(`admin.leaderboard.metrics.${metric}`, metric);
 
   const formatScore = (e) => {
     if (metric === 'improved') return `+${e.score}%`;
@@ -113,10 +96,10 @@ export default function AdminLeaderboard() {
     exportCSV({
       filename: 'leaderboard',
       columns: [
-        { key: 'rank', label: 'Rank' },
-        { key: 'name', label: 'Name' },
+        { key: 'rank', label: t('admin.leaderboard.csvRank', 'Rank') },
+        { key: 'name', label: t('admin.leaderboard.csvName', 'Name') },
         { key: 'score', label: metricLabel },
-        { key: 'tier', label: 'Tier' },
+        { key: 'tier', label: t('admin.leaderboard.csvTier', 'Tier') },
       ],
       data: entries.map((e, i) => ({ ...e, rank: i + 1, tier: e.tier ?? '—' })),
     });
@@ -125,8 +108,8 @@ export default function AdminLeaderboard() {
   return (
     <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
       <PageHeader
-        title="Leaderboard"
-        subtitle="Live gym rankings"
+        title={t('admin.leaderboard.title', 'Leaderboard')}
+        subtitle={t('admin.leaderboard.subtitle', 'Live gym rankings')}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -134,7 +117,7 @@ export default function AdminLeaderboard() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
             >
               <Download size={13} />
-              Export
+              {t('admin.leaderboard.export')}
             </button>
             <button onClick={() => refetch()} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
               <RefreshCw size={15} />
@@ -147,17 +130,17 @@ export default function AdminLeaderboard() {
       {/* Controls */}
       <div className="flex flex-wrap gap-2 mb-4">
         <FilterBar
-          options={METRICS.map(m => ({ key: m.key, label: m.label }))}
+          options={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
           active={metric}
           onChange={setMetric}
         />
         <FilterBar
-          options={PERIODS}
+          options={PERIOD_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.periods.${k}`, k) }))}
           active={effectivePeriod}
           onChange={setPeriod}
         />
         <FilterBar
-          options={TIERS}
+          options={TIER_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.tiers.${k}`, k) }))}
           active={tier}
           onChange={setTier}
         />
@@ -173,7 +156,7 @@ export default function AdminLeaderboard() {
           ) : entries.length === 0 ? (
             <div className="text-center py-16">
               <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">No data yet for this period</p>
+              <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
             </div>
           ) : (
             <div className="divide-y divide-white/4">
@@ -191,7 +174,7 @@ export default function AdminLeaderboard() {
                       {e.name}
                     </p>
                     {e.tier && (
-                      <span className="text-[10px] text-[#4B5563] capitalize">{e.tier}</span>
+                      <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
                     )}
                   </div>
                   <div className="hidden md:block w-24 flex-shrink-0">
@@ -212,7 +195,7 @@ export default function AdminLeaderboard() {
         </AdminCard>
       </FadeIn>
 
-      <p className="text-[11px] text-[#4B5563] text-center mt-3">Updates in real time as members log workouts</p>
+      <p className="text-[11px] text-[#4B5563] text-center mt-3">{t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}</p>
     </div>
   );
 }

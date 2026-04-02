@@ -171,7 +171,18 @@
     "insane": "Increíble"
   },
 
-  "disclaimer": "Esta aplicación provee herramientas de seguimiento fitness únicamente y no constituye consejo médico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
-  "finish": "¡Listo, vamos!",
+  "generatePlan": {
+    "title": "\u00bfQuieres un plan de entrenamiento personalizado?",
+    "desc": "Generaremos un programa de entrenamiento basado en tus objetivos, nivel de experiencia y horario. Listo en segundos.",
+    "generate": "Generar Mi Plan",
+    "generating": "Creando tu plan...",
+    "ready": "\u00a1Tu plan est\u00e1 listo! \ud83c\udf89",
+    "readyDesc": "Hemos creado rutinas personalizadas basadas en tu perfil. Puedes verlas e iniciarlas desde tu panel principal.",
+    "goToDashboard": "Vamos",
+    "skip": "Lo configuro despu\u00e9s"
+  },
+
+  "disclaimer": "Esta aplicaci\u00f3n provee herramientas de seguimiento fitness \u00fanicamente y no constituye consejo m\u00e9dico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
+  "finish": "\u00a1Listo, vamos!",
   "initialWeightNote": "Peso inicial al registrarse"
 }

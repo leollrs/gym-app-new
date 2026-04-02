@@ -2,14 +2,18 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   ClipboardList, Download, ChevronDown, ChevronUp, Filter,
-  User, Settings, FileText, ShieldAlert, Calendar,
+  User, Settings, FileText, ShieldAlert, Calendar, Search, X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton } from '../../components/admin';
+import {
+  PageHeader, AdminCard, AdminPageShell, AdminTable,
+  AdminModal, FadeIn, SectionLabel, StatCard, CardSkeleton,
+} from '../../components/admin';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,7 +41,7 @@ const DATE_PRESETS = [
   { key: '90d',   days: 90 },
 ];
 
-// Action type → color category
+// Action type color mapping
 const ACTION_COLORS = {
   member_invited:          'text-blue-400 bg-blue-500/10 border-blue-500/20',
   member_deleted:          'text-blue-400 bg-blue-500/10 border-blue-500/20',
@@ -55,21 +59,37 @@ const ACTION_COLORS = {
 
 const fallbackColor = 'text-[#9CA3AF] bg-white/6 border-white/10';
 
+// Action type icon mapping
+const ACTION_ICONS = {
+  member_invited:          User,
+  member_deleted:          User,
+  role_changed:            ShieldAlert,
+  setting_updated:         Settings,
+  challenge_created:       FileText,
+  announcement_published:  FileText,
+  class_created:           Calendar,
+  program_created:         FileText,
+  store_item_created:      FileText,
+  trainer_added:           User,
+  trainer_demoted:         User,
+  moderation_action:       ShieldAlert,
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getActionColor(action) {
   return ACTION_COLORS[action] || fallbackColor;
 }
 
-function relativeTime(ts) {
-  if (!ts) return '—';
-  try { return formatDistanceToNow(new Date(ts), { addSuffix: true }); }
-  catch { return '—'; }
+function relativeTime(ts, dateFnsLocale) {
+  if (!ts) return '\u2014';
+  try { return formatDistanceToNow(new Date(ts), { addSuffix: true, ...dateFnsLocale }); }
+  catch { return '\u2014'; }
 }
 
-function absoluteTime(ts) {
+function absoluteTime(ts, dateFnsLocale) {
   if (!ts) return '';
-  try { return format(new Date(ts), 'MMM d, yyyy HH:mm:ss'); }
+  try { return format(new Date(ts), 'MMM d, yyyy HH:mm:ss', dateFnsLocale || {}); }
   catch { return ''; }
 }
 
@@ -111,19 +131,100 @@ function downloadCSV(rows) {
   URL.revokeObjectURL(url);
 }
 
+// ── Detail Modal ─────────────────────────────────────────────────────────────
+
+function AuditDetailModal({ entry, isOpen, onClose, t, dateFnsOpts }) {
+  if (!entry) return null;
+  const details = formatDetails(entry.details);
+  const colorClass = getActionColor(entry.action);
+
+  return (
+    <AdminModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('admin.audit.details')}
+      titleIcon={ClipboardList}
+      size="md"
+    >
+      <div className="space-y-5">
+        {/* Action badge */}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[12px] font-semibold border ${colorClass}`}>
+            {t(`admin.audit.actions.${entry.action}`, { defaultValue: entry.action })}
+          </span>
+          <span className="text-[12px] text-[#6B7280]" title={absoluteTime(entry.created_at, dateFnsOpts)}>
+            {relativeTime(entry.created_at, dateFnsOpts)}
+          </span>
+        </div>
+
+        {/* Actor */}
+        <div>
+          <SectionLabel icon={User}>{t('admin.audit.actor', { defaultValue: 'Actor' })}</SectionLabel>
+          <div className="mt-2 flex items-center gap-3">
+            {entry.profiles?.avatar_url ? (
+              <img src={entry.profiles.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/8" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
+                <span className="text-[12px] font-bold text-[#D4AF37]">
+                  {entry.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
+                </span>
+              </div>
+            )}
+            <p className="text-[14px] font-semibold text-[#E5E7EB]">
+              {entry.profiles?.full_name || t('admin.audit.unknownUser')}
+            </p>
+          </div>
+        </div>
+
+        {/* Entity info */}
+        {entry.entity_type && (
+          <div>
+            <SectionLabel>{t('admin.audit.entity')}</SectionLabel>
+            <div className="mt-2 bg-white/[0.03] rounded-xl p-3 border border-white/6">
+              <p className="text-[13px] text-[#E5E7EB]">{entry.entity_type}</p>
+              {entry.entity_id && (
+                <p className="text-[11px] text-[#6B7280] font-mono mt-0.5">{entry.entity_id}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Timestamp */}
+        <div>
+          <SectionLabel icon={Calendar}>{t('admin.audit.timestamp', { defaultValue: 'Timestamp' })}</SectionLabel>
+          <p className="mt-2 text-[13px] text-[#E5E7EB]">{absoluteTime(entry.created_at, dateFnsOpts)}</p>
+        </div>
+
+        {/* Details JSON */}
+        {details && (
+          <div>
+            <SectionLabel>{t('admin.audit.details')}</SectionLabel>
+            <pre className="mt-2 text-[12px] text-[#9CA3AF] bg-white/[0.02] rounded-xl p-4 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all border border-white/6">
+              {details}
+            </pre>
+          </div>
+        )}
+      </div>
+    </AdminModal>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminAuditLog() {
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsOpts = isEs ? { locale: esLocale } : undefined;
 
   const [actionFilter, setActionFilter] = useState('all');
   const [datePreset, setDatePreset] = useState('30d');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [userSearch, setUserSearch] = useState('');
+  const [selectedEntry, setSelectedEntry] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => { document.title = 'Admin - Audit Log | TuGymPR'; }, []);
@@ -184,16 +285,16 @@ export default function AdminAuditLog() {
     enabled: !!gymId,
   });
 
-  const entries = useMemo(() => data?.pages?.flat() || [], [data]);
+  const allEntries = useMemo(() => data?.pages?.flat() || [], [data]);
 
-  const toggleExpand = useCallback((id) => {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // Client-side user search filter
+  const entries = useMemo(() => {
+    if (!userSearch.trim()) return allEntries;
+    const q = userSearch.toLowerCase();
+    return allEntries.filter(e =>
+      e.profiles?.full_name?.toLowerCase().includes(q)
+    );
+  }, [allEntries, userSearch]);
 
   const handleExport = useCallback(() => {
     if (!data?.pages) return;
@@ -201,31 +302,142 @@ export default function AdminAuditLog() {
     downloadCSV(rows);
   }, [data]);
 
-  // ── Render ──
+
+
+  // ── Table columns ──
+  const columns = [
+    {
+      key: 'actor',
+      label: t('admin.audit.actor', { defaultValue: 'Actor' }),
+      render: (row) => (
+        <div className="flex items-center gap-2.5">
+          {row.profiles?.avatar_url ? (
+            <img src={row.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover border border-white/8" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
+              <span className="text-[10px] font-bold text-[#D4AF37]">
+                {row.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
+              </span>
+            </div>
+          )}
+          <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+            {row.profiles?.full_name || t('admin.audit.unknownUser')}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'action',
+      label: t('admin.audit.actionLabel', { defaultValue: 'Action' }),
+      sortable: true,
+      render: (row) => {
+        const colorClass = getActionColor(row.action);
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${colorClass}`}>
+            {t(`admin.audit.actions.${row.action}`, { defaultValue: row.action })}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'entity_type',
+      label: t('admin.audit.entity'),
+      render: (row) => row.entity_type ? (
+        <div className="min-w-0">
+          <p className="text-[12px] text-[#E5E7EB]">{row.entity_type}</p>
+          {row.entity_id && (
+            <p className="text-[10px] text-[#6B7280] font-mono truncate max-w-[120px]">{row.entity_id.slice(0, 8)}...</p>
+          )}
+        </div>
+      ) : <span className="text-[11px] text-[#6B7280]">\u2014</span>,
+    },
+    {
+      key: 'created_at',
+      label: t('admin.audit.date', { defaultValue: 'Date' }),
+      sortable: true,
+      sortValue: (row) => new Date(row.created_at).getTime(),
+      render: (row) => (
+        <div>
+          <p className="text-[12px] text-[#E5E7EB]">{relativeTime(row.created_at, dateFnsOpts)}</p>
+          <p className="text-[10px] text-[#6B7280]">{absoluteTime(row.created_at, dateFnsOpts)}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'details_indicator',
+      label: '',
+      headerClassName: 'w-10',
+      render: (row) => {
+        const details = formatDetails(row.details);
+        return details ? (
+          <ChevronDown size={14} className="text-[#6B7280]" />
+        ) : null;
+      },
+    },
+  ];
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 py-6 sm:px-6 space-y-6">
+    <AdminPageShell>
       <PageHeader
         title={t('admin.audit.title')}
         subtitle={t('admin.audit.subtitle')}
-        icon={ClipboardList}
+        actions={
+          <button
+            onClick={handleExport}
+            disabled={!entries.length}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-[#E5E7EB] bg-white/[0.04] border border-white/6 hover:border-white/10 hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <Download size={14} />
+            {t('admin.audit.exportCSV')}
+          </button>
+        }
       />
 
-      {/* ── Toolbar ──────────────────────────────────────────── */}
+      {/* ── Filters ──────────────────────────────────────────── */}
       <FadeIn>
-        <AdminCard>
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Filter toggle (mobile) */}
+        <AdminCard className="mt-5 mb-5">
+          {/* Mobile filter toggle */}
+          <div className="sm:hidden flex items-center justify-between mb-3">
             <button
               onClick={() => setShowFilters(f => !f)}
-              className="sm:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium text-[#9CA3AF] bg-white/[0.04] border border-white/6 hover:border-white/10 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium text-[#9CA3AF] bg-white/[0.04] border border-white/6 hover:border-white/10 transition-colors"
             >
               <Filter size={14} />
               {tc('filters')}
             </button>
+          </div>
 
-            {/* Action filter */}
-            <div className={`${showFilters ? 'flex' : 'hidden'} sm:flex items-center gap-2 flex-wrap`}>
+          <div className={`${showFilters ? 'block' : 'hidden'} sm:block space-y-3`}>
+            {/* Row 1: Date presets + Action filter */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date presets */}
+              <div className="flex items-center gap-1">
+                {DATE_PRESETS.map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => setDatePreset(p.key)}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
+                      datePreset === p.key
+                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
+                        : 'text-[#6B7280] hover:text-[#9CA3AF] border border-white/6 hover:border-white/10'
+                    }`}
+                  >
+                    {t(`admin.audit.date.${p.key}`)}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setDatePreset('custom')}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
+                    datePreset === 'custom'
+                      ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
+                      : 'text-[#6B7280] hover:text-[#9CA3AF] border border-white/6 hover:border-white/10'
+                  }`}
+                >
+                  {t('admin.audit.date.custom')}
+                </button>
+              </div>
+
+              {/* Action type select */}
               <select
                 value={actionFilter}
                 onChange={e => setActionFilter(e.target.value)}
@@ -237,72 +449,55 @@ export default function AdminAuditLog() {
                 ))}
               </select>
 
-              {/* Date presets */}
-              <div className="flex items-center gap-1">
-                {DATE_PRESETS.map(p => (
+              {/* User search */}
+              <div className="relative ml-auto">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  placeholder={t('admin.audit.searchUser', { defaultValue: 'Search user...' })}
+                  className="bg-white/[0.04] border border-white/6 rounded-lg pl-8 pr-8 py-1.5 text-[13px] text-[#E5E7EB] placeholder:text-[#6B7280] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50 w-[180px]"
+                />
+                {userSearch && (
                   <button
-                    key={p.key}
-                    onClick={() => setDatePreset(p.key)}
-                    className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors ${
-                      datePreset === p.key
-                        ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                        : 'text-[#6B7280] hover:text-[#9CA3AF] border border-white/6 hover:border-white/10'
-                    }`}
+                    onClick={() => setUserSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF]"
                   >
-                    {t(`admin.audit.date.${p.key}`)}
+                    <X size={12} />
                   </button>
-                ))}
-                <button
-                  onClick={() => setDatePreset('custom')}
-                  className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors ${
-                    datePreset === 'custom'
-                      ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                      : 'text-[#6B7280] hover:text-[#9CA3AF] border border-white/6 hover:border-white/10'
-                  }`}
-                >
-                  {t('admin.audit.date.custom')}
-                </button>
+                )}
               </div>
             </div>
 
-            {/* Export */}
-            <button
-              onClick={handleExport}
-              disabled={!entries.length}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium text-[#9CA3AF] bg-white/[0.04] border border-white/6 hover:border-white/10 hover:text-[#E5E7EB] transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <Download size={14} />
-              {t('admin.audit.exportCSV')}
-            </button>
+            {/* Custom date inputs */}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-3 pt-3 border-t border-white/6">
+                <div className="flex items-center gap-2">
+                  <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.from')}</label>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={e => setCustomFrom(e.target.value)}
+                    className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.to')}</label>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={e => setCustomTo(e.target.value)}
+                    className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-
-          {/* Custom date inputs */}
-          {datePreset === 'custom' && (
-            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/6">
-              <div className="flex items-center gap-2">
-                <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.from')}</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={e => setCustomFrom(e.target.value)}
-                  className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.to')}</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={e => setCustomTo(e.target.value)}
-                  className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
-                />
-              </div>
-            </div>
-          )}
         </AdminCard>
       </FadeIn>
 
-      {/* ── Timeline ─────────────────────────────────────────── */}
+      {/* ── Audit Table ─────────────────────────────────────── */}
       <FadeIn delay={0.05}>
         {isLoading ? (
           <div className="space-y-3">
@@ -310,95 +505,20 @@ export default function AdminAuditLog() {
           </div>
         ) : entries.length === 0 ? (
           <AdminCard>
-            <div className="py-12 text-center">
+            <div className="py-16 text-center">
               <ClipboardList size={32} className="mx-auto mb-3 text-[#6B7280]" />
               <p className="text-[14px] text-[#6B7280]">{t('admin.audit.empty')}</p>
             </div>
           </AdminCard>
         ) : (
-          <div className="space-y-2">
-            {entries.map((entry) => {
-              const isExpanded = expandedIds.has(entry.id);
-              const details = formatDetails(entry.details);
-              const colorClass = getActionColor(entry.action);
-
-              return (
-                <AdminCard key={entry.id} hover padding="p-0">
-                  <div className="px-4 py-3">
-                    <div className="flex items-start gap-3">
-                      {/* Avatar */}
-                      <div className="flex-shrink-0 mt-0.5">
-                        {entry.profiles?.avatar_url ? (
-                          <img
-                            src={entry.profiles.avatar_url}
-                            alt=""
-                            className="w-8 h-8 rounded-full object-cover border border-white/8"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
-                            <span className="text-[11px] font-bold text-[#D4AF37]">
-                              {entry.profiles?.full_name?.[0]?.toUpperCase() ?? 'A'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                            {entry.profiles?.full_name || t('admin.audit.unknownUser')}
-                          </span>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${colorClass}`}>
-                            {t(`admin.audit.actions.${entry.action}`, { defaultValue: entry.action })}
-                          </span>
-                        </div>
-
-                        {/* Entity info */}
-                        {entry.entity_type && (
-                          <p className="text-[12px] text-[#6B7280] mt-0.5">
-                            {t('admin.audit.entity')}: {entry.entity_type}
-                            {entry.entity_id && (
-                              <span className="ml-1 text-[#9CA3AF] font-mono text-[11px]">
-                                {entry.entity_id.slice(0, 8)}...
-                              </span>
-                            )}
-                          </p>
-                        )}
-
-                        {/* Timestamp */}
-                        <p className="text-[11px] text-[#6B7280] mt-1" title={absoluteTime(entry.created_at)}>
-                          {relativeTime(entry.created_at)}
-                        </p>
-                      </div>
-
-                      {/* Expand toggle */}
-                      {details && (
-                        <button
-                          onClick={() => toggleExpand(entry.id)}
-                          className="flex-shrink-0 p-1.5 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-colors"
-                          aria-label={isExpanded ? tc('collapse') : tc('expand')}
-                        >
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Expanded details */}
-                    {isExpanded && details && (
-                      <div className="mt-3 pt-3 border-t border-white/6">
-                        <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5">
-                          {t('admin.audit.details')}
-                        </p>
-                        <pre className="text-[12px] text-[#9CA3AF] bg-white/[0.02] rounded-lg p-3 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all">
-                          {details}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                </AdminCard>
-              );
-            })}
+          <div className="space-y-4">
+            <AdminTable
+              columns={columns}
+              data={entries}
+              loading={false}
+              onRowClick={(row) => setSelectedEntry(row)}
+              stickyHeader
+            />
 
             {/* Load more */}
             {hasNextPage && (
@@ -406,7 +526,7 @@ export default function AdminAuditLog() {
                 <button
                   onClick={() => fetchNextPage()}
                   disabled={isFetchingNextPage}
-                  className="px-5 py-2 rounded-lg text-[13px] font-medium text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors disabled:opacity-50"
                 >
                   {isFetchingNextPage ? t('admin.audit.loading') : t('admin.audit.loadMore')}
                 </button>
@@ -415,6 +535,15 @@ export default function AdminAuditLog() {
           </div>
         )}
       </FadeIn>
-    </div>
+
+      {/* Detail modal */}
+      <AuditDetailModal
+        entry={selectedEntry}
+        isOpen={!!selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        t={t}
+        dateFnsOpts={dateFnsOpts}
+      />
+    </AdminPageShell>
   );
 }

@@ -2,30 +2,32 @@ import { useState, useEffect } from 'react';
 import { Gift, Users, TrendingUp, CheckCircle, Clock, XCircle, Search, Download, Eye, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { useTranslation } from 'react-i18next';
 import { PageHeader, AdminCard, FadeIn, CardSkeleton } from '../../components/admin';
 
 const PERIODS = [
-  { label: '7d', days: 7 },
-  { label: '30d', days: 30 },
-  { label: '90d', days: 90 },
-  { label: 'All', days: null },
+  { key: '7d', days: 7 },
+  { key: '30d', days: 30 },
+  { key: '90d', days: 90 },
+  { key: 'all', days: null },
 ];
 
 const STATUS_STYLES = {
-  pending:   { bg: 'bg-amber-500/15', text: 'text-amber-400', label: 'Pending' },
-  completed: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: 'Completed' },
-  expired:   { bg: 'bg-red-500/15', text: 'text-red-400', label: 'Expired' },
+  pending:   { bg: 'bg-amber-500/15', text: 'text-amber-400' },
+  completed: { bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+  expired:   { bg: 'bg-red-500/15', text: 'text-red-400' },
 };
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, t }) {
   const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
   return (
     <span className={`${s.bg} ${s.text} text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-      {s.label}
+      {t(`admin.referrals.status.${status}`, status)}
     </span>
   );
 }
@@ -52,10 +54,14 @@ function StatCard({ icon: Icon, label, value, accent }) {
 }
 
 export default function AdminReferrals() {
+  const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
+
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
 
   const [period, setPeriod] = useState(PERIODS[1]);
   const [search, setSearch] = useState('');
@@ -79,7 +85,7 @@ export default function AdminReferrals() {
 
   // Fetch referrals
   const { data: referrals = [], isLoading } = useQuery({
-    queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId, period.label],
+    queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId, period.key],
     queryFn: async () => {
       let query = supabase
         .from('referrals')
@@ -109,9 +115,9 @@ export default function AdminReferrals() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
-      toast('Referral approved', 'success');
+      toast(t('admin.referrals.approvedToast', 'Referral approved'), 'success');
     },
-    onError: () => toast('Failed to approve referral', 'error'),
+    onError: () => toast(t('admin.referrals.approveFailedToast', 'Failed to approve referral'), 'error'),
   });
 
   // Reject mutation
@@ -125,9 +131,9 @@ export default function AdminReferrals() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
-      toast('Referral rejected', 'success');
+      toast(t('admin.referrals.rejectedToast', 'Referral rejected'), 'success');
     },
-    onError: () => toast('Failed to reject referral', 'error'),
+    onError: () => toast(t('admin.referrals.rejectFailedToast', 'Failed to reject referral'), 'error'),
   });
 
   // Computed stats
@@ -168,7 +174,7 @@ export default function AdminReferrals() {
 
   // CSV export
   const exportCSV = () => {
-    const header = 'Referrer,Referred,Status,Date,Points\n';
+    const header = `${t('admin.referrals.csvReferrer', 'Referrer')},${t('admin.referrals.csvReferred', 'Referred')},${t('admin.referrals.csvStatus', 'Status')},${t('admin.referrals.csvDate', 'Date')},${t('admin.referrals.csvPoints', 'Points')}\n`;
     const rows = filtered.map(r =>
       `"${r.referrer?.full_name || ''}","${r.referred?.full_name || ''}","${r.status}","${format(new Date(r.created_at), 'yyyy-MM-dd')}","${r.points_awarded || 0}"`
     ).join('\n');
@@ -185,14 +191,14 @@ export default function AdminReferrals() {
 
   return (
     <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
-      <PageHeader title="Referrals" subtitle="Track and manage member referrals" />
+      <PageHeader title={t('admin.referrals.title', 'Referrals')} subtitle={t('admin.referrals.subtitle', 'Track and manage member referrals')} />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-        <StatCard icon={Gift} label="Total Referrals" value={total} accent />
-        <StatCard icon={CheckCircle} label="Completed" value={completed} />
-        <StatCard icon={Clock} label="Pending" value={pending} />
-        <StatCard icon={TrendingUp} label="Points Awarded" value={pointsAwarded.toLocaleString()} />
+        <StatCard icon={Gift} label={t('admin.referrals.totalReferrals', 'Total Referrals')} value={total} accent />
+        <StatCard icon={CheckCircle} label={t('admin.referrals.completed', 'Completed')} value={completed} />
+        <StatCard icon={Clock} label={t('admin.referrals.pending', 'Pending')} value={pending} />
+        <StatCard icon={TrendingUp} label={t('admin.referrals.pointsAwarded', 'Points Awarded')} value={pointsAwarded.toLocaleString()} />
       </div>
 
       {/* Filters Row */}
@@ -201,15 +207,15 @@ export default function AdminReferrals() {
         <div className="flex bg-[#111827]/60 border border-white/[0.04] rounded-xl overflow-hidden">
           {PERIODS.map(p => (
             <button
-              key={p.label}
+              key={p.key}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                period.label === p.label
+                period.key === p.key
                   ? 'bg-[#D4AF37] text-black'
                   : 'text-[#6B7280] hover:text-[#9CA3AF]'
               }`}
             >
-              {p.label}
+              {t(`admin.referrals.period.${p.key}`, p.key)}
             </button>
           ))}
         </div>
@@ -219,7 +225,7 @@ export default function AdminReferrals() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
           <input
             type="text"
-            placeholder="Search by name..."
+            placeholder={t('admin.referrals.searchByName')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/30"
@@ -232,7 +238,7 @@ export default function AdminReferrals() {
           className="flex items-center gap-1.5 bg-[#111827]/60 border border-white/[0.04] rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
         >
           <Download size={13} />
-          Export
+          {t('admin.referrals.export', 'Export')}
         </button>
       </div>
 
@@ -244,7 +250,7 @@ export default function AdminReferrals() {
             className="flex items-center gap-2 mb-3"
           >
             <span className="text-[14px] font-bold text-[#E5E7EB]">
-              Approval Queue
+              {t('admin.referrals.approvalQueue', 'Approval Queue')}
             </span>
             <span className="bg-amber-500/15 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
               {pendingApproval.length}
@@ -265,10 +271,10 @@ export default function AdminReferrals() {
                         <AvatarInitial name={ref.referrer?.full_name} />
                         <div className="min-w-0">
                           <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                            {ref.referrer?.full_name || 'Unknown'}
+                            {ref.referrer?.full_name || t('admin.referrals.unknown', 'Unknown')}
                           </p>
                           <p className="text-[11px] text-[#6B7280]">
-                            referred {ref.referred?.full_name || 'Unknown'}
+                            {t('admin.referrals.referred', 'referred')} {ref.referred?.full_name || t('admin.referrals.unknown', 'Unknown')}
                           </p>
                         </div>
                       </div>
@@ -278,14 +284,14 @@ export default function AdminReferrals() {
                           disabled={approveMutation.isPending}
                           className="bg-emerald-500/15 text-emerald-400 text-[11px] font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-500/25 transition-colors"
                         >
-                          Approve
+                          {t('admin.referrals.approve', 'Approve')}
                         </button>
                         <button
                           onClick={() => rejectMutation.mutate(ref.id)}
                           disabled={rejectMutation.isPending}
                           className="bg-red-500/15 text-red-400 text-[11px] font-bold px-3 py-1.5 rounded-lg hover:bg-red-500/25 transition-colors"
                         >
-                          Reject
+                          {t('admin.referrals.reject', 'Reject')}
                         </button>
                       </div>
                     </div>
@@ -299,7 +305,7 @@ export default function AdminReferrals() {
 
       {/* Referral List */}
       <div className="mt-6">
-        <h2 className="text-[14px] font-bold text-[#E5E7EB] mb-3">All Referrals</h2>
+        <h2 className="text-[14px] font-bold text-[#E5E7EB] mb-3">{t('admin.referrals.allReferrals', 'All Referrals')}</h2>
 
         {isLoading ? (
           <div className="space-y-2">
@@ -309,7 +315,7 @@ export default function AdminReferrals() {
           <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-8 text-center">
             <Gift size={28} className="mx-auto mb-2 text-[#6B7280]" />
             <p className="text-[13px] text-[#6B7280]">
-              {search ? 'No referrals match your search' : 'No referrals yet'}
+              {search ? t('admin.referrals.noSearchResults', 'No referrals match your search') : t('admin.referrals.noReferrals', 'No referrals yet')}
             </p>
           </div>
         ) : (
@@ -322,15 +328,15 @@ export default function AdminReferrals() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                          {ref.referrer?.full_name || 'Unknown'}
+                          {ref.referrer?.full_name || t('admin.referrals.unknown', 'Unknown')}
                         </p>
                         <span className="text-[11px] text-[#6B7280]">→</span>
                         <p className="text-[13px] text-[#9CA3AF] truncate">
-                          {ref.referred?.full_name || 'Unknown'}
+                          {ref.referred?.full_name || t('admin.referrals.unknown', 'Unknown')}
                         </p>
                       </div>
                       <p className="text-[11px] text-[#6B7280] mt-0.5">
-                        {formatDistanceToNow(new Date(ref.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(ref.created_at), { addSuffix: true, ...dateFnsLocale })}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
@@ -339,7 +345,7 @@ export default function AdminReferrals() {
                           +{ref.points_awarded} pts
                         </span>
                       )}
-                      <StatusBadge status={ref.status} />
+                      <StatusBadge status={ref.status} t={t} />
                     </div>
                   </div>
                 </AdminCard>
@@ -354,7 +360,7 @@ export default function AdminReferrals() {
         <div className="mt-8">
           <h2 className="text-[14px] font-bold text-[#E5E7EB] mb-3 flex items-center gap-2">
             <Users size={15} className="text-[#D4AF37]" />
-            Top Referrers
+            {t('admin.referrals.topReferrers', 'Top Referrers')}
           </h2>
           <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl overflow-hidden">
             {topReferrers.map((member, idx) => (
@@ -371,10 +377,10 @@ export default function AdminReferrals() {
                   </span>
                   <AvatarInitial name={member.full_name} />
                   <p className="text-[13px] font-semibold text-[#E5E7EB] flex-1 truncate">
-                    {member.full_name || 'Unknown'}
+                    {member.full_name || t('admin.referrals.unknown', 'Unknown')}
                   </p>
                   <span className="text-[12px] font-bold text-[#D4AF37]">
-                    {member.count} {member.count === 1 ? 'referral' : 'referrals'}
+                    {member.count} {member.count === 1 ? t('admin.referrals.referralSingular', 'referral') : t('admin.referrals.referralPlural', 'referrals')}
                   </span>
                 </div>
               </FadeIn>

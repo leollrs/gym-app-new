@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import logger from '../../../../lib/logger';
@@ -101,12 +102,12 @@ async function fetchLifecycleData(gymId) {
 
   const total = (members || []).length;
   return [
-    { key: 'new',        label: 'New',        color: '#60A5FA', count: counts.new },
-    { key: 'onboarding', label: 'Onboarding', color: '#818CF8', count: counts.onboarding },
-    { key: 'active',     label: 'Active',     color: '#10B981', count: counts.active },
-    { key: 'atRisk',     label: 'At Risk',    color: '#F59E0B', count: counts.atRisk },
-    { key: 'churned',    label: 'Churned',    color: '#EF4444', count: counts.churned },
-    { key: 'wonBack',    label: 'Won Back',   color: '#D4AF37', count: counts.wonBack },
+    { key: 'new',        labelKey: 'lifecycleNew',        color: '#60A5FA', count: counts.new },
+    { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: '#818CF8', count: counts.onboarding },
+    { key: 'active',     labelKey: 'lifecycleActive',     color: '#10B981', count: counts.active },
+    { key: 'atRisk',     labelKey: 'lifecycleAtRisk',     color: '#F59E0B', count: counts.atRisk },
+    { key: 'churned',    labelKey: 'lifecycleChurned',    color: '#EF4444', count: counts.churned },
+    { key: 'wonBack',    labelKey: 'lifecycleWonBack',    color: '#D4AF37', count: counts.wonBack },
   ].map(s => ({
     ...s,
     pct: total > 0 ? Math.round((s.count / total) * 100) : 0,
@@ -114,6 +115,7 @@ async function fetchLifecycleData(gymId) {
 }
 
 export default function LifecycleStages({ gymId }) {
+  const { t } = useTranslation('pages');
   const { data: stages = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.lifecycle(gymId),
     queryFn: () => fetchLifecycleData(gymId),
@@ -121,19 +123,19 @@ export default function LifecycleStages({ gymId }) {
   });
 
   if (isLoading) return <CardSkeleton h="h-[140px]" />;
-  if (isError) return <ErrorCard message="Failed to load lifecycle data" onRetry={refetch} />;
+  if (isError) return <ErrorCard message={t('admin.analytics.lifecycleError', 'Failed to load lifecycle data')} onRetry={refetch} />;
   if (stages.length === 0) return null;
 
   return (
     <AdminCard hover className="mb-6 hover:border-white/10 transition-colors duration-300">
-      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Member Lifecycle</p>
-      <p className="text-[11px] text-[#6B7280] mb-4">Where your members are right now</p>
+      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">{t('admin.analytics.lifecycleTitle', 'Member Lifecycle')}</p>
+      <p className="text-[11px] text-[#6B7280] mb-4">{t('admin.analytics.lifecycleSubtitle', 'Where your members are right now')}</p>
 
       <div className="flex gap-1 h-10 rounded-xl overflow-hidden mb-4">
         {stages.map(s => (
           <div key={s.key} className="relative group" style={{ flex: s.count, background: s.color, minWidth: s.count > 0 ? 2 : 0 }}>
             <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-[#111827] border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white whitespace-nowrap z-10 pointer-events-none transition-opacity">
-              {s.label}: {s.count} ({s.pct}%)
+              {t(`admin.analytics.${s.labelKey}`, s.labelKey)}: {s.count} ({s.pct}%)
             </div>
           </div>
         ))}
@@ -144,7 +146,7 @@ export default function LifecycleStages({ gymId }) {
         {stages.map(s => (
           <div key={s.key} className="flex items-center gap-2 min-w-0">
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
-            <span className="text-[12px] text-[#9CA3AF] truncate">{s.label}</span>
+            <span className="text-[12px] text-[#9CA3AF] truncate">{t(`admin.analytics.${s.labelKey}`, s.labelKey)}</span>
             <span className="text-[12px] font-semibold text-[#E5E7EB] flex-shrink-0">{s.count}</span>
             <span className="text-[11px] text-[#6B7280] flex-shrink-0">({s.pct}%)</span>
           </div>

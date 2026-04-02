@@ -154,6 +154,7 @@ export function useNotifications(userId) {
       .from('notifications')
       .select('id, title, body, type, read_at, created_at, profile_id')
       .eq('profile_id', userId)
+      .is('dismissed_at', null)
       .order('created_at', { ascending: false })
       .limit(50),
     { enabled: !!userId },

@@ -1,203 +1,65 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users, TrendingUp, AlertTriangle, ChevronRight, Activity,
-  UserPlus, Trophy, Clock, RefreshCw, CalendarCheck, Dumbbell,
-  ShieldCheck, CheckCircle, XCircle, KeyRound, Share2,
+  Users, AlertTriangle, ChevronRight, Activity,
+  UserPlus, Clock, RefreshCw, CalendarCheck, Dumbbell,
+  CheckCircle, KeyRound, MessageSquare, BookOpen,
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import ChartTooltip from '../../components/ChartTooltip';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { format, subDays, startOfMonth, formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared admin components
-import { FadeIn, StatCard, AdminCard, SectionLabel, CardSkeleton, Avatar, AdminPageShell } from '../../components/admin';
+import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, PageHeader } from '../../components/admin';
 
-// Sub-components
-import AtRiskPreview from './components/AtRiskPreview';
-import RecentActivity from './components/RecentActivity';
-import FollowUpSettings from './components/FollowUpSettings';
+// Sub-components (kept)
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
-// ── Referral Stats fetcher ────────────────────────────────
-async function fetchReferralStats(gymId) {
-  const now = new Date();
-  const monthStart = startOfMonth(now).toISOString();
-
-  const [allTimeRes, thisMonthRes, completedAllRes, completedMonthRes] = await Promise.all([
-    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId),
-    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).gte('created_at', monthStart),
-    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'completed'),
-    supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('status', 'completed').gte('created_at', monthStart),
-  ]);
-
-  // Top referrer this month
-  const { data: topReferrerRows } = await supabase
-    .from('referrals')
-    .select('referrer_id, profiles!referrals_referrer_id_fkey(full_name)')
-    .eq('gym_id', gymId)
-    .eq('status', 'completed')
-    .gte('created_at', monthStart);
-
-  let topReferrer = null;
-  if (topReferrerRows?.length) {
-    const counts = {};
-    const names = {};
-    topReferrerRows.forEach(r => {
-      counts[r.referrer_id] = (counts[r.referrer_id] || 0) + 1;
-      names[r.referrer_id] = r.profiles?.full_name || 'Unknown';
-    });
-    const topId = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    if (topId) topReferrer = { name: names[topId[0]], count: topId[1] };
-  }
-
-  const totalAll = allTimeRes.count ?? 0;
-  const totalMonth = thisMonthRes.count ?? 0;
-  const completedAll = completedAllRes.count ?? 0;
-  const conversionRate = totalAll > 0 ? Math.round((completedAll / totalAll) * 100) : 0;
-
-  return { totalAll, totalMonth, completedAll, completedMonth: completedMonthRes.count ?? 0, conversionRate, topReferrer };
-}
-
-// ── Referral Leaderboard fetcher ─────────────────────────
-async function fetchReferralLeaderboard(gymId, period) {
-  const now = new Date();
-  let query = supabase
-    .from('referrals')
-    .select('referrer_id, profiles!referrals_referrer_id_fkey(full_name, avatar_url)')
-    .eq('gym_id', gymId)
-    .eq('status', 'completed');
-
-  if (period === 'month') {
-    query = query.gte('created_at', startOfMonth(now).toISOString());
-  }
-
-  const { data, error } = await query;
-  if (error) { logger.error('Referral leaderboard:', error); return []; }
-
-  // Group by referrer
-  const map = {};
-  (data || []).forEach(r => {
-    if (!map[r.referrer_id]) {
-      map[r.referrer_id] = {
-        id: r.referrer_id,
-        name: r.profiles?.full_name || 'Unknown',
-        avatar_url: r.profiles?.avatar_url || null,
-        count: 0,
-      };
-    }
-    map[r.referrer_id].count++;
-  });
-
-  return Object.values(map)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 20);
-}
-
-// ── Referral Leaderboard Component ───────────────────────
-function ReferralLeaderboard({ gymId, t }) {
-  const [period, setPeriod] = useState('month');
-
-  const { data: leaderboard = [], isLoading } = useQuery({
-    queryKey: adminKeys.referrals.leaderboard(gymId, period),
-    queryFn: () => fetchReferralLeaderboard(gymId, period),
-    enabled: !!gymId,
-    staleTime: 60_000,
-  });
-
-  return (
-    <AdminCard hover>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.referral.leaderboardTitle')}</p>
-        <div className="flex gap-1">
-          {['month', 'all'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors ${
-                period === p
-                  ? 'bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              {p === 'month' ? t('admin.referral.thisMonth') : t('admin.referral.allTime')}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-        </div>
-      ) : leaderboard.length === 0 ? (
-        <p className="text-[12px] text-[#6B7280] text-center py-6">{t('admin.referral.noReferrals')}</p>
-      ) : (
-        <div className="space-y-1.5">
-          {leaderboard.map((m, i) => (
-            <div key={m.id} className="flex items-center gap-3 px-3 py-2 bg-[#111827]/60 rounded-xl">
-              <span className={`text-[12px] font-bold w-5 text-center flex-shrink-0 ${i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>
-                {i + 1}
-              </span>
-              <Avatar name={m.name} size="sm" src={m.avatar_url} />
-              <p className="text-[13px] font-medium text-[#E5E7EB] flex-1 truncate">{m.name}</p>
-              <span className="text-[12px] font-bold text-[#D4AF37] tabular-nums">{m.count}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </AdminCard>
-  );
-}
-
-// ── Risk tier mini-bar ────────────────────────────────────
-const TierRow = ({ label, count, color, total }) => {
-  const pct = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="text-[11px] font-medium w-14 text-right" style={{ color }}>{label}</span>
-      <div className="flex-1 h-1 bg-white/6 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-[11px] font-bold text-[#9CA3AF] w-7 text-right">{count}</span>
-    </div>
-  );
-};
+// ── Helpers ──────────────────────────────────────────────
+import { getRiskTier } from '../../lib/churnScore';
 
 // ── Data fetching function ────────────────────────────────
 async function fetchOverviewData(gymId) {
   const now = new Date();
   const twentyEightDaysAgo = subDays(now, 28).toISOString();
   const fortyEightHoursAgo = subDays(now, 2).toISOString();
-  const threeDaysFromNow = subDays(now, -3).toISOString();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
   const [
-    membersRes, sessionsRes, churnScoresRes, fupRes,
-    notOnboardedRes, challengesEndingSoonRes, dripStepsRes, checkInsRes,
+    membersRes, sessionsRes, churnScoresRes,
+    notOnboardedRes, checkInsRes,
   ] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id').eq('gym_id', gymId).eq('role', 'member'),
+    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member'),
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(5000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
-    supabase.from('churn_followup_settings').select('*').eq('gym_id', gymId).single(),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).gte('created_at', fortyEightHoursAgo).limit(500),
-    supabase.from('challenges').select('id, name, end_date').eq('gym_id', gymId).eq('status', 'active').gte('end_date', now.toISOString()).lte('end_date', threeDaysFromNow).limit(20),
-    supabase.from('drip_campaign_steps').select('*').eq('gym_id', gymId).order('step_number').limit(50),
     supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(5000),
   ]);
 
-  const { data: todayCheckins } = await supabase.from('check_ins').select('id').eq('gym_id', gymId).gte('checked_in_at', todayStart);
+  const { data: todayCheckins } = await supabase.from('check_ins').select('id, profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', todayStart).order('checked_in_at', { ascending: false });
+
+  // Fetch today's classes count (gym_classes with a schedule matching today's day_of_week OR specific_date)
+  const todayDow = now.getDay(); // 0=Sun
+  const todayDate = format(now, 'yyyy-MM-dd');
+  const { data: classSchedules } = await supabase
+    .from('gym_class_schedules')
+    .select('id, gym_class:gym_classes!inner(id, gym_id, is_active)')
+    .eq('gym_class.gym_id', gymId)
+    .eq('gym_class.is_active', true)
+    .or(`day_of_week.eq.${todayDow},specific_date.eq.${todayDate}`);
 
   // Log errors
-  [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, challengesEndingSoonRes, dripStepsRes, checkInsRes]
+  [membersRes, sessionsRes, churnScoresRes, notOnboardedRes, checkInsRes]
     .forEach((res, i) => { if (res.error) logger.error(`AdminOverview fetch ${i}:`, res.error); });
 
-  const { data: topExRows } = await supabase.rpc('get_gym_exercise_popularity', { p_gym_id: gymId });
+  // Critical query guard
+  if (membersRes.error) throw new Error(`Failed to load members: ${membersRes.error.message}`);
+  if (sessionsRes.error) throw new Error(`Failed to load sessions: ${sessionsRes.error.message}`);
 
   const members = membersRes.data || [];
   const sessions = sessionsRes.data || [];
@@ -221,7 +83,7 @@ async function fetchOverviewData(gymId) {
     if (!lastSessionAt[s.profile_id] || s.started_at > lastSessionAt[s.profile_id]) lastSessionAt[s.profile_id] = s.started_at;
   });
 
-  // Fallback score estimator (mirrors AdminMembers logic)
+  // Fallback score estimator
   const estimateScore = (daysInactive, recentWorkouts, neverActive) => {
     let score;
     if (neverActive || daysInactive > 30) score = 95;
@@ -238,17 +100,19 @@ async function fetchOverviewData(gymId) {
     return { score, risk_tier, key_signals };
   };
 
-  // Build member lookup for recent activity display
+  // Build member lookup
   const memberMap = {};
   members.forEach(m => { memberMap[m.id] = m; });
 
-  // Merge DB scores with fallback estimates for all members
+  // Merge DB scores with fallback estimates
   const nowMs = Date.now();
   const allMemberScores = members.map(m => {
     const dbRow = latestScoreMap[m.id];
-    const lastSeenAt = m.last_active_at ?? lastSessionAt[m.id] ?? m.created_at;
-    const daysInactive = Math.floor((nowMs - new Date(lastSeenAt)) / 86400000);
-    const neverActive = !m.last_active_at && !lastSessionAt[m.id];
+    const lastSeenAt = m.last_active_at || lastSessionAt[m.id] || null;
+    const neverActive = !lastSeenAt;
+    const daysInactive = lastSeenAt
+      ? Math.floor((nowMs - new Date(lastSeenAt)) / 86400000)
+      : Math.floor((nowMs - new Date(m.created_at)) / 86400000);
     const recentWorkouts = sessionsLast14[m.id] ?? 0;
 
     if (dbRow) {
@@ -258,83 +122,87 @@ async function fetchOverviewData(gymId) {
     return { ...m, score: fb.score, risk_tier: fb.risk_tier, key_signals: fb.key_signals, daysInactive, neverActive };
   });
 
-  // Risk tiers (now includes all members, not just those with DB rows)
+  // Risk tiers
   const riskTiers = { critical: 0, high: 0, medium: 0, low: 0 };
   allMemberScores.forEach(m => { if (riskTiers[m.risk_tier] !== undefined) riskTiers[m.risk_tier]++; });
 
-  // At-risk members
+  // At-risk members (top 5 for watchlist)
   const atRisk = allMemberScores
     .filter(m => m.risk_tier === 'critical' || m.risk_tier === 'high')
     .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
+    .slice(0, 5);
 
   // Stats
   const total = members.length;
   const checkedInIds = new Set(checkIns.map(c => c.profile_id));
-  const activePct = total > 0 ? Math.round((checkedInIds.size / total) * 100) : 0;
 
-  const retentionCalc = (days) => {
-    const cutoff = subDays(now, days).toISOString();
-    const starting = members.filter(m => m.created_at <= cutoff);
-    if (starting.length === 0) return { pct: 0, days, starting: 0, retained: 0 };
-    const retained = starting.filter(m => m.membership_status !== 'cancelled' && m.membership_status !== 'banned').length;
-    return { pct: Math.round((retained / starting.length) * 100), days, starting: starting.length, retained };
-  };
-  const retentionBest = [retentionCalc(30), retentionCalc(60), retentionCalc(90)].find(r => r.starting >= 3) || retentionCalc(30);
+  // New members this month
+  const monthStart = startOfMonth(now).toISOString();
+  const newMembersMonth = members.filter(m => m.created_at >= monthStart).length;
 
-  // Action items
-  const actionItems = [];
-  const notOnboarded = notOnboardedRes.data || [];
-  if (notOnboarded.length > 0) {
-    actionItems.push({ icon: UserPlus, iconColor: 'text-[#D4AF37]', text: `${notOnboarded.length} new member${notOnboarded.length !== 1 ? 's' : ''} haven't completed onboarding`, link: '/admin/members' });
-  }
-  if (riskTiers.critical > 0) {
-    actionItems.push({ icon: AlertTriangle, iconColor: 'text-[#DC2626]', text: `${riskTiers.critical} member${riskTiers.critical !== 1 ? 's' : ''} at critical churn risk`, link: '/admin/churn' });
-  }
-  (challengesEndingSoonRes.data || []).forEach(ch => {
-    const daysLeft = Math.max(0, Math.ceil((new Date(ch.end_date) - now) / 86400000));
-    actionItems.push({ icon: Trophy, iconColor: 'text-amber-400', text: `"${ch.name}" ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`, link: '/admin/challenges' });
+  // Active this week
+  const sevenDaysAgo = subDays(now, 7).toISOString();
+  const activeThisWeekIds = new Set();
+  sessions.forEach(s => {
+    if (s.started_at >= sevenDaysAgo) activeThisWeekIds.add(s.profile_id);
   });
 
-  // Chart data
-  const dayMap = {};
-  for (let i = 13; i >= 0; i--) {
-    const d = format(subDays(now, i), 'MMM d');
-    dayMap[d] = { workouts: 0, checkins: 0 };
-  }
-  sessions.forEach(s => { const d = format(new Date(s.started_at), 'MMM d'); if (d in dayMap) dayMap[d].workouts++; });
-  checkIns.forEach(c => { const d = format(new Date(c.checked_in_at), 'MMM d'); if (d in dayMap) dayMap[d].checkins++; });
-  const chartData = Object.entries(dayMap).map(([date, vals]) => ({ date, ...vals }));
+  // Check-in average (last 30 days, daily average)
+  const checkInDayCounts = {};
+  checkIns.forEach(c => {
+    const d = format(new Date(c.checked_in_at), 'yyyy-MM-dd');
+    checkInDayCounts[d] = (checkInDayCounts[d] || 0) + 1;
+  });
+  const dayCountValues = Object.values(checkInDayCounts);
+  const avgDailyCheckins = dayCountValues.length > 0
+    ? Math.round(dayCountValues.reduce((s, v) => s + v, 0) / dayCountValues.length)
+    : 0;
 
-  // Recent activity
+  // Recent activity feed: checkins + workouts + new signups, sorted by time
+  const todayCheckinsData = todayCheckins || [];
+  const recentCheckins = todayCheckinsData.slice(0, 10).map(c => ({
+    type: 'checkin', profile_id: c.profile_id, timestamp: c.checked_in_at,
+    memberName: memberMap[c.profile_id]?.full_name || 'Unknown',
+    avatarUrl: memberMap[c.profile_id]?.avatar_url || null,
+  }));
   const recentWorkouts = sessions.slice(0, 10).map(s => ({
     type: 'workout', profile_id: s.profile_id, timestamp: s.started_at,
     memberName: memberMap[s.profile_id]?.full_name || 'Unknown',
-    memberInitial: memberMap[s.profile_id]?.full_name?.[0]?.toUpperCase() || '?',
+    avatarUrl: memberMap[s.profile_id]?.avatar_url || null,
     total_volume_lbs: s.total_volume_lbs,
   }));
-  const recentCheckins = checkIns.slice(0, 10).map(c => ({
-    type: 'checkin', profile_id: c.profile_id, timestamp: c.checked_in_at,
-    memberName: memberMap[c.profile_id]?.full_name || 'Unknown',
-    memberInitial: memberMap[c.profile_id]?.full_name?.[0]?.toUpperCase() || '?',
-  }));
-  const recentActivity = [...recentWorkouts, ...recentCheckins]
+  // New signups (created in last 7 days)
+  const recentSignups = members
+    .filter(m => m.created_at >= sevenDaysAgo)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 5)
+    .map(m => ({
+      type: 'signup', profile_id: m.id, timestamp: m.created_at,
+      memberName: m.full_name || 'Unknown',
+      avatarUrl: m.avatar_url || null,
+    }));
+
+  const recentActivity = [...recentCheckins, ...recentWorkouts, ...recentSignups]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(0, 10);
 
+  // Onboarding gaps (members not onboarded in last 48h)
+  const onboardingGaps = notOnboardedRes.data || [];
+
   return {
     stats: {
-      totalMembers: total, activeMembers: checkedInIds.size, activePct,
-      retentionPct: retentionBest.pct, retentionDays: retentionBest.days,
-      retentionDetail: `${retentionBest.retained}/${retentionBest.starting}`,
+      totalMembers: total,
       atRiskCount: riskTiers.critical + riskTiers.high,
-      workoutsMonth: sessions.length, checkInsToday: (todayCheckins || []).length,
+      criticalCount: riskTiers.critical,
+      checkInsToday: todayCheckinsData.length,
+      newMembersMonth,
+      activeThisWeek: activeThisWeekIds.size,
+      classesToday: new Set((classSchedules || []).map(s => s.gym_class?.id).filter(Boolean)).size,
+      avgDailyCheckins,
     },
-    riskTiers, atRisk, chartData, recentActivity, actionItems,
+    riskTiers, atRisk, recentActivity,
+    onboardingCount: onboardingGaps.length,
     _dbScoreCount: churnScores.length, _totalMembers: total,
-    topExercises: (topExRows || []).sort((a, b) => b.usage_count - a.usage_count).slice(0, 6).map(r => ({ id: r.exercise_id, name: r.exercise_name, count: r.usage_count })),
-    fupSettings: fupRes.data || null,
-    dripSteps: dripStepsRes.data || [],
   };
 }
 
@@ -343,45 +211,109 @@ function OverviewSkeleton() {
   return (
     <AdminPageShell className="space-y-4">
       <div className="h-7 bg-white/6 rounded-lg w-64 animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 h-[80px] animate-pulse">
-            <div className="h-6 bg-white/6 rounded w-16 mb-2" />
-            <div className="h-3 bg-white/4 rounded w-24" />
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 h-[80px] animate-pulse" />
         ))}
       </div>
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3">
-        <CardSkeleton h="h-[240px]" />
-        <CardSkeleton h="h-[240px]" />
+      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+        <CardSkeleton h="h-[340px]" />
+        <CardSkeleton h="h-[340px]" />
       </div>
     </AdminPageShell>
   );
 }
 
+// ── Alert Banner (compact action-needed indicator) ──────
+function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-xl text-left transition-all hover:brightness-110"
+      style={{ background: `${color}08`, border: `1px solid ${color}20` }}
+    >
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+        <Icon size={14} style={{ color }} />
+      </div>
+      <p className="flex-1 text-[12px] text-[#E5E7EB]">{text}</p>
+      <span className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0" style={{ color }}>
+        {actionLabel} <ChevronRight size={11} />
+      </span>
+    </button>
+  );
+}
+
+// ── Activity Feed Item ──────────────────────────────────
+function ActivityItem({ item, dateFnsLocale }) {
+  const actionMap = {
+    checkin: { label: 'checked in', color: '#8B5CF6', icon: CalendarCheck },
+    workout: { label: 'completed workout', color: '#3B82F6', icon: Dumbbell },
+    signup: { label: 'joined', color: '#10B981', icon: UserPlus },
+  };
+  const meta = actionMap[item.type] || actionMap.checkin;
+  const Icon = meta.icon;
+
+  return (
+    <div className="flex items-center gap-3 py-2 group">
+      <div className="relative flex-shrink-0">
+        <Avatar name={item.memberName} size="sm" src={item.avatarUrl} />
+        <div
+          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0F172A]"
+          style={{ background: `${meta.color}20` }}
+        >
+          <Icon size={8} style={{ color: meta.color }} />
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] text-[#E5E7EB] truncate">
+          <span className="font-medium">{item.memberName}</span>
+          <span className="text-[#6B7280] ml-1">{meta.label}</span>
+        </p>
+      </div>
+      <span className="text-[10px] text-[#4B5563] flex-shrink-0 tabular-nums">
+        {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true, ...(dateFnsLocale || {}) })}
+      </span>
+    </div>
+  );
+}
+
+// ── Watchlist Row ────────────────────────────────────────
+function WatchlistRow({ member, t }) {
+  const tier = getRiskTier(member.score);
+  return (
+    <div className="flex items-center gap-2.5 py-2">
+      <Avatar name={member.full_name} size="sm" src={member.avatar_url} />
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{member.full_name}</p>
+        <p className="text-[10px] text-[#6B7280]">
+          {member.neverActive
+            ? t('admin.overview.neverLogged')
+            : t('admin.overview.daysInactive', { count: member.daysInactive })}
+        </p>
+      </div>
+      <span
+        className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 tabular-nums"
+        style={{ color: tier.color, background: tier.bg }}
+      >
+        {member.score}%
+      </span>
+    </div>
+  );
+}
+
 export default function AdminOverview() {
-  const { profile } = useAuth();
+  const { profile, gymConfig } = useAuth();
   const navigate = useNavigate();
 
-  // SECURITY: Always derive gymId from the authenticated user's profile.
-  // Never accept gymId from URL params, query strings, or other user input.
   const gymId = profile?.gym_id;
   const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
-  const { t } = useTranslation('pages');
-  const [refreshingChurn, setRefreshingChurn] = useState(false);
-  const [greetingHour] = useState(() => new Date().getHours());
+  const { t, i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [resetApprovalId, setResetApprovalId] = useState(null);
 
-  // Referral stats
-  const { data: referralStats } = useQuery({
-    queryKey: adminKeys.referrals.stats(gymId),
-    queryFn: () => fetchReferralStats(gymId),
-    enabled: !!gymId,
-    staleTime: 60_000,
-  });
-
-  // Fetch pending password reset requests for this gym
+  // Fetch pending password reset requests
   const { data: pendingResets = [], refetch: refetchResets } = useQuery({
     queryKey: [...adminKeys.overview(gymId), 'pending-resets'],
     queryFn: async () => {
@@ -403,7 +335,7 @@ export default function AdminOverview() {
 
   useEffect(() => { document.title = 'Admin - Overview | TuGymPR'; }, []);
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: adminKeys.overview(gymId),
     queryFn: () => fetchOverviewData(gymId),
     enabled: !!gymId,
@@ -424,111 +356,140 @@ export default function AdminOverview() {
     }
   }, [gymId, data?._dbScoreCount, data?._totalMembers]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRefreshChurn = async () => {
-    if (!gymId) return;
-    setRefreshingChurn(true);
-    await supabase.rpc('compute_churn_scores', { p_gym_id: gymId });
-    await refetch();
-    setRefreshingChurn(false);
-  };
-
-  // Guard: only admins/super_admins with a valid gym_id may access this page
+  // Guard: only admins/super_admins with a valid gym_id
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied. You are not authorized to view this page.</p>
+        <p className="text-[#EF4444] text-[14px] font-semibold">{t('admin.overview.accessDenied')}</p>
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AdminPageShell>
+        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
+          <AlertTriangle size={28} className="text-[#EF4444]" />
+          <p className="text-[14px] font-semibold text-[#EF4444]">{t('admin.overview.loadError', 'Failed to load overview data')}</p>
+          <p className="text-[12px] text-[#6B7280] max-w-md text-center">{error?.message}</p>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium text-[#E5E7EB] bg-white/[0.05] border border-white/10 hover:bg-white/[0.08] transition-all"
+          >
+            <RefreshCw size={13} />
+            {t('admin.overview.refresh')}
+          </button>
+        </div>
+      </AdminPageShell>
     );
   }
 
   if (isLoading || !data) return <OverviewSkeleton />;
 
-  const { stats, riskTiers, atRisk, chartData, recentActivity, actionItems, topExercises, fupSettings, dripSteps } = data;
-  const totalScored = riskTiers.critical + riskTiers.high + riskTiers.medium + riskTiers.low;
-  const greetingLabel = greetingHour < 12 ? 'morning' : greetingHour < 17 ? 'afternoon' : 'evening';
-  const firstName = profile?.full_name?.split(' ')[0] || '';
+  const { stats, atRisk, recentActivity, onboardingCount } = data;
+  const classesEnabled = gymConfig?.classesEnabled ?? false;
 
-  const lastRunLabel = fupSettings?.last_run_at
-    ? formatDistanceToNow(new Date(fupSettings.last_run_at), { addSuffix: true })
-    : null;
+  // Determine if today's check-ins are unusually low
+  const checkInsBelowAvg = stats.avgDailyCheckins > 0 && stats.checkInsToday < stats.avgDailyCheckins * 0.5;
+
+  // Build alert banners (only shown when something needs attention)
+  const alerts = [];
+  if (stats.atRiskCount > 0) {
+    alerts.push({
+      icon: AlertTriangle,
+      text: t('admin.overview.atRiskDesc', { critical: stats.criticalCount, high: data.riskTiers?.high || 0 }),
+      actionLabel: t('admin.overview.actionFollowUp'),
+      color: stats.criticalCount > 0 ? '#EF4444' : '#F59E0B',
+      onClick: () => navigate('/admin/churn'),
+    });
+  }
+  if (pendingResets.length > 0) {
+    alerts.push({
+      icon: KeyRound,
+      text: t('admin.overview.pendingResetsDesc', { count: pendingResets.length }),
+      actionLabel: t('admin.overview.review'),
+      color: '#F59E0B',
+      onClick: () => setResetApprovalId(pendingResets[0]?.id),
+    });
+  }
+  if (onboardingCount > 0) {
+    alerts.push({
+      icon: UserPlus,
+      text: t('admin.overview.onboardingGapsDesc', { count: onboardingCount }),
+      actionLabel: t('admin.overview.viewAction'),
+      color: '#F97316',
+      onClick: () => navigate('/admin/members'),
+    });
+  }
+  if (checkInsBelowAvg) {
+    alerts.push({
+      icon: Activity,
+      text: t('admin.overview.unusualActivityDesc', { avg: stats.avgDailyCheckins, today: stats.checkInsToday }),
+      actionLabel: t('admin.overview.viewAction'),
+      color: '#EF4444',
+      onClick: () => navigate('/admin/attendance'),
+    });
+  }
 
   return (
     <AdminPageShell>
-      {/* Page header */}
+      {/* ── Header ───────────────────────────────────────── */}
       <FadeIn>
-        <div className="flex items-baseline justify-between mb-4">
-          <h1 className="text-[20px] font-bold text-[#E5E7EB] truncate min-w-0 flex-1">
-            Good {greetingLabel}{firstName ? `, ${firstName}` : ''}
-          </h1>
-          <span className="text-[12px] text-[#6B7280] flex-shrink-0">{format(new Date(), 'EEEE, MMMM d, yyyy')}</span>
-        </div>
+        <PageHeader
+          title={t('admin.overview.title')}
+          subtitle={format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)}
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => navigate('/admin/members')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
+                <Users size={12} />
+                {t('admin.overview.navMembers')}
+              </button>
+              <button onClick={() => navigate('/admin/churn')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
+                <AlertTriangle size={12} />
+                {t('admin.overview.navChurn')}
+              </button>
+              <button onClick={() => navigate('/admin/classes')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
+                <BookOpen size={12} />
+                {t('admin.overview.navClasses')}
+              </button>
+              <button onClick={() => navigate('/admin/messages')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
+                <MessageSquare size={12} />
+                {t('admin.overview.navMessages')}
+              </button>
+            </div>
+          }
+          className="mb-6"
+        />
       </FadeIn>
 
-      {/* Action items */}
-      {actionItems.length > 0 && (
-        <FadeIn delay={60}>
-          <AdminCard className="mb-4">
-            <SectionLabel>Action Required</SectionLabel>
-            <div className="space-y-1 mt-2">
-              {actionItems.map((item, i) => (
-                <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 bg-[#111827]/60 rounded-lg cursor-pointer hover:bg-[#111827] hover:translate-x-0.5 transition-all duration-200"
-                  onClick={() => navigate(item.link)}>
-                  <item.icon size={13} className={item.iconColor} />
-                  <p className="text-[12px] text-[#E5E7EB] flex-1">{item.text}</p>
-                  <ChevronRight size={13} className="text-[#6B7280]" />
-                </div>
-              ))}
-            </div>
-          </AdminCard>
+      {/* ════════════════════════════════════════════════════
+           SECTION 1 — ALERT BANNERS (only when action needed)
+         ════════════════════════════════════════════════════ */}
+      {alerts.length > 0 && (
+        <FadeIn delay={40}>
+          <div className="space-y-2 mb-5">
+            {alerts.map((a, i) => (
+              <AlertBanner key={i} icon={a.icon} text={a.text} actionLabel={a.actionLabel} color={a.color} onClick={a.onClick} />
+            ))}
+          </div>
         </FadeIn>
       )}
 
-      {/* Pending password resets */}
-      {pendingResets.length > 0 && (
-        <FadeIn delay={80}>
-          <AdminCard className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/12 flex items-center justify-center">
-                <KeyRound size={13} className="text-[#D4AF37]" />
-              </div>
-              <SectionLabel>Pending Password Resets</SectionLabel>
-              <span className="ml-auto text-[11px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/20 rounded-full px-2 py-0.5">
-                {pendingResets.length}
-              </span>
-            </div>
-            <div className="space-y-1.5 mt-3">
-              {pendingResets.map(r => (
-                <div
-                  key={r.id}
-                  className="flex items-center gap-3 px-3 py-2.5 bg-[#111827]/60 rounded-xl hover:bg-[#111827] transition-all cursor-pointer"
-                  onClick={() => setResetApprovalId(r.id)}
-                >
-                  <Avatar name={r.profiles?.full_name} size="sm" src={r.profiles?.avatar_url} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
-                      {r.profiles?.full_name || 'Unknown'}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {r.profiles?.username ? `@${r.profiles.username}` : ''} · {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={e => { e.stopPropagation(); setResetApprovalId(r.id); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/18 transition-colors"
-                    >
-                      <CheckCircle size={12} />
-                      Review
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </AdminCard>
-        </FadeIn>
-      )}
+      {/* ════════════════════════════════════════════════════
+           SECTION 2 — STAT CARDS (single row, no duplicates)
+         ════════════════════════════════════════════════════ */}
+      <div className={`grid gap-3 mb-5 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
+        <FadeIn delay={80}><StatCard label={t('admin.overview.glanceTotal')} value={stats.totalMembers} icon={Users} borderColor="#6366F1" /></FadeIn>
+        <FadeIn delay={120}><StatCard label={t('admin.overview.glanceCheckins')} value={stats.checkInsToday} icon={CalendarCheck} borderColor="#8B5CF6" /></FadeIn>
+        <FadeIn delay={160}><StatCard label={t('admin.overview.glanceActiveWeek')} value={stats.activeThisWeek} icon={Activity} borderColor="#3B82F6" /></FadeIn>
+        <FadeIn delay={200}><StatCard label={t('admin.overview.glanceNewMonth')} value={stats.newMembersMonth} icon={UserPlus} borderColor="#10B981" /></FadeIn>
+        <FadeIn delay={240}><StatCard label={t('admin.overview.glanceAtRisk')} value={stats.atRiskCount} icon={AlertTriangle} borderColor={stats.criticalCount > 0 ? '#EF4444' : '#F59E0B'} /></FadeIn>
+        {classesEnabled && (
+          <FadeIn delay={280}><StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" /></FadeIn>
+        )}
+      </div>
 
-      {/* Password reset approval modal */}
+      {/* ── Password reset approval modal ────────────────── */}
       {resetApprovalId && (
         <PasswordResetApprovalModal
           requestId={resetApprovalId}
@@ -540,175 +501,64 @@ export default function AdminOverview() {
         />
       )}
 
-      {/* Stat cards — hero size for Total Members */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
-        <StatCard label="Total Members" value={stats.totalMembers} sub="registered" borderColor="#6366F1" delay={100} size="hero" icon={Users} />
-        <StatCard label="Active (30d)" value={`${stats.activePct ?? 0}%`} sub={`${stats.activeMembers ?? 0} checked in`} borderColor="#3B82F6" delay={130} icon={CalendarCheck} />
-        <StatCard label={`Retention (${stats.retentionDays ?? 30}d)`} value={`${stats.retentionPct ?? 0}%`} sub={stats.retentionDetail ?? ''} borderColor="#10B981" delay={160} icon={TrendingUp} />
-        <StatCard label="At Risk" value={stats.atRiskCount} sub="critical + high" borderColor="#EF4444" delay={190} icon={AlertTriangle} />
-        <StatCard label="Check-ins Today" value={stats.checkInsToday ?? 0} sub="gym visits" borderColor="#8B5CF6" delay={220} />
-        <StatCard label="Workouts (30d)" value={stats.workoutsMonth} sub="completed sessions" borderColor="var(--color-accent)" delay={250} icon={Dumbbell} />
-      </div>
-
-      {/* Chart + Churn Risk Summary */}
-      <FadeIn delay={350}>
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3 mb-4">
+      {/* ════════════════════════════════════════════════════
+           SECTION 3 — RECENT ACTIVITY + WATCHLIST
+         ════════════════════════════════════════════════════ */}
+      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+        {/* Recent Activity Feed */}
+        <FadeIn delay={300}>
           <AdminCard hover>
-            <p className="text-[13px] font-semibold text-[#E5E7EB] mb-3">Activity — Last 14 Days</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                <defs>
-                  <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} interval={2} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--color-text-muted)', paddingTop: 4 }} />
-                <Area type="monotone" dataKey="checkins" name="Check-ins" stroke="#8B5CF6" strokeWidth={2} fill="url(#purpleGrad)" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} animationDuration={1200} animationEasing="ease-out" />
-                <Area type="monotone" dataKey="workouts" name="Workouts" stroke="var(--color-accent)" strokeWidth={2} fill="url(#goldGrad)" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} animationDuration={1200} animationEasing="ease-out" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="flex items-center gap-2.5 mb-3">
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.overview.recentActivity')}</p>
+              {recentActivity.length > 0 && (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#6B7280]">
+                  {recentActivity.length}
+                </span>
+              )}
+            </div>
+            {recentActivity.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10">
+                <Clock size={20} className="text-[#4B5563] mb-2" />
+                <p className="text-[12px] text-[#6B7280]">{t('admin.overview.noActivity')}</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/4">
+                {recentActivity.map((item, i) => (
+                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} />
+                ))}
+              </div>
+            )}
           </AdminCard>
+        </FadeIn>
 
-          {/* Churn Risk Summary */}
+        {/* Watchlist */}
+        <FadeIn delay={340}>
           <AdminCard hover>
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <p className="text-[13px] font-semibold text-[#E5E7EB]">Churn Risk</p>
-                <button onClick={handleRefreshChurn} disabled={refreshingChurn} title="Recompute churn scores"
-                  aria-label="Recompute churn scores"
-                  className="p-1 rounded-md text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/5 transition-colors disabled:opacity-40 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                  <RefreshCw size={12} className={refreshingChurn ? 'animate-spin' : ''} />
-                </button>
-              </div>
-              <button onClick={() => navigate('/admin/churn')} className="text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5">
-                View all <ChevronRight size={12} />
+              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.overview.watchlist')}</p>
+              <button onClick={() => navigate('/admin/churn')} className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5 whitespace-nowrap">
+                {t('admin.overview.viewAll')} <ChevronRight size={12} />
               </button>
             </div>
-            {totalScored === 0 ? (
-              <div className="flex flex-col items-center justify-center h-28 text-center">
-                <Clock size={18} className="text-[#6B7280] mb-2" />
-                <p className="text-[12px] text-[#6B7280]">No scores yet</p>
-                <p className="text-[11px] text-[#6B7280] mt-1">Scores are computed daily at 2 AM UTC</p>
+
+            {atRisk.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <CheckCircle size={18} className="text-[#10B981] mb-2" />
+                <p className="text-[12px] text-[#6B7280]">{t('admin.overview.noAtRisk')}</p>
+                <p className="text-[11px] text-[#4B5563] mt-0.5">{t('admin.overview.everyoneActive')}</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <TierRow label="Critical" count={riskTiers.critical} color="#DC2626" total={totalScored} />
-                <TierRow label="High" count={riskTiers.high} color="#EF4444" total={totalScored} />
-                <TierRow label="Medium" count={riskTiers.medium} color="#F59E0B" total={totalScored} />
-                <TierRow label="Low" count={riskTiers.low} color="#10B981" total={totalScored} />
-              </div>
-            )}
-            {fupSettings?.last_run_at && (
-              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-white/6">
-                <Activity size={11} className="text-emerald-500 flex-shrink-0" />
-                <p className="text-[11px] text-[#6B7280]">
-                  Auto follow-up ran {lastRunLabel} · {fupSettings.last_run_count} sent
-                </p>
-              </div>
+              <>
+                <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider mb-2">{t('admin.overview.watchlistAtRisk')}</p>
+                <div className="divide-y divide-white/4">
+                  {atRisk.map(m => (
+                    <WatchlistRow key={m.id} member={m} t={t} />
+                  ))}
+                </div>
+              </>
             )}
           </AdminCard>
-        </div>
-      </FadeIn>
-
-      {/* At-risk members + Top exercises */}
-      <FadeIn delay={420}>
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_340px] gap-3 mb-4">
-          <AtRiskPreview atRisk={atRisk} />
-
-          <AdminCard hover>
-            <p className="text-[13px] font-semibold text-[#E5E7EB] mb-2.5">Top Exercises (30d)</p>
-            {topExercises.length === 0 ? (
-              <p className="text-[12px] text-[#6B7280] text-center py-6">No data yet</p>
-            ) : (
-              <div className="space-y-2">
-                {topExercises.map((ex, i) => {
-                  const maxCount = topExercises[0].count;
-                  return (
-                    <div key={ex.id}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-[12px] text-[#E5E7EB] truncate flex-1 mr-2">{ex.name}</p>
-                        <p className="text-[10px] text-[#6B7280] flex-shrink-0">{ex.count}x</p>
-                      </div>
-                      <div className="h-1 rounded-full bg-white/6 overflow-hidden">
-                        <div className="h-full rounded-full transition-all"
-                          style={{ width: `${Math.round((ex.count / maxCount) * 100)}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </AdminCard>
-        </div>
-      </FadeIn>
-
-      {/* Recent Activity */}
-      <RecentActivity activity={recentActivity} delay={490} />
-
-      {/* Referral Stats + Leaderboard */}
-      {referralStats && referralStats.totalAll > 0 && (
-        <FadeIn delay={530}>
-          <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-3 mt-4">
-            {/* Referral Stats Card */}
-            <AdminCard hover>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-lg bg-[#8B5CF6]/12 flex items-center justify-center">
-                  <Share2 size={13} className="text-[#8B5CF6]" />
-                </div>
-                <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.referral.statsTitle')}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#111827]/60 rounded-xl p-3">
-                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.totalMonth}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.thisMonth')}</p>
-                </div>
-                <div className="bg-[#111827]/60 rounded-xl p-3">
-                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.totalAll}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.allTime')}</p>
-                </div>
-                <div className="bg-[#111827]/60 rounded-xl p-3">
-                  <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{referralStats.conversionRate}%</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.referral.conversionRate')}</p>
-                </div>
-                <div className="bg-[#111827]/60 rounded-xl p-3">
-                  {referralStats.topReferrer ? (
-                    <>
-                      <p className="text-[13px] font-bold text-[#E5E7EB] truncate">{referralStats.topReferrer.name}</p>
-                      <p className="text-[11px] text-[#6B7280]">{t('admin.referral.topReferrer')} ({referralStats.topReferrer.count})</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[13px] font-medium text-[#6B7280]">--</p>
-                      <p className="text-[11px] text-[#6B7280]">{t('admin.referral.topReferrer')}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            </AdminCard>
-
-            {/* Referral Leaderboard */}
-            <ReferralLeaderboard gymId={gymId} t={t} />
-          </div>
         </FadeIn>
-      )}
-
-      {/* Follow-Up Settings */}
-      <div className="mt-4">
-        <FollowUpSettings
-          gymId={gymId}
-          initialSettings={fupSettings}
-          initialSteps={dripSteps}
-          atRiskCount={stats.atRiskCount}
-          delay={560}
-        />
       </div>
     </AdminPageShell>
   );

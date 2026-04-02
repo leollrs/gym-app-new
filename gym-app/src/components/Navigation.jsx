@@ -110,19 +110,23 @@ const Navigation = () => {
   }, [user?.id, location.pathname]);
 
   const [streakMonths, setStreakMonths] = useState([]);
+  const [freezeStatus, setFreezeStatus] = useState(null); // { used, max }
   const scrollRef = useRef(null);
 
   const loadStreakDays = useCallback(async () => {
     if (!user?.id) return;
 
-    const [sessionsRes, profileRes, gymRes] = await Promise.all([
+    const [sessionsRes, profileRes, gymHoursRes, closuresRes, holidaysRes, freezesRes] = await Promise.all([
       supabase.from('workout_sessions')
         .select('completed_at')
         .eq('profile_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false }),
       supabase.from('profiles').select('preferred_training_days, created_at').eq('id', user.id).maybeSingle(),
-      profile?.gym_id ? supabase.from('gyms').select('open_days').eq('id', profile.gym_id).maybeSingle() : Promise.resolve({ data: null }),
+      profile?.gym_id ? supabase.from('gym_hours').select('day_of_week, is_closed').eq('gym_id', profile.gym_id) : Promise.resolve({ data: [] }),
+      profile?.gym_id ? supabase.from('gym_closures').select('closure_date').eq('gym_id', profile.gym_id) : Promise.resolve({ data: [] }),
+      profile?.gym_id ? supabase.from('gym_holidays').select('date, is_closed').eq('gym_id', profile.gym_id) : Promise.resolve({ data: [] }),
+      supabase.from('streak_freezes').select('month, used_count, max_allowed, frozen_dates').eq('profile_id', user.id),
     ]);
 
     // Helper: date → 'YYYY-MM-DD'
@@ -144,71 +148,33 @@ const Navigation = () => {
       prefDays.length > 0 ? [0,1,2,3,4,5,6].filter(d => !prefDays.some(name => DAY_MAP[name] === d)) : []
     );
 
-    // Gym closed days
-    const gymOpenDays = gymRes.data?.open_days || [];
+    // Gym closed days (recurring day-of-week)
     const gymClosedSet = new Set(
-      gymOpenDays.length > 0 ? [0,1,2,3,4,5,6].filter(d => !gymOpenDays.includes(d)) : []
+      (gymHoursRes.data || []).filter(h => h.is_closed).map(h => h.day_of_week)
     );
+
+    // Specific closure dates (gym_closures + gym_holidays)
+    const closureDateSet = new Set([
+      ...(closuresRes.data || []).map(c => c.closure_date),
+      ...(holidaysRes.data || []).filter(h => h.is_closed).map(h => h.date),
+    ]);
+
+    // Frozen dates from DB (keyed by date string)
+    const frozenDateSet = new Set();
+    const freezesByMonth = {};
+    for (const f of (freezesRes.data || [])) {
+      freezesByMonth[f.month] = f;
+      for (const d of (f.frozen_dates || [])) {
+        frozenDateSet.add(typeof d === 'string' ? d : toKey(new Date(d)));
+      }
+    }
 
     const today = new Date();
     const todayKey = toKey(today);
 
-    // ── STREAK CALCULATION ─────────────────────────────────────
-    // Walk backwards from today. A day is "valid" if:
-    //   1. User trained
-    //   2. Gym was closed
-    //   3. It's a rest day (user not scheduled)
-    //   4. Freeze used (one per calendar month, only if streak already started)
-    // The streak breaks at the first unprotected miss, or at account creation.
-
-    const streakDayKeys = new Set();
-    let frozenKey = null;
-    let hasAtLeastOneWorkout = false;
-    let currentFreezeMonth = null; // track which month's freeze has been used
-
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const key = toKey(d);
-      const dow = d.getDay();
-
-      // Stop before account existed
-      if (d < new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate())) break;
-
-      const hasWorkout = workoutDates.has(key);
-
-      if (hasWorkout) {
-        hasAtLeastOneWorkout = true;
-        streakDayKeys.add(key);
-      } else if (key === todayKey) {
-        // Today — not yet trained, don't break the streak
-        continue;
-      } else if (gymClosedSet.has(dow)) {
-        // Gym closed — neutral, streak continues
-        streakDayKeys.add(key);
-      } else if (prefDays.length > 0 && restDowSet.has(dow)) {
-        // User's rest day — neutral, streak continues
-        streakDayKeys.add(key);
-      } else if (hasAtLeastOneWorkout) {
-        // This is a training day with no workout — check freeze
-        const freezeMonth = `${d.getFullYear()}-${d.getMonth()}`;
-        if (currentFreezeMonth !== freezeMonth && !frozenKey) {
-          // Use freeze for this month
-          currentFreezeMonth = freezeMonth;
-          frozenKey = key;
-          streakDayKeys.add(key);
-        } else {
-          // No freeze available — streak breaks
-          break;
-        }
-      } else {
-        // No workout ever logged yet — don't count as missed
-        break;
-      }
-    }
-
     // ── CALENDAR GENERATION ────────────────────────────────────
-    // Show months from account creation month to current month
+    // Streak count comes from streak_cache (already in `streak` state).
+    // Calendar only determines visual status per day.
     const startDate = new Date(createdAt.getFullYear(), createdAt.getMonth(), 1);
     const months = [];
     let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -226,24 +192,23 @@ const Navigation = () => {
         const dow = d.getDay();
         const isToday = key === todayKey;
         const hasWorkout = workoutDates.has(key);
-        const inStreak = streakDayKeys.has(key);
         const beforeAccount = key < createdAtKey;
+        const isFrozen = frozenDateSet.has(key);
+        const isClosureDate = closureDateSet.has(key);
 
         let status;
         if (beforeAccount) {
-          status = 'future'; // invisible — before account existed
+          status = 'future';
         } else if (isToday && !hasWorkout) {
           status = 'today';
         } else if (hasWorkout) {
           status = 'done';
-        } else if (key === frozenKey) {
+        } else if (isFrozen) {
           status = 'frozen';
-        } else if (inStreak && (gymClosedSet.has(dow) || (prefDays.length > 0 && restDowSet.has(dow)))) {
+        } else if (isClosureDate || gymClosedSet.has(dow)) {
           status = 'rest';
-        } else if (gymClosedSet.has(dow)) {
-          status = 'rest'; // gym closed even outside streak — not "missed"
         } else if (prefDays.length > 0 && restDowSet.has(dow)) {
-          status = 'rest'; // rest day even outside streak — not "missed"
+          status = 'rest';
         } else {
           status = 'missed';
         }
@@ -256,6 +221,14 @@ const Navigation = () => {
       months.push({ label, days: monthDays, year, month, isCurrent });
       cursor = new Date(year, month - 1, 1);
     }
+
+    // Set freeze status for current month
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+    const currentFreeze = freezesByMonth[currentMonthKey];
+    setFreezeStatus({
+      used: currentFreeze?.used_count || 0,
+      max: currentFreeze?.max_allowed || 2,
+    });
 
     setStreakMonths(months);
   }, [user?.id, profile?.gym_id, streakData, i18n.language]);
@@ -543,10 +516,12 @@ const Navigation = () => {
 
         {/* Freeze status */}
         <div className="px-5 pb-3 flex-shrink-0">
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${streakData?.streak_freeze_used ? 'bg-blue-500/10' : 'bg-white/[0.04]'}`}>
-            <Snowflake size={14} className={streakData?.streak_freeze_used ? 'text-blue-400' : ''} style={streakData?.streak_freeze_used ? undefined : { color: 'var(--color-text-subtle)' }} />
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${freezeStatus?.used >= freezeStatus?.max ? 'bg-blue-500/10' : 'bg-white/[0.04]'}`}>
+            <Snowflake size={14} className={freezeStatus?.used > 0 ? 'text-blue-400' : ''} style={freezeStatus?.used > 0 ? undefined : { color: 'var(--color-text-subtle)' }} />
             <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              {streakData?.streak_freeze_used ? t('navigation.streaks.monthlyFreezeUsed', { ns: 'pages' }) : t('navigation.streaks.freezeAvailable', { ns: 'pages' })}
+              {freezeStatus?.used >= freezeStatus?.max
+                ? t('navigation.streaks.monthlyFreezeUsed', { ns: 'pages' })
+                : t('navigation.streaks.freezeAvailable', { ns: 'pages', count: (freezeStatus?.max || 2) - (freezeStatus?.used || 0) })}
             </span>
           </div>
         </div>

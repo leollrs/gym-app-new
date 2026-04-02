@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Save, Clock, Upload, Image as ImageIcon, Users, ChevronDown, ChevronUp, Shield, CalendarOff, Plus, Trash2, Palette, Check, RotateCcw, AlertTriangle, Wand2, CalendarDays, Mail, Eye, Bell } from 'lucide-react';
+import { Save, Clock, Upload, Image as ImageIcon, Users, ChevronDown, ChevronUp, Shield, CalendarOff, Plus, Trash2, Palette, Check, RotateCcw, AlertTriangle, Wand2, CalendarDays, Mail, Eye, Bell, Globe, Settings2, Megaphone, Tag, ArrowUp, ArrowDown, Pencil } from 'lucide-react';
 
 const AdminNotificationPrefs = lazy(() => import('./AdminNotificationPrefs'));
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,14 +13,41 @@ import { getAllPalettes, getPalette, DEFAULT_PALETTE } from '../../lib/palettes'
 import { analyzeColorPair, autoHarmonize } from '../../lib/themeGenerator';
 import { validateImageFile } from '../../lib/validateImage';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
+import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, FilterBar, AdminModal } from '../../components/admin';
+import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+const LANGUAGES = [
+  { code: 'en', label: 'English', flag: '\u{1F1FA}\u{1F1F8}' },
+  { code: 'es', label: 'Espa\u00F1ol', flag: '\u{1F1EA}\u{1F1F8}' },
+];
 
 // Signed URL expiry for logos (1 day)
 const LOGO_URL_EXPIRY_SECONDS = 60 * 60 * 24;
 
 const REWARD_TYPES = ['points', 'discount', 'free_month', 'custom'];
+
+const OFFER_TYPES = ['discount', 'free_trial', 'bundle', 'class_pass', 'bring_friend', 'custom'];
+const OFFER_TYPE_COLORS = {
+  discount: '#EF4444',
+  free_trial: '#10B981',
+  bundle: '#8B5CF6',
+  class_pass: '#3B82F6',
+  bring_friend: '#F59E0B',
+  custom: '#6B7280',
+};
+const DEFAULT_OFFER = {
+  title: '',
+  description: '',
+  type: 'discount',
+  badge_label: '',
+  valid_from: '',
+  valid_until: '',
+  active: true,
+  title_es: '',
+  description_es: '',
+};
 
 const DEFAULT_REFERRAL_CONFIG = {
   enabled: false,
@@ -153,15 +180,39 @@ function RewardConfig({ reward, onChange, labelPrefix, t }) {
   );
 }
 
+// ── Status pill for config summary ──
+function ConfigPill({ label, value, color }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+      style={{
+        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+        color,
+        border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`,
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+      {label}: {value}
+    </span>
+  );
+}
+
+// Tab keys
+const TAB_GENERAL = 'general';
+const TAB_BRANDING = 'branding';
+const TAB_OPERATIONS = 'operations';
+
 export default function AdminSettings() {
   const { profile, refreshProfile } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const gymId = profile?.gym_id;
+  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState(TAB_GENERAL);
 
   // Editable fields
   const [name, setName]           = useState('');
@@ -210,6 +261,14 @@ export default function AdminSettings() {
   const [referralSaving, setReferralSaving] = useState(false);
   const [referralSaved, setReferralSaved] = useState(false);
 
+  // Offers state
+  const [offersOpen, setOffersOpen] = useState(false);
+  const [offerModalOpen, setOfferModalOpen] = useState(false);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [offerForm, setOfferForm] = useState(DEFAULT_OFFER);
+  const [offerSaving, setOfferSaving] = useState(false);
+  const [deletingOfferId, setDeletingOfferId] = useState(null);
+
 
   // Palette picker state
   const [selectedPalette, setSelectedPalette] = useState(null);
@@ -219,6 +278,9 @@ export default function AdminSettings() {
   const [paletteSaved, setPaletteSaved] = useState(false);
   const [customExpanded, setCustomExpanded] = useState(false);
   const [colorAnalysis, setColorAnalysis] = useState(null); // { ok, warnings, suggestions, contrast }
+
+  // Track which sections loaded successfully (Bug 1: prevent saving over failed loads)
+  const [loadedSections, setLoadedSections] = useState({ gym: false, branding: false, hours: false, followup: false });
 
   // Gym closures state
   const [closures, setClosures] = useState([]);
@@ -233,18 +295,38 @@ export default function AdminSettings() {
   const { data: settingsData, isLoading } = useQuery({
     queryKey: adminKeys.settings(gymId),
     queryFn: async () => {
-      const [{ data: gymData }, { data: brandingData }, { data: hoursData }, { data: followupData }] = await Promise.all([
+      const [gymResult, brandingResult, hoursResult, followupResult] = await Promise.all([
         supabase.from('gyms').select('*').eq('id', gymId).single(),
-        supabase.from('gym_branding').select('primary_color, accent_color, welcome_message, logo_url, palette_name').eq('gym_id', gymId).single(),
+        supabase.from('gym_branding').select('primary_color, accent_color, welcome_message, logo_url, palette_name').eq('gym_id', gymId).maybeSingle(),
         supabase.from('gym_hours').select('*').eq('gym_id', gymId).order('day_of_week'),
         supabase.from('churn_followup_settings').select('digest_enabled, digest_day').eq('gym_id', gymId).single(),
       ]);
+      // Track which sections loaded successfully
+      const sections = {
+        gym: !gymResult.error,
+        branding: !brandingResult.error,
+        hours: !hoursResult.error,
+        followup: !followupResult.error,
+      };
+      setLoadedSections(sections);
+
+      // Log errors but don't throw — partial data is better than none
+      if (gymResult.error) logger.warn('Failed to load gym settings', gymResult.error);
+      if (brandingResult.error) logger.warn('Failed to load branding settings', brandingResult.error);
+      if (hoursResult.error) logger.warn('Failed to load gym hours', hoursResult.error);
+      if (followupResult.error) logger.warn('Failed to load followup settings', followupResult.error);
+
+      const gymData = gymResult.data;
+      const brandingData = brandingResult.data;
+      const hoursData = hoursResult.data;
+      const followupData = followupResult.data;
+
       let signedLogoUrl = '';
       const path = brandingData?.logo_url ?? '';
       if (path) {
         signedLogoUrl = await getSignedLogoUrl(path);
       }
-      return { gym: gymData, branding: brandingData, signedLogoUrl, hours: hoursData, followup: followupData };
+      return { gym: gymData, branding: brandingData, signedLogoUrl, hours: hoursData, followup: followupData, loadedSections: sections };
     },
     enabled: !!gymId,
   });
@@ -312,7 +394,7 @@ export default function AdminSettings() {
         .from('gym-logos')
         .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
       if (storageErr) {
-        setError(`Logo upload failed: ${storageErr.message}`);
+        setError(`${t('admin.settings.logoUploadFailed', 'Logo upload failed')}: ${storageErr.message}`);
         setUploadingLogo(false);
         return;
       }
@@ -321,10 +403,9 @@ export default function AdminSettings() {
       setLogoFile(null);
       await supabase
         .from('gym_branding')
-        .update({ logo_url: path })
-        .eq('gym_id', gymId);
+        .upsert({ gym_id: gymId, logo_url: path }, { onConflict: 'gym_id' });
     } catch (err) {
-      setError(err.message || 'Logo upload failed');
+      setError(err.message || t('admin.settings.logoUploadFailed', 'Logo upload failed'));
     }
     setUploadingLogo(false);
   };
@@ -360,18 +441,146 @@ export default function AdminSettings() {
     setReferralSaving(false);
   };
 
+  // ── Auto-translate hook ──
+  const { translate, translating } = useAutoTranslate();
+
+  // ── Offers query ──
+  const offersQueryKey = [...adminKeys.settings(gymId), 'offers'];
+  const { data: offers = [] } = useQuery({
+    queryKey: offersQueryKey,
+    queryFn: async () => {
+      const { data, error: fetchErr } = await supabase
+        .from('gym_offers')
+        .select('*')
+        .eq('gym_id', gymId)
+        .order('sort_order')
+        .order('created_at');
+      if (fetchErr) { logger.warn('Failed to load offers', fetchErr); return []; }
+      return data || [];
+    },
+    enabled: !!gymId,
+  });
+
+  const openOfferModal = (offer = null) => {
+    if (offer) {
+      setEditingOffer(offer);
+      setOfferForm({
+        title: offer.title || '',
+        description: offer.description || '',
+        type: offer.type || 'discount',
+        badge_label: offer.badge_label || '',
+        valid_from: offer.valid_from || '',
+        valid_until: offer.valid_until || '',
+        active: offer.active ?? true,
+        title_es: offer.title_es || '',
+        description_es: offer.description_es || '',
+      });
+    } else {
+      setEditingOffer(null);
+      setOfferForm({ ...DEFAULT_OFFER });
+    }
+    setOfferModalOpen(true);
+  };
+
+  const handleSaveOffer = async () => {
+    if (!offerForm.title.trim()) return;
+    setOfferSaving(true);
+    try {
+      const payload = {
+        gym_id: gymId,
+        title: offerForm.title.trim(),
+        description: offerForm.description.trim() || null,
+        type: offerForm.type,
+        badge_label: offerForm.badge_label.trim() || null,
+        valid_from: offerForm.valid_from || null,
+        valid_until: offerForm.valid_until || null,
+        active: offerForm.active,
+        title_es: offerForm.title_es.trim() || null,
+        description_es: offerForm.description_es.trim() || null,
+      };
+      if (editingOffer) {
+        const { error: upErr } = await supabase.from('gym_offers').update(payload).eq('id', editingOffer.id);
+        if (upErr) throw upErr;
+      } else {
+        payload.sort_order = offers.length;
+        const { error: insErr } = await supabase.from('gym_offers').insert(payload);
+        if (insErr) throw insErr;
+      }
+      queryClient.invalidateQueries({ queryKey: offersQueryKey });
+      setOfferModalOpen(false);
+      showToast(t('admin.offers.saved'), 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+    setOfferSaving(false);
+  };
+
+  const handleDeleteOffer = async (id) => {
+    try {
+      const { error: delErr } = await supabase.from('gym_offers').delete().eq('id', id);
+      if (delErr) throw delErr;
+      queryClient.invalidateQueries({ queryKey: offersQueryKey });
+      setDeletingOfferId(null);
+      showToast(t('admin.offers.deleted'), 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleToggleOfferActive = async (offer) => {
+    try {
+      const { error: upErr } = await supabase.from('gym_offers').update({ active: !offer.active }).eq('id', offer.id);
+      if (upErr) throw upErr;
+      queryClient.invalidateQueries({ queryKey: offersQueryKey });
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleReorderOffer = async (index, direction) => {
+    const swapIdx = index + direction;
+    if (swapIdx < 0 || swapIdx >= offers.length) return;
+    const a = offers[index];
+    const b = offers[swapIdx];
+    try {
+      await Promise.all([
+        supabase.from('gym_offers').update({ sort_order: swapIdx }).eq('id', a.id),
+        supabase.from('gym_offers').update({ sort_order: index }).eq('id', b.id),
+      ]);
+      queryClient.invalidateQueries({ queryKey: offersQueryKey });
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleAutoTranslateOffer = async () => {
+    const texts = [offerForm.title, offerForm.description].filter(Boolean);
+    if (!texts.length) return;
+    const result = await translate(texts, 'ES');
+    if (result?.translations) {
+      const updates = {};
+      if (offerForm.title) updates.title_es = result.translations[0] || '';
+      if (offerForm.description) updates.description_es = result.translations[offerForm.title ? 1 : 0] || '';
+      setOfferForm(prev => ({ ...prev, ...updates }));
+    }
+  };
+
   // ── Save digest config ──
   const handleSaveDigestConfig = async () => {
+    if (!loadedSections.followup && !loadedSections.gym) {
+      showToast(t('admin.settings.digestLoadFailed', 'Digest settings failed to load — cannot save. Please reload the page.'), 'error');
+      return;
+    }
     setDigestSaving(true);
     try {
-      // Save enabled + day to churn_followup_settings
+      // Save enabled + day to churn_followup_settings (upsert to create row if missing)
       const { error: fupErr } = await supabase
         .from('churn_followup_settings')
-        .update({
+        .upsert({
+          gym_id: gymId,
           digest_enabled: digestEnabled,
           digest_day: digestDay,
-        })
-        .eq('gym_id', gymId);
+        }, { onConflict: 'gym_id' });
       if (fupErr) throw fupErr;
 
       // Save extended config (frequency, content) to gyms.digest_config JSONB
@@ -399,10 +608,10 @@ export default function AdminSettings() {
   const handleToggleDigest = async (v) => {
     const prev = digestEnabled;
     setDigestEnabled(v);
+    // Upsert to create row if missing
     const { error } = await supabase
       .from('churn_followup_settings')
-      .update({ digest_enabled: v })
-      .eq('gym_id', gymId);
+      .upsert({ gym_id: gymId, digest_enabled: v }, { onConflict: 'gym_id' });
     if (error) {
       setDigestEnabled(prev);
       showToast(error.message, 'error');
@@ -461,33 +670,31 @@ export default function AdminSettings() {
     }
   };
 
-  // ── Save mutation ──
-  const saveMutation = useMutation({
+  // ── Save General section ──
+  const saveGeneralMutation = useMutation({
     mutationFn: async () => {
+      if (!loadedSections.gym) throw new Error(t('admin.settings.gymLoadFailed', 'Gym settings failed to load — cannot save. Please reload the page.'));
+      if (!loadedSections.hours) throw new Error(t('admin.settings.hoursLoadFailed', 'Gym hours failed to load — cannot save. Please reload the page.'));
+
       // Derive open_days from dayHours for backward compat
       const derivedOpenDays = dayHours.filter(d => !d.is_closed).map(d => d.day_of_week).sort();
-      const [{ error: gymErr }, { error: brandingErr }] = await Promise.all([
-        supabase.from('gyms').update({
-          name,
-          open_time: dayHours.find(d => !d.is_closed)?.open_time || openTime,
-          close_time: dayHours.find(d => !d.is_closed)?.close_time || closeTime,
-          open_days: derivedOpenDays,
-          registration_mode: registrationMode,
-          updated_at: new Date().toISOString(),
-        }).eq('id', gymId),
-        supabase.from('gym_branding').update({
-          primary_color: primaryColor,
-          accent_color: accentColor,
-          welcome_message: welcomeMsg,
-          updated_at: new Date().toISOString(),
-        }).eq('gym_id', gymId),
-      ]);
-      // Upsert per-day hours
+      const { error: gymErr } = await supabase.from('gyms').update({
+        name,
+        open_time: dayHours.find(d => !d.is_closed)?.open_time || openTime,
+        close_time: dayHours.find(d => !d.is_closed)?.close_time || closeTime,
+        open_days: derivedOpenDays,
+        registration_mode: registrationMode,
+        classes_enabled: classesEnabled,
+        updated_at: new Date().toISOString(),
+      }).eq('id', gymId);
+
+      // Bug 4: Check gym_hours upsert error
       const hoursRows = dayHours.map(d => ({ gym_id: gymId, day_of_week: d.day_of_week, open_time: d.open_time, close_time: d.close_time, is_closed: d.is_closed }));
-      await supabase.from('gym_hours').upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
-      if (!brandingErr) applyBranding({ primaryColor, secondaryColor: accentColor });
-      if (gymErr || brandingErr) {
-        throw new Error(gymErr?.message || brandingErr?.message);
+      const { error: hoursErr } = await supabase.from('gym_hours').upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
+
+      const errors = [gymErr, hoursErr].filter(Boolean);
+      if (errors.length) {
+        throw new Error(errors.map(e => e.message).join('; '));
       }
     },
     onSuccess: () => {
@@ -495,7 +702,81 @@ export default function AdminSettings() {
       refreshProfile();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      showToast('Settings saved', 'success');
+      showToast(t('admin.settings.settingsSaved', 'Settings saved'), 'success');
+    },
+    onError: (err) => {
+      setError(err.message);
+      showToast(err.message, 'error');
+    },
+  });
+
+  // ── Save Branding section ──
+  const saveBrandingMutation = useMutation({
+    mutationFn: async () => {
+      if (!loadedSections.branding) throw new Error(t('admin.settings.brandingLoadFailed', 'Branding settings failed to load — cannot save. Please reload the page.'));
+
+      const isCustom = selectedPalette === 'custom';
+      const { error: brandingErr } = await supabase.from('gym_branding').upsert({
+        gym_id: gymId,
+        primary_color: primaryColor,
+        accent_color: accentColor,
+        welcome_message: welcomeMsg,
+        palette_name: selectedPalette || DEFAULT_PALETTE,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'gym_id' });
+      if (brandingErr) throw brandingErr;
+      applyBranding({ primaryColor, secondaryColor: accentColor });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
+      refreshProfile();
+      setPaletteSaved(true);
+      setTimeout(() => setPaletteSaved(false), 2500);
+      showToast(t('admin.settings.brandingSaved', 'Branding saved'), 'success');
+    },
+    onError: (err) => {
+      setError(err.message);
+      showToast(err.message, 'error');
+    },
+  });
+
+  // ── Save Operations section ──
+  const saveOperationsMutation = useMutation({
+    mutationFn: async () => {
+      const promises = [];
+
+      // Save digest config
+      if (loadedSections.followup || loadedSections.gym) {
+        promises.push(
+          supabase.from('churn_followup_settings').upsert({
+            gym_id: gymId,
+            digest_enabled: digestEnabled,
+            digest_day: digestDay,
+          }, { onConflict: 'gym_id' }),
+        );
+        promises.push(
+          supabase.from('gyms').update({
+            digest_config: { frequency: digestFrequency, content: digestContent },
+            referral_config: {
+              ...referralConfig,
+              max_per_month: referralConfig.max_per_month ? Number(referralConfig.max_per_month) : null,
+            },
+            updated_at: new Date().toISOString(),
+          }).eq('id', gymId),
+        );
+      }
+
+      const results = await Promise.all(promises);
+      const errors = results.map(r => r.error).filter(Boolean);
+      if (errors.length) {
+        throw new Error(errors.map(e => e.message).join('; '));
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
+      queryClient.invalidateQueries({ queryKey: adminKeys.referrals.config(gymId) });
+      refreshProfile();
+      showToast(t('admin.settings.operationsSaved', 'Operations settings saved'), 'success');
     },
     onError: (err) => {
       setError(err.message);
@@ -543,35 +824,8 @@ export default function AdminSettings() {
     const newAnalysis = analyzeColorPair(fixed.primary, fixed.secondary);
     setColorAnalysis(newAnalysis);
     if (fixed.wasAdjusted) {
-      showToast('Colors auto-adjusted for better harmony', 'success');
+      showToast(t('admin.settings.colorsAutoAdjusted', 'Colors auto-adjusted for better harmony'), 'success');
     }
-  };
-
-  const handleSavePalette = async () => {
-    setPaletteSaving(true);
-    try {
-      const isCustom = selectedPalette === 'custom';
-      const payload = {
-        palette_name: selectedPalette || DEFAULT_PALETTE,
-        primary_color: primaryColor,
-        accent_color: accentColor,
-        updated_at: new Date().toISOString(),
-      };
-      const { error: updateErr } = await supabase
-        .from('gym_branding')
-        .update(payload)
-        .eq('gym_id', gymId);
-      if (updateErr) throw updateErr;
-      queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
-      refreshProfile();
-      setPaletteSaved(true);
-      setTimeout(() => setPaletteSaved(false), 2500);
-      showToast('Theme saved successfully', 'success');
-    } catch (err) {
-      setError(err.message);
-      showToast(err.message, 'error');
-    }
-    setPaletteSaving(false);
   };
 
   const handleResetPalette = () => {
@@ -585,10 +839,30 @@ export default function AdminSettings() {
     applyBranding({ primaryColor: palette.primary, secondaryColor: palette.secondary });
   };
 
-  const handleSave = () => {
-    setError('');
-    saveMutation.mutate();
-  };
+  // ── Tab options ──
+  const tabOptions = [
+    { key: TAB_GENERAL, label: t('admin.settings.tabGeneral', 'General') },
+    { key: TAB_BRANDING, label: t('admin.settings.tabBranding', 'Branding') },
+    { key: TAB_OPERATIONS, label: t('admin.settings.tabOperations', 'Operations') },
+  ];
+
+  // ── Derived summary values ──
+  const regModeLabel = registrationMode === 'invite_only'
+    ? t('admin.registrationMode.inviteOnly')
+    : registrationMode === 'gym_code'
+      ? t('admin.registrationMode.gymCode')
+      : t('admin.registrationMode.both');
+  const paletteName = selectedPalette
+    ? (getAllPalettes().find(p => p.id === selectedPalette)?.name || selectedPalette)
+    : t('admin.settings.tabDefault', 'Default');
+
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied</p>
+      </div>
+    );
+  }
 
   if (isLoading) return (
     <AdminPageShell className="space-y-4">
@@ -600,960 +874,1384 @@ export default function AdminSettings() {
 
   return (
     <AdminPageShell>
-      <PageHeader title="Settings" subtitle="Gym branding and configuration" className="mb-6" />
+      <PageHeader title={t('admin.settings.title', 'Settings')} subtitle={t('admin.settings.subtitle', 'Gym branding and configuration')} className="mb-4" />
 
-      <div className="grid xl:grid-cols-12 gap-4">
-        {/* Branding */}
-        <FadeIn delay={0} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <SectionLabel className="mb-4">Branding</SectionLabel>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="gym-name" className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Gym Name</label>
-                <input id="gym-name" value={name} onChange={e => setName(e.target.value)}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
-              </div>
-              <div>
-                <label htmlFor="welcome-msg" className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Welcome Message</label>
-                <textarea id="welcome-msg" value={welcomeMsg} onChange={e => setWelcome(e.target.value)} rows={2}
-                  placeholder="Shown to new members during onboarding..."
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
-              </div>
-              <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Gym Logo</label>
-                <div className="flex items-center gap-3">
-                  {logoUrl ? (
-                    <img src={logoUrl} alt="Gym logo" className="w-12 h-12 rounded-xl object-contain bg-[#111827] border border-white/6 p-1" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-[#111827] border border-white/6 flex items-center justify-center flex-shrink-0">
-                      <ImageIcon size={20} className="text-[#6B7280]" />
-                    </div>
-                  )}
-                  <label className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl cursor-pointer transition-colors border border-dashed border-white/10 hover:border-white/20 text-[#6B7280] hover:text-[#9CA3AF]">
-                    <Upload size={14} />
-                    <span className="text-[12px] font-medium">
-                      {uploadingLogo ? 'Uploading...' : logoFile ? logoFile.name : 'Upload logo'}
-                    </span>
-                    <input
-                      type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                      disabled={uploadingLogo}
-                      onChange={e => {
-                        const f = e.target.files?.[0];
-                        if (f) { setLogoFile(f); handleLogoUpload(f); }
-                      }}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Primary Color</label>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                      className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
-                    <input value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                      className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">Accent Color</label>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={accentColor} onChange={e => setAccent(e.target.value)}
-                      className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
-                    <input value={accentColor} onChange={e => setAccent(e.target.value)}
-                      className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </AdminCard>
-        </FadeIn>
-
-        {/* Theme & Colors */}
-        <FadeIn delay={30} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <SectionLabel icon={Palette} className="mb-2">Theme & Colors</SectionLabel>
-            <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
-              Choose a predefined palette or create custom colors. Changes preview instantly.
+      {/* Warning for sections that failed to load */}
+      {settingsData && (!loadedSections.gym || !loadedSections.branding || !loadedSections.hours || !loadedSections.followup) && (
+        <div className="flex items-start gap-3 rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)' }}>
+          <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-warning)' }} />
+          <div>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-warning)' }}>
+              {t('admin.settings.loadWarningTitle', 'Some settings failed to load')}
             </p>
-
-            {/* Palette Grid */}
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              {getAllPalettes().map((palette) => {
-                const isActive = selectedPalette === palette.id;
-                return (
-                  <button
-                    key={palette.id}
-                    onClick={() => handleSelectPalette(palette.id)}
-                    className="relative text-left rounded-[14px] p-3.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border"
-                    style={{
-                      backgroundColor: 'var(--color-bg-deep)',
-                      borderColor: isActive ? palette.primary : 'var(--color-border-subtle)',
-                      boxShadow: isActive ? `0 0 0 1px ${palette.primary}, 0 0 20px ${palette.primary}22` : 'none',
-                    }}
-                  >
-                    {/* Active check badge */}
-                    {isActive && (
-                      <div
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow-lg"
-                        style={{ backgroundColor: palette.primary }}
-                      >
-                        <Check size={11} className="text-[var(--color-text-on-accent)]" strokeWidth={3} />
-                      </div>
-                    )}
-
-                    {/* Color preview strip */}
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <span
-                        className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
-                        style={{ backgroundColor: palette.primary }}
-                      />
-                      <span
-                        className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
-                        style={{ backgroundColor: palette.secondary }}
-                      />
-                      <span
-                        className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
-                        style={{ backgroundColor: palette.preview?.dark || '#0B0F1A' }}
-                      />
-                    </div>
-
-                    {/* Name & description */}
-                    <p className="text-[13px] font-bold truncate" style={{ color: isActive ? palette.primary : 'var(--color-text-primary)' }}>
-                      {palette.name}
-                    </p>
-                    <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
-                      {palette.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Colors — Expandable */}
-            <div
-              className="rounded-[14px] border transition-all"
-              style={{
-                backgroundColor: 'var(--color-bg-deep)',
-                borderColor: selectedPalette === 'custom'
-                  ? 'var(--color-accent)'
-                  : 'var(--color-border-subtle)',
-              }}
-            >
-              <button
-                onClick={() => setCustomExpanded(e => !e)}
-                className="w-full flex items-center justify-between px-4 py-3"
-              >
-                <div className="flex items-center gap-2">
-                  <Palette size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    Custom Colors
-                  </span>
-                  {selectedPalette === 'custom' && (
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
-                    >
-                      Active
-                    </span>
-                  )}
-                </div>
-                {customExpanded
-                  ? <ChevronUp size={14} style={{ color: 'var(--color-text-muted)' }} />
-                  : <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />
-                }
-              </button>
-
-              {customExpanded && (
-                <div className="px-4 pb-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Primary color */}
-                    <div>
-                      <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                        Primary Color
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={isValidHex(customPrimary) ? customPrimary : '#333333'}
-                          onChange={e => setCustomPrimary(e.target.value)}
-                          className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
-                          style={{
-                            borderColor: 'var(--color-border-subtle)',
-                            backgroundColor: 'var(--color-bg-deep)',
-                          }}
-                        />
-                        <input
-                          type="text"
-                          value={customPrimary}
-                          onChange={e => setCustomPrimary(e.target.value)}
-                          placeholder="#FF5500"
-                          maxLength={7}
-                          className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
-                          style={{
-                            color: 'var(--color-text-primary)',
-                            borderColor: customPrimary && !isValidHex(customPrimary)
-                              ? 'var(--color-danger)'
-                              : 'var(--color-border-subtle)',
-                          }}
-                        />
-                      </div>
-                      {customPrimary && !isValidHex(customPrimary) && (
-                        <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>Invalid hex format</p>
-                      )}
-                    </div>
-
-                    {/* Secondary color */}
-                    <div>
-                      <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                        Secondary Color
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={isValidHex(customSecondary) ? customSecondary : '#333333'}
-                          onChange={e => setCustomSecondary(e.target.value)}
-                          className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
-                          style={{
-                            borderColor: 'var(--color-border-subtle)',
-                            backgroundColor: 'var(--color-bg-deep)',
-                          }}
-                        />
-                        <input
-                          type="text"
-                          value={customSecondary}
-                          onChange={e => setCustomSecondary(e.target.value)}
-                          placeholder="#10B981"
-                          maxLength={7}
-                          className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
-                          style={{
-                            color: 'var(--color-text-primary)',
-                            borderColor: customSecondary && !isValidHex(customSecondary)
-                              ? 'var(--color-danger)'
-                              : 'var(--color-border-subtle)',
-                          }}
-                        />
-                      </div>
-                      {customSecondary && !isValidHex(customSecondary) && (
-                        <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>Invalid hex format</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleApplyCustomColors}
-                      disabled={!isValidHex(customPrimary) || !isValidHex(customSecondary)}
-                      className="flex-1 py-2 rounded-xl text-[12px] font-semibold transition-all disabled:opacity-40 border"
-                      style={{
-                        backgroundColor: 'var(--color-accent)',
-                        color: 'var(--color-bg-base)',
-                        borderColor: 'transparent',
-                        opacity: (!isValidHex(customPrimary) || !isValidHex(customSecondary)) ? 0.4 : 1,
-                      }}
-                    >
-                      Preview Colors
-                    </button>
-                    {isValidHex(customPrimary) && (
-                      <button
-                        onClick={handleAutoFix}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all border"
-                        style={{
-                          backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                          color: 'var(--color-accent)',
-                          borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                        }}
-                        title="Auto-adjust colors for best harmony and contrast"
-                      >
-                        <Wand2 size={12} /> Auto-fix
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Color analysis warnings */}
-                  {colorAnalysis && !colorAnalysis.ok && (
-                    <div
-                      className="rounded-xl p-3 space-y-2"
-                      style={{
-                        backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)',
-                        border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)',
-                      }}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <AlertTriangle size={12} style={{ color: 'var(--color-warning)' }} />
-                        <span className="text-[11px] font-semibold" style={{ color: 'var(--color-warning)' }}>
-                          Color Issues Detected
-                        </span>
-                      </div>
-                      {colorAnalysis.warnings.map((w, i) => (
-                        <p key={i} className="text-[11px] pl-5" style={{ color: 'var(--color-text-muted)' }}>
-                          {w.message}
-                        </p>
-                      ))}
-                      <button
-                        onClick={handleAutoFix}
-                        className="flex items-center gap-1.5 text-[11px] font-semibold pl-5 mt-1 hover:underline"
-                        style={{ color: 'var(--color-accent)' }}
-                      >
-                        <Wand2 size={10} /> Fix automatically
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Contrast scores */}
-                  {colorAnalysis && (
-                    <div className="flex gap-3 text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
-                      <span>
-                        Dark contrast:{' '}
-                        <span style={{ color: colorAnalysis.contrast.primaryOnDark >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                          {colorAnalysis.contrast.primaryOnDark.toFixed(1)}:1
-                        </span>
-                      </span>
-                      <span>
-                        Light contrast:{' '}
-                        <span style={{ color: colorAnalysis.contrast.primaryOnLight >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                          {colorAnalysis.contrast.primaryOnLight.toFixed(1)}:1
-                        </span>
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Save + Reset buttons */}
-            <div className="flex items-center gap-3 mt-5">
-              <button
-                onClick={handleSavePalette}
-                disabled={paletteSaving || !selectedPalette}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-[13px] transition-all disabled:opacity-50"
-                style={{
-                  backgroundColor: paletteSaved ? '#10B981' : 'var(--color-accent)',
-                  color: paletteSaved ? '#fff' : 'var(--color-bg-base)',
-                }}
-              >
-                <Save size={14} />
-                {paletteSaving ? 'Saving...' : paletteSaved ? 'Saved!' : 'Save Theme'}
-              </button>
-              <button
-                onClick={handleResetPalette}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold transition-all border"
-                style={{
-                  backgroundColor: 'transparent',
-                  color: 'var(--color-text-muted)',
-                  borderColor: 'var(--color-border-subtle)',
-                }}
-              >
-                <RotateCcw size={14} />
-                Reset
-              </button>
-            </div>
-          </AdminCard>
-        </FadeIn>
-
-        {/* Gym hours — per-day table */}
-        <FadeIn delay={60} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <SectionLabel icon={Clock} className="mb-4">Gym Hours</SectionLabel>
-            <p className="text-[12px] text-[#6B7280] mb-4">Set opening hours for each day. Toggle days off to mark as closed.</p>
-            <div className="space-y-2">
-              {DAY_KEYS.map((dayKey, idx) => {
-                const dayLabel = t(`common:days.${dayKey}`);
-                const dayShort = t(`common:days.${dayKey.slice(0, 3)}`);
-                const dh = dayHours.find(d => d.day_of_week === idx) || { open_time: '06:00', close_time: '22:00', is_closed: false };
-                const updateDay = (field, value) => {
-                  setDayHours(prev => prev.map(d => d.day_of_week === idx ? { ...d, [field]: value } : d));
-                };
-                return (
-                  <div key={dayKey} className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${dh.is_closed ? 'opacity-50' : ''}`}
-                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                    <button
-                      onClick={() => updateDay('is_closed', !dh.is_closed)}
-                      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                      style={{ backgroundColor: dh.is_closed ? 'var(--color-text-faint)' : 'var(--color-accent)' }}
-                      aria-label={`Toggle ${dayLabel}`}
-                    >
-                      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                        style={{ left: dh.is_closed ? '2px' : 'calc(100% - 18px)' }} />
-                    </button>
-                    <span className="text-[13px] font-semibold w-12 flex-shrink-0" style={{ color: 'var(--color-text-primary)' }}>
-                      {dayShort}
-                    </span>
-                    {dh.is_closed ? (
-                      <span className="text-[12px] font-medium" style={{ color: 'var(--color-danger)' }}>Closed</span>
-                    ) : (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)}
-                          className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
-                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>to</span>
-                        <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)}
-                          className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </AdminCard>
-        </FadeIn>
-
-        {/* Registration Mode */}
-        <FadeIn delay={75} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <SectionLabel icon={Shield} className="mb-4">{t('admin.registrationMode.sectionTitle')}</SectionLabel>
-            <p className="text-[12px] text-[#6B7280] mb-4">{t('admin.registrationMode.description')}</p>
-            <div className="space-y-2">
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.settings.loadWarningDesc', 'The following sections could not be loaded and cannot be saved until the page is reloaded:')}
+              {' '}
               {[
-                { value: 'invite_only', label: t('admin.registrationMode.inviteOnly'), desc: t('admin.registrationMode.inviteOnlyDesc') },
-                { value: 'gym_code', label: t('admin.registrationMode.gymCode'), desc: t('admin.registrationMode.gymCodeDesc') },
-                { value: 'both', label: t('admin.registrationMode.both'), desc: t('admin.registrationMode.bothDesc') },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setRegistrationMode(opt.value)}
-                  className={`w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border ${
-                    registrationMode === opt.value
-                      ? 'bg-[#D4AF37]/8 border-[#D4AF37]/30'
-                      : 'bg-[#111827] border-white/6 hover:border-white/10'
-                  }`}
-                >
-                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                    registrationMode === opt.value
-                      ? 'border-[#D4AF37]'
-                      : 'border-[#4B5563]'
-                  }`}>
-                    {registrationMode === opt.value && (
-                      <div className="w-2 h-2 rounded-full bg-[#D4AF37]" />
+                !loadedSections.gym && t('admin.settings.sectionGym', 'Gym info'),
+                !loadedSections.branding && t('admin.settings.sectionBranding', 'Branding'),
+                !loadedSections.hours && t('admin.settings.sectionHours', 'Gym hours'),
+                !loadedSections.followup && t('admin.settings.sectionDigest', 'Digest settings'),
+              ].filter(Boolean).join(', ')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Live Config Summary ── */}
+      <FadeIn delay={0}>
+        <AdminCard padding="p-4" className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.settings.liveConfigTitle', 'Current Live Config')}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <ConfigPill
+              label={t('admin.settings.summaryRegistration', 'Registration')}
+              value={regModeLabel}
+              color={registrationMode === 'invite_only' ? 'var(--color-warning)' : 'var(--color-success)'}
+            />
+            <ConfigPill
+              label={t('admin.settings.summaryClasses', 'Classes')}
+              value={classesEnabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
+              color={classesEnabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
+            />
+            <ConfigPill
+              label={t('admin.settings.summaryDigest', 'Digest')}
+              value={digestEnabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
+              color={digestEnabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
+            />
+            <ConfigPill
+              label={t('admin.settings.summaryReferral', 'Referral')}
+              value={referralConfig.enabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
+              color={referralConfig.enabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
+            />
+            <ConfigPill
+              label={t('admin.settings.summaryPalette', 'Palette')}
+              value={paletteName}
+              color="var(--color-accent)"
+            />
+            <ConfigPill
+              label={t('admin.settings.summaryClosures', 'Closures')}
+              value={String(closures.length)}
+              color={closures.length > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)'}
+            />
+          </div>
+        </AdminCard>
+      </FadeIn>
+
+      {/* ── Tab Navigation ── */}
+      <div className="mb-5">
+        <FilterBar options={tabOptions} active={activeTab} onChange={setActiveTab} />
+      </div>
+
+      {error && <p className="text-[13px] text-red-400 mb-4">{error}</p>}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── GENERAL TAB ──                                       */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {activeTab === TAB_GENERAL && (
+        <div className="space-y-4">
+          {/* Gym Info */}
+          <FadeIn delay={0}>
+            <AdminCard hover padding="p-5">
+              <SectionLabel className="mb-4">{t('admin.settings.gymName', 'Gym Name')}</SectionLabel>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="gym-name" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymName', 'Gym Name')}</label>
+                  <input id="gym-name" value={name} onChange={e => setName(e.target.value)}
+                    className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+                </div>
+                {/* Gym Slug */}
+                <div>
+                  <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.settings.gymSlug', 'Gym Slug')}</p>
+                  <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymSlugDesc', 'Members sign up using:')} <span style={{ color: 'var(--color-accent)' }} className="font-mono">{settingsData?.gym?.slug}</span></p>
+                </div>
+              </div>
+            </AdminCard>
+          </FadeIn>
+
+          {/* Language / Idioma */}
+          <FadeIn delay={20}>
+            <AdminCard hover padding="p-5">
+              <SectionLabel icon={Globe} className="mb-3">{t('admin.settings.language')}</SectionLabel>
+              <div className="rounded-2xl overflow-hidden divide-y" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                {LANGUAGES.map(lang => (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    onClick={async () => {
+                      i18n.changeLanguage(lang.code);
+                      if (profile?.id) {
+                        await supabase.from('profiles').update({ preferred_language: lang.code }).eq('id', profile.id);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors duration-200"
+                    style={{ backgroundColor: i18n.language?.startsWith(lang.code) ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[18px]">{lang.flag}</span>
+                      <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{lang.label}</span>
+                    </div>
+                    {i18n.language?.startsWith(lang.code) && (
+                      <Check size={16} style={{ color: 'var(--color-accent)' }} />
                     )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[13px] font-semibold ${
-                      registrationMode === opt.value ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'
-                    }`}>
-                      {opt.label}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280] mt-0.5">{opt.desc}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </AdminCard>
-        </FadeIn>
+                  </button>
+                ))}
+              </div>
+            </AdminCard>
+          </FadeIn>
 
-        {/* Referral Program */}
-        <FadeIn delay={90} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <button
-              onClick={() => setReferralOpen(o => !o)}
-              className="w-full flex items-center justify-between"
-            >
-              <SectionLabel icon={Users}>{t('admin.referral.sectionTitle')}</SectionLabel>
-              {referralOpen ? <ChevronUp size={16} className="text-[#6B7280]" /> : <ChevronDown size={16} className="text-[#6B7280]" />}
-            </button>
-
-            {referralOpen && (
-              <div className="mt-4 space-y-5">
-                {/* Enable toggle */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[13px] font-medium text-[#E5E7EB]">{t('admin.referral.enableProgram')}</p>
-                    <p className="text-[11px] text-[#6B7280]">{t('admin.referral.enableProgramDesc')}</p>
-                  </div>
-                  <Toggle
-                    checked={referralConfig.enabled}
-                    onChange={v => setReferralConfig(c => ({ ...c, enabled: v }))}
-                    label={t('admin.referral.enableProgram')}
-                  />
-                </div>
-
-                {referralConfig.enabled && (
-                  <>
-                    {/* Referrer reward */}
-                    <div className="border-t border-white/6 pt-4">
-                      <RewardConfig
-                        reward={referralConfig.referrer_reward}
-                        onChange={r => setReferralConfig(c => ({ ...c, referrer_reward: r }))}
-                        labelPrefix={t('admin.referral.referrerReward')}
-                        t={t}
-                      />
-                    </div>
-
-                    {/* Referred friend reward */}
-                    <div className="border-t border-white/6 pt-4">
-                      <RewardConfig
-                        reward={referralConfig.referred_reward}
-                        onChange={r => setReferralConfig(c => ({ ...c, referred_reward: r }))}
-                        labelPrefix={t('admin.referral.referredReward')}
-                        t={t}
-                      />
-                    </div>
-
-                    {/* Require approval */}
-                    <div className="flex items-center justify-between border-t border-white/6 pt-4">
-                      <div>
-                        <p className="text-[13px] font-medium text-[#E5E7EB]">{t('admin.referral.requireApproval')}</p>
-                        <p className="text-[11px] text-[#6B7280]">{t('admin.referral.requireApprovalDesc')}</p>
+          <div className="grid xl:grid-cols-12 gap-4">
+            {/* Gym hours — per-day table */}
+            <FadeIn delay={40} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={Clock} className="mb-4">{t('admin.settings.gymHours', 'Gym Hours')}</SectionLabel>
+                <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymHoursDesc', 'Set opening hours for each day. Toggle days off to mark as closed.')}</p>
+                <div className="space-y-2">
+                  {DAY_KEYS.map((dayKey, idx) => {
+                    const dayLabel = t(`common:days.${dayKey}`);
+                    const dayShort = t(`common:days.${dayKey.slice(0, 3)}`);
+                    const dh = dayHours.find(d => d.day_of_week === idx) || { open_time: '06:00', close_time: '22:00', is_closed: false };
+                    const updateDay = (field, value) => {
+                      setDayHours(prev => prev.map(d => d.day_of_week === idx ? { ...d, [field]: value } : d));
+                    };
+                    return (
+                      <div key={dayKey} className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${dh.is_closed ? 'opacity-50' : ''}`}
+                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                        <button
+                          onClick={() => updateDay('is_closed', !dh.is_closed)}
+                          className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
+                          style={{ backgroundColor: dh.is_closed ? 'var(--color-text-faint)' : 'var(--color-accent)' }}
+                          aria-label={`Toggle ${dayLabel}`}
+                        >
+                          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                            style={{ left: dh.is_closed ? '2px' : 'calc(100% - 18px)' }} />
+                        </button>
+                        <span className="text-[13px] font-semibold w-12 flex-shrink-0" style={{ color: 'var(--color-text-primary)' }}>
+                          {dayShort}
+                        </span>
+                        {dh.is_closed ? (
+                          <span className="text-[12px] font-medium" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.closed', 'Closed')}</span>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-1">
+                            <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)}
+                              className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                            <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.to', 'to')}</span>
+                            <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)}
+                              className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                          </div>
+                        )}
                       </div>
-                      <Toggle
-                        checked={referralConfig.require_approval}
-                        onChange={v => setReferralConfig(c => ({ ...c, require_approval: v }))}
-                        label={t('admin.referral.requireApproval')}
-                      />
-                    </div>
-
-                    {/* Max per month */}
-                    <div className="border-t border-white/6 pt-4">
-                      <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.referral.maxPerMonth')}</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={referralConfig.max_per_month ?? ''}
-                        onChange={e => setReferralConfig(c => ({ ...c, max_per_month: e.target.value ? Number(e.target.value) : null }))}
-                        placeholder={t('admin.referral.maxPerMonthPlaceholder')}
-                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                      />
-                    </div>
-
-                    {/* Save referral config */}
-                    <button
-                      onClick={handleSaveReferralConfig}
-                      disabled={referralSaving}
-                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-[13px] transition-all ${
-                        referralSaved ? 'bg-emerald-500 text-white' : 'bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20'
-                      } disabled:opacity-50`}
-                    >
-                      <Save size={14} />
-                      {referralSaving ? 'Saving...' : referralSaved ? 'Saved!' : t('admin.referral.saveReferralConfig')}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
-
-        {/* Class Booking */}
-        <FadeIn delay={97} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <SectionLabel icon={CalendarDays}>{t('admin.classes.settingTitle')}</SectionLabel>
-              </div>
-              <Toggle
-                checked={classesEnabled}
-                onChange={async (v) => {
-                  setClassesSaving(true);
-                  setClassesEnabled(v);
-                  const { error } = await supabase
-                    .from('gyms')
-                    .update({ classes_enabled: v, updated_at: new Date().toISOString() })
-                    .eq('id', gymId);
-                  if (error) {
-                    setClassesEnabled(!v);
-                    showToast(error.message, 'error');
-                  } else {
-                    queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
-                    refreshProfile();
-                  }
-                  setClassesSaving(false);
-                }}
-                label={t('admin.classes.settingTitle')}
-              />
-            </div>
-            <p className="text-[12px] text-[#6B7280] mt-1.5">{t('admin.classes.settingDesc')}</p>
-          </AdminCard>
-        </FadeIn>
-
-        {/* Weekly Digest */}
-        <FadeIn delay={100} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <button
-              onClick={() => setDigestOpen(o => !o)}
-              className="w-full flex items-center justify-between"
-            >
-              <SectionLabel icon={Mail}>{t('admin.digest.sectionTitle')}</SectionLabel>
-              {digestOpen ? <ChevronUp size={16} style={{ color: 'var(--color-text-muted)' }} /> : <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />}
-            </button>
-
-            {digestOpen && (
-              <div className="mt-4 space-y-5">
-                {/* Enable toggle */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.enableDigest')}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.digest.enableDigestDesc')}</p>
-                  </div>
-                  <Toggle
-                    checked={digestEnabled}
-                    onChange={handleToggleDigest}
-                    label={t('admin.digest.enableDigest')}
-                  />
+                    );
+                  })}
                 </div>
+              </AdminCard>
+            </FadeIn>
 
-                {digestEnabled && (
-                  <>
-                    {/* Frequency */}
-                    <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                        {t('admin.digest.frequency')}
-                      </label>
+            {/* Gym Closures */}
+            <FadeIn delay={60} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={CalendarOff} className="mb-4">{t('admin.closures.sectionTitle')}</SectionLabel>
+                <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.closures.description')}</p>
+
+                {/* Add closure form */}
+                <div className="space-y-3 mb-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.date')}</label>
+                      <input
+                        type="date"
+                        value={closureDate}
+                        onChange={e => setClosureDate(e.target.value)}
+                        min={new Date().toISOString().slice(0, 10)}
+                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.reason')}</label>
                       <select
-                        value={digestFrequency}
-                        onChange={e => setDigestFrequency(e.target.value)}
-                        className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none appearance-none"
-                        style={{
-                          backgroundColor: 'var(--color-bg-deep)',
-                          border: '1px solid var(--color-border-subtle)',
-                          color: 'var(--color-text-primary)',
-                        }}
+                        value={closureReason}
+                        onChange={e => setClosureReason(e.target.value)}
+                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none"
                       >
-                        <option value="daily">{t('admin.digest.frequencyDaily')}</option>
-                        <option value="weekly">{t('admin.digest.frequencyWeekly')}</option>
-                        <option value="monthly">{t('admin.digest.frequencyMonthly')}</option>
+                        <option value="holiday">{t('admin.closures.reasonHoliday')}</option>
+                        <option value="maintenance">{t('admin.closures.reasonMaintenance')}</option>
+                        <option value="special_event">{t('admin.closures.reasonSpecialEvent')}</option>
+                        <option value="other">{t('admin.closures.reasonOther')}</option>
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.name')}</label>
+                    <input
+                      type="text"
+                      value={closureName}
+                      onChange={e => setClosureName(e.target.value)}
+                      placeholder={t('admin.closures.namePlaceholder')}
+                      className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddClosure}
+                    disabled={!closureDate || closureSaving}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                      color: 'var(--color-accent)',
+                      border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                    }}
+                  >
+                    <Plus size={14} />
+                    {closureSaving ? t('admin.closures.adding') : t('admin.closures.addClosure')}
+                  </button>
+                </div>
 
-                    {/* Delivery day */}
-                    <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                        {digestFrequency === 'monthly' ? t('admin.digest.deliveryDate') : t('admin.digest.deliveryDay')}
-                      </label>
-                      {digestFrequency === 'weekly' && (
-                        <div className="flex flex-wrap gap-2">
-                          {DAY_KEYS.map((dayKey, idx) => {
-                            const isActive = digestDay === idx;
-                            return (
-                              <button
-                                key={dayKey}
-                                onClick={() => setDigestDay(idx)}
-                                className="px-3 py-2 rounded-xl text-[12px] font-semibold transition-all border"
-                                style={{
-                                  backgroundColor: isActive ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)' : 'var(--color-bg-deep)',
-                                  borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border-subtle)',
-                                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                                }}
-                              >
-                                {t(`common:days.${dayKey.slice(0, 3)}`)}
-                              </button>
-                            );
-                          })}
+                {/* Upcoming closures list */}
+                {closures.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>{t('admin.closures.upcoming')}</p>
+                    {closures.map(c => (
+                      <div key={c.id} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                            {c.name || t(`admin.closures.reason${c.reason?.charAt(0).toUpperCase()}${c.reason?.slice(1)?.replace('_', '')}`, c.reason)}
+                          </p>
+                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                            {new Date(c.closure_date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                            {c.reason && <span className="ml-2" style={{ color: 'var(--color-text-subtle)' }}>({t(`admin.closures.reason${c.reason?.charAt(0).toUpperCase()}${c.reason?.slice(1)?.replace('_', '')}`, c.reason)})</span>}
+                          </p>
                         </div>
-                      )}
-                      {digestFrequency === 'monthly' && (
-                        <div className="flex gap-2">
-                          {[1, 15].map(d => {
-                            const isActive = digestDay === d;
-                            return (
-                              <button
-                                key={d}
-                                onClick={() => setDigestDay(d)}
-                                className="px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all border"
-                                style={{
-                                  backgroundColor: isActive ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)' : 'var(--color-bg-deep)',
-                                  borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border-subtle)',
-                                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                                }}
-                              >
-                                {t('admin.digest.dayOfMonth', { day: d })}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {digestFrequency === 'daily' && (
-                        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
-                          {t('admin.digest.dailyNote')}
+                        <button
+                          onClick={() => handleDeleteClosure(c.id)}
+                          className="p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                          style={{ color: 'var(--color-text-muted)' }}
+                          aria-label={t('admin.closures.remove')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.closures.noClosure')}</p>
+                )}
+              </AdminCard>
+            </FadeIn>
+
+            {/* Registration Mode */}
+            <FadeIn delay={80} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={Shield} className="mb-4">{t('admin.registrationMode.sectionTitle')}</SectionLabel>
+                <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.registrationMode.description')}</p>
+                <div className="space-y-2">
+                  {[
+                    { value: 'invite_only', label: t('admin.registrationMode.inviteOnly'), desc: t('admin.registrationMode.inviteOnlyDesc') },
+                    { value: 'gym_code', label: t('admin.registrationMode.gymCode'), desc: t('admin.registrationMode.gymCodeDesc') },
+                    { value: 'both', label: t('admin.registrationMode.both'), desc: t('admin.registrationMode.bothDesc') },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setRegistrationMode(opt.value)}
+                      className="w-full flex items-start gap-3 rounded-xl px-4 py-3 text-left transition-all border"
+                      style={{
+                        backgroundColor: registrationMode === opt.value
+                          ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)'
+                          : 'var(--color-bg-deep)',
+                        borderColor: registrationMode === opt.value
+                          ? 'color-mix(in srgb, var(--color-accent) 30%, transparent)'
+                          : 'var(--color-border-subtle)',
+                      }}
+                    >
+                      <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors`}
+                        style={{ borderColor: registrationMode === opt.value ? 'var(--color-accent)' : 'var(--color-text-faint)' }}>
+                        {registrationMode === opt.value && (
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold" style={{ color: registrationMode === opt.value ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                          {opt.label}
                         </p>
-                      )}
-                    </div>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{opt.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </AdminCard>
+            </FadeIn>
 
-                    {/* Content selection */}
-                    <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <label className="block text-[12px] font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
-                        {t('admin.digest.contentTitle')}
+            {/* Class Booking */}
+            <FadeIn delay={100} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <SectionLabel icon={CalendarDays}>{t('admin.classes.settingTitle')}</SectionLabel>
+                  </div>
+                  <Toggle
+                    checked={classesEnabled}
+                    onChange={(v) => setClassesEnabled(v)}
+                    label={t('admin.classes.settingTitle')}
+                  />
+                </div>
+                <p className="text-[12px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.settingDesc')}</p>
+              </AdminCard>
+            </FadeIn>
+          </div>
+
+          {/* Save General Button */}
+          <FadeIn delay={120}>
+            <button
+              onClick={() => { setError(''); saveGeneralMutation.mutate(); }}
+              disabled={saveGeneralMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
+              style={{
+                backgroundColor: saved ? 'var(--color-success)' : 'var(--color-accent)',
+                color: saved ? '#fff' : 'var(--color-bg-base)',
+              }}
+            >
+              <Save size={16} />
+              {saveGeneralMutation.isPending
+                ? t('admin.settings.saving', 'Saving...')
+                : saved
+                  ? t('admin.settings.saved', 'Saved!')
+                  : t('admin.settings.saveGeneral', 'Save General Settings')}
+            </button>
+          </FadeIn>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── BRANDING TAB ──                                      */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {activeTab === TAB_BRANDING && (
+        <div className="space-y-4">
+          <div className="grid xl:grid-cols-12 gap-4">
+            {/* Logo & Welcome */}
+            <FadeIn delay={0} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel className="mb-4">{t('admin.settings.branding', 'Branding')}</SectionLabel>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="welcome-msg" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.welcomeMessage', 'Welcome Message')}</label>
+                    <textarea id="welcome-msg" value={welcomeMsg} onChange={e => setWelcome(e.target.value)} rows={2}
+                      placeholder={t('admin.settings.welcomePlaceholder')}
+                      className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymLogo', 'Gym Logo')}</label>
+                    <div className="flex items-center gap-3">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} className="w-12 h-12 rounded-xl object-contain bg-[#111827] border border-white/6 p-1" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-[#111827] border border-white/6 flex items-center justify-center flex-shrink-0">
+                          <ImageIcon size={20} className="text-[#6B7280]" />
+                        </div>
+                      )}
+                      <label className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl cursor-pointer transition-colors border border-dashed border-white/10 hover:border-white/20 text-[#6B7280] hover:text-[#9CA3AF]">
+                        <Upload size={14} />
+                        <span className="text-[12px] font-medium">
+                          {uploadingLogo ? t('admin.settings.uploading', 'Uploading...') : logoFile ? logoFile.name : t('admin.settings.uploadLogo', 'Upload logo')}
+                        </span>
+                        <input
+                          type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                          disabled={uploadingLogo}
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (f) { setLogoFile(f); handleLogoUpload(f); }
+                          }}
+                        />
                       </label>
-                      <div className="space-y-2.5">
-                        {[
-                          { key: 'member_activity', label: t('admin.digest.contentMemberActivity'), desc: t('admin.digest.contentMemberActivityDesc') },
-                          { key: 'churn_alerts', label: t('admin.digest.contentChurnAlerts'), desc: t('admin.digest.contentChurnAlertsDesc') },
-                          { key: 'challenge_updates', label: t('admin.digest.contentChallengeUpdates'), desc: t('admin.digest.contentChallengeUpdatesDesc') },
-                          { key: 'attendance_trends', label: t('admin.digest.contentAttendanceTrends'), desc: t('admin.digest.contentAttendanceTrendsDesc') },
-                          { key: 'new_members', label: t('admin.digest.contentNewMembers'), desc: t('admin.digest.contentNewMembersDesc') },
-                          { key: 'revenue_redemptions', label: t('admin.digest.contentRevenueRedemptions'), desc: t('admin.digest.contentRevenueRedemptionsDesc') },
-                        ].map(item => (
-                          <label
-                            key={item.key}
-                            className="flex items-start gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all border"
-                            style={{
-                              backgroundColor: digestContent[item.key] ? 'color-mix(in srgb, var(--color-accent) 6%, transparent)' : 'var(--color-bg-deep)',
-                              borderColor: digestContent[item.key] ? 'color-mix(in srgb, var(--color-accent) 25%, transparent)' : 'var(--color-border-subtle)',
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={digestContent[item.key]}
-                              onChange={e => setDigestContent(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                              className="sr-only"
-                            />
-                            <div
-                              className="mt-0.5 w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors border"
-                              style={{
-                                backgroundColor: digestContent[item.key] ? 'var(--color-accent)' : 'transparent',
-                                borderColor: digestContent[item.key] ? 'var(--color-accent)' : 'var(--color-text-faint)',
-                              }}
-                            >
-                              {digestContent[item.key] && <Check size={10} className="text-[var(--color-bg-base)]" strokeWidth={3} />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
-                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{item.desc}</p>
-                            </div>
-                          </label>
-                        ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.primaryColor', 'Primary Color')}</label>
+                      <div className="flex items-center gap-3">
+                        <input type="color" value={primaryColor} onChange={e => setPrimary(e.target.value)}
+                          className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
+                        <input value={primaryColor} onChange={e => setPrimary(e.target.value)}
+                          className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.accentColor', 'Accent Color')}</label>
+                      <div className="flex items-center gap-3">
+                        <input type="color" value={accentColor} onChange={e => setAccent(e.target.value)}
+                          className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
+                        <input value={accentColor} onChange={e => setAccent(e.target.value)}
+                          className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </AdminCard>
+            </FadeIn>
 
-                    {/* Preview toggle */}
-                    <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            {/* Theme & Colors */}
+            <FadeIn delay={30} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={Palette} className="mb-2">{t('admin.settings.themeColors', 'Theme & Colors')}</SectionLabel>
+                <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.settings.themeColorsDesc', 'Choose a predefined palette or create custom colors. Changes preview instantly.')}
+                </p>
+
+                {/* Palette Grid */}
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  {getAllPalettes().map((palette) => {
+                    const isActive = selectedPalette === palette.id;
+                    return (
                       <button
-                        onClick={() => setDigestPreview(p => !p)}
-                        className="flex items-center gap-2 text-[12px] font-semibold transition-colors"
-                        style={{ color: 'var(--color-accent)' }}
+                        key={palette.id}
+                        onClick={() => handleSelectPalette(palette.id)}
+                        className="relative text-left rounded-[14px] p-3.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border"
+                        style={{
+                          backgroundColor: 'var(--color-bg-deep)',
+                          borderColor: isActive ? palette.primary : 'var(--color-border-subtle)',
+                          boxShadow: isActive ? `0 0 0 1px ${palette.primary}, 0 0 20px ${palette.primary}22` : 'none',
+                        }}
                       >
-                        <Eye size={14} />
-                        {digestPreview ? t('admin.digest.hidePreview') : t('admin.digest.showPreview')}
-                      </button>
+                        {/* Active check badge */}
+                        {isActive && (
+                          <div
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow-lg"
+                            style={{ backgroundColor: palette.primary }}
+                          >
+                            <Check size={11} className="text-[var(--color-text-on-accent)]" strokeWidth={3} />
+                          </div>
+                        )}
 
-                      {digestPreview && (
+                        {/* Color preview strip */}
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <span
+                            className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
+                            style={{ backgroundColor: palette.primary }}
+                          />
+                          <span
+                            className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
+                            style={{ backgroundColor: palette.secondary }}
+                          />
+                          <span
+                            className="w-6 h-6 rounded-full border border-white/10 flex-shrink-0"
+                            style={{ backgroundColor: palette.preview?.dark || '#0B0F1A' }}
+                          />
+                        </div>
+
+                        {/* Name & description */}
+                        <p className="text-[13px] font-bold truncate" style={{ color: isActive ? palette.primary : 'var(--color-text-primary)' }}>
+                          {palette.name}
+                        </p>
+                        <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>
+                          {palette.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Colors — Expandable */}
+                <div
+                  className="rounded-[14px] border transition-all"
+                  style={{
+                    backgroundColor: 'var(--color-bg-deep)',
+                    borderColor: selectedPalette === 'custom'
+                      ? 'var(--color-accent)'
+                      : 'var(--color-border-subtle)',
+                  }}
+                >
+                  <button
+                    onClick={() => setCustomExpanded(e => !e)}
+                    className="w-full flex items-center justify-between px-4 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Palette size={14} style={{ color: 'var(--color-text-muted)' }} />
+                      <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                        {t('admin.settings.customColors', 'Custom Colors')}
+                      </span>
+                      {selectedPalette === 'custom' && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+                        >
+                          {t('admin.settings.active', 'Active')}
+                        </span>
+                      )}
+                    </div>
+                    {customExpanded
+                      ? <ChevronUp size={14} style={{ color: 'var(--color-text-muted)' }} />
+                      : <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />
+                    }
+                  </button>
+
+                  {customExpanded && (
+                    <div className="px-4 pb-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Primary color */}
+                        <div>
+                          <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                            {t('admin.settings.primaryColor', 'Primary Color')}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={isValidHex(customPrimary) ? customPrimary : '#333333'}
+                              onChange={e => setCustomPrimary(e.target.value)}
+                              className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
+                              style={{
+                                borderColor: 'var(--color-border-subtle)',
+                                backgroundColor: 'var(--color-bg-deep)',
+                              }}
+                            />
+                            <input
+                              type="text"
+                              value={customPrimary}
+                              onChange={e => setCustomPrimary(e.target.value)}
+                              placeholder="#FF5500"
+                              maxLength={7}
+                              className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
+                              style={{
+                                color: 'var(--color-text-primary)',
+                                borderColor: customPrimary && !isValidHex(customPrimary)
+                                  ? 'var(--color-danger)'
+                                  : 'var(--color-border-subtle)',
+                              }}
+                            />
+                          </div>
+                          {customPrimary && !isValidHex(customPrimary) && (
+                            <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.invalidHex', 'Invalid hex format')}</p>
+                          )}
+                        </div>
+
+                        {/* Secondary color */}
+                        <div>
+                          <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                            {t('admin.settings.secondaryColor', 'Secondary Color')}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={isValidHex(customSecondary) ? customSecondary : '#333333'}
+                              onChange={e => setCustomSecondary(e.target.value)}
+                              className="w-11 h-11 rounded-xl border flex-shrink-0 cursor-pointer p-1"
+                              style={{
+                                borderColor: 'var(--color-border-subtle)',
+                                backgroundColor: 'var(--color-bg-deep)',
+                              }}
+                            />
+                            <input
+                              type="text"
+                              value={customSecondary}
+                              onChange={e => setCustomSecondary(e.target.value)}
+                              placeholder="#10B981"
+                              maxLength={7}
+                              className="flex-1 bg-transparent border rounded-lg px-2.5 py-1.5 text-[12px] font-mono outline-none transition-colors"
+                              style={{
+                                color: 'var(--color-text-primary)',
+                                borderColor: customSecondary && !isValidHex(customSecondary)
+                                  ? 'var(--color-danger)'
+                                  : 'var(--color-border-subtle)',
+                              }}
+                            />
+                          </div>
+                          {customSecondary && !isValidHex(customSecondary) && (
+                            <p className="text-[10px] mt-1" style={{ color: 'var(--color-danger)' }}>{t('admin.settings.invalidHex', 'Invalid hex format')}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleApplyCustomColors}
+                          disabled={!isValidHex(customPrimary) || !isValidHex(customSecondary)}
+                          className="flex-1 py-2 rounded-xl text-[12px] font-semibold transition-all disabled:opacity-40 border"
+                          style={{
+                            backgroundColor: 'var(--color-accent)',
+                            color: 'var(--color-bg-base)',
+                            borderColor: 'transparent',
+                            opacity: (!isValidHex(customPrimary) || !isValidHex(customSecondary)) ? 0.4 : 1,
+                          }}
+                        >
+                          {t('admin.settings.previewColors', 'Preview Colors')}
+                        </button>
+                        {isValidHex(customPrimary) && (
+                          <button
+                            onClick={handleAutoFix}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all border"
+                            style={{
+                              backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                              color: 'var(--color-accent)',
+                              borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                            }}
+                            title={t('admin.settings.autoFixTitle', 'Auto-adjust colors for best harmony and contrast')}
+                          >
+                            <Wand2 size={12} /> {t('admin.settings.autoFix', 'Auto-fix')}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Color analysis warnings */}
+                      {colorAnalysis && !colorAnalysis.ok && (
                         <div
-                          className="mt-3 rounded-xl p-4 space-y-3"
+                          className="rounded-xl p-3 space-y-2"
+                          style={{
+                            backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)',
+                          }}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <AlertTriangle size={12} style={{ color: 'var(--color-warning)' }} />
+                            <span className="text-[11px] font-semibold" style={{ color: 'var(--color-warning)' }}>
+                              {t('admin.settings.colorIssuesDetected', 'Color Issues Detected')}
+                            </span>
+                          </div>
+                          {colorAnalysis.warnings.map((w, i) => (
+                            <p key={i} className="text-[11px] pl-5" style={{ color: 'var(--color-text-muted)' }}>
+                              {w.message}
+                            </p>
+                          ))}
+                          <button
+                            onClick={handleAutoFix}
+                            className="flex items-center gap-1.5 text-[11px] font-semibold pl-5 mt-1 hover:underline"
+                            style={{ color: 'var(--color-accent)' }}
+                          >
+                            <Wand2 size={10} /> {t('admin.settings.fixAutomatically', 'Fix automatically')}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Contrast scores */}
+                      {colorAnalysis && (
+                        <div className="flex gap-3 text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
+                          <span>
+                            {t('admin.settings.darkContrast', 'Dark contrast')}:{' '}
+                            <span style={{ color: colorAnalysis.contrast.primaryOnDark >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                              {colorAnalysis.contrast.primaryOnDark.toFixed(1)}:1
+                            </span>
+                          </span>
+                          <span>
+                            {t('admin.settings.lightContrast', 'Light contrast')}:{' '}
+                            <span style={{ color: colorAnalysis.contrast.primaryOnLight >= 3 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                              {colorAnalysis.contrast.primaryOnLight.toFixed(1)}:1
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reset button */}
+                <div className="flex items-center gap-3 mt-5">
+                  <button
+                    onClick={handleResetPalette}
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold transition-all border"
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: 'var(--color-text-muted)',
+                      borderColor: 'var(--color-border-subtle)',
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    {t('admin.settings.reset', 'Reset')}
+                  </button>
+                </div>
+              </AdminCard>
+            </FadeIn>
+          </div>
+
+          {/* Save Branding Button */}
+          <FadeIn delay={60}>
+            <button
+              onClick={() => { setError(''); saveBrandingMutation.mutate(); }}
+              disabled={saveBrandingMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
+              style={{
+                backgroundColor: paletteSaved ? 'var(--color-success)' : 'var(--color-accent)',
+                color: paletteSaved ? '#fff' : 'var(--color-bg-base)',
+              }}
+            >
+              <Save size={16} />
+              {saveBrandingMutation.isPending
+                ? t('admin.settings.saving', 'Saving...')
+                : paletteSaved
+                  ? t('admin.settings.saved', 'Saved!')
+                  : t('admin.settings.saveBranding', 'Save Branding')}
+            </button>
+          </FadeIn>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── OPERATIONS TAB ──                                    */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {activeTab === TAB_OPERATIONS && (
+        <div className="space-y-4">
+          <div className="grid xl:grid-cols-12 gap-4">
+            {/* Weekly Digest */}
+            <FadeIn delay={0} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={Mail} className="mb-4">{t('admin.digest.sectionTitle')}</SectionLabel>
+
+                <div className="space-y-5">
+                  {/* Enable toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.enableDigest')}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.digest.enableDigestDesc')}</p>
+                    </div>
+                    <Toggle
+                      checked={digestEnabled}
+                      onChange={handleToggleDigest}
+                      label={t('admin.digest.enableDigest')}
+                    />
+                  </div>
+
+                  {digestEnabled && (
+                    <>
+                      {/* Frequency */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('admin.digest.frequency')}
+                        </label>
+                        <select
+                          value={digestFrequency}
+                          onChange={e => setDigestFrequency(e.target.value)}
+                          className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none appearance-none"
                           style={{
                             backgroundColor: 'var(--color-bg-deep)',
                             border: '1px solid var(--color-border-subtle)',
+                            color: 'var(--color-text-primary)',
                           }}
                         >
-                          {/* Preview header */}
-                          <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                            <Mail size={14} style={{ color: 'var(--color-accent)' }} />
-                            <span className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                              {t('admin.digest.previewTitle', { gym: name || 'Your Gym' })}
-                            </span>
+                          <option value="daily">{t('admin.digest.frequencyDaily')}</option>
+                          <option value="weekly">{t('admin.digest.frequencyWeekly')}</option>
+                          <option value="monthly">{t('admin.digest.frequencyMonthly')}</option>
+                        </select>
+                      </div>
+
+                      {/* Delivery day */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {digestFrequency === 'monthly' ? t('admin.digest.deliveryDate') : t('admin.digest.deliveryDay')}
+                        </label>
+                        {digestFrequency === 'weekly' && (
+                          <div className="flex flex-wrap gap-2">
+                            {DAY_KEYS.map((dayKey, idx) => {
+                              const isActive = digestDay === idx;
+                              return (
+                                <button
+                                  key={dayKey}
+                                  onClick={() => setDigestDay(idx)}
+                                  className="px-3 py-2 rounded-xl text-[12px] font-semibold transition-all border"
+                                  style={{
+                                    backgroundColor: isActive ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)' : 'var(--color-bg-deep)',
+                                    borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                                    color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                                  }}
+                                >
+                                  {t(`common:days.${dayKey.slice(0, 3)}`)}
+                                </button>
+                              );
+                            })}
                           </div>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                            {digestFrequency === 'daily'
-                              ? t('admin.digest.previewFreqDaily')
-                              : digestFrequency === 'weekly'
-                                ? t('admin.digest.previewFreqWeekly', { day: t(`common:days.${DAY_KEYS[digestDay]}`) })
-                                : t('admin.digest.previewFreqMonthly', { day: digestDay })}
+                        )}
+                        {digestFrequency === 'monthly' && (
+                          <div className="flex gap-2">
+                            {[1, 15].map(d => {
+                              const isActive = digestDay === d;
+                              return (
+                                <button
+                                  key={d}
+                                  onClick={() => setDigestDay(d)}
+                                  className="px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all border"
+                                  style={{
+                                    backgroundColor: isActive ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)' : 'var(--color-bg-deep)',
+                                    borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border-subtle)',
+                                    color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                                  }}
+                                >
+                                  {t('admin.digest.dayOfMonth', { day: d })}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {digestFrequency === 'daily' && (
+                          <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
+                            {t('admin.digest.dailyNote')}
                           </p>
+                        )}
+                      </div>
 
-                          {/* Preview content items */}
-                          <div className="space-y-2">
-                            {digestContent.member_activity && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-accent)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewMemberActivity')}</span>
+                      {/* Content selection */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <label className="block text-[12px] font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('admin.digest.contentTitle')}
+                        </label>
+                        <div className="space-y-2.5">
+                          {[
+                            { key: 'member_activity', label: t('admin.digest.contentMemberActivity'), desc: t('admin.digest.contentMemberActivityDesc') },
+                            { key: 'churn_alerts', label: t('admin.digest.contentChurnAlerts'), desc: t('admin.digest.contentChurnAlertsDesc') },
+                            { key: 'challenge_updates', label: t('admin.digest.contentChallengeUpdates'), desc: t('admin.digest.contentChallengeUpdatesDesc') },
+                            { key: 'attendance_trends', label: t('admin.digest.contentAttendanceTrends'), desc: t('admin.digest.contentAttendanceTrendsDesc') },
+                            { key: 'new_members', label: t('admin.digest.contentNewMembers'), desc: t('admin.digest.contentNewMembersDesc') },
+                            { key: 'revenue_redemptions', label: t('admin.digest.contentRevenueRedemptions'), desc: t('admin.digest.contentRevenueRedemptionsDesc') },
+                          ].map(item => (
+                            <label
+                              key={item.key}
+                              className="flex items-start gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all border"
+                              style={{
+                                backgroundColor: digestContent[item.key] ? 'color-mix(in srgb, var(--color-accent) 6%, transparent)' : 'var(--color-bg-deep)',
+                                borderColor: digestContent[item.key] ? 'color-mix(in srgb, var(--color-accent) 25%, transparent)' : 'var(--color-border-subtle)',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={digestContent[item.key]}
+                                onChange={e => setDigestContent(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                                className="sr-only"
+                              />
+                              <div
+                                className="mt-0.5 w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors border"
+                                style={{
+                                  backgroundColor: digestContent[item.key] ? 'var(--color-accent)' : 'transparent',
+                                  borderColor: digestContent[item.key] ? 'var(--color-accent)' : 'var(--color-text-faint)',
+                                }}
+                              >
+                                {digestContent[item.key] && <Check size={10} className="text-[var(--color-bg-base)]" strokeWidth={3} />}
                               </div>
-                            )}
-                            {digestContent.churn_alerts && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-danger)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewChurnAlerts')}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{item.label}</p>
+                                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{item.desc}</p>
                               </div>
-                            )}
-                            {digestContent.challenge_updates && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-info) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-info)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewChallengeUpdates')}</span>
-                              </div>
-                            )}
-                            {digestContent.attendance_trends && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-success) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-success)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewAttendanceTrends')}</span>
-                              </div>
-                            )}
-                            {digestContent.new_members && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-accent)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewNewMembers')}</span>
-                              </div>
-                            )}
-                            {digestContent.revenue_redemptions && (
-                              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)' }}>
-                                <span className="text-[11px]" style={{ color: 'var(--color-warning)' }}>●</span>
-                                <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewRevenueRedemptions')}</span>
-                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Preview toggle */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <button
+                          onClick={() => setDigestPreview(p => !p)}
+                          className="flex items-center gap-2 text-[12px] font-semibold transition-colors"
+                          style={{ color: 'var(--color-accent)' }}
+                        >
+                          <Eye size={14} />
+                          {digestPreview ? t('admin.digest.hidePreview') : t('admin.digest.showPreview')}
+                        </button>
+
+                        {digestPreview && (
+                          <div
+                            className="mt-3 rounded-xl p-4 space-y-3"
+                            style={{
+                              backgroundColor: 'var(--color-bg-deep)',
+                              border: '1px solid var(--color-border-subtle)',
+                            }}
+                          >
+                            {/* Preview header */}
+                            <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                              <Mail size={14} style={{ color: 'var(--color-accent)' }} />
+                              <span className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                                {t('admin.digest.previewTitle', { gym: name || 'Your Gym' })}
+                              </span>
+                            </div>
+                            <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                              {digestFrequency === 'daily'
+                                ? t('admin.digest.previewFreqDaily')
+                                : digestFrequency === 'weekly'
+                                  ? t('admin.digest.previewFreqWeekly', { day: t(`common:days.${DAY_KEYS[digestDay]}`) })
+                                  : t('admin.digest.previewFreqMonthly', { day: digestDay })}
+                            </p>
+
+                            {/* Preview content items */}
+                            <div className="space-y-2">
+                              {digestContent.member_activity && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-accent)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewMemberActivity')}</span>
+                                </div>
+                              )}
+                              {digestContent.churn_alerts && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-danger)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewChurnAlerts')}</span>
+                                </div>
+                              )}
+                              {digestContent.challenge_updates && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-info) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-info)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewChallengeUpdates')}</span>
+                                </div>
+                              )}
+                              {digestContent.attendance_trends && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-success) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-success)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewAttendanceTrends')}</span>
+                                </div>
+                              )}
+                              {digestContent.new_members && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-accent)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewNewMembers')}</span>
+                                </div>
+                              )}
+                              {digestContent.revenue_redemptions && (
+                                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)' }}>
+                                  <span className="text-[11px]" style={{ color: 'var(--color-warning)' }}>●</span>
+                                  <span className="text-[12px]" style={{ color: 'var(--color-text-primary)' }}>{t('admin.digest.previewRevenueRedemptions')}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* No content selected warning */}
+                            {!Object.values(digestContent).some(Boolean) && (
+                              <p className="text-[11px] italic" style={{ color: 'var(--color-text-subtle)' }}>
+                                {t('admin.digest.previewEmpty')}
+                              </p>
                             )}
                           </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </AdminCard>
+            </FadeIn>
 
-                          {/* No content selected warning */}
-                          {!Object.values(digestContent).some(Boolean) && (
-                            <p className="text-[11px] italic" style={{ color: 'var(--color-text-subtle)' }}>
-                              {t('admin.digest.previewEmpty')}
-                            </p>
-                          )}
-                        </div>
-                      )}
+            {/* Referral Program */}
+            <FadeIn delay={30} className="xl:col-span-6">
+              <AdminCard hover padding="p-5">
+                <SectionLabel icon={Users} className="mb-4">{t('admin.referral.sectionTitle')}</SectionLabel>
+
+                <div className="space-y-5">
+                  {/* Enable toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('admin.referral.enableProgram')}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.enableProgramDesc')}</p>
                     </div>
+                    <Toggle
+                      checked={referralConfig.enabled}
+                      onChange={v => setReferralConfig(c => ({ ...c, enabled: v }))}
+                      label={t('admin.referral.enableProgram')}
+                    />
+                  </div>
 
-                    {/* Save button */}
+                  {referralConfig.enabled && (
+                    <>
+                      {/* Referrer reward */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <RewardConfig
+                          reward={referralConfig.referrer_reward}
+                          onChange={r => setReferralConfig(c => ({ ...c, referrer_reward: r }))}
+                          labelPrefix={t('admin.referral.referrerReward')}
+                          t={t}
+                        />
+                      </div>
+
+                      {/* Referred friend reward */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <RewardConfig
+                          reward={referralConfig.referred_reward}
+                          onChange={r => setReferralConfig(c => ({ ...c, referred_reward: r }))}
+                          labelPrefix={t('admin.referral.referredReward')}
+                          t={t}
+                        />
+                      </div>
+
+                      {/* Require approval */}
+                      <div className="flex items-center justify-between border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <div>
+                          <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('admin.referral.requireApproval')}</p>
+                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.requireApprovalDesc')}</p>
+                        </div>
+                        <Toggle
+                          checked={referralConfig.require_approval}
+                          onChange={v => setReferralConfig(c => ({ ...c, require_approval: v }))}
+                          label={t('admin.referral.requireApproval')}
+                        />
+                      </div>
+
+                      {/* Max per month */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.maxPerMonth')}</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={referralConfig.max_per_month ?? ''}
+                          onChange={e => setReferralConfig(c => ({ ...c, max_per_month: e.target.value ? Number(e.target.value) : null }))}
+                          placeholder={t('admin.referral.maxPerMonthPlaceholder')}
+                          className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </AdminCard>
+            </FadeIn>
+
+            {/* Offers & Promotions */}
+            <FadeIn delay={45} className="xl:col-span-12">
+              <AdminCard hover padding="p-0">
+                <button
+                  onClick={() => setOffersOpen(prev => !prev)}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
+                      <Tag size={16} style={{ color: 'var(--color-accent)' }} />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.offers.title')}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.subtitle')}</p>
+                    </div>
+                  </div>
+                  {offersOpen
+                    ? <ChevronUp size={16} style={{ color: 'var(--color-text-muted)' }} />
+                    : <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
+                  }
+                </button>
+                {offersOpen && (
+                  <div className="px-5 pb-5 border-t pt-4 space-y-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    {/* Add offer button */}
                     <button
-                      onClick={handleSaveDigestConfig}
-                      disabled={digestSaving}
-                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-[13px] transition-all disabled:opacity-50"
-                      style={{
-                        backgroundColor: digestSaved
-                          ? 'var(--color-success)'
-                          : 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                        color: digestSaved ? '#fff' : 'var(--color-accent)',
-                        border: digestSaved ? 'none' : '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                      }}
+                      onClick={() => openOfferModal()}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all"
+                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
                     >
-                      <Save size={14} />
-                      {digestSaving ? t('admin.digest.saving') : digestSaved ? t('admin.digest.savedBtn') : t('admin.digest.saveConfig')}
+                      <Plus size={14} />
+                      {t('admin.offers.addOffer')}
                     </button>
-                  </>
+
+                    {/* Offers list */}
+                    {offers.length > 0 ? (
+                      <div className="space-y-2">
+                        {offers.map((offer, idx) => (
+                          <div key={offer.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                            {/* Reorder arrows */}
+                            <div className="flex flex-col gap-0.5 flex-shrink-0">
+                              <button
+                                onClick={() => handleReorderOffer(idx, -1)}
+                                disabled={idx === 0}
+                                className="p-0.5 rounded transition-colors disabled:opacity-20"
+                                style={{ color: 'var(--color-text-muted)' }}
+                                aria-label="Move up"
+                              >
+                                <ArrowUp size={12} />
+                              </button>
+                              <button
+                                onClick={() => handleReorderOffer(idx, 1)}
+                                disabled={idx === offers.length - 1}
+                                className="p-0.5 rounded transition-colors disabled:opacity-20"
+                                style={{ color: 'var(--color-text-muted)' }}
+                                aria-label="Move down"
+                              >
+                                <ArrowDown size={12} />
+                              </button>
+                            </div>
+
+                            {/* Active toggle */}
+                            <Toggle
+                              checked={offer.active}
+                              onChange={() => handleToggleOfferActive(offer)}
+                              label={t('admin.offers.active')}
+                            />
+
+                            {/* Title + badge */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-[13px] font-semibold truncate" style={{ color: offer.active ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                                  {offer.title}
+                                </p>
+                                {offer.badge_label && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
+                                    {offer.badge_label}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {/* Type badge */}
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                  style={{
+                                    backgroundColor: `color-mix(in srgb, ${OFFER_TYPE_COLORS[offer.type] || '#6B7280'} 12%, transparent)`,
+                                    color: OFFER_TYPE_COLORS[offer.type] || '#6B7280',
+                                  }}
+                                >
+                                  {t(`admin.offers.types.${offer.type}`)}
+                                </span>
+                                {/* Valid dates */}
+                                {(offer.valid_from || offer.valid_until) && (
+                                  <span className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
+                                    {offer.valid_from && new Date(offer.valid_from + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    {offer.valid_from && offer.valid_until && ' – '}
+                                    {offer.valid_until && new Date(offer.valid_until + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    {!offer.valid_until && offer.valid_from && ` – ${t('admin.offers.noExpiry')}`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Edit / Delete */}
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => openOfferModal(offer)}
+                                className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+                                style={{ color: 'var(--color-text-muted)' }}
+                                aria-label={t('admin.offers.editOffer')}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              {deletingOfferId === offer.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleDeleteOffer(offer.id)}
+                                    className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                                  >
+                                    {t('common:confirm', 'Confirm')}
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingOfferId(null)}
+                                    className="px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+                                    style={{ color: 'var(--color-text-muted)' }}
+                                  >
+                                    {t('common:cancel', 'Cancel')}
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setDeletingOfferId(offer.id)}
+                                  className="p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                                  style={{ color: 'var(--color-text-muted)' }}
+                                  aria-label={t('admin.offers.deleteConfirm')}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6">
+                        <Tag size={24} className="mx-auto mb-2" style={{ color: 'var(--color-text-faint)' }} />
+                        <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.noOffers')}</p>
+                        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.offers.noOffersHint')}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
+              </AdminCard>
+            </FadeIn>
 
-        {/* Gym Closures */}
-        <FadeIn delay={105} className="xl:col-span-6">
-          <AdminCard hover padding="p-5">
-            <SectionLabel icon={CalendarOff} className="mb-4">{t('admin.closures.sectionTitle')}</SectionLabel>
-            <p className="text-[12px] text-[#6B7280] mb-4">{t('admin.closures.description')}</p>
-
-            {/* Add closure form */}
-            <div className="space-y-3 mb-4">
-              <div className="grid grid-cols-2 gap-3">
+            {/* Offer Add/Edit Modal */}
+            <AdminModal
+              isOpen={offerModalOpen}
+              onClose={() => setOfferModalOpen(false)}
+              title={editingOffer ? t('admin.offers.editOffer') : t('admin.offers.addOffer')}
+              titleIcon={Tag}
+              size="sm"
+              footer={
+                <>
+                  <button
+                    onClick={() => setOfferModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                    style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    {t('common:cancel', 'Cancel')}
+                  </button>
+                  <button
+                    onClick={handleSaveOffer}
+                    disabled={offerSaving || !offerForm.title.trim()}
+                    className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+                  >
+                    {offerSaving ? t('admin.settings.saving', 'Saving...') : (editingOffer ? t('admin.offers.editOffer') : t('admin.offers.addOffer'))}
+                  </button>
+                </>
+              }
+            >
+              <div className="space-y-4">
+                {/* Title */}
                 <div>
-                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.date')}</label>
+                  <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.offerTitle')} *</label>
                   <input
-                    type="date"
-                    value={closureDate}
-                    onChange={e => setClosureDate(e.target.value)}
-                    min={new Date().toISOString().slice(0, 10)}
-                    className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+                    type="text"
+                    value={offerForm.title}
+                    onChange={e => setOfferForm(prev => ({ ...prev, title: e.target.value }))}
+                    className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                    placeholder={t('admin.offers.offerTitle')}
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.reason')}</label>
-                  <select
-                    value={closureReason}
-                    onChange={e => setClosureReason(e.target.value)}
-                    className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none"
-                  >
-                    <option value="holiday">{t('admin.closures.reasonHoliday')}</option>
-                    <option value="maintenance">{t('admin.closures.reasonMaintenance')}</option>
-                    <option value="special_event">{t('admin.closures.reasonSpecialEvent')}</option>
-                    <option value="other">{t('admin.closures.reasonOther')}</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.name')}</label>
-                <input
-                  type="text"
-                  value={closureName}
-                  onChange={e => setClosureName(e.target.value)}
-                  placeholder={t('admin.closures.namePlaceholder')}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40"
-                />
-              </div>
-              <button
-                onClick={handleAddClosure}
-                disabled={!closureDate || closureSaving}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-all disabled:opacity-50"
-              >
-                <Plus size={14} />
-                {closureSaving ? t('admin.closures.adding') : t('admin.closures.addClosure')}
-              </button>
-            </div>
 
-            {/* Upcoming closures list */}
-            {closures.length > 0 ? (
-              <div className="space-y-2">
-                <p className="text-[12px] font-semibold text-[#E5E7EB] mb-2">{t('admin.closures.upcoming')}</p>
-                {closures.map(c => (
-                  <div key={c.id} className="flex items-center justify-between rounded-xl px-4 py-3 bg-[#111827] border border-white/6">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-[#E5E7EB]">
-                        {c.name || t(`admin.closures.reason${c.reason?.charAt(0).toUpperCase()}${c.reason?.slice(1)?.replace('_', '')}`, c.reason)}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {new Date(c.closure_date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                        {c.reason && <span className="ml-2 text-[#9CA3AF]">({t(`admin.closures.reason${c.reason?.charAt(0).toUpperCase()}${c.reason?.slice(1)?.replace('_', '')}`, c.reason)})</span>}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteClosure(c.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
-                      aria-label={t('admin.closures.remove')}
+                {/* Description */}
+                <div>
+                  <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.offerDescription')}</label>
+                  <textarea
+                    value={offerForm.description}
+                    onChange={e => setOfferForm(prev => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                    className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                    placeholder={t('admin.offers.offerDescription')}
+                  />
+                </div>
+
+                {/* Type + Badge Label row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.offerType')}</label>
+                    <select
+                      value={offerForm.type}
+                      onChange={e => setOfferForm(prev => ({ ...prev, type: e.target.value }))}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none appearance-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                     >
-                      <Trash2 size={14} />
+                      {OFFER_TYPES.map(ot => (
+                        <option key={ot} value={ot}>{t(`admin.offers.types.${ot}`)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.badgeLabel')}</label>
+                    <input
+                      type="text"
+                      value={offerForm.badge_label}
+                      onChange={e => setOfferForm(prev => ({ ...prev, badge_label: e.target.value }))}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                      placeholder="e.g. 50% OFF"
+                    />
+                  </div>
+                </div>
+
+                {/* Valid dates row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.validFrom')}</label>
+                    <input
+                      type="date"
+                      value={offerForm.valid_from}
+                      onChange={e => setOfferForm(prev => ({ ...prev, valid_from: e.target.value }))}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.offers.validUntil')}</label>
+                    <input
+                      type="date"
+                      value={offerForm.valid_until}
+                      onChange={e => setOfferForm(prev => ({ ...prev, valid_until: e.target.value }))}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Active toggle */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{t('admin.offers.active')}</p>
+                  <Toggle
+                    checked={offerForm.active}
+                    onChange={v => setOfferForm(prev => ({ ...prev, active: v }))}
+                    label={t('admin.offers.active')}
+                  />
+                </div>
+
+                {/* Auto-translate */}
+                <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                      <Globe size={12} className="inline mr-1" style={{ verticalAlign: '-2px' }} />
+                      {t('common:spanish', 'Spanish')}
+                    </p>
+                    <button
+                      onClick={handleAutoTranslateOffer}
+                      disabled={translating || (!offerForm.title.trim() && !offerForm.description.trim())}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-40"
+                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)' }}
+                    >
+                      <Wand2 size={12} />
+                      {translating ? t('common:translating', 'Translating...') : t('common:autoTranslate', 'Auto-translate')}
                     </button>
                   </div>
-                ))}
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={offerForm.title_es}
+                      onChange={e => setOfferForm(prev => ({ ...prev, title_es: e.target.value }))}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                      placeholder={`${t('admin.offers.offerTitle')} (ES)`}
+                    />
+                    <textarea
+                      value={offerForm.description_es}
+                      onChange={e => setOfferForm(prev => ({ ...prev, description_es: e.target.value }))}
+                      rows={2}
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                      placeholder={`${t('admin.offers.offerDescription')} (ES)`}
+                    />
+                  </div>
+                </div>
               </div>
-            ) : (
-              <p className="text-[12px] text-[#6B7280] italic">{t('admin.closures.noClosure')}</p>
-            )}
-          </AdminCard>
-        </FadeIn>
+            </AdminModal>
 
-        {/* Notification Preferences */}
-        <FadeIn delay={112} className="xl:col-span-6">
-          <AdminCard hover padding="p-0">
+            {/* Notification Preferences */}
+            <FadeIn delay={60} className="xl:col-span-12">
+              <AdminCard hover padding="p-0">
+                <button
+                  onClick={() => setNotifPrefsOpen(prev => !prev)}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
+                      <Bell size={16} style={{ color: 'var(--color-accent)' }} />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.notificationPrefs.sectionTitle')}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.notificationPrefs.sectionSubtitle')}</p>
+                    </div>
+                  </div>
+                  {notifPrefsOpen
+                    ? <ChevronUp size={16} style={{ color: 'var(--color-text-muted)' }} />
+                    : <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
+                  }
+                </button>
+                {notifPrefsOpen && (
+                  <div className="px-5 pb-5 border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    <Suspense fallback={<CardSkeleton />}>
+                      <AdminNotificationPrefs />
+                    </Suspense>
+                  </div>
+                )}
+              </AdminCard>
+            </FadeIn>
+          </div>
+
+          {/* Save Operations Button */}
+          <FadeIn delay={90}>
             <button
-              onClick={() => setNotifPrefsOpen(prev => !prev)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left"
+              onClick={() => { setError(''); saveOperationsMutation.mutate(); }}
+              disabled={saveOperationsMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
+              style={{
+                backgroundColor: saveOperationsMutation.isSuccess ? 'var(--color-success)' : 'var(--color-accent)',
+                color: saveOperationsMutation.isSuccess ? '#fff' : 'var(--color-bg-base)',
+              }}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center">
-                  <Bell size={16} className="text-[#D4AF37]" />
-                </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.notificationPrefs.sectionTitle')}</p>
-                  <p className="text-[11px] text-[#6B7280]">{t('admin.notificationPrefs.sectionSubtitle')}</p>
-                </div>
-              </div>
-              {notifPrefsOpen
-                ? <ChevronUp size={16} className="text-[#6B7280]" />
-                : <ChevronDown size={16} className="text-[#6B7280]" />
-              }
+              <Save size={16} />
+              {saveOperationsMutation.isPending
+                ? t('admin.settings.saving', 'Saving...')
+                : saveOperationsMutation.isSuccess
+                  ? t('admin.settings.saved', 'Saved!')
+                  : t('admin.settings.saveOperations', 'Save Operations Settings')}
             </button>
-            {notifPrefsOpen && (
-              <div className="px-5 pb-5 border-t border-white/6 pt-4">
-                <Suspense fallback={<CardSkeleton />}>
-                  <AdminNotificationPrefs />
-                </Suspense>
-              </div>
-            )}
-          </AdminCard>
-        </FadeIn>
-
-        {/* Gym info */}
-        <FadeIn delay={120} className="xl:col-span-6">
-          <AdminCard padding="p-4">
-            <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Gym Slug</p>
-            <p className="text-[12px] text-[#6B7280]">Members sign up using: <span className="text-[#D4AF37] font-mono">{settingsData?.gym?.slug}</span></p>
-          </AdminCard>
-        </FadeIn>
-
-        {error && <p className="text-[13px] text-red-400 xl:col-span-12">{error}</p>}
-
-        <button onClick={handleSave} disabled={saveMutation.isPending}
-          className={`w-full xl:col-span-12 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[14px] transition-all ${
-            saved ? 'bg-emerald-500 text-white' : 'bg-[#D4AF37] text-black'
-          } disabled:opacity-50`}>
-          <Save size={16} />
-          {saveMutation.isPending ? 'Saving...' : saved ? 'Saved!' : 'Save Settings'}
-        </button>
-      </div>
+          </FadeIn>
+        </div>
+      )}
     </AdminPageShell>
   );
 }

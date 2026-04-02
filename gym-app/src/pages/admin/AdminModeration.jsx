@@ -1,38 +1,59 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2, RotateCcw, MessageSquare, Activity, ShieldAlert, Flag, CheckCircle, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import {
+  Trash2, RotateCcw, MessageSquare, Activity, ShieldAlert, Flag,
+  CheckCircle, XCircle, AlertTriangle, Eye, ChevronRight,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, FilterBar, Avatar, StatCard, Skeleton, ErrorCard } from '../../components/admin';
+import {
+  PageHeader, FilterBar, Avatar, StatCard, AdminCard,
+  AdminPageShell, AdminModal, AdminTable, FadeIn, SectionLabel,
+  Skeleton, ErrorCard,
+} from '../../components/admin';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const POST_TYPE_STYLES = {
-  workout_completed:   { label: 'Workout',     color: 'text-emerald-400 bg-emerald-500/10' },
-  pr_hit:              { label: 'PR Hit',       color: 'text-[#D4AF37] bg-[#D4AF37]/10' },
-  challenge_joined:    { label: 'Challenge',    color: 'text-blue-400 bg-blue-500/10' },
-  challenge_won:       { label: 'Won',          color: 'text-purple-400 bg-purple-500/10' },
-  achievement_unlocked:{ label: 'Achievement',  color: 'text-pink-400 bg-pink-500/10' },
-  check_in:            { label: 'Check-in',     color: 'text-cyan-400 bg-cyan-500/10' },
-  program_started:     { label: 'Program',      color: 'text-indigo-400 bg-indigo-500/10' },
+const POST_TYPE_COLORS = {
+  workout_completed:   'text-emerald-400 bg-emerald-500/10',
+  pr_hit:              'text-[#D4AF37] bg-[#D4AF37]/10',
+  challenge_joined:    'text-blue-400 bg-blue-500/10',
+  challenge_won:       'text-purple-400 bg-purple-500/10',
+  achievement_unlocked:'text-pink-400 bg-pink-500/10',
+  check_in:            'text-cyan-400 bg-cyan-500/10',
+  program_started:     'text-indigo-400 bg-indigo-500/10',
 };
 
-const postTypeBadge = (type) => {
-  const t = POST_TYPE_STYLES[type];
-  if (!t) return { label: type ?? 'Unknown', color: 'text-[#9CA3AF] bg-white/6' };
-  return t;
+const POST_TYPE_KEYS = {
+  workout_completed:   'workout',
+  pr_hit:              'prHit',
+  challenge_joined:    'challenge',
+  challenge_won:       'won',
+  achievement_unlocked:'achievement',
+  check_in:            'checkIn',
+  program_started:     'program',
 };
 
-const relativeTime = (ts) => {
-  if (!ts) return '—';
-  try { return formatDistanceToNow(new Date(ts), { addSuffix: true }); }
-  catch { return '—'; }
+const postTypeBadge = (type, t) => {
+  const color = POST_TYPE_COLORS[type];
+  const key = POST_TYPE_KEYS[type];
+  if (!color || !key) return { label: t ? t(`admin.moderation.postTypes.unknown`, { defaultValue: type ?? 'Unknown' }) : (type ?? 'Unknown'), color: 'text-[#9CA3AF] bg-white/6' };
+  const label = t ? t(`admin.moderation.postTypes.${key}`, { defaultValue: key }) : key;
+  return { label, color };
 };
 
-const dataPreview = (type, data) => {
+const relativeTime = (ts, dateFnsOpts) => {
+  if (!ts) return '\u2014';
+  try { return formatDistanceToNow(new Date(ts), { addSuffix: true, ...dateFnsOpts }); }
+  catch { return '\u2014'; }
+};
+
+const dataPreview = (type, data, t) => {
   if (!data || typeof data !== 'object') return null;
   switch (type) {
     case 'workout_completed':
@@ -40,25 +61,38 @@ const dataPreview = (type, data) => {
         data.workout_name && `"${sanitize(data.workout_name)}"`,
         data.duration_min != null && `${data.duration_min} min`,
         data.total_volume_lbs != null && `${Math.round(data.total_volume_lbs).toLocaleString()} lbs`,
-      ].filter(Boolean).join(' · ') || null;
+      ].filter(Boolean).join(' \u00b7 ') || null;
     case 'pr_hit':
       return [
         data.exercise_name && sanitize(data.exercise_name),
-        data.weight_lbs != null && data.reps != null && `${data.weight_lbs} lbs × ${data.reps}`,
+        data.weight_lbs != null && data.reps != null && `${data.weight_lbs} lbs \u00d7 ${data.reps}`,
         data.estimated_1rm != null && `est. 1RM ${Math.round(data.estimated_1rm)} lbs`,
-      ].filter(Boolean).join(' · ') || null;
+      ].filter(Boolean).join(' \u00b7 ') || null;
     case 'challenge_joined':
     case 'challenge_won':
       return data.challenge_name ? `"${sanitize(data.challenge_name)}"` : null;
     case 'achievement_unlocked':
       return data.achievement_name ? `"${sanitize(data.achievement_name)}"` : null;
     case 'check_in':
-      return data.method ? `Via ${sanitize(data.method)}` : null;
+      return data.method ? (t ? t('admin.moderation.viaMethod', { defaultValue: 'Via {{method}}', method: sanitize(data.method) }) : `Via ${sanitize(data.method)}`) : null;
     case 'program_started':
       return data.program_name ? `"${sanitize(data.program_name)}"` : null;
     default:
       return null;
   }
+};
+
+const REPORT_STATUS_COLORS = {
+  pending:   { color: 'text-amber-400 bg-amber-500/10', dot: 'bg-amber-400' },
+  reviewed:  { color: 'text-blue-400 bg-blue-500/10', dot: 'bg-blue-400' },
+  dismissed: { color: 'text-[#9CA3AF] bg-white/6', dot: 'bg-[#9CA3AF]' },
+  actioned:  { color: 'text-emerald-400 bg-emerald-500/10', dot: 'bg-emerald-400' },
+};
+
+const getReportStatus = (statusKey, t) => {
+  const style = REPORT_STATUS_COLORS[statusKey] || REPORT_STATUS_COLORS.pending;
+  const label = t ? t(`admin.moderation.reportStatus.${statusKey}`, { defaultValue: statusKey }) : statusKey;
+  return { label, ...style };
 };
 
 // ── Fetch functions ───────────────────────────────────────────────────────
@@ -150,27 +184,120 @@ const fetchReports = async (gymId) => {
   return data || [];
 };
 
-// ── SPINNER ────────────────────────────────────────────────────────────────
+// ── Report Detail Modal ───────────────────────────────────────────────────
 
-const Spinner = () => (
-  <div className="flex justify-center py-20">
-    <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-  </div>
-);
+function ReportDetailModal({ report, isOpen, onClose, onAction, acting }) {
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
+  if (!report) return null;
 
-// ── EMPTY ──────────────────────────────────────────────────────────────────
+  const reporter = report.profiles;
+  const feedItem = report.activity_feed_items ?? null;
+  const author   = feedItem?.profiles ?? null;
+  const badge    = postTypeBadge(feedItem?.type, t);
+  const status   = getReportStatus(report.status, t);
+  const isPending = report.status === 'pending';
 
-const Empty = ({ label }) => (
-  <div className="text-center py-20">
-    <ShieldAlert size={32} className="text-[#4B5563] mx-auto mb-3" />
-    <p className="text-[14px] text-[#6B7280]">{label}</p>
-  </div>
-);
+  return (
+    <AdminModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('admin.moderation.reportDetail', { defaultValue: 'Report Detail' })}
+      titleIcon={Flag}
+      size="md"
+      footer={isPending ? (
+        <>
+          <button
+            onClick={() => onAction(report, 'actioned')}
+            disabled={acting}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-colors disabled:opacity-40"
+          >
+            <XCircle size={15} />
+            {t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
+          </button>
+          <button
+            onClick={() => onAction(report, 'dismissed')}
+            disabled={acting}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-[13px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
+          >
+            <CheckCircle size={15} />
+            {t('admin.moderation.dismiss', { defaultValue: 'Dismiss Report' })}
+          </button>
+        </>
+      ) : null}
+    >
+      <div className="space-y-5">
+        {/* Status banner */}
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${status.color}`}>
+          <span className={`w-2 h-2 rounded-full ${status.dot}`} />
+          <span className="text-[13px] font-semibold">{status.label}</span>
+          {report.reviewed_at && (
+            <span className="text-[11px] opacity-70 ml-auto">
+              {t('admin.moderation.reviewed', { defaultValue: 'Reviewed' })} {relativeTime(report.reviewed_at, dateFnsOpts)}
+            </span>
+          )}
+        </div>
+
+        {/* Reporter */}
+        <div>
+          <SectionLabel>{t('admin.moderation.reportedBy', { defaultValue: 'Reported By' })}</SectionLabel>
+          <div className="flex items-center gap-3 mt-2">
+            <Avatar name={reporter?.full_name} size="md" variant="accent" />
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+              <p className="text-[12px] text-[#6B7280]">@{reporter?.username ?? '\u2014'}</p>
+            </div>
+            <span className="ml-auto text-[11px] text-[#6B7280]">{relativeTime(report.created_at, dateFnsOpts)}</span>
+          </div>
+        </div>
+
+        {/* Reason */}
+        <div>
+          <SectionLabel>{t('admin.moderation.reason', { defaultValue: 'Reason' })}</SectionLabel>
+          <p className="mt-2 text-[13px] text-[#E5E7EB] leading-relaxed bg-white/[0.03] rounded-xl p-3 border border-white/6">
+            {sanitize(report.reason)}
+          </p>
+        </div>
+
+        {/* Reported content */}
+        {feedItem && (
+          <div>
+            <SectionLabel>{t('admin.moderation.reportedContent', { defaultValue: 'Reported Content' })}</SectionLabel>
+            <div className="mt-2 bg-white/[0.03] rounded-xl p-4 border border-white/6">
+              <div className="flex items-center gap-2 mb-2">
+                {author && (
+                  <>
+                    <Avatar name={author.full_name} size="sm" variant="accent" />
+                    <span className="text-[13px] font-semibold text-[#E5E7EB]">{author.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</span>
+                  </>
+                )}
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
+                  {badge.label}
+                </span>
+                {feedItem.is_deleted && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
+                    {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
+                  </span>
+                )}
+              </div>
+              {dataPreview(feedItem.type, feedItem.data, t) && (
+                <p className="text-[12px] text-[#9CA3AF]">{dataPreview(feedItem.type, feedItem.data, t)}</p>
+              )}
+              <p className="text-[11px] text-[#6B7280] mt-1">{relativeTime(feedItem.created_at, dateFnsOpts)}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </AdminModal>
+  );
+}
 
 // ── POSTS TAB ──────────────────────────────────────────────────────────────
 
 const PostsTab = ({ gymId }) => {
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
 
@@ -202,111 +329,117 @@ const PostsTab = ({ gymId }) => {
     return posts;
   }, [posts, filter]);
 
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorCard message="Failed to load posts" onRetry={refetch} />;
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-[14px]" />)}</div>;
+  if (error) return <ErrorCard message={t('admin.moderation.postsFailed', { defaultValue: 'Failed to load posts' })} onRetry={refetch} />;
 
   const filterOptions = [
-    { key: 'all',     label: 'All',     count: total },
-    { key: 'active',  label: 'Active',  count: active },
-    { key: 'deleted', label: 'Deleted', count: deleted },
+    { key: 'all',     label: t('admin.moderation.all', { defaultValue: 'All' }),     count: total },
+    { key: 'active',  label: t('admin.moderation.active', { defaultValue: 'Active' }),  count: active },
+    { key: 'deleted', label: t('admin.moderation.deleted', { defaultValue: 'Deleted' }), count: deleted },
+  ];
+
+  const columns = [
+    {
+      key: 'user',
+      label: t('admin.moderation.user', { defaultValue: 'User' }),
+      render: (row) => {
+        const profile = row.profiles;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={profile?.full_name} size="sm" variant="accent" />
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '\u2014'}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'type',
+      label: t('admin.moderation.type', { defaultValue: 'Type' }),
+      sortable: true,
+      render: (row) => {
+        const badge = postTypeBadge(row.type, t);
+        return (
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize ${badge.color}`}>
+            {badge.label}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'preview',
+      label: t('admin.moderation.content', { defaultValue: 'Content' }),
+      render: (row) => {
+        const preview = dataPreview(row.type, row.data, t);
+        return preview ? (
+          <p className="text-[12px] text-[#9CA3AF] truncate max-w-[200px]">{preview}</p>
+        ) : (
+          <span className="text-[11px] text-[#6B7280]">\u2014</span>
+        );
+      },
+    },
+    {
+      key: 'status',
+      label: t('admin.moderation.status', { defaultValue: 'Status' }),
+      render: (row) => row.is_deleted ? (
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-red-400 bg-red-500/10">
+          {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
+        </span>
+      ) : (
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-emerald-400 bg-emerald-500/10">
+          {t('admin.moderation.live', { defaultValue: 'Live' })}
+        </span>
+      ),
+    },
+    {
+      key: 'created_at',
+      label: t('admin.moderation.date', { defaultValue: 'Date' }),
+      sortable: true,
+      sortValue: (row) => new Date(row.created_at).getTime(),
+      render: (row) => (
+        <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-12',
+      render: (row) => {
+        const busy = acting === row.id;
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
+            disabled={busy}
+            title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+            className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
+              row.is_deleted
+                ? 'text-emerald-500 hover:bg-emerald-500/10'
+                : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
+            }`}
+          >
+            {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
+          </button>
+        );
+      },
+    },
   ];
 
   return (
-    <div className="space-y-3">
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-3 mb-1">
-        {[
-          { label: 'Total Posts',   value: total,   color: 'text-[#E5E7EB]' },
-          { label: 'Active Posts',  value: active,  color: 'text-emerald-400' },
-          { label: 'Deleted Posts', value: deleted, color: 'text-red-400' },
-        ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
-            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
+    <div className="space-y-4">
+      <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+      <AdminTable
+        columns={columns}
+        data={filtered}
+        loading={false}
+        emptyState={
+          <div className="text-center py-12">
+            <Activity size={28} className="text-[#4B5563] mx-auto mb-2" />
+            <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noPosts', { defaultValue: 'No posts match this filter' })}</p>
           </div>
-        ))}
-      </div>
-
-      <FilterBar
-        options={filterOptions}
-        active={filter}
-        onChange={setFilter}
+        }
       />
-
-      {filtered.length === 0 ? (
-        <Empty label="No posts match this filter" />
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map(post => {
-            const profile = post.profiles;
-            const badge   = postTypeBadge(post.type);
-            const preview = dataPreview(post.type, post.data);
-            const busy    = acting === post.id;
-            return (
-              <div
-                key={post.id}
-                className={`bg-[#0F172A] border rounded-2xl p-4 transition-all group ${
-                  post.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6 hover:border-white/20 hover:bg-white/[0.03]'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar name={profile?.full_name} size="md" variant="accent" />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
-                        {profile?.full_name ?? 'Unknown'}
-                      </p>
-                      <p className="text-[12px] text-[#6B7280]">
-                        @{profile?.username ?? '—'}
-                      </p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
-                        {badge.label}
-                      </span>
-                      {post.is_deleted && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
-                          Deleted
-                        </span>
-                      )}
-                    </div>
-
-                    {preview && (
-                      <p className="text-[13px] text-[#9CA3AF] leading-relaxed mb-1 truncate">
-                        {preview}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <p className="text-[11px] text-[#4B5563]">
-                        {relativeTime(post.created_at)}
-                      </p>
-                      <span className="hidden md:inline text-[11px] text-[#4B5563]">
-                        {post.is_public ? 'Public' : 'Private'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleToggleDelete(post)}
-                    disabled={busy}
-                    title={post.is_deleted ? 'Restore post' : 'Delete post'}
-                    className={`flex-shrink-0 p-2 rounded-lg transition-all disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100 ${
-                      post.is_deleted
-                        ? 'text-emerald-500 hover:bg-emerald-500/10 md:opacity-100'
-                        : 'text-[#4B5563] hover:text-red-400 hover:bg-red-500/10'
-                    }`}
-                  >
-                    {post.is_deleted
-                      ? <RotateCcw size={15} />
-                      : <Trash2 size={15} />
-                    }
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };
@@ -315,6 +448,8 @@ const PostsTab = ({ gymId }) => {
 
 const CommentsTab = ({ gymId }) => {
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
 
@@ -346,134 +481,125 @@ const CommentsTab = ({ gymId }) => {
     return comments;
   }, [comments, filter]);
 
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorCard message="Failed to load comments" onRetry={refetch} />;
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-[14px]" />)}</div>;
+  if (error) return <ErrorCard message={t('admin.moderation.commentsFailed', { defaultValue: 'Failed to load comments' })} onRetry={refetch} />;
 
   const filterOptions = [
-    { key: 'all',     label: 'All',     count: total },
-    { key: 'active',  label: 'Active',  count: active },
-    { key: 'deleted', label: 'Deleted', count: deleted },
+    { key: 'all',     label: t('admin.moderation.all', { defaultValue: 'All' }),     count: total },
+    { key: 'active',  label: t('admin.moderation.active', { defaultValue: 'Active' }),  count: active },
+    { key: 'deleted', label: t('admin.moderation.deleted', { defaultValue: 'Deleted' }), count: deleted },
+  ];
+
+  const columns = [
+    {
+      key: 'user',
+      label: t('admin.moderation.user', { defaultValue: 'User' }),
+      render: (row) => {
+        const profile = row.profiles;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={profile?.full_name} size="sm" variant="accent" />
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '\u2014'}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'content',
+      label: t('admin.moderation.comment', { defaultValue: 'Comment' }),
+      render: (row) => (
+        <p className="text-[12px] text-[#E5E7EB] truncate max-w-[280px]">{sanitize(row.content)}</p>
+      ),
+    },
+    {
+      key: 'context',
+      label: t('admin.moderation.onPost', { defaultValue: 'On Post' }),
+      render: (row) => {
+        const feedItem = row.activity_feed_items;
+        const badge = postTypeBadge(feedItem?.type, t);
+        return feedItem ? (
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize ${badge.color}`}>
+            {badge.label}
+          </span>
+        ) : <span className="text-[11px] text-[#6B7280]">\u2014</span>;
+      },
+    },
+    {
+      key: 'status',
+      label: t('admin.moderation.status', { defaultValue: 'Status' }),
+      render: (row) => row.is_deleted ? (
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-red-400 bg-red-500/10">
+          {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
+        </span>
+      ) : (
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-emerald-400 bg-emerald-500/10">
+          {t('admin.moderation.live', { defaultValue: 'Live' })}
+        </span>
+      ),
+    },
+    {
+      key: 'created_at',
+      label: t('admin.moderation.date', { defaultValue: 'Date' }),
+      sortable: true,
+      sortValue: (row) => new Date(row.created_at).getTime(),
+      render: (row) => (
+        <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-12',
+      render: (row) => {
+        const busy = acting === row.id;
+        return (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
+            disabled={busy}
+            title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+            className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
+              row.is_deleted
+                ? 'text-emerald-500 hover:bg-emerald-500/10'
+                : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
+            }`}
+          >
+            {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
+          </button>
+        );
+      },
+    },
   ];
 
   return (
-    <div className="space-y-3">
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-3 mb-1">
-        {[
-          { label: 'Total Comments',   value: total,   color: 'text-[#E5E7EB]' },
-          { label: 'Active Comments',  value: active,  color: 'text-emerald-400' },
-          { label: 'Deleted Comments', value: deleted, color: 'text-red-400' },
-        ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
-            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
+    <div className="space-y-4">
+      <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+      <AdminTable
+        columns={columns}
+        data={filtered}
+        loading={false}
+        emptyState={
+          <div className="text-center py-12">
+            <MessageSquare size={28} className="text-[#4B5563] mx-auto mb-2" />
+            <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noComments', { defaultValue: 'No comments match this filter' })}</p>
           </div>
-        ))}
-      </div>
-
-      <FilterBar
-        options={filterOptions}
-        active={filter}
-        onChange={setFilter}
+        }
       />
-
-      {filtered.length === 0 ? (
-        <Empty label="No comments match this filter" />
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map(comment => {
-            const profile  = comment.profiles;
-            const feedItem = comment.activity_feed_items;
-            const badge    = postTypeBadge(feedItem?.type);
-            const busy     = acting === comment.id;
-            return (
-              <div
-                key={comment.id}
-                className={`bg-[#0F172A] border rounded-2xl p-4 transition-all group ${
-                  comment.is_deleted ? 'border-red-500/15 opacity-60' : 'border-white/6 hover:border-white/20 hover:bg-white/[0.03]'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar name={profile?.full_name} size="md" variant="accent" />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
-                        {profile?.full_name ?? 'Unknown'}
-                      </p>
-                      <p className="text-[12px] text-[#6B7280]">
-                        @{profile?.username ?? '—'}
-                      </p>
-                      {comment.is_deleted && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
-                          Deleted
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-[13px] text-[#E5E7EB] leading-relaxed mb-1.5 break-words">
-                      {sanitize(comment.content)}
-                    </p>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] text-[#6B7280]">
-                        On:
-                      </span>
-                      {feedItem && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
-                          {badge.label}
-                        </span>
-                      )}
-                      {feedItem?.created_at && (
-                        <span className="text-[11px] text-[#4B5563]">
-                          {relativeTime(feedItem.created_at)}
-                        </span>
-                      )}
-                      <span className="text-[#4B5563]">·</span>
-                      <span className="text-[11px] text-[#4B5563]">
-                        {relativeTime(comment.created_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleToggleDelete(comment)}
-                    disabled={busy}
-                    title={comment.is_deleted ? 'Restore comment' : 'Delete comment'}
-                    className={`flex-shrink-0 p-2 rounded-lg transition-all disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100 ${
-                      comment.is_deleted
-                        ? 'text-emerald-500 hover:bg-emerald-500/10 md:opacity-100'
-                        : 'text-[#4B5563] hover:text-red-400 hover:bg-red-500/10'
-                    }`}
-                  >
-                    {comment.is_deleted
-                      ? <RotateCcw size={15} />
-                      : <Trash2 size={15} />
-                    }
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };
 
-// ── REPORTS TAB ─────────────────────────────────────────────────────────────
-
-const REPORT_STATUS_STYLES = {
-  pending:   { label: 'Pending',   color: 'text-amber-400 bg-amber-500/10' },
-  reviewed:  { label: 'Reviewed',  color: 'text-blue-400 bg-blue-500/10' },
-  dismissed: { label: 'Dismissed', color: 'text-[#9CA3AF] bg-white/6' },
-  actioned:  { label: 'Actioned',  color: 'text-emerald-400 bg-emerald-500/10' },
-};
+// ── REPORTS TAB ────────────────────────────────────────────────────────────
 
 const ReportsTab = ({ gymId }) => {
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
 
   const { data: reports = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'reports'],
@@ -500,6 +626,7 @@ const ReportsTab = ({ gymId }) => {
       (old || []).map(r => r.id === report.id ? { ...r, status: newStatus, reviewed_at: new Date().toISOString() } : r)
     );
     setActing(null);
+    setSelectedReport(null);
   };
 
   const total    = reports.length;
@@ -507,145 +634,143 @@ const ReportsTab = ({ gymId }) => {
   const resolved = reports.filter(r => r.status !== 'pending').length;
 
   const filtered = useMemo(() => {
-    if (filter === 'active')  return reports.filter(r => r.status === 'pending');
-    if (filter === 'deleted') return reports.filter(r => r.status !== 'pending');
+    if (filter === 'pending')  return reports.filter(r => r.status === 'pending');
+    if (filter === 'resolved') return reports.filter(r => r.status !== 'pending');
     return reports;
   }, [reports, filter]);
 
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorCard message="Failed to load reports" onRetry={refetch} />;
+  if (isLoading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-[14px]" />)}</div>;
+  if (error) return <ErrorCard message={t('admin.moderation.reportsFailed', { defaultValue: 'Failed to load reports' })} onRetry={refetch} />;
 
   const filterOptions = [
-    { key: 'all',     label: 'All',      count: total },
-    { key: 'active',  label: 'Pending',  count: pending },
-    { key: 'deleted', label: 'Resolved', count: resolved },
+    { key: 'all',      label: t('admin.moderation.all', { defaultValue: 'All' }),      count: total },
+    { key: 'pending',  label: t('admin.moderation.pending', { defaultValue: 'Pending' }),  count: pending },
+    { key: 'resolved', label: t('admin.moderation.resolved', { defaultValue: 'Resolved' }), count: resolved },
+  ];
+
+  const columns = [
+    {
+      key: 'reporter',
+      label: t('admin.moderation.reporter', { defaultValue: 'Reporter' }),
+      render: (row) => {
+        const profile = row.profiles;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={profile?.full_name} size="sm" variant="accent" />
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '\u2014'}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'reason',
+      label: t('admin.moderation.reason', { defaultValue: 'Reason' }),
+      render: (row) => (
+        <p className="text-[12px] text-[#E5E7EB] truncate max-w-[200px]">{sanitize(row.reason)}</p>
+      ),
+    },
+    {
+      key: 'reported_post',
+      label: t('admin.moderation.reportedPost', { defaultValue: 'Reported Post' }),
+      render: (row) => {
+        const feedItem = row.activity_feed_items;
+        const badge = postTypeBadge(feedItem?.type, t);
+        const author = feedItem?.profiles;
+        return feedItem ? (
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>{badge.label}</span>
+            {author && <span className="text-[11px] text-[#9CA3AF] truncate">{author.full_name}</span>}
+          </div>
+        ) : <span className="text-[11px] text-[#6B7280]">\u2014</span>;
+      },
+    },
+    {
+      key: 'status',
+      label: t('admin.moderation.status', { defaultValue: 'Status' }),
+      sortable: true,
+      render: (row) => {
+        const status = getReportStatus(row.status, t);
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+            <span className={`text-[11px] font-bold ${status.color.split(' ')[0]}`}>{status.label}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'created_at',
+      label: t('admin.moderation.date', { defaultValue: 'Date' }),
+      sortable: true,
+      sortValue: (row) => new Date(row.created_at).getTime(),
+      render: (row) => (
+        <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-28',
+      render: (row) => {
+        const isPending = row.status === 'pending';
+        const busy = acting === row.id;
+        return isPending ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'actioned'); }}
+              disabled={busy}
+              title={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
+              className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
+            >
+              <XCircle size={15} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'dismissed'); }}
+              disabled={busy}
+              title={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
+              className="p-2 rounded-lg text-[#6B7280] hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-40"
+            >
+              <CheckCircle size={15} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); setSelectedReport(row); }}
+            className="p-2 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-all"
+          >
+            <Eye size={15} />
+          </button>
+        );
+      },
+    },
   ];
 
   return (
-    <div className="space-y-3">
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-3 mb-1">
-        {[
-          { label: 'Total Reports',    value: total,    color: 'text-[#E5E7EB]' },
-          { label: 'Pending Review',   value: pending,  color: 'text-amber-400' },
-          { label: 'Resolved',         value: resolved, color: 'text-emerald-400' },
-        ].map(s => (
-          <div key={s.label} className="bg-[#0F172A] border border-white/6 rounded-2xl p-4 text-center overflow-hidden">
-            <p className={`text-[22px] font-bold truncate ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
+    <div className="space-y-4">
+      <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
+      <AdminTable
+        columns={columns}
+        data={filtered}
+        loading={false}
+        onRowClick={(row) => setSelectedReport(row)}
+        emptyState={
+          <div className="text-center py-12">
+            <Flag size={28} className="text-[#4B5563] mx-auto mb-2" />
+            <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noReports', { defaultValue: 'No reports match this filter' })}</p>
           </div>
-        ))}
-      </div>
-
-      <FilterBar
-        options={filterOptions}
-        active={filter}
-        onChange={setFilter}
+        }
       />
 
-      {filtered.length === 0 ? (
-        <Empty label="No reports match this filter" />
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map(report => {
-            const reporter = report.profiles;
-            const feedItem = report.activity_feed_items ?? null;
-            const author   = feedItem?.profiles ?? null;
-            const badge    = postTypeBadge(feedItem?.type);
-            const status   = REPORT_STATUS_STYLES[report.status] || REPORT_STATUS_STYLES.pending;
-            const busy     = acting === report.id;
-            const isPending = report.status === 'pending';
-            return (
-              <div
-                key={report.id}
-                className={`bg-[#0F172A] border rounded-2xl p-4 transition-all group ${
-                  isPending ? 'border-amber-500/20 hover:border-amber-500/40' : 'border-white/6 opacity-70'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar name={reporter?.full_name} size="md" variant="accent" />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
-                        {reporter?.full_name ?? 'Unknown'}
-                      </p>
-                      <p className="text-[12px] text-[#6B7280]">
-                        @{reporter?.username ?? '—'}
-                      </p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
-                        {status.label}
-                      </span>
-                    </div>
-
-                    {/* Reason */}
-                    <p className="text-[13px] text-[#E5E7EB] leading-relaxed mb-1.5">
-                      <span className="text-[#6B7280]">Reason:</span>{' '}
-                      {sanitize(report.reason)}
-                    </p>
-
-                    {/* Reported content info */}
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-[11px] text-[#6B7280]">Reported post:</span>
-                      {feedItem && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
-                          {badge.label}
-                        </span>
-                      )}
-                      {author && (
-                        <span className="text-[11px] text-[#9CA3AF]">
-                          by {author.full_name ?? author.username ?? 'Unknown'}
-                        </span>
-                      )}
-                      {feedItem?.is_deleted && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
-                          Deleted
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <p className="text-[11px] text-[#4B5563]">
-                        Reported {relativeTime(report.created_at)}
-                      </p>
-                      {report.reviewed_at && (
-                        <>
-                          <span className="text-[#4B5563]">·</span>
-                          <p className="text-[11px] text-[#4B5563]">
-                            Reviewed {relativeTime(report.reviewed_at)}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  {isPending && (
-                    <div className="flex flex-col gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => handleUpdateStatus(report, 'actioned')}
-                        disabled={busy}
-                        title="Take action (removes reported post)"
-                        className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
-                      >
-                        <XCircle size={15} />
-                      </button>
-                      <button
-                        onClick={() => handleUpdateStatus(report, 'dismissed')}
-                        disabled={busy}
-                        title="Dismiss report"
-                        className="p-2 rounded-lg text-[#4B5563] hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-40"
-                      >
-                        <CheckCircle size={15} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <ReportDetailModal
+        report={selectedReport}
+        isOpen={!!selectedReport}
+        onClose={() => setSelectedReport(null)}
+        onAction={handleUpdateStatus}
+        acting={!!acting}
+      />
     </div>
   );
 };
@@ -654,42 +779,102 @@ const ReportsTab = ({ gymId }) => {
 
 export default function AdminModeration() {
   const { profile } = useAuth();
-  const [tab, setTab] = useState('posts');
+  const { t } = useTranslation('pages');
+  const [tab, setTab] = useState('reports');
 
   useEffect(() => { document.title = 'Admin - Moderation | TuGymPR'; }, []);
 
   const gymId = profile?.gym_id;
 
+  // Prefetch all data for stat cards
+  const { data: reports = [] } = useQuery({
+    queryKey: [...adminKeys.moderation(gymId), 'reports'],
+    queryFn: () => fetchReports(gymId),
+    enabled: !!gymId,
+  });
+  useQuery({
+    queryKey: [...adminKeys.moderation(gymId), 'posts'],
+    queryFn: () => fetchPosts(gymId),
+    enabled: !!gymId,
+  });
+  useQuery({
+    queryKey: [...adminKeys.moderation(gymId), 'comments'],
+    queryFn: () => fetchComments(gymId),
+    enabled: !!gymId,
+  });
+
+  const pendingReports = reports.filter(r => r.status === 'pending').length;
+  const resolvedReports = reports.filter(r => r.status !== 'pending').length;
+  const escalatedReports = reports.filter(r => r.status === 'actioned').length;
+
   const tabs = [
-    { key: 'posts',    label: 'Feed Posts',  icon: Activity },
-    { key: 'comments', label: 'Comments',    icon: MessageSquare },
-    { key: 'reports',  label: 'Reports',     icon: Flag },
+    { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),   icon: Flag,            count: pendingReports },
+    { key: 'posts',    label: t('admin.moderation.feedPosts', { defaultValue: 'Feed Posts' }),  icon: Activity,        count: null },
+    { key: 'comments', label: t('admin.moderation.comments', { defaultValue: 'Comments' }),  icon: MessageSquare,   count: null },
   ];
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <AdminPageShell>
       <PageHeader
-        title="Content Moderation"
-        subtitle="Review and moderate feed posts, comments, and member reports across your gym"
-        className="mb-6"
+        title={t('admin.moderation.title', { defaultValue: 'Content Moderation' })}
+        subtitle={t('admin.moderation.subtitle', { defaultValue: 'Review and moderate feed posts, comments, and member reports' })}
       />
+
+      {/* Summary stat cards */}
+      <FadeIn>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5 mb-6">
+          <StatCard
+            label={t('admin.moderation.totalReports', { defaultValue: 'Total Reports' })}
+            value={reports.length}
+            borderColor="#60A5FA"
+            icon={Flag}
+            delay={0}
+          />
+          <StatCard
+            label={t('admin.moderation.pending', { defaultValue: 'Pending' })}
+            value={pendingReports}
+            borderColor="#F97316"
+            icon={AlertTriangle}
+            delay={0.05}
+          />
+          <StatCard
+            label={t('admin.moderation.resolved', { defaultValue: 'Resolved' })}
+            value={resolvedReports}
+            borderColor="#10B981"
+            icon={CheckCircle}
+            delay={0.1}
+          />
+          <StatCard
+            label={t('admin.moderation.actioned', { defaultValue: 'Actioned' })}
+            value={escalatedReports}
+            borderColor="#EF4444"
+            icon={ShieldAlert}
+            delay={0.15}
+          />
+        </div>
+      </FadeIn>
 
       {/* Tab bar */}
       <div className="flex border-b border-white/6 mb-5">
-        {tabs.map(t => {
-          const Icon = t.icon;
+        {tabs.map(tabItem => {
+          const Icon = tabItem.icon;
           return (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors ${
-                tab === t.key
+              key={tabItem.key}
+              onClick={() => setTab(tabItem.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors relative ${
+                tab === tabItem.key
                   ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px'
                   : 'text-[#6B7280] hover:text-[#9CA3AF]'
               }`}
             >
               <Icon size={14} />
-              {t.label}
+              <span className="hidden sm:inline">{tabItem.label}</span>
+              {tabItem.count > 0 && (
+                <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#F97316]/15 text-[#F97316] min-w-[18px] text-center">
+                  {tabItem.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -697,16 +882,23 @@ export default function AdminModeration() {
 
       {/* Tab content */}
       {!gymId ? (
-        <div className="text-center py-20">
-          <p className="text-[14px] text-[#6B7280]">No gym associated with your account.</p>
-        </div>
-      ) : tab === 'posts' ? (
-        <PostsTab gymId={gymId} />
-      ) : tab === 'comments' ? (
-        <CommentsTab gymId={gymId} />
+        <AdminCard>
+          <div className="text-center py-16">
+            <ShieldAlert size={32} className="text-[#4B5563] mx-auto mb-3" />
+            <p className="text-[14px] text-[#6B7280]">{t('admin.moderation.noGym', { defaultValue: 'No gym associated with your account.' })}</p>
+          </div>
+        </AdminCard>
       ) : (
-        <ReportsTab gymId={gymId} />
+        <FadeIn delay={0.05} key={tab}>
+          {tab === 'reports' ? (
+            <ReportsTab gymId={gymId} />
+          ) : tab === 'posts' ? (
+            <PostsTab gymId={gymId} />
+          ) : (
+            <CommentsTab gymId={gymId} />
+          )}
+        </FadeIn>
       )}
-    </div>
+    </AdminPageShell>
   );
 }

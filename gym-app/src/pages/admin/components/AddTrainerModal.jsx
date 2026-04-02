@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Search, X, UserPlus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AdminModal, Avatar } from '../../../components/admin';
 
 export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote }) {
+  const { t } = useTranslation('pages');
   const [addSearch, setAddSearch] = useState('');
   const [promoting, setPromoting] = useState(null);
 
   const promotableMembers = allMembers.filter(m =>
     addSearch.length > 0 &&
-    (m.full_name?.toLowerCase().includes(addSearch.toLowerCase()) || m.email?.toLowerCase().includes(addSearch.toLowerCase()))
+    (m.full_name?.toLowerCase().includes(addSearch.toLowerCase()) || m.username?.toLowerCase().includes(addSearch.toLowerCase()))
   );
 
   const handlePromote = async (memberId) => {
@@ -28,13 +30,13 @@ export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote
     <AdminModal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Add Trainer"
+      title={t('admin.trainers.addTrainerTitle', 'Add Trainer')}
       titleIcon={UserPlus}
-      subtitle="Promote an existing member to the trainer role"
+      subtitle={t('admin.trainers.addTrainerSubtitle', 'Promote an existing member to the trainer role')}
       size="md"
       footer={
         <p className="text-[10px] text-[#4B5563]">
-          Promoting a member changes their role to trainer. They'll get access to the trainer dashboard and can manage clients.
+          {t('admin.trainers.addTrainerFooter', "Promoting a member changes their role to trainer. They'll get access to the trainer dashboard and can manage clients.")}
         </p>
       }
     >
@@ -46,8 +48,8 @@ export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote
             type="text"
             value={addSearch}
             onChange={e => setAddSearch(e.target.value)}
-            placeholder="Search members by name or email..."
-            aria-label="Search members by name or email"
+            placeholder={t('admin.trainers.searchMembersPlaceholder', 'Search members by name or email...')}
+            aria-label={t('admin.trainers.searchMembersPlaceholder', 'Search members by name or email...')}
             className="flex-1 bg-transparent text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none"
             autoFocus
           />
@@ -64,11 +66,11 @@ export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote
         {addSearch.length === 0 ? (
           <div className="py-8 text-center">
             <Search size={20} className="text-[#4B5563] mx-auto mb-2" />
-            <p className="text-[12px] text-[#6B7280]">Type a name or email to find members</p>
+            <p className="text-[12px] text-[#6B7280]">{t('admin.trainers.typeToSearch', 'Type a name or email to find members')}</p>
           </div>
         ) : promotableMembers.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="text-[12px] text-[#6B7280]">No matching members found</p>
+            <p className="text-[12px] text-[#6B7280]">{t('admin.trainers.noMatchingMembers', 'No matching members found')}</p>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -82,13 +84,13 @@ export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote
                 <Avatar name={m.full_name} size="sm" variant="neutral" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name}</p>
-                  <p className="text-[11px] text-[#6B7280] truncate">{m.email}</p>
+                  <p className="text-[11px] text-[#6B7280] truncate">@{m.username}</p>
                 </div>
                 {promoting === m.id ? (
                   <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin flex-shrink-0" />
                 ) : (
                   <span className="text-[11px] font-medium text-[#D4AF37] flex-shrink-0 px-2 py-0.5 rounded-md bg-[#D4AF37]/10">
-                    Promote
+                    {t('admin.trainers.promote', 'Promote')}
                   </span>
                 )}
               </button>

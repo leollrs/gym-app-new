@@ -72,7 +72,9 @@ export default function GymDetail() {
   const [checkIns, setCheckIns] = useState([]);
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('members');
+  const [tab, setTab] = useState('overview');
+  const [peopleSubTab, setPeopleSubTab] = useState('members');
+  const [contentSubTab, setContentSubTab] = useState('challenges');
   const [search, setSearch] = useState('');
   const [editingTier, setEditingTier] = useState(false);
   const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '', classes_enabled: false, multi_admin_enabled: false, max_admin_seats: 1 });
@@ -462,13 +464,11 @@ export default function GymDetail() {
   }
 
   const tabs = [
-    { key: 'members',      label: 'Members',      icon: Users },
-    { key: 'activity',     label: 'Activity',     icon: Activity },
-    { key: 'challenges',   label: 'Challenges',   icon: Trophy },
-    { key: 'programs',     label: 'Programs',     icon: BookOpen },
-    { key: 'achievements', label: 'Achievements', icon: Award },
-    { key: 'rewards',      label: 'Rewards',      icon: Gift },
-    { key: 'settings',     label: 'Settings',     icon: Settings },
+    { key: 'overview',  label: 'Overview',  icon: Activity },
+    { key: 'people',    label: 'People',    icon: Users },
+    { key: 'activity',  label: 'Activity',  icon: Dumbbell },
+    { key: 'content',   label: 'Content',   icon: Trophy },
+    { key: 'settings',  label: 'Settings',  icon: Settings },
   ];
 
   return (
@@ -581,8 +581,139 @@ export default function GymDetail() {
           ))}
         </div>
 
-        {/* ── Members tab ────────────────────────────────────── */}
-        {tab === 'members' && (
+        {/* ── Overview tab ───────────────────────────────────── */}
+        {tab === 'overview' && (
+          <div className="space-y-5">
+            {/* Gym identity card */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+              <div className="flex items-start gap-4">
+                {branding?.logo_url ? (
+                  <img src={branding.logo_url} alt="" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
+                    <Building2 size={24} className="text-[#D4AF37]" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-semibold text-[#E5E7EB]">{gym.name}</p>
+                  <p className="text-[12px] text-[#6B7280] font-mono">/{gym.slug}</p>
+                  {branding?.palette && (
+                    <span className="inline-block mt-1.5 text-[10px] text-[#9CA3AF] bg-white/5 px-2 py-0.5 rounded-full capitalize">{branding.palette.replace(/_/g, ' ')}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Owner / admin summary */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+              <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-3">Owner & Staff</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{members.filter(m => m.role === 'admin' || m.role === 'super_admin').length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Admins</p>
+                </div>
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{members.filter(m => m.role === 'trainer').length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Trainers</p>
+                </div>
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{members.filter(m => m.role === 'member').length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Members</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Activity snapshot */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+              <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-3">Activity (30 days)</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{stats.recentSessions}</p>
+                  <p className="text-[11px] text-[#6B7280]">Sessions</p>
+                </div>
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{stats.activeMembers}</p>
+                  <p className="text-[11px] text-[#6B7280]">Active Members</p>
+                </div>
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{stats.avgSessions}</p>
+                  <p className="text-[11px] text-[#6B7280]">Avg Sessions/Member</p>
+                </div>
+                <div>
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{checkIns.length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Check-ins</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content summary */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+              <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-3">Content</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <button onClick={() => { setTab('content'); setContentSubTab('challenges'); }} className="text-left hover:bg-white/[0.03] rounded-lg p-1 transition-colors">
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{challenges.length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Challenges</p>
+                </button>
+                <button onClick={() => { setTab('content'); setContentSubTab('programs'); }} className="text-left hover:bg-white/[0.03] rounded-lg p-1 transition-colors">
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{programs.length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Programs</p>
+                </button>
+                <button onClick={() => { setTab('content'); setContentSubTab('achievements'); }} className="text-left hover:bg-white/[0.03] rounded-lg p-1 transition-colors">
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{achievements.length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Achievements</p>
+                </button>
+                <div className="p-1">
+                  <p className="text-[18px] font-bold text-[#E5E7EB]">{invites.length}</p>
+                  <p className="text-[11px] text-[#6B7280]">Invites</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick actions */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <button onClick={() => setTab('people')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+                <Users size={16} className="text-[#D4AF37] mb-2" />
+                <p className="text-[12px] font-medium text-[#9CA3AF]">Manage People</p>
+              </button>
+              <button onClick={() => setTab('content')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+                <Trophy size={16} className="text-[#D4AF37] mb-2" />
+                <p className="text-[12px] font-medium text-[#9CA3AF]">Manage Content</p>
+              </button>
+              <button onClick={() => setTab('activity')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+                <Dumbbell size={16} className="text-[#D4AF37] mb-2" />
+                <p className="text-[12px] font-medium text-[#9CA3AF]">View Activity</p>
+              </button>
+              <button onClick={() => setTab('settings')} className="bg-[#0F172A] border border-white/6 rounded-xl p-3 text-left hover:bg-[#111827] transition-colors">
+                <Settings size={16} className="text-[#D4AF37] mb-2" />
+                <p className="text-[12px] font-medium text-[#9CA3AF]">Gym Settings</p>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── People tab (Members + Invites) ────────────────────── */}
+        {tab === 'people' && (
+          <div>
+            {/* Sub-tabs */}
+            <div className="flex gap-1 mb-4">
+              {[
+                { key: 'members', label: `Members (${members.length})` },
+                { key: 'staff', label: `Staff (${members.filter(m => m.role === 'admin' || m.role === 'trainer').length})` },
+                { key: 'invites', label: `Invites (${invites.length})` },
+              ].map(st => (
+                <button
+                  key={st.key}
+                  onClick={() => setPeopleSubTab(st.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                    peopleSubTab === st.key ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02]'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+
+            {peopleSubTab === 'members' && (
           <div>
             {/* Header + Add button */}
             <div className="flex items-center gap-3 mb-4">
@@ -704,6 +835,61 @@ export default function GymDetail() {
               Showing {filteredMembers.length} of {members.length} members
             </p>
           </div>
+            )}
+
+            {/* Staff sub-tab */}
+            {peopleSubTab === 'staff' && (
+              <div className="space-y-2">
+                {members.filter(m => m.role === 'admin' || m.role === 'trainer' || m.role === 'super_admin').length === 0 ? (
+                  <div className="bg-[#0F172A] border border-white/6 rounded-xl p-8 text-center">
+                    <p className="text-[13px] text-[#6B7280]">No staff members</p>
+                  </div>
+                ) : (
+                  members.filter(m => m.role === 'admin' || m.role === 'trainer' || m.role === 'super_admin').map(m => (
+                    <div key={m.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[12px] font-semibold text-[#D4AF37]">{(m.full_name || m.username || '?')[0].toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name || m.username}</p>
+                        <p className="text-[11px] text-[#6B7280]">@{m.username}</p>
+                      </div>
+                      <RoleBadge role={m.role} />
+                      <StatusBadge status={m.membership_status || 'active'} />
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Invites sub-tab */}
+            {peopleSubTab === 'invites' && (
+              <div className="space-y-2">
+                {invites.length === 0 ? (
+                  <div className="bg-[#0F172A] border border-white/6 rounded-xl p-8 text-center">
+                    <p className="text-[13px] text-[#6B7280]">No invites</p>
+                  </div>
+                ) : (
+                  invites.map(inv => {
+                    const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
+                    return (
+                      <div key={inv.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-[#E5E7EB] font-mono">{inv.code}</p>
+                          <p className="text-[11px] text-[#6B7280]">Role: {inv.role || 'member'}</p>
+                        </div>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          inv.is_used ? 'bg-emerald-500/15 text-emerald-400' : isExpired ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'
+                        }`}>
+                          {inv.is_used ? 'Claimed' : isExpired ? 'Expired' : 'Pending'}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── Activity tab ───────────────────────────────────── */}
@@ -771,8 +957,30 @@ export default function GymDetail() {
           </div>
         )}
 
-        {/* ── Challenges tab ─────────────────────────────────── */}
-        {tab === 'challenges' && (
+        {/* ── Content tab (Challenges, Programs, Achievements, Rewards) */}
+        {tab === 'content' && (
+          <div>
+            {/* Content sub-tabs */}
+            <div className="flex gap-1 mb-4">
+              {[
+                { key: 'challenges', label: `Challenges (${challenges.length})` },
+                { key: 'programs', label: `Programs (${programs.length})` },
+                { key: 'achievements', label: `Achievements (${achievements.length})` },
+                { key: 'rewards', label: 'Rewards' },
+              ].map(st => (
+                <button
+                  key={st.key}
+                  onClick={() => setContentSubTab(st.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                    contentSubTab === st.key ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#9CA3AF] bg-white/[0.02]'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+
+        {contentSubTab === 'challenges' && (
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Challenges</h3>
@@ -844,8 +1052,7 @@ export default function GymDetail() {
           </div>
         )}
 
-        {/* ── Programs tab ───────────────────────────────────── */}
-        {tab === 'programs' && (
+        {contentSubTab === 'programs' && (
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Gym Programs</h3>
@@ -924,8 +1131,7 @@ export default function GymDetail() {
           </div>
         )}
 
-        {/* ── Achievements tab ───────────────────────────────── */}
-        {tab === 'achievements' && (
+        {contentSubTab === 'achievements' && (
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-semibold text-[#E5E7EB]">Achievement Definitions</h3>
@@ -994,8 +1200,7 @@ export default function GymDetail() {
           </div>
         )}
 
-        {/* ── Rewards tab ────────────────────────────────────── */}
-        {tab === 'rewards' && (
+        {contentSubTab === 'rewards' && (
           <div>
             {rewardsAvailable === false ? (
               <div className="bg-[#0F172A] border border-white/6 rounded-xl py-20 text-center">
@@ -1034,6 +1239,9 @@ export default function GymDetail() {
                 ))}
               </div>
             ) : null}
+          </div>
+        )}
+
           </div>
         )}
 

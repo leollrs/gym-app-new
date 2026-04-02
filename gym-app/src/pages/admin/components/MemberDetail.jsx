@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
@@ -11,18 +12,18 @@ import { Avatar, SectionLabel, AdminModal } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 
 const statusActionMap = {
-  freeze:     { next: 'frozen',      label: 'Freeze Account',      btnColor: 'text-[#60A5FA]',  btnBg: 'bg-[#60A5FA]/10 border-[#60A5FA]/20' },
-  deactivate: { next: 'deactivated', label: 'Deactivate Account',  btnColor: 'text-[#F97316]',  btnBg: 'bg-[#F97316]/10 border-[#F97316]/20' },
-  cancel:     { next: 'cancelled',   label: 'Cancel Membership',   btnColor: 'text-[#9CA3AF]',  btnBg: 'bg-white/6 border-white/10' },
-  ban:        { next: 'banned',      label: 'Ban Member',          btnColor: 'text-[#EF4444]',  btnBg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
-  reactivate: { next: 'active',      label: 'Reactivate',          btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
-  unban:      { next: 'active',      label: 'Unban',               btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
+  freeze:     { next: 'frozen',      labelKey: 'freeze',      label: 'Freeze Account',      btnColor: 'text-[#60A5FA]',  btnBg: 'bg-[#60A5FA]/10 border-[#60A5FA]/20' },
+  deactivate: { next: 'deactivated', labelKey: 'deactivate',  label: 'Deactivate Account',  btnColor: 'text-[#F97316]',  btnBg: 'bg-[#F97316]/10 border-[#F97316]/20' },
+  cancel:     { next: 'cancelled',   labelKey: 'cancel',      label: 'Cancel Membership',   btnColor: 'text-[#9CA3AF]',  btnBg: 'bg-white/6 border-white/10' },
+  ban:        { next: 'banned',      labelKey: 'ban',         label: 'Ban Member',          btnColor: 'text-[#EF4444]',  btnBg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
+  reactivate: { next: 'active',      labelKey: 'reactivate',  label: 'Reactivate',          btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
+  unban:      { next: 'active',      labelKey: 'unban',       label: 'Unban',               btnColor: 'text-[#10B981]',  btnBg: 'bg-[#10B981]/10 border-[#10B981]/20' },
 };
 
 const outcomeConfig = {
-  returned:    { label: 'Member returned', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10 border-[#10B981]/20' },
-  no_response: { label: 'No response',     color: 'text-[#9CA3AF]', bg: 'bg-white/6 border-white/10' },
-  cancelled:   { label: 'Cancelled',       color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
+  returned:    { labelKey: 'admin.memberDetail.outcomeReturned', label: 'Member returned', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10 border-[#10B981]/20' },
+  no_response: { labelKey: 'admin.memberDetail.outcomeNoResponse', label: 'No response',     color: 'text-[#9CA3AF]', bg: 'bg-white/6 border-white/10' },
+  cancelled:   { labelKey: 'admin.memberDetail.outcomeCancelled', label: 'Cancelled',       color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10 border-[#EF4444]/20' },
 };
 
 function getStatusActions(status) {
@@ -37,8 +38,10 @@ function getStatusActions(status) {
 }
 
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [sessions, setSessions] = useState([]);
   const [prs, setPrs] = useState([]);
   const [challenges, setChallenges] = useState(0);
@@ -211,7 +214,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 <p id="member-detail-title" className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
                 <StatusBadge status={memberStatus} />
               </div>
-              <p className="text-[11px] text-[#6B7280] truncate">@{member.username} · joined {format(new Date(member.created_at), 'MMM yyyy')}</p>
+              <p className="text-[11px] text-[#6B7280] truncate">@{member.username} · {t('admin.members.joined', 'joined')} {format(new Date(member.created_at), 'MMM yyyy', dateFnsLocale)}</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Close member detail" className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
@@ -220,10 +223,10 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         {/* Stats row */}
         <div className="grid grid-cols-4 border-b border-white/6 flex-shrink-0">
           {[
-            { label: 'Risk', value: <span className={risk.textClass}>{risk.label}</span>, sub: `score ${member.score}%` },
-            { label: 'Inactive', value: `${daysInactive}d`, sub: neverActive ? 'never logged' : 'days' },
-            { label: 'Workouts', value: member.recentWorkouts ?? 0, sub: 'last 14d' },
-            { label: 'Challenges', value: challenges, sub: 'joined' },
+            { label: t('admin.memberDetail.risk', 'Risk'), value: <span className={risk.textClass}>{risk.label}</span>, sub: `${t('admin.memberDetail.score', 'score')} ${member.score}%` },
+            { label: t('admin.memberDetail.inactive', 'Inactive'), value: `${daysInactive}d`, sub: neverActive ? t('admin.memberDetail.neverLogged', 'never logged') : t('admin.memberDetail.days', 'days') },
+            { label: t('admin.memberDetail.workouts', 'Workouts'), value: member.recentWorkouts ?? 0, sub: t('admin.memberDetail.last14d', 'last 14d') },
+            { label: t('admin.memberDetail.challenges', 'Challenges'), value: challenges, sub: t('admin.memberDetail.joinedChallenges', 'joined') },
           ].map(({ label, value, sub }) => (
             <div key={label} className="py-3 px-2 text-center border-r border-white/4 last:border-0">
               <p className="text-[15px] font-bold text-[#E5E7EB] leading-none">{value}</p>
@@ -235,10 +238,10 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
         {/* Tabs */}
         <div className="flex border-b border-white/6 flex-shrink-0">
-          {[{ key: 'workouts', label: 'Workouts' }, { key: 'prs', label: 'PRs' }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${tab === t.key ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
-              {t.label}
+          {[{ key: 'workouts', label: t('admin.memberDetail.tabWorkouts', 'Workouts') }, { key: 'prs', label: t('admin.memberDetail.tabPRs', 'PRs') }, { key: 'referrals', label: t('admin.referral.memberReferrals') }].map(tb => (
+            <button key={tb.key} onClick={() => setTab(tb.key)}
+              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${tab === tb.key ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
+              {tb.label}
             </button>
           ))}
         </div>
@@ -251,14 +254,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             </div>
           ) : tab === 'workouts' ? (
             sessions.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-6">No workouts logged</p>
+              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noWorkouts', 'No workouts logged')}</p>
             ) : (
               <div className="space-y-2">
                 {sessions.map(s => (
                   <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || 'Workout'}</p>
-                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy')}</p>
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
+                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'MMM d, yyyy', dateFnsLocale)}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
                       {s.total_volume_lbs > 0 && <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>}
@@ -270,7 +273,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             )
           ) : tab === 'prs' ? (
             prs.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-6">No PRs recorded yet</p>
+              <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noPRs', 'No PRs recorded yet')}</p>
             ) : (
               <div className="space-y-2">
                 {prs.map((pr, i) => (
@@ -280,11 +283,11 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
-                      {pr.achieved_at && <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy')}</p>}
+                      {pr.achieved_at && <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', dateFnsLocale)}</p>}
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-[13px] font-bold text-[#E5E7EB]">{pr.weight_lbs} lbs × {pr.reps}</p>
-                      {pr.estimated_1rm > 0 && <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs est. 1RM</p>}
+                      {pr.estimated_1rm > 0 && <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs {t('admin.memberDetail.est1RM', 'est. 1RM')}</p>}
                     </div>
                   </div>
                 ))}
@@ -334,7 +337,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                         <div key={ref.id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{ref.profiles?.full_name || 'Unknown'}</p>
-                            <p className="text-[11px] text-[#6B7280]">{format(new Date(ref.created_at), 'MMM d, yyyy')}</p>
+                            <p className="text-[11px] text-[#6B7280]">{format(new Date(ref.created_at), 'MMM d, yyyy', dateFnsLocale)}</p>
                           </div>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors[ref.status] || statusColors.pending}`}>
                             {statusLabel[ref.status] || ref.status}
@@ -350,10 +353,10 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
           {/* Membership */}
           <div>
-            <SectionLabel icon={UserCheck} className="mb-3">Membership</SectionLabel>
+            <SectionLabel icon={UserCheck} className="mb-3">{t('admin.memberDetail.membership', 'Membership')}</SectionLabel>
             <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-[12px] text-[#6B7280]">Status</p>
+                <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.status', 'Status')}</p>
                 <StatusBadge status={memberStatus} />
               </div>
               <div className="flex flex-wrap gap-2">
@@ -373,17 +376,17 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
           {/* QR / External ID */}
           <div>
-            <SectionLabel icon={QrCode} className="mb-3">QR Code / External ID</SectionLabel>
+            <SectionLabel icon={QrCode} className="mb-3">{t('admin.memberDetail.qrTitle', 'QR Code / External ID')}</SectionLabel>
             <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
               <div>
-                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">External ID</label>
-                <p className="text-[11px] text-[#6B7280] mb-1.5">The code from your gym's existing system (e.g. keypad code, barcode number)</p>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.externalId', 'External ID')}</label>
+                <p className="text-[11px] text-[#6B7280] mb-1.5">{t('admin.memberDetail.externalIdDesc', "The code from your gym's existing system (e.g. keypad code, barcode number)")}</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={externalId}
                     onChange={e => setExternalId(e.target.value)}
-                    placeholder="e.g. 4821 or MBR-0042"
+                    placeholder={t('admin.memberDetail.externalIdPlaceholder', 'e.g. 4821 or MBR-0042')}
                     className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 font-mono"
                   />
                   <button
@@ -393,13 +396,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
                   >
                     <Save size={12} />
-                    {externalIdSaving ? 'Saving...' : 'Save'}
+                    {externalIdSaving ? t('admin.memberDetail.saving', 'Saving...') : t('admin.memberDetail.save', 'Save')}
                   </button>
                 </div>
               </div>
               {member.qr_code_payload && (
                 <div className="flex items-center justify-between pt-2 border-t border-white/4">
-                  <p className="text-[11px] text-[#6B7280]">Current QR payload</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('admin.memberDetail.currentQrPayload', 'Current QR payload')}</p>
                   <p className="text-[12px] font-mono font-semibold text-[#D4AF37]">{member.qr_code_payload}</p>
                 </div>
               )}
@@ -408,30 +411,30 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
           {/* Password Reset */}
           <div>
-            <SectionLabel icon={KeyRound} className="mb-3">Password Reset</SectionLabel>
+            <SectionLabel icon={KeyRound} className="mb-3">{t('admin.memberDetail.passwordReset', 'Password Reset')}</SectionLabel>
             <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
               {resetCode ? (
                 <div className="space-y-3">
-                  <p className="text-[12px] text-[#6B7280]">Show this code to the member:</p>
+                  <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.showCode', 'Show this code to the member:')}</p>
                   <div className="flex items-center justify-center py-4">
                     <span className="text-[36px] font-mono font-bold text-[#D4AF37] tracking-[0.3em] select-all">
                       {String(resetCode).padStart(6, '0')}
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#6B7280] text-center">Code expires in 15 minutes</p>
+                  <p className="text-[11px] text-[#6B7280] text-center">{t('admin.memberDetail.codeExpires', 'Code expires in 15 minutes')}</p>
                   <div className="flex gap-2">
                     <button
                       onClick={handleCopyCode}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold transition-colors"
                       style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
                     >
-                      {codeCopied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy Code</>}
+                      {codeCopied ? <><Check size={12} /> {t('admin.memberDetail.copied', 'Copied!')}</> : <><Copy size={12} /> {t('admin.memberDetail.copyCode', 'Copy Code')}</>}
                     </button>
                     <button
                       onClick={() => { setResetCode(null); setResetError(''); }}
                       className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors"
                     >
-                      Done
+                      {t('admin.memberDetail.done', 'Done')}
                     </button>
                   </div>
                 </div>
@@ -442,7 +445,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                       <p className="text-[11px] text-red-400">{resetError}</p>
                     </div>
                   )}
-                  <p className="text-[12px] text-[#6B7280]">Generate a one-time 6-digit code the member can use to set a new password.</p>
+                  <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.generateResetDesc', 'Generate a one-time 6-digit code the member can use to set a new password.')}</p>
                   <button
                     onClick={handleGenerateResetCode}
                     disabled={resetLoading}
@@ -450,7 +453,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
                   >
                     <KeyRound size={12} />
-                    {resetLoading ? 'Generating…' : 'Generate Reset Code'}
+                    {resetLoading ? t('admin.memberDetail.generating', 'Generating\u2026') : t('admin.memberDetail.generateResetCode', 'Generate Reset Code')}
                   </button>
                 </>
               )}
@@ -460,23 +463,23 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
           {/* Churn follow-up */}
           {isFollowupCandidate && (
             <div>
-              <SectionLabel icon={Send} className="mb-3">Send Follow-up</SectionLabel>
+              <SectionLabel icon={Send} className="mb-3">{t('admin.memberDetail.sendFollowup', 'Send Follow-up')}</SectionLabel>
               <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
                 {followupSentAt ? (
                   <div className="space-y-3">
-                    <p className="text-[12px] text-[#6B7280]">Follow-up sent <span className="text-[#9CA3AF] font-medium">{format(new Date(followupSentAt), 'MMM d, yyyy')}</span></p>
+                    <p className="text-[12px] text-[#6B7280]">{t('admin.memberDetail.followupSent', 'Follow-up sent')} <span className="text-[#9CA3AF] font-medium">{format(new Date(followupSentAt), 'MMM d, yyyy', dateFnsLocale)}</span></p>
                     <div>
-                      <p className="text-[11px] text-[#6B7280] mb-2">Outcome</p>
+                      <p className="text-[11px] text-[#6B7280] mb-2">{t('admin.memberDetail.outcome', 'Outcome')}</p>
                       {followupOutcome ? (
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${outcomeConfig[followupOutcome]?.color} ${outcomeConfig[followupOutcome]?.bg}`}>
-                          {outcomeConfig[followupOutcome]?.label}
+                          {t(outcomeConfig[followupOutcome]?.labelKey, outcomeConfig[followupOutcome]?.label)}
                         </span>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(outcomeConfig).map(([key, cfg]) => (
                             <button key={key} onClick={() => handleSetOutcome(key)} disabled={outcomeSaving}
                               className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors disabled:opacity-40 ${cfg.color} ${cfg.bg}`}>
-                              {cfg.label}
+                              {t(cfg.labelKey, cfg.label)}
                             </button>
                           ))}
                         </div>
@@ -490,7 +493,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     <button onClick={handleSendFollowup} disabled={followupSending || !followupMsg.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
                       style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-                      <Send size={12} /> {followupSending ? 'Sending…' : 'Send Follow-up'}
+                      <Send size={12} /> {followupSending ? t('admin.memberDetail.sendingFollowup', 'Sending\u2026') : t('admin.memberDetail.sendFollowup', 'Send Follow-up')}
                     </button>
                   </>
                 )}
@@ -500,13 +503,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
           {/* Admin note */}
           <div>
-            <SectionLabel icon={FileText} className="mb-2">Admin Note</SectionLabel>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="e.g. Reached out Jan 5 — no response. At risk of churning."
+            <SectionLabel icon={FileText} className="mb-2">{t('admin.memberDetail.adminNote', 'Admin Note')}</SectionLabel>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={t('admin.memberDetail.adminNotePlaceholder', 'e.g. Reached out Jan 5 \u2014 no response. At risk of churning.')}
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
             <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
               className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-              <Save size={12} /> {noteSaving ? 'Saving…' : 'Save Note'}
+              <Save size={12} /> {noteSaving ? t('admin.memberDetail.saving', 'Saving\u2026') : t('admin.memberDetail.saveNote', 'Save Note')}
             </button>
           </div>
         </div>

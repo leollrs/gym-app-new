@@ -3,25 +3,48 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
 } from 'recharts';
-import { Download, CalendarCheck, Dumbbell, Users } from 'lucide-react';
+import { Download, CalendarCheck, Dumbbell, Users, TrendingUp, Flame } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { exportCSV } from '../../lib/csvExport';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import ChartTooltip from '../../components/ChartTooltip';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, StatCard } from '../../components/admin';
+import {
+  AdminPageShell,
+  PageHeader,
+  StatCard,
+  AdminCard,
+  FilterBar,
+  FadeIn,
+  SectionLabel,
+  CardSkeleton,
+} from '../../components/admin';
 
-const DAYS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 6am-9pm
 
+const PERIOD_OPTIONS = [
+  { key: '14', label: '14d' },
+  { key: '30', label: '30d' },
+  { key: '90', label: '90d' },
+];
+
 export default function AdminAttendance() {
+  const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [period, setPeriod] = useState('30');
+  const DAYS = DAY_KEYS.map(k => t(`admin.attendance.${k}`, k.replace('day', '')));
 
-  useEffect(() => { document.title = 'Admin - Attendance | TuGymPR'; }, []);
+  useEffect(() => {
+    document.title = t('admin.attendance.pageTitle', 'Admin - Attendance | TuGymPR');
+  }, [t]);
 
   // ── Fetch attendance data ──
   const { data, isLoading } = useQuery({
@@ -116,42 +139,43 @@ export default function AdminAttendance() {
     exportCSV({
       filename: 'attendance',
       columns: [
-        { key: 'date', label: 'Date' },
-        { key: 'checkins', label: 'Check-ins' },
-        { key: 'workouts', label: 'Workouts' },
+        { key: 'date', label: t('admin.attendance.date', 'Date') },
+        { key: 'checkins', label: t('admin.attendance.checkins', 'Check-ins') },
+        { key: 'workouts', label: t('admin.attendance.workoutsLabel', 'Workouts') },
       ],
       data: dailyData,
     });
   };
 
   return (
-    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <AdminPageShell>
       <PageHeader
-        title="Attendance"
-        subtitle="Check-ins and workout activity"
+        title={t('admin.attendance.title', 'Attendance')}
+        subtitle={t('admin.attendance.subtitle', 'Check-ins and workout activity')}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px]"
+              aria-label={t('admin.attendance.export', 'Export CSV')}
             >
               <Download size={13} />
-              Export
+              {t('admin.attendance.export', 'Export')}
             </button>
-            <div className="flex gap-1.5">
-              {['14', '30', '90'].map(d => (
-                <button key={d} onClick={() => setPeriod(d)}
-                  className={`px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors ${
-                    period === d ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-[#0F172A] border border-white/6 text-[#9CA3AF]'
-                  }`}>
-                  {d}d
-                </button>
-              ))}
-            </div>
           </div>
         }
-        className="mb-6"
       />
+
+      {/* Period filter */}
+      <FadeIn>
+        <div className="mt-5 mb-5">
+          <FilterBar
+            options={PERIOD_OPTIONS}
+            active={period}
+            onChange={setPeriod}
+          />
+        </div>
+      </FadeIn>
 
       {isLoading ? (
         <div className="space-y-4">
@@ -163,42 +187,98 @@ export default function AdminAttendance() {
         </div>
       ) : (
         <>
-          {/* Summary stat cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <StatCard label="Total Check-ins" value={summaryStats.totalCheckins} borderColor="#8B5CF6" icon={CalendarCheck} delay={0} />
-            <StatCard label="Total Workouts" value={summaryStats.totalWorkouts} borderColor="var(--color-accent)" icon={Dumbbell} delay={60} />
-            <StatCard label="Unique Visitors" value={summaryStats.uniqueVisitors} borderColor="#10B981" icon={Users} delay={120} />
-            <StatCard label="Avg Check-ins / Day" value={summaryStats.avgPerDay} borderColor="#3B82F6" icon={CalendarCheck} delay={180} />
+          {/* KPI row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <StatCard
+              label={t('admin.attendance.totalCheckins', 'Total Check-ins')}
+              value={summaryStats.totalCheckins}
+              borderColor="#8B5CF6"
+              icon={CalendarCheck}
+              delay={0}
+            />
+            <StatCard
+              label={t('admin.attendance.totalWorkouts', 'Total Workouts')}
+              value={summaryStats.totalWorkouts}
+              borderColor="#D4AF37"
+              icon={Dumbbell}
+              delay={0.05}
+            />
+            <StatCard
+              label={t('admin.attendance.uniqueVisitors', 'Unique Visitors')}
+              value={summaryStats.uniqueVisitors}
+              borderColor="#10B981"
+              icon={Users}
+              delay={0.1}
+            />
+            <StatCard
+              label={t('admin.attendance.avgPerDay', 'Avg Check-ins / Day')}
+              value={summaryStats.avgPerDay}
+              borderColor="#60A5FA"
+              icon={Flame}
+              delay={0.15}
+            />
           </div>
 
-          {/* Daily line chart */}
-          <FadeIn delay={100}>
-            <AdminCard hover padding="p-5" className="mb-4">
-              <p className="text-[14px] font-semibold text-[#E5E7EB] mb-4">Daily Activity</p>
-              <ResponsiveContainer width="100%" height={220}>
+          {/* Daily activity trend chart */}
+          <FadeIn delay={0.1}>
+            <AdminCard hover padding="p-5" className="mb-5">
+              <SectionLabel icon={TrendingUp} className="mb-4">
+                {t('admin.attendance.dailyActivity', 'Daily Activity')}
+              </SectionLabel>
+              <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false}
-                    interval={Math.floor(dailyData.length / 6)} />
-                  <YAxis tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={Math.floor(dailyData.length / 6)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#D4AF37', strokeWidth: 1, strokeDasharray: '4 4' }} />
                   <Legend
                     iconType="circle"
                     iconSize={8}
-                    wrapperStyle={{ fontSize: 11, color: 'var(--color-text-muted)', paddingTop: 8 }}
+                    wrapperStyle={{ fontSize: 11, color: '#9CA3AF', paddingTop: 8 }}
                   />
-                  <Line type="monotone" dataKey="checkins" name="Check-ins" stroke="#8B5CF6" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
-                  <Line type="monotone" dataKey="workouts" name="Workouts" stroke="var(--color-accent)" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="checkins"
+                    name={t('admin.attendance.checkins', 'Check-ins')}
+                    stroke="#8B5CF6"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 2, fill: '#8B5CF6' }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="workouts"
+                    name={t('admin.attendance.workoutsLabel', 'Workouts')}
+                    stroke="#D4AF37"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 2, fill: '#D4AF37' }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </AdminCard>
           </FadeIn>
 
           {/* Peak hours heatmap */}
-          <FadeIn delay={200}>
+          <FadeIn delay={0.2}>
             <AdminCard hover padding="p-5" className="overflow-x-auto">
-              <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">Peak Hours</p>
-              <p className="text-[11px] text-[#6B7280] mb-4">Based on gym check-ins</p>
+              <SectionLabel icon={CalendarCheck} className="mb-1">
+                {t('admin.attendance.peakHours', 'Peak Hours')}
+              </SectionLabel>
+              <p className="text-[11px] text-[#6B7280] mb-4 ml-6">
+                {t('admin.attendance.basedOn', 'Based on gym check-ins')}
+              </p>
               <div className="min-w-[520px] md:min-w-0">
                 {/* Hour labels */}
                 <div className="flex mb-1.5 ml-10">
@@ -218,7 +298,7 @@ export default function AdminAttendance() {
                         <div key={h} className="flex-1 px-0.5">
                           <div
                             className={`h-6 rounded-[3px] transition-colors ${heatColor(val)}`}
-                            title={`${day} ${h}:00 — ${val} check-ins`}
+                            title={`${day} ${h}:00 — ${val} ${t('admin.attendance.checkins', 'check-ins')}`}
                           />
                         </div>
                       );
@@ -227,19 +307,19 @@ export default function AdminAttendance() {
                 ))}
                 {/* Legend */}
                 <div className="flex items-center gap-2 mt-3 justify-end">
-                  <span className="text-[10px] text-[#4B5563]">Less</span>
+                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.less', 'Less')}</span>
                   {[0, 0.25, 0.5, 0.75, 1].map(v => (
                     <div key={v} className={`w-5 h-4 rounded-[3px] ${
                       v === 0 ? 'bg-white/4' : v <= 0.25 ? 'bg-[#D4AF37]/15' : v <= 0.5 ? 'bg-[#D4AF37]/35' : v <= 0.75 ? 'bg-[#D4AF37]/70' : 'bg-[#D4AF37]'
                     }`} />
                   ))}
-                  <span className="text-[10px] text-[#4B5563]">More</span>
+                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.more', 'More')}</span>
                 </div>
               </div>
             </AdminCard>
           </FadeIn>
         </>
       )}
-    </div>
+    </AdminPageShell>
   );
 }

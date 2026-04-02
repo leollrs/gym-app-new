@@ -82,15 +82,16 @@ export default function Notifications() {
     return () => supabase.removeChannel(ch);
   }, [user?.id]);
 
-  // Auto-clear notifications older than 14 days
+  // Auto-dismiss notifications older than 14 days (soft-delete)
   useEffect(() => {
     if (!user?.id) return;
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     supabase
       .from('notifications')
-      .delete()
+      .update({ dismissed_at: new Date().toISOString() })
       .eq('profile_id', user.id)
+      .is('dismissed_at', null)
       .lt('created_at', fourteenDaysAgo.toISOString())
       .then(({ error }) => {
         if (error) logger.error('Notifications: auto-cleanup failed:', error);
@@ -98,14 +99,14 @@ export default function Notifications() {
       });
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Delete a single notification (with confirmation)
+  // Dismiss a single notification (soft-delete to preserve dedup_key)
   const deleteNotification = useCallback(async (id) => {
     const confirmed = window.confirm(t('notifications.deleteConfirm'));
     if (!confirmed) return;
     setItems(prev => prev.filter(n => n.id !== id));
-    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('id', id);
     if (error) {
-      console.error('[Notif] delete failed:', error.message, error.code);
+      console.error('[Notif] dismiss failed:', error.message, error.code);
       invalidateNotifications(user.id);
     } else {
       invalidateNotifications(user.id);
@@ -113,13 +114,13 @@ export default function Notifications() {
     }
   }, [user?.id, invalidateNotifications, refreshNotifications]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear all notifications
+  // Clear all notifications (soft-delete to preserve dedup_keys)
   const clearAllNotifications = useCallback(async () => {
     if (!items.length) return;
     const confirmed = window.confirm(t('notifications.deleteAllConfirm', { count: items.length }));
     if (!confirmed) return;
     setItems([]);
-    const { error } = await supabase.from('notifications').delete().eq('profile_id', user.id);
+    const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('profile_id', user.id).is('dismissed_at', null);
     if (error) {
       console.error('[Notif] clearAll failed:', error.message, error.code);
     }

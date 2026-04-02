@@ -3,6 +3,7 @@
  * Bottom-sheet on mobile, centered dialog on desktop.
  */
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 export default function AdminModal({
@@ -41,9 +42,9 @@ export default function AdminModal({
     lg: 'max-w-4xl',
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -51,7 +52,7 @@ export default function AdminModal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-[14px] w-full ${maxWidths[size] || maxWidths.md} overflow-hidden max-h-[90vh] flex flex-col`}
+        className={`bg-[#0F172A] border border-white/8 rounded-[14px] w-full ${maxWidths[size] || maxWidths.md} overflow-hidden max-h-[85vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -84,6 +85,7 @@ export default function AdminModal({
           <div className="px-5 pb-5 flex gap-3 flex-shrink-0">{footer}</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -2,20 +2,31 @@ import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, TrendingUp, Users, Send, ThumbsUp, Minus, ThumbsDown, BarChart3, Clock, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { broadcastNotification } from '../../lib/notifications';
-import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton } from '../../components/admin';
+import {
+  AdminPageShell,
+  PageHeader,
+  StatCard,
+  AdminCard,
+  AdminModal,
+  FadeIn,
+  SectionLabel,
+  CardSkeleton,
+} from '../../components/admin';
 
 const GOLD = '#D4AF37';
 
 const PERIODS = [
-  { label: '30d', days: 30 },
-  { label: '90d', days: 90 },
-  { label: '180d', days: 180 },
-  { label: 'All time', days: null },
+  { labelKey: '30d', days: 30 },
+  { labelKey: '90d', days: 90 },
+  { labelKey: '180d', days: 180 },
+  { labelKey: 'allTime', days: null },
 ];
 
 function scoreColor(score) {
@@ -31,10 +42,10 @@ function scoreBg(score) {
 }
 
 function npsColor(nps) {
-  if (nps < 0) return 'text-red-400';
-  if (nps < 30) return 'text-amber-400';
-  if (nps < 70) return 'text-lime-400';
-  return 'text-emerald-400';
+  if (nps < 0) return '#EF4444';
+  if (nps < 30) return '#F97316';
+  if (nps < 70) return '#10B981';
+  return '#10B981';
 }
 
 function npsBarColor(nps) {
@@ -49,6 +60,9 @@ function npsGaugePercent(nps) {
 }
 
 export default function AdminNPS() {
+  const { t, i18n } = useTranslation('pages');
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const { profile } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -58,8 +72,8 @@ export default function AdminNPS() {
   const [showSurveyModal, setShowSurveyModal] = useState(false);
 
   useEffect(() => {
-    document.title = 'Member Feedback | Admin';
-  }, []);
+    document.title = t('admin.nps.pageTitle', 'Member Feedback | Admin');
+  }, [t]);
 
   const statsKey = ['admin', 'nps', gymId, 'stats', days];
   const responsesKey = ['admin', 'nps', gymId, 'responses', days];
@@ -106,31 +120,31 @@ export default function AdminNPS() {
         .from('nps_surveys')
         .select('id')
         .eq('gym_id', gymId)
-        .eq('status', 'active')
+        .eq('is_active', true)
         .maybeSingle();
 
-      if (existing) throw new Error('There is already an active survey running.');
+      if (existing) throw new Error(t('admin.nps.activeSurveyError', 'There is already an active survey running.'));
 
       const { error: insertError } = await supabase
         .from('nps_surveys')
-        .insert({ gym_id: gymId, status: 'active', sent_by: profile.id });
+        .insert({ gym_id: gymId, is_active: true, created_by: profile.id });
 
       if (insertError) throw insertError;
 
       await broadcastNotification({
         gymId,
         type: 'nps_survey',
-        title: 'How likely are you to recommend us?',
-        body: 'Take a quick 1-question survey and help us improve!',
+        title: t('admin.nps.surveyNotifTitle', 'How likely are you to recommend us?'),
+        body: t('admin.nps.surveyNotifBody', 'Take a quick 1-question survey and help us improve!'),
       });
     },
     onSuccess: () => {
-      showToast('Survey sent to all members', 'success');
+      showToast(t('admin.nps.surveySent', 'Survey sent to all members'), 'success');
       setShowSurveyModal(false);
       queryClient.invalidateQueries({ queryKey: ['admin', 'nps', gymId] });
     },
     onError: (err) => {
-      showToast(err.message || 'Failed to send survey', 'error');
+      showToast(err.message || t('admin.nps.sendFailed', 'Failed to send survey'), 'error');
     },
   });
 
@@ -158,123 +172,180 @@ export default function AdminNPS() {
   const detractorPct = Math.round((detractors / total) * 100);
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <AdminPageShell>
       <PageHeader
-        title="Member Feedback"
-        subtitle="NPS surveys and satisfaction tracking"
-      />
-
-      {/* Period filter + Send survey */}
-      <FadeIn>
-        <div className="flex items-center justify-between mt-6 mb-4">
-          <div className="flex gap-1.5 bg-[#111827]/60 rounded-xl p-1 border border-white/[0.04]">
-            {PERIODS.map((p) => (
-              <button
-                key={p.label}
-                onClick={() => setDays(p.days)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                  days === p.days
-                    ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
+        title={t('admin.nps.title', 'Member Feedback')}
+        subtitle={t('admin.nps.subtitle', 'NPS surveys and satisfaction tracking')}
+        actions={
           <button
             onClick={() => setShowSurveyModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all hover:brightness-110"
             style={{ background: `${GOLD}20`, color: GOLD }}
           >
             <Send size={14} />
-            Send Survey
+            {t('admin.nps.sendSurvey', 'Send Survey')}
           </button>
+        }
+      />
+
+      {/* Period filter */}
+      <FadeIn>
+        <div className="flex gap-1.5 bg-[#111827]/60 rounded-xl p-1 border border-white/[0.04] mt-6 mb-5 w-fit">
+          {PERIODS.map((p) => (
+            <button
+              key={p.labelKey}
+              onClick={() => setDays(p.days)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                days === p.days
+                  ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
+              }`}
+            >
+              {t(`admin.nps.period.${p.labelKey}`, p.labelKey)}
+            </button>
+          ))}
         </div>
       </FadeIn>
 
       {statsLoading ? (
-        <CardSkeleton count={3} />
+        <CardSkeleton count={4} />
       ) : (
         <>
-          {/* NPS Hero Card */}
+          {/* NPS Hero Score */}
           <FadeIn delay={0.05}>
-            <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-6 mb-4">
-              <div className="flex items-center gap-2 mb-4">
-                <BarChart3 size={16} style={{ color: GOLD }} />
-                <span className="text-xs font-medium text-[#9CA3AF] uppercase tracking-wider">
-                  Net Promoter Score
-                </span>
-              </div>
+            <AdminCard padding="p-6" className="mb-5">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                {/* Left: Big NPS number */}
+                <div className="flex flex-col items-center md:items-start md:flex-1">
+                  <SectionLabel icon={BarChart3}>
+                    {t('admin.nps.npsLabel', 'Net Promoter Score')}
+                  </SectionLabel>
+                  <span
+                    className="text-[56px] md:text-[64px] font-black leading-none mt-3 tabular-nums"
+                    style={{ color: npsColor(nps) }}
+                  >
+                    {nps > 0 ? '+' : ''}{nps}
+                  </span>
 
-              <div className="flex flex-col items-center">
-                <span className={`text-[48px] font-black leading-none ${npsColor(nps)}`}>
-                  {nps > 0 ? '+' : ''}{nps}
-                </span>
-
-                {/* Gauge bar */}
-                <div className="w-full max-w-[280px] mt-4 mb-3">
-                  <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden relative">
-                    <div
-                      className={`absolute left-0 top-0 h-full rounded-full transition-all duration-700 ${npsBarColor(nps)}`}
-                      style={{ width: `${npsGaugePercent(nps)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[10px] text-[#6B7280]">-100</span>
-                    <span className="text-[10px] text-[#6B7280]">0</span>
-                    <span className="text-[10px] text-[#6B7280]">+100</span>
+                  {/* Gauge bar */}
+                  <div className="w-full max-w-[300px] mt-4">
+                    <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden relative">
+                      <div
+                        className={`absolute left-0 top-0 h-full rounded-full transition-all duration-700 ${npsBarColor(nps)}`}
+                        style={{ width: `${npsGaugePercent(nps)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-[#6B7280]">-100</span>
+                      <span className="text-[10px] text-[#6B7280]">0</span>
+                      <span className="text-[10px] text-[#6B7280]">+100</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-6 text-center">
-                  <div>
-                    <p className="text-lg font-bold text-[#E5E7EB]">{totalResponses}</p>
-                    <p className="text-[10px] text-[#6B7280]">Responses</p>
+                {/* Right: Quick stats */}
+                <div className="flex gap-6 justify-center md:justify-end">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-[#E5E7EB]">{totalResponses}</p>
+                    <p className="text-[11px] text-[#6B7280]">{t('admin.nps.responses', 'Responses')}</p>
                   </div>
-                  <div>
-                    <p className="text-lg font-bold text-[#E5E7EB]">{responseRate}%</p>
-                    <p className="text-[10px] text-[#6B7280]">Response rate</p>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-[#E5E7EB]">{responseRate}%</p>
+                    <p className="text-[11px] text-[#6B7280]">{t('admin.nps.responseRate', 'Response rate')}</p>
                   </div>
                 </div>
               </div>
+            </AdminCard>
+          </FadeIn>
+
+          {/* Promoters / Passives / Detractors breakdown */}
+          <FadeIn delay={0.1}>
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              <StatCard
+                label={t('admin.nps.promoters', 'Promoters (9-10)')}
+                value={promoters}
+                sub={`${promoterPct}%`}
+                borderColor="#10B981"
+                icon={ThumbsUp}
+                delay={0}
+              />
+              <StatCard
+                label={t('admin.nps.passives', 'Passives (7-8)')}
+                value={passives}
+                sub={`${passivePct}%`}
+                borderColor="#F97316"
+                icon={Minus}
+                delay={0.05}
+              />
+              <StatCard
+                label={t('admin.nps.detractors', 'Detractors (0-6)')}
+                value={detractors}
+                sub={`${detractorPct}%`}
+                borderColor="#EF4444"
+                icon={ThumbsDown}
+                delay={0.1}
+              />
             </div>
           </FadeIn>
 
-          {/* Breakdown row */}
-          <FadeIn delay={0.1}>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 text-center">
-                <ThumbsUp size={16} className="mx-auto mb-2 text-emerald-400" />
-                <p className="text-lg font-bold text-emerald-400">{promoters}</p>
-                <p className="text-[10px] text-[#6B7280]">Promoters (9-10)</p>
-                <p className="text-xs font-semibold text-emerald-400 mt-1">{promoterPct}%</p>
+          {/* Stacked breakdown bar (visual) */}
+          <FadeIn delay={0.12}>
+            <AdminCard padding="p-4" className="mb-5">
+              <SectionLabel icon={TrendingUp} className="mb-3">
+                {t('admin.nps.breakdownBar', 'Response Breakdown')}
+              </SectionLabel>
+              <div className="flex rounded-lg overflow-hidden h-5">
+                {promoterPct > 0 && (
+                  <div
+                    className="bg-emerald-400 flex items-center justify-center transition-all duration-500"
+                    style={{ width: `${promoterPct}%` }}
+                  >
+                    {promoterPct >= 10 && (
+                      <span className="text-[10px] font-bold text-emerald-950">{promoterPct}%</span>
+                    )}
+                  </div>
+                )}
+                {passivePct > 0 && (
+                  <div
+                    className="bg-amber-400 flex items-center justify-center transition-all duration-500"
+                    style={{ width: `${passivePct}%` }}
+                  >
+                    {passivePct >= 10 && (
+                      <span className="text-[10px] font-bold text-amber-950">{passivePct}%</span>
+                    )}
+                  </div>
+                )}
+                {detractorPct > 0 && (
+                  <div
+                    className="bg-red-400 flex items-center justify-center transition-all duration-500"
+                    style={{ width: `${detractorPct}%` }}
+                  >
+                    {detractorPct >= 10 && (
+                      <span className="text-[10px] font-bold text-red-950">{detractorPct}%</span>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 text-center">
-                <Minus size={16} className="mx-auto mb-2 text-amber-400" />
-                <p className="text-lg font-bold text-amber-400">{passives}</p>
-                <p className="text-[10px] text-[#6B7280]">Passives (7-8)</p>
-                <p className="text-xs font-semibold text-amber-400 mt-1">{passivePct}%</p>
+              <div className="flex gap-4 mt-2">
+                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" /> {t('admin.nps.promotersShort', 'Promoters')}
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" /> {t('admin.nps.passivesShort', 'Passives')}
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                  <span className="w-2 h-2 rounded-full bg-red-400" /> {t('admin.nps.detractorsShort', 'Detractors')}
+                </span>
               </div>
-              <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 text-center">
-                <ThumbsDown size={16} className="mx-auto mb-2 text-red-400" />
-                <p className="text-lg font-bold text-red-400">{detractors}</p>
-                <p className="text-[10px] text-[#6B7280]">Detractors (0-6)</p>
-                <p className="text-xs font-semibold text-red-400 mt-1">{detractorPct}%</p>
-              </div>
-            </div>
+            </AdminCard>
           </FadeIn>
 
           {/* Score Distribution Chart */}
           <FadeIn delay={0.15}>
-            <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 mb-4">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp size={16} style={{ color: GOLD }} />
-                <span className="text-xs font-medium text-[#9CA3AF] uppercase tracking-wider">
-                  Score Distribution
-                </span>
-              </div>
+            <AdminCard padding="p-4" className="mb-5">
+              <SectionLabel icon={BarChart3} className="mb-4">
+                {t('admin.nps.distribution', 'Score Distribution')}
+              </SectionLabel>
 
               <div className="flex items-end justify-between gap-1.5 h-32">
                 {(Array.isArray(distribution) ? distribution : Array(11).fill(0)).map((count, i) => {
@@ -297,112 +368,126 @@ export default function AdminNPS() {
                   );
                 })}
               </div>
-            </div>
+            </AdminCard>
           </FadeIn>
         </>
       )}
 
       {/* Recent Responses */}
       <FadeIn delay={0.2}>
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock size={14} style={{ color: GOLD }} />
-            <h3 className="text-sm font-semibold text-[#E5E7EB]">Recent Responses</h3>
-          </div>
+        <SectionLabel icon={Clock} className="mb-3">
+          {t('admin.nps.recentResponses', 'Recent Responses')}
+        </SectionLabel>
 
-          {responsesLoading ? (
-            <CardSkeleton count={3} />
-          ) : !responses?.length ? (
-            <div className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-6 text-center">
-              <MessageCircle size={24} className="mx-auto mb-2 text-[#6B7280]" />
-              <p className="text-sm text-[#6B7280]">No responses yet</p>
-              <p className="text-xs text-[#6B7280] mt-1">Send a survey to start collecting feedback</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {responses.map((r) => {
-                const name = r.profiles?.full_name || 'Member';
-                const initial = name.charAt(0).toUpperCase();
+        {responsesLoading ? (
+          <CardSkeleton count={3} />
+        ) : !responses?.length ? (
+          <AdminCard padding="p-8" className="text-center mb-5">
+            <MessageCircle size={28} className="mx-auto mb-2 text-[#6B7280]" />
+            <p className="text-sm text-[#6B7280]">{t('admin.nps.noResponses', 'No responses yet')}</p>
+            <p className="text-xs text-[#6B7280] mt-1">
+              {t('admin.nps.sendToCollect', 'Send a survey to start collecting feedback')}
+            </p>
+          </AdminCard>
+        ) : (
+          <div className="space-y-2 mb-5">
+            {responses.map((r) => {
+              const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
+              const initial = name.charAt(0).toUpperCase();
 
-                return (
-                  <AdminCard key={r.id}>
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-xs font-bold text-[#9CA3AF] flex-shrink-0">
-                        {initial}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-[#E5E7EB] truncate">{name}</span>
-                          <span
-                            className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${scoreBg(r.score)}`}
-                          >
-                            {r.score}
-                          </span>
-                        </div>
-                        {r.feedback && (
-                          <p className="text-xs text-[#9CA3AF] mt-1 line-clamp-2">{r.feedback}</p>
-                        )}
-                        <p className="text-[10px] text-[#6B7280] mt-1">
-                          {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
+              return (
+                <AdminCard key={r.id} hover>
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-xs font-bold text-[#9CA3AF] flex-shrink-0">
+                      {initial}
                     </div>
-                  </AdminCard>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-[#E5E7EB] truncate">{name}</span>
+                        <span
+                          className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${scoreBg(r.score)}`}
+                        >
+                          {r.score}
+                        </span>
+                      </div>
+                      {r.feedback && (
+                        <p className="text-xs text-[#9CA3AF] mt-1 line-clamp-2">{r.feedback}</p>
+                      )}
+                      <p className="text-[10px] text-[#6B7280] mt-1">
+                        {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
+                      </p>
+                    </div>
+                  </div>
+                </AdminCard>
+              );
+            })}
+          </div>
+        )}
       </FadeIn>
 
       {/* Feedback Highlights */}
       {feedbackResponses.length > 0 && (
         <FadeIn delay={0.25}>
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-3">
-              <MessageCircle size={14} style={{ color: GOLD }} />
-              <h3 className="text-sm font-semibold text-[#E5E7EB]">Feedback Highlights</h3>
-            </div>
+          <SectionLabel icon={MessageCircle} className="mb-3">
+            {t('admin.nps.feedbackHighlights', 'Feedback Highlights')}
+          </SectionLabel>
 
-            <div className="space-y-2">
-              {feedbackResponses.slice(0, 10).map((r) => {
-                const name = r.profiles?.full_name || 'Member';
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+            {feedbackResponses.slice(0, 10).map((r) => {
+              const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
 
-                return (
-                  <div
-                    key={r.id}
-                    className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBg(r.score)}`}
-                      >
-                        {r.score}/10
-                      </span>
-                      <span className="text-[10px] text-[#6B7280]">
-                        {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                      </span>
-                    </div>
-                    <p className="text-sm text-[#E5E7EB] italic leading-relaxed">
-                      &ldquo;{r.feedback}&rdquo;
-                    </p>
-                    <p className="text-[10px] text-[#6B7280] mt-2">&mdash; {name}</p>
+              return (
+                <AdminCard key={r.id} borderLeft={r.score >= 9 ? '#10B981' : r.score >= 7 ? '#F97316' : '#EF4444'}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBg(r.score)}`}
+                    >
+                      {r.score}/10
+                    </span>
+                    <span className="text-[10px] text-[#6B7280]">
+                      {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <p className="text-sm text-[#E5E7EB] italic leading-relaxed">
+                    &ldquo;{r.feedback}&rdquo;
+                  </p>
+                  <p className="text-[10px] text-[#6B7280] mt-2">&mdash; {name}</p>
+                </AdminCard>
+              );
+            })}
           </div>
         </FadeIn>
       )}
 
       {/* Send Survey Modal */}
       <AdminModal
-        open={showSurveyModal}
+        isOpen={showSurveyModal}
         onClose={() => setShowSurveyModal(false)}
-        title="Send NPS Survey"
+        title={t('admin.nps.sendNpsSurvey', 'Send NPS Survey')}
+        titleIcon={Send}
+        footer={
+          <>
+            <button
+              onClick={() => setShowSurveyModal(false)}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
+            >
+              {t('admin.nps.cancel', 'Cancel')}
+            </button>
+            <button
+              onClick={() => sendSurvey.mutate()}
+              disabled={sendSurvey.isPending}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 hover:brightness-110"
+              style={{ background: `${GOLD}20`, color: GOLD }}
+            >
+              {sendSurvey.isPending
+                ? t('admin.nps.sending', 'Sending...')
+                : t('admin.nps.sendToAll', 'Send to All Members')}
+            </button>
+          </>
+        }
       >
         <div className="space-y-4">
-          <div className="bg-[#111827]/60 border border-white/[0.04] rounded-xl p-4">
+          <AdminCard>
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -411,44 +496,32 @@ export default function AdminNPS() {
                 <Send size={18} style={{ color: GOLD }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#E5E7EB]">NPS Survey</p>
+                <p className="text-sm font-semibold text-[#E5E7EB]">
+                  {t('admin.nps.npsSurveyLabel', 'NPS Survey')}
+                </p>
                 <p className="text-xs text-[#6B7280]">
-                  &ldquo;How likely are you to recommend us?&rdquo;
+                  &ldquo;{t('admin.nps.surveyQuestion', 'How likely are you to recommend us?')}&rdquo;
                 </p>
               </div>
             </div>
             <p className="text-xs text-[#9CA3AF] leading-relaxed">
-              This will send a push notification to all active gym members asking them to rate
-              their experience on a scale of 0-10. Members can also leave optional written
-              feedback.
+              {t(
+                'admin.nps.surveyDesc',
+                'This will send a push notification to all active gym members asking them to rate their experience on a scale of 0-10. Members can also leave optional written feedback.',
+              )}
             </p>
-          </div>
+          </AdminCard>
 
           <div className="bg-amber-400/10 border border-amber-400/20 rounded-xl p-3">
             <p className="text-xs text-amber-400">
-              Only one survey can be active at a time. Members who have already responded will
-              not receive a duplicate notification.
+              {t(
+                'admin.nps.surveyWarning',
+                'Only one survey can be active at a time. Members who have already responded will not receive a duplicate notification.',
+              )}
             </p>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowSurveyModal(false)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => sendSurvey.mutate()}
-              disabled={sendSurvey.isPending}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-              style={{ background: `${GOLD}20`, color: GOLD }}
-            >
-              {sendSurvey.isPending ? 'Sending...' : 'Send to All Members'}
-            </button>
           </div>
         </div>
       </AdminModal>
-    </div>
+    </AdminPageShell>
   );
 }

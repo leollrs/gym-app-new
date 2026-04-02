@@ -84,4 +84,38 @@ export const adminKeys = {
   kpiTargets: (gymId, month) => ['admin', 'kpi-targets', gymId, month],
 
   digest: (gymId) => ['admin', 'digest-config', gymId],
+
+  messaging: {
+    all: (gymId) => ['admin', 'messaging', gymId],
+    scheduled: (gymId) => ['admin', 'messaging', 'scheduled', gymId],
+    broadcastHistory: (gymId) => ['admin', 'messaging', 'broadcast-history', gymId],
+  },
+
+  store: {
+    all: (gymId) => ['admin', 'store', gymId],
+    products: (gymId) => ['admin', 'store', gymId, 'products'],
+    purchases: (gymId, filters) => ['admin', 'store', gymId, 'purchases', filters],
+    members: (gymId) => ['admin', 'store', gymId, 'members'],
+  },
+
+  classes: {
+    all: (gymId) => ['admin', 'classes', gymId],
+    detail: (classId) => ['admin', 'class-analytics', classId],
+    bookings: (classId, date) => ['admin', 'class-bookings', classId, date],
+    bookingsTab: (classId, dateFilter) => ['admin', 'class-bookings-tab', classId, dateFilter],
+    routines: (gymId) => ['admin', 'routines-for-classes', gymId],
+    trainers: (gymId) => ['admin', 'trainers-for-classes', gymId],
+  },
+
+  abTesting: {
+    all: (gymId) => ['admin', 'ab-testing', gymId],
+    experiments: (gymId) => ['admin', 'ab-testing', gymId, 'experiments'],
+  },
+
+  rewards: {
+    all: (gymId) => ['admin', 'rewards', gymId],
+    milestones: (gymId) => ['admin', 'rewards', gymId, 'milestones'],
+  },
+
+  emailTemplates: (gymId) => ['admin', 'email-templates', gymId],
 };

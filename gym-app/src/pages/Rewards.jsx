@@ -312,9 +312,136 @@ const HistoryTab = ({ history, loading, t }) => {
   );
 };
 
+// ── Challenge Prizes Banner ──────────────────────────────────────────────────
+const ChallengePrizesBanner = ({ prizes, t, onShowQr }) => {
+  if (!prizes || prizes.length === 0) return null;
+  const placementEmoji = { 1: '\uD83E\uDD47', 2: '\uD83E\uDD48', 3: '\uD83E\uDD49' };
+  const placementLabel = {
+    1: t('rewards.placement1', '1st Place'),
+    2: t('rewards.placement2', '2nd Place'),
+    3: t('rewards.placement3', '3rd Place'),
+  };
+
+  return (
+    <FadeIn>
+      <div className="mb-6">
+        <h3 className="text-[15px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+          <Trophy size={16} className="text-[#D4AF37]" />
+          {t('rewards.challengePrizes', 'Challenge Prizes')}
+        </h3>
+        <div className="space-y-3">
+          {prizes.map((prize) => (
+            <div
+              key={prize.id}
+              className="relative rounded-2xl overflow-hidden border border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.06] to-transparent"
+            >
+              <div className="px-4 py-4 flex items-center gap-3">
+                <div className="text-[28px] flex-shrink-0">
+                  {placementEmoji[prize.placement] || '\uD83C\uDFC6'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-[var(--color-text-primary)] truncate">
+                    {prize.challenges?.name || 'Challenge'}
+                  </p>
+                  <p className="text-[11px] font-semibold text-[#D4AF37] mt-0.5">
+                    {placementLabel[prize.placement] || `#${prize.placement}`}
+                  </p>
+                  <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
+                    {prize.reward_label}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                  {prize.points_awarded > 0 && (
+                    <span className="text-[13px] font-bold text-[#10B981]">
+                      +{prize.points_awarded} pts
+                    </span>
+                  )}
+                  {prize.qr_code && (
+                    <button
+                      onClick={() => onShowQr(prize)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-[#D4AF37] bg-[#D4AF37]/[0.08] border border-[#D4AF37]/15 hover:bg-[#D4AF37]/[0.12] transition-all"
+                    >
+                      <QrCode size={12} />
+                      {t('rewards.showQr', 'Show QR')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </FadeIn>
+  );
+};
+
+// ── Challenge Prize QR Modal ────────────────────────────────────────────────
+const ChallengePrizeQRModal = ({ prize, onClose }) => {
+  const { t } = useTranslation('pages');
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    const scrollY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
+  const placementEmoji = { 1: '\uD83E\uDD47', 2: '\uD83E\uDD48', 3: '\uD83E\uDD49' };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 backdrop-blur-xl bg-black/60" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Challenge prize QR code"
+        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close QR"
+          className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="bg-[#D4AF37]/10 flex items-center justify-center gap-2 py-3">
+          <span className="text-[20px]">{placementEmoji[prize.placement] || '\uD83C\uDFC6'}</span>
+          <span className="text-[13px] font-bold text-[#D4AF37]">{prize.challenges?.name || 'Challenge Prize'}</span>
+        </div>
+
+        <div className="bg-white flex flex-col items-center p-8">
+          <QRCodeSVG
+            value={`challenge-prize:${prize.qr_code}`}
+            size={220}
+            level="H"
+            includeMargin={false}
+            bgColor="#FFFFFF"
+            fgColor="#000000"
+          />
+          <p className="text-[14px] font-mono font-bold text-gray-800 mt-4 tracking-widest">{prize.qr_code}</p>
+        </div>
+
+        <div className="bg-[var(--color-bg-card)] border-t border-[var(--color-border-subtle)] p-5">
+          <p className="text-[16px] font-bold text-[var(--color-text-primary)] text-center">{prize.reward_label}</p>
+          <p className="text-[12px] text-[var(--color-text-muted)] text-center mt-1">
+            {t('rewards.showQrToStaff')}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Rewards Catalog Tab ──────────────────────────────────────────────────────
-const RewardsTab = ({ points, onRedeem, t }) => (
-  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+const RewardsTab = ({ points, onRedeem, challengePrizes, onShowPrizeQr, t }) => (
+  <div>
+    <ChallengePrizesBanner prizes={challengePrizes} t={t} onShowQr={onShowPrizeQr} />
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
     {REWARDS_CATALOG.map((reward) => {
       const canAfford = points >= reward.cost;
       const name = t(`rewards.catalog.${reward.nameKey}`, reward.nameKey);
@@ -347,6 +474,7 @@ const RewardsTab = ({ points, onRedeem, t }) => (
         </div>
       );
     })}
+    </div>
   </div>
 );
 
@@ -781,6 +909,8 @@ export default function Rewards() {
   const [purchases, setPurchases] = useState([]);
   const [redeemTarget, setRedeemTarget] = useState(null);
   const [successReward, setSuccessReward] = useState(null); // { reward, redemptionId }
+  const [challengePrizes, setChallengePrizes] = useState([]);
+  const [prizeQrTarget, setPrizeQrTarget] = useState(null);
 
   const tier = getRewardTier(pointsData.lifetime_points);
 
@@ -788,7 +918,7 @@ export default function Rewards() {
     if (!user?.id || !profile?.gym_id) return;
     setLoading(true);
 
-    const [pts, hist, punchCardsRes, purchasesRes] = await Promise.all([
+    const [pts, hist, punchCardsRes, purchasesRes, prizesRes] = await Promise.all([
       getUserPoints(user.id),
       getPointsHistory(user.id, 20),
       supabase
@@ -802,6 +932,12 @@ export default function Rewards() {
         .eq('member_id', user.id)
         .order('created_at', { ascending: false })
         .limit(20),
+      supabase
+        .from('challenge_prizes')
+        .select('*, challenges(name)')
+        .eq('profile_id', user.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
     ]);
 
     setPointsData(pts);
@@ -814,6 +950,7 @@ export default function Rewards() {
       }))
     );
     setPurchases(purchasesRes.data || []);
+    setChallengePrizes(prizesRes.data || []);
     setLoading(false);
   }, [user?.id, profile?.gym_id]);
 
@@ -846,6 +983,14 @@ export default function Rewards() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12">
+      {/* Challenge Prize QR modal */}
+      {prizeQrTarget && (
+        <ChallengePrizeQRModal
+          prize={prizeQrTarget}
+          onClose={() => setPrizeQrTarget(null)}
+        />
+      )}
+
       {/* Redemption QR modal */}
       {successReward && (
         <RedemptionQRModal
@@ -975,6 +1120,8 @@ export default function Rewards() {
           <RewardsTab
             points={pointsData.total_points}
             onRedeem={(reward) => setRedeemTarget(reward)}
+            challengePrizes={challengePrizes}
+            onShowPrizeQr={(prize) => setPrizeQrTarget(prize)}
             t={t}
           />
         )}

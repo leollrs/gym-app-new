@@ -304,8 +304,8 @@ export default function PlatformAnalytics() {
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <FadeIn>
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-1 truncate">Platform Analytics</h1>
-        <p className="text-[13px] text-[#6B7280] mb-6">Cross-platform metrics across all gyms</p>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">Analytics</h1>
+        <p className="text-[12px] text-[#6B7280] mb-6">Growth, retention, and revenue</p>
       </FadeIn>
 
       {/* ── Top Stats ───────────────────────────────────────── */}

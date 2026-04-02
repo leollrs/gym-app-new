@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, MessageSquare, Bug,
+  Activity, HeadphonesIcon, AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,17 +12,18 @@ const NAV_SECTIONS = [
   {
     labelKey: 'platformNav.main',
     items: [
-      { to: '/platform',            labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
+      { to: '/platform/operations',  labelKey: 'platformNav.operations', icon: Activity, exact: true },
+      { to: '/platform',             labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
+      { to: '/platform/support',     labelKey: 'platformNav.support',    icon: HeadphonesIcon },
       { to: '/platform/analytics',   labelKey: 'platformNav.analytics',  icon: BarChart3 },
     ],
   },
   {
     labelKey: 'platformNav.tools',
     items: [
-      { to: '/platform/members',    labelKey: 'platformNav.members',    icon: Search },
-      { to: '/platform/sms',        labelKey: 'platformNav.sms',        icon: MessageSquare },
-      { to: '/platform/audit-log',  labelKey: 'platformNav.auditLog',   icon: ScrollText },
-      { to: '/platform/error-logs', labelKey: 'platformNav.errorLogs',  icon: Bug },
+      { to: '/platform/error-logs',  labelKey: 'platformNav.errorLogs',  icon: Bug },
+      { to: '/platform/audit-log',   labelKey: 'platformNav.auditLog',   icon: ScrollText },
+      { to: '/platform/sms',         labelKey: 'platformNav.sms',        icon: MessageSquare },
     ],
   },
   {
@@ -34,7 +36,7 @@ const NAV_SECTIONS = [
 
 const ALL_NAV = NAV_SECTIONS.flatMap(s => s.items);
 
-const MOBILE_PRIMARY_PATHS = ['/platform', '/platform/analytics', '/platform/members', '/platform/settings'];
+const MOBILE_PRIMARY_PATHS = ['/platform/operations', '/platform', '/platform/support', '/platform/analytics'];
 const MOBILE_NAV = ALL_NAV.filter(n => MOBILE_PRIMARY_PATHS.includes(n.to));
 const MOBILE_MORE_NAV = ALL_NAV.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to));
 

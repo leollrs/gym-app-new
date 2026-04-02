@@ -83,13 +83,17 @@ const AdminReports       = lazy(() => import('./pages/admin/AdminReports'));
 const AdminReferrals     = lazy(() => import('./pages/admin/AdminReferrals'));
 const AdminNPS           = lazy(() => import('./pages/admin/AdminNPS'));
 const AdminDigestConfig  = lazy(() => import('./pages/admin/AdminDigestConfig'));
+const AdminABTesting     = lazy(() => import('./pages/admin/AdminABTesting'));
+const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
+const AdminRewards       = lazy(() => import('./pages/admin/AdminRewards'));
 
 // ── Lazy-loaded platform super-admin pages ──────────────────
 const PlatformLayout     = lazy(() => import('./layouts/PlatformLayout'));
+const Operations         = lazy(() => import('./pages/platform/Operations'));
 const GymsOverview       = lazy(() => import('./pages/platform/GymsOverview'));
 const GymDetail          = lazy(() => import('./pages/platform/GymDetail'));
 const PlatformAnalytics  = lazy(() => import('./pages/platform/PlatformAnalytics'));
-const MemberLookup       = lazy(() => import('./pages/platform/MemberLookup'));
+const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'));
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const SmsManagement      = lazy(() => import('./pages/platform/SmsManagement'));
@@ -290,7 +294,7 @@ const ProtectedRoute = ({ children }) => {
   if (!profile) return null;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
-  if (isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
+  if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
   if (!profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (isAdmin(profile))   return <Navigate to="/admin" replace />;
   if (isTrainer(profile)) return <Navigate to="/trainer" replace />;
@@ -308,7 +312,7 @@ const OnboardingRoute = ({ children }) => {
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
   if (profile.is_onboarded) {
-    if (isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
+    if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
     if (isAdmin(profile))      return <Navigate to="/admin" replace />;
     if (isTrainer(profile))    return <Navigate to="/trainer" replace />;
     return <Navigate to="/" replace />;
@@ -321,9 +325,10 @@ const AdminRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
   if (loading) return null;
   if (!user)            return <Navigate to="/login" replace />;
+  if (!profile)         return null;
   if (gymDeactivated)   return <GymDeactivatedScreen />;
   if (memberBlocked)    return <MemberBlockedScreen />;
-  if (isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
+  if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
   if (!isAdmin(profile)) return <Navigate to="/" replace />;
   return children;
 };
@@ -333,6 +338,7 @@ const PlatformRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return null;
   if (!user)                  return <Navigate to="/login" replace />;
+  if (!profile)               return null;
   if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
   return children;
 };
@@ -342,6 +348,7 @@ const TrainerRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
   if (loading) return null;
   if (!user)              return <Navigate to="/login" replace />;
+  if (!profile)           return null;
   if (gymDeactivated)     return <GymDeactivatedScreen />;
   if (memberBlocked)      return <MemberBlockedScreen />;
   if (!isTrainer(profile)) return <Navigate to="/" replace />;
@@ -570,7 +577,7 @@ function App() {
             .from('friendships')
             .select('id', { count: 'exact', head: true })
             .or(
-              `and(user_id.eq.${user.id},friend_id.eq.${friendProfile.id}),and(user_id.eq.${friendProfile.id},friend_id.eq.${user.id})`
+              `and(requester_id.eq.${user.id},addressee_id.eq.${friendProfile.id}),and(requester_id.eq.${friendProfile.id},addressee_id.eq.${user.id})`
             );
 
           if (count > 0) {
@@ -583,8 +590,9 @@ function App() {
           const { error: insertErr } = await supabase
             .from('friendships')
             .insert({
-              user_id: user.id,
-              friend_id: friendProfile.id,
+              requester_id: user.id,
+              addressee_id: friendProfile.id,
+              gym_id: profile.gym_id,
               status: 'pending',
             });
 
@@ -625,7 +633,7 @@ function App() {
           .from('friendships')
           .select('id', { count: 'exact', head: true })
           .or(
-            `and(user_id.eq.${user.id},friend_id.eq.${friendProfile.id}),and(user_id.eq.${friendProfile.id},friend_id.eq.${user.id})`
+            `and(requester_id.eq.${user.id},addressee_id.eq.${friendProfile.id}),and(requester_id.eq.${friendProfile.id},addressee_id.eq.${user.id})`
           );
 
         if (count > 0) {
@@ -636,8 +644,9 @@ function App() {
         const { error: insertErr } = await supabase
           .from('friendships')
           .insert({
-            user_id: user.id,
-            friend_id: friendProfile.id,
+            requester_id: user.id,
+            addressee_id: friendProfile.id,
+            gym_id: profile.gym_id,
             status: 'pending',
           });
 
@@ -705,15 +714,16 @@ function App() {
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
+                <Route path="/operations"   element={<Operations />} />
                 <Route path="/"             element={<GymsOverview />} />
                 <Route path="/gym/:gymId"   element={<GymDetail />} />
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
-                <Route path="/members"      element={<MemberLookup />} />
+                <Route path="/support"      element={<SupportConsole />} />
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/sms"          element={<SmsManagement />} />
                 <Route path="/audit-log"    element={<AuditLog />} />
-                <Route path="/error-logs"  element={<ErrorLogs />} />
-                <Route path="*"            element={<Navigate to="/platform" replace />} />
+                <Route path="/error-logs"   element={<ErrorLogs />} />
+                <Route path="*"             element={<Navigate to="/platform/operations" replace />} />
               </Routes>
               </Suspense>
               </ErrorBoundary>
@@ -752,6 +762,9 @@ function App() {
                 <Route path="/referrals"   element={<AdminReferrals />} />
                 <Route path="/nps"         element={<AdminNPS />} />
                 <Route path="/digest"      element={<AdminDigestConfig />} />
+                <Route path="/ab-testing"  element={<AdminABTesting />} />
+                <Route path="/email-templates" element={<AdminEmailTemplates />} />
+                <Route path="/rewards"     element={<AdminRewards />} />
                 <Route path="/settings"     element={<AdminSettings />} />
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -52,6 +53,7 @@ async function fetchActivityData(gymId) {
 }
 
 export default function ActivityChart({ gymId }) {
+  const { t } = useTranslation('pages');
   const { data: activityData = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.activity(gymId),
     queryFn: () => fetchActivityData(gymId),
@@ -62,35 +64,35 @@ export default function ActivityChart({ gymId }) {
     exportCSV({
       filename: 'engagement',
       columns: [
-        { key: 'month', label: 'Month' },
-        { key: 'engagement', label: 'Engagement %' },
-        { key: 'active', label: 'Active' },
-        { key: 'total', label: 'Total Members' },
+        { key: 'month', label: t('admin.analytics.engagementExportMonth', 'Month') },
+        { key: 'engagement', label: t('admin.analytics.engagementExportPct', 'Engagement %') },
+        { key: 'active', label: t('admin.analytics.engagementExportActive', 'Active') },
+        { key: 'total', label: t('admin.analytics.engagementExportTotal', 'Total Members') },
       ],
       data: activityData,
     });
   };
 
   if (isLoading) return <CardSkeleton h="h-[260px]" />;
-  if (isError) return <ErrorCard message="Failed to load engagement data" onRetry={refetch} />;
+  if (isError) return <ErrorCard message={t('admin.analytics.engagementError', 'Failed to load engagement data')} onRetry={refetch} />;
 
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">Engagement</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 truncate">% of signed members who logged &ge;1 workout that month</p>
+          <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{t('admin.analytics.engagementTitle', 'Engagement')}</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 truncate">{t('admin.analytics.engagementSubtitle', '% of signed members who logged ≥1 workout that month')}</p>
         </div>
         <button
           onClick={handleExport}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
-          Export
+          {t('admin.analytics.export', 'Export')}
         </button>
       </div>
       {activityData.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">No session data yet</p>
+        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">{t('admin.analytics.engagementEmpty', 'No session data yet')}</p>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={activityData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -103,7 +105,7 @@ export default function ActivityChart({ gymId }) {
                 return (
                   <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
                     {label && <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{label}</p>}
-                    <p className="font-semibold text-[#3B82F6]">Engaged: {d.engagement}% ({d.active} / {d.total})</p>
+                    <p className="font-semibold text-[#3B82F6]">{t('admin.analytics.engagementTooltip', { pct: d.engagement, active: d.active, total: d.total, defaultValue: 'Engaged: {{pct}}% ({{active}} / {{total}})' })}</p>
                   </div>
                 );
               }}

@@ -40,7 +40,7 @@ export default function OnboardingFunnel({ gymId }) {
   });
 
   if (isLoading) return <CardSkeleton />;
-  if (isError) return <ErrorCard message="Failed to load onboarding data" onRetry={refetch} />;
+  if (isError) return <ErrorCard message={t('admin.analytics.onboardingError', 'Failed to load onboarding data')} onRetry={refetch} />;
 
   const donutData = [
     { name: 'Onboarded',     value: stats.onboarded },
@@ -96,19 +96,19 @@ export default function OnboardingFunnel({ gymId }) {
         {/* Stats */}
         <div className="flex-1 min-w-0">
           <p className="text-[24px] font-bold text-[#D4AF37] leading-none truncate">{stats.pct}%</p>
-          <p className="text-[13px] text-[#9CA3AF] mt-1">Completion rate</p>
+          <p className="text-[13px] text-[#9CA3AF] mt-1">{t('admin.analytics.onboardingCompletionRate', 'Completion rate')}</p>
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-[#D4AF37]" />
-                <span className="text-[12px] text-[#9CA3AF]">Onboarded</span>
+                <span className="text-[12px] text-[#9CA3AF]">{t('admin.analytics.onboardingOnboarded', 'Onboarded')}</span>
               </div>
               <span className="text-[12px] font-semibold text-[#E5E7EB]">{stats.onboarded}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                <span className="text-[12px] text-[#9CA3AF]">Not completed</span>
+                <span className="text-[12px] text-[#9CA3AF]">{t('admin.analytics.onboardingNotCompleted', 'Not completed')}</span>
               </div>
               <span className="text-[12px] font-semibold text-[#E5E7EB]">
                 {stats.total - stats.onboarded}
@@ -116,7 +116,7 @@ export default function OnboardingFunnel({ gymId }) {
             </div>
             <div className="h-px bg-white/6 my-1" />
             <div className="flex items-center justify-between">
-              <span className="text-[12px] text-[#6B7280]">Total members</span>
+              <span className="text-[12px] text-[#6B7280]">{t('admin.analytics.onboardingTotalMembers', 'Total members')}</span>
               <span className="text-[12px] font-semibold text-[#E5E7EB]">{stats.total}</span>
             </div>
           </div>
@@ -170,7 +170,7 @@ export default function OnboardingFunnel({ gymId }) {
       )}
 
       <p className="text-[11px] text-[#6B7280] mt-3 text-center">
-        Industry avg: <span className="text-[#D4AF37]">{BENCHMARKS.onboardingCompletion}%</span> onboarding completion
+        {t('admin.analytics.onboardingIndustryAvg', { value: BENCHMARKS.onboardingCompletion, defaultValue: 'Industry avg: {{value}}% onboarding completion' })}
       </p>
     </AdminCard>
   );

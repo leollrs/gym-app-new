@@ -15,7 +15,7 @@ const OFFERS = [
 
 export default function WinBackModal({ member, gymId, adminId, activeCampaign, onClose, onSent }) {
   const { t } = useTranslation('pages');
-  const defaultMsg = `Hey ${member.full_name.split(' ')[0]}! We miss you at the gym. We'd love to have you back — come in this week and let's pick up where you left off. Your spot is waiting!`;
+  const defaultMsg = t('admin.churn.winBackDefaultMsg', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}! We miss you at the gym. We'd love to have you back \u2014 come in this week and let's pick up where you left off. Your spot is waiting!` });
 
   // If there's an active campaign, randomly assign a variant
   const [assignedVariant] = useState(() => {
@@ -57,10 +57,10 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
     setSending(true);
     try {
       const offerDesc = buildOfferDesc();
-      const fullMsg = offerDesc ? `${msg}\n\nSpecial offer for you: ${offerDesc}` : msg;
+      const fullMsg = offerDesc ? `${msg}\n\n${t('admin.churn.specialOfferPrefix', 'Special offer for you')}: ${offerDesc}` : msg;
       await supabase.from('notifications').insert({
         profile_id: member.id, gym_id: gymId, type: 'win_back',
-        title: 'We want you back!', body: fullMsg,
+        title: t('admin.churn.weWantYouBack', 'We want you back!'), body: fullMsg,
         data: { source: 'churn_win_back', offer: offerDesc || null, campaign_id: activeCampaign?.id || null, variant: assignedVariant || null },
         dedup_key: `win_back_${member.id}_${adminId}_${Date.now() / 60000 | 0}`,
       });
@@ -97,17 +97,17 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
   };
 
   return (
-    <AdminModal isOpen onClose={onClose} title="Win-Back Campaign" subtitle={`Re-engage ${member.full_name}`} size="md"
+    <AdminModal isOpen onClose={onClose} title={t('admin.churn.winBackCampaign', 'Win-Back Campaign')} subtitle={t('admin.churn.reengage', { name: member.full_name, defaultValue: 'Re-engage {{name}}' })} size="md"
       footer={
         <>
           <button onClick={onClose}
             className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
-            Cancel
+            {t('admin.members.cancel')}
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
             style={{ background: sent ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)', color: sent ? 'var(--color-success)' : 'var(--color-danger)', border: `1px solid ${sent ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
-            {sent ? <><CheckCircle size={14} /> Sent!</> : sending ? 'Sending…' : <><RotateCcw size={13} /> Send Win-Back</>}
+            {sent ? <><CheckCircle size={14} /> {t('admin.churn.sent', 'Sent!')}</> : sending ? t('admin.churn.sendingMsg', 'Sending\u2026') : <><RotateCcw size={13} /> {t('admin.churn.sendWinBack', 'Send Win-Back')}</>}
           </button>
         </>
       }>
@@ -128,12 +128,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         )}
 
         <div>
-          <SectionLabel className="mb-2">Message</SectionLabel>
+          <SectionLabel className="mb-2">{t('admin.churn.messageLabel', 'Message')}</SectionLabel>
           <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-3.5 py-3 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
         </div>
         <div>
-          <SectionLabel className="mb-2">Offer (optional)</SectionLabel>
+          <SectionLabel className="mb-2">{t('admin.churn.offerOptional', 'Offer (optional)')}</SectionLabel>
           <div className="flex flex-wrap gap-2">
             {OFFERS.map(o => (
               <button key={o.value} onClick={() => setOffer(o.value)}
@@ -143,7 +143,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
             ))}
           </div>
           {offer === 'Custom…' && (
-            <input type="text" value={customOffer} onChange={e => setCustomOffer(e.target.value)} placeholder="Describe your offer…"
+            <input type="text" value={customOffer} onChange={e => setCustomOffer(e.target.value)} placeholder={t('admin.churn.describeOffer', 'Describe your offer\u2026')}
               className="mt-2 w-full bg-[#111827] border border-white/6 rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
           )}
         </div>
@@ -165,7 +165,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
 
         {finalOffer && (
           <div className="bg-[#D4AF37]/8 border border-[#D4AF37]/15 rounded-xl px-3.5 py-2.5">
-            <p className="text-[11px] text-[#D4AF37] font-semibold mb-0.5">Offer included in message</p>
+            <p className="text-[11px] text-[#D4AF37] font-semibold mb-0.5">{t('admin.churn.offerIncluded', 'Offer included in message')}</p>
             <p className="text-[12px] text-[#9CA3AF]">{buildOfferDesc()}</p>
           </div>
         )}

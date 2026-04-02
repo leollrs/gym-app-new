@@ -1,26 +1,47 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Users, Dumbbell, TrendingUp, TrendingDown, Activity, Trophy, ChevronDown, Lightbulb, MessageCircle, PartyPopper, AlertTriangle, Shield } from 'lucide-react';
+import {
+  Activity, Dumbbell, TrendingUp, TrendingDown, Minus,
+  Lightbulb, MessageCircle, PartyPopper, CalendarCheck,
+  ArrowUpRight, ArrowDownRight, Clock,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
-import { format, subWeeks, startOfWeek, endOfWeek, eachWeekOfInterval, subDays } from 'date-fns';
+import {
+  format, subWeeks, subDays, startOfWeek, endOfWeek,
+  eachWeekOfInterval, differenceInDays,
+} from 'date-fns';
 import ChartTooltip from '../../components/ChartTooltip';
 import { useTranslation } from 'react-i18next';
 
+/* ---------- helpers ---------- */
+
+const PERIODS = {
+  '4w':  { days: 28,  weeks: 4,  label: '4w' },
+  '8w':  { days: 56,  weeks: 8,  label: '8w' },
+  '12w': { days: 84,  weeks: 12, label: '12w' },
+  '6m':  { days: 180, weeks: 26, label: '6m' },
+};
+
 const Skeleton = ({ className }) => (
-  <div className={`bg-white/6 rounded-[10px] ${className}`} style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+  <div
+    className={`bg-white/6 rounded-[10px] ${className}`}
+    style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
+  />
 );
 
 const CardSkeleton = ({ h = 'h-[220px]' }) => (
-  <div className={`bg-[#0F172A] border border-white/6 rounded-xl p-4 ${h}`}>
+  <div className={`bg-[#111827] border border-white/[0.06] rounded-xl p-4 ${h}`}>
     <Skeleton className="h-4 w-36 mb-5" />
     <Skeleton className="h-full w-full" />
   </div>
 );
+
+/* ============================================================ */
 
 export default function TrainerAnalytics() {
   const { profile } = useAuth();
@@ -30,20 +51,17 @@ export default function TrainerAnalytics() {
   const [clients, setClients] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [prs, setPrs] = useState([]);
-  const [weights, setWeights] = useState([]);
-  const [selectedClient, setSelectedClient] = useState('all');
+  const [followUps, setFollowUps] = useState([]);
+  const [period, setPeriod] = useState('8w');
 
-  useEffect(() => { document.title = 'Trainer - Analytics | TuGymPR'; }, []);
+  useEffect(() => { document.title = 'Trainer - Insights | TuGymPR'; }, []);
 
-  useEffect(() => {
+  /* ---------- data loading ---------- */
+
+  const loadData = useCallback(async () => {
     if (!profile?.id) return;
-    loadData();
-  }, [profile?.id]);
-
-  const loadData = async () => {
     setLoading(true);
 
-    // Get assigned clients
     const { data: tcRows, error: tcError } = await supabase
       .from('trainer_clients')
       .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name, username, last_active_at)')
@@ -54,52 +72,54 @@ export default function TrainerAnalytics() {
     const assignedClients = (tcRows || []).map(tc => tc.profiles).filter(Boolean);
     setClients(assignedClients);
 
-    if (assignedClients.length === 0) {
-      setLoading(false);
-      return;
-    }
+    if (assignedClients.length === 0) { setLoading(false); return; }
 
     const clientIds = assignedClients.map(c => c.id);
-    const twelveWeeksAgo = subWeeks(new Date(), 12).toISOString();
+    const cutoff = subDays(new Date(), PERIODS[period].days).toISOString();
 
-    const [sessRes, prRes, weightRes] = await Promise.all([
+    const [sessRes, prRes, fuRes] = await Promise.all([
       supabase
         .from('workout_sessions')
         .select('id, profile_id, started_at, total_volume_lbs, duration_seconds')
         .in('profile_id', clientIds)
         .eq('status', 'completed')
-        .gte('started_at', twelveWeeksAgo)
+        .gte('started_at', cutoff)
         .order('started_at', { ascending: true }),
       supabase
         .from('pr_history')
         .select('id, profile_id, exercise_id, old_1rm, new_1rm, achieved_at, exercises(name)')
         .in('profile_id', clientIds)
-        .gte('achieved_at', twelveWeeksAgo)
+        .gte('achieved_at', cutoff)
         .order('achieved_at', { ascending: false })
-        .limit(20),
+        .limit(50),
       supabase
-        .from('body_weight_logs')
-        .select('profile_id, weight_lbs, logged_at')
-        .in('profile_id', clientIds)
-        .gte('logged_at', twelveWeeksAgo)
-        .order('logged_at', { ascending: true }),
+        .from('trainer_client_notes')
+        .select('client_id, created_at')
+        .eq('trainer_id', profile.id)
+        .in('client_id', clientIds)
+        .order('created_at', { ascending: false }),
     ]);
 
     if (sessRes.error) logger.error('TrainerAnalytics: failed to load sessions:', sessRes.error);
     if (prRes.error) logger.error('TrainerAnalytics: failed to load PRs:', prRes.error);
-    if (weightRes.error) logger.error('TrainerAnalytics: failed to load weights:', weightRes.error);
+    if (fuRes.error) logger.error('TrainerAnalytics: failed to load follow-ups:', fuRes.error);
+
     setSessions(sessRes.data || []);
     setPrs(prRes.data || []);
-    setWeights(weightRes.data || []);
+    setFollowUps(fuRes.data || []);
     setLoading(false);
-  };
+  }, [profile?.id, period]);
 
-  // Build weekly data for charts
+  useEffect(() => { loadData(); }, [loadData]);
+
+  /* ---------- weekly chart data ---------- */
+
   const weeklyData = useMemo(() => {
     const now = new Date();
+    const weeksCount = PERIODS[period].weeks;
     const weeks = eachWeekOfInterval(
-      { start: subWeeks(now, 11), end: now },
-      { weekStartsOn: 1 }
+      { start: subWeeks(now, weeksCount - 1), end: now },
+      { weekStartsOn: 1 },
     );
 
     return weeks.map(weekStart => {
@@ -111,129 +131,138 @@ export default function TrainerAnalytics() {
         return d >= weekStart && d <= weekEnd;
       });
 
-      const volume = weekSessions.reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-      const uniqueClients = new Set(weekSessions.map(s => s.profile_id)).size;
+      // Adherence: % of clients who trained at least once that week
+      const uniqueClients = new Set(weekSessions.map(s => s.profile_id));
+      const adherence = clients.length > 0
+        ? Math.round((uniqueClients.size / clients.length) * 100)
+        : 0;
 
       return {
         label,
         workouts: weekSessions.length,
-        volume: Math.round(volume),
-        activeClients: uniqueClients,
+        adherence,
       };
     });
-  }, [sessions]);
+  }, [sessions, clients, period]);
 
-  // Per-client workout counts (last 12 weeks)
+  /* ---------- per-client comparison ---------- */
+
   const clientComparison = useMemo(() => {
     return clients
       .map(c => {
         const count = sessions.filter(s => s.profile_id === c.id).length;
-        const vol = sessions
-          .filter(s => s.profile_id === c.id)
-          .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-        return { name: c.full_name?.split(' ')[0] || 'Client', workouts: count, volume: Math.round(vol) };
+        return {
+          name: c.full_name?.split(' ')[0] || 'Client',
+          workouts: count,
+        };
       })
       .sort((a, b) => b.workouts - a.workouts);
   }, [clients, sessions]);
 
-  // Weight data for selected client
-  const weightChartData = useMemo(() => {
-    if (selectedClient === 'all') return [];
-    return weights
-      .filter(w => w.profile_id === selectedClient)
-      .map(w => ({
-        date: format(new Date(w.logged_at), 'MMM d'),
-        weight: Number(w.weight_lbs),
-      }));
-  }, [weights, selectedClient]);
+  /* ---------- KPIs ---------- */
 
-  // Stat cards
-  const totalWorkouts = sessions.length;
-  const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const activeThisWeek = new Set(
-    sessions.filter(s => new Date(s.started_at) >= thisWeekStart).map(s => s.profile_id)
-  ).size;
-  const avgWorkoutsPerClient = clients.length > 0 ? (totalWorkouts / clients.length).toFixed(1) : '0';
+  const kpis = useMemo(() => {
+    const totalWeeks = PERIODS[period].weeks;
+    const activeIds = new Set(sessions.map(s => s.profile_id));
+    const activeClients = activeIds.size;
 
-  // --- Actionable Insights (Task 2) ---
+    const avgWorkoutsPerWeek = totalWeeks > 0
+      ? (sessions.length / totalWeeks).toFixed(1)
+      : '0';
+
+    // Adherence: across the full period, avg weekly adherence
+    const adherenceValues = weeklyData.map(w => w.adherence);
+    const avgAdherence = adherenceValues.length > 0
+      ? Math.round(adherenceValues.reduce((s, v) => s + v, 0) / adherenceValues.length)
+      : 0;
+
+    // Session completion: sessions done / (active clients * weeks)
+    const expectedSessions = clients.length * totalWeeks;
+    const sessionCompletion = expectedSessions > 0
+      ? Math.round((sessions.length / expectedSessions) * 100)
+      : 0;
+
+    return { activeClients, avgWorkoutsPerWeek, avgAdherence, sessionCompletion };
+  }, [sessions, clients, weeklyData, period]);
+
+  /* ---------- client rankings ---------- */
+
+  const clientRankings = useMemo(() => {
+    const totalWeeks = PERIODS[period].weeks;
+
+    return clients
+      .map(c => {
+        const clientSessions = sessions.filter(s => s.profile_id === c.id);
+        const workouts = clientSessions.length;
+        const adherence = totalWeeks > 0
+          ? Math.round((workouts / totalWeeks) * 100)
+          : 0;
+
+        // Trend: compare last half vs first half of period
+        const midpoint = subDays(new Date(), PERIODS[period].days / 2);
+        const firstHalf = clientSessions.filter(s => new Date(s.started_at) < midpoint).length;
+        const secondHalf = clientSessions.filter(s => new Date(s.started_at) >= midpoint).length;
+        const trend = secondHalf > firstHalf ? 'up' : secondHalf < firstHalf ? 'down' : 'flat';
+
+        const lastSession = clientSessions.length > 0
+          ? clientSessions[clientSessions.length - 1].started_at
+          : c.last_active_at;
+
+        return {
+          id: c.id,
+          name: c.full_name || c.username || 'Client',
+          workouts,
+          adherence,
+          trend,
+          lastActive: lastSession,
+        };
+      })
+      .sort((a, b) => b.adherence - a.adherence);
+  }, [clients, sessions, period]);
+
+  /* ---------- trend insights ---------- */
+
   const insights = useMemo(() => {
     const now = new Date();
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
-    const prevWeekEnd = endOfWeek(prevWeekStart, { weekStartsOn: 1 });
-    const sevenDaysAgo = subDays(now, 7);
+    const midpoint = subDays(now, PERIODS[period].days / 2);
+    const fourteenDaysAgo = subDays(now, 14);
+    const oneWeekAgo = subDays(now, 7);
     const items = [];
 
-    // Per-client volume comparison: this week vs last week
     clients.forEach(c => {
       const firstName = c.full_name?.split(' ')[0] || 'Client';
-      const thisWeekVol = sessions
-        .filter(s => s.profile_id === c.id && new Date(s.started_at) >= currentWeekStart)
-        .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-      const prevWeekVol = sessions
-        .filter(s => {
-          const d = new Date(s.started_at);
-          return s.profile_id === c.id && d >= prevWeekStart && d <= prevWeekEnd;
-        })
-        .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
+      const clientSessions = sessions.filter(s => s.profile_id === c.id);
+      const firstHalf = clientSessions.filter(s => new Date(s.started_at) < midpoint).length;
+      const secondHalf = clientSessions.filter(s => new Date(s.started_at) >= midpoint).length;
 
-      if (prevWeekVol > 0 && thisWeekVol < prevWeekVol) {
-        const dropPct = Math.round(((prevWeekVol - thisWeekVol) / prevWeekVol) * 100);
-        if (dropPct > 15) {
-          items.push({
-            type: 'decline',
-            urgency: 3,
-            text: t('trainerAnalytics.insightVolumeDrop', { name: firstName, pct: dropPct }),
-            action: 'message',
-            clientId: c.id,
-          });
-        }
-      }
-    });
-
-    // Clients inactive 7+ days
-    const inactiveClients = clients.filter(c => {
-      const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
-      return !lastActive || lastActive < sevenDaysAgo;
-    });
-    if (inactiveClients.length > 0) {
-      items.push({
-        type: 'inactive',
-        urgency: 2,
-        text: t('trainerAnalytics.insightInactive', { count: inactiveClients.length }),
-        action: 'message',
-      });
-    }
-
-    // Average sessions/week comparison
-    const thisWeekSessions = sessions.filter(s => new Date(s.started_at) >= currentWeekStart);
-    const prevWeekSessions = sessions.filter(s => {
-      const d = new Date(s.started_at);
-      return d >= prevWeekStart && d <= prevWeekEnd;
-    });
-    if (clients.length > 0) {
-      const thisAvg = thisWeekSessions.length / clients.length;
-      const prevAvg = prevWeekSessions.length / clients.length;
-      if (prevAvg > 0 || thisAvg > 0) {
-        const direction = thisAvg >= prevAvg ? 'up' : 'down';
+      // Improving engagement
+      if (firstHalf > 0 && secondHalf > firstHalf * 1.25) {
         items.push({
-          type: 'avg_sessions',
-          urgency: 0,
-          text: t('trainerAnalytics.insightAvgSessions', {
-            avg: thisAvg.toFixed(1),
-            prevAvg: prevAvg.toFixed(1),
-            direction: direction === 'up' ? t('trainerAnalytics.up') : t('trainerAnalytics.down'),
-          }),
-          action: null,
+          type: 'improving',
+          urgency: 1,
+          text: t('trainerAnalytics.insightImproving', { name: firstName }),
+          action: 'congrats',
+          clientId: c.id,
         });
       }
-    }
 
-    // Recent PRs this week -- celebrate
-    const thisWeekPrs = prs.filter(pr => new Date(pr.achieved_at) >= currentWeekStart);
-    // Group by client
+      // Declining engagement
+      if (firstHalf > 0 && secondHalf < firstHalf * 0.6) {
+        const dropPct = Math.round(((firstHalf - secondHalf) / firstHalf) * 100);
+        items.push({
+          type: 'declining',
+          urgency: 3,
+          text: t('trainerAnalytics.insightDeclining', { name: firstName, pct: dropPct }),
+          action: 'message',
+          clientId: c.id,
+        });
+      }
+    });
+
+    // Clients who hit PRs recently (last 7 days)
+    const recentPrs = prs.filter(pr => new Date(pr.achieved_at) >= oneWeekAgo);
     const prsByClient = {};
-    thisWeekPrs.forEach(pr => {
+    recentPrs.forEach(pr => {
       if (!prsByClient[pr.profile_id]) prsByClient[pr.profile_id] = [];
       prsByClient[pr.profile_id].push(pr);
     });
@@ -242,55 +271,48 @@ export default function TrainerAnalytics() {
       const firstName = client?.full_name?.split(' ')[0] || 'Client';
       items.push({
         type: 'pr',
-        urgency: 1,
+        urgency: 2,
         text: t('trainerAnalytics.insightPR', { name: firstName, count: clientPrs.length }),
         action: 'congrats',
         clientId,
       });
     });
 
-    // Sort by urgency descending (declines first, then inactive, then PRs, then stats)
+    // Clients overdue for follow-up (last follow-up > 14 days ago)
+    clients.forEach(c => {
+      const firstName = c.full_name?.split(' ')[0] || 'Client';
+      const lastNote = followUps.find(f => f.client_id === c.id);
+      const lastFollowUp = lastNote ? new Date(lastNote.created_at) : null;
+      if (!lastFollowUp || lastFollowUp < fourteenDaysAgo) {
+        const days = lastFollowUp ? differenceInDays(now, lastFollowUp) : null;
+        items.push({
+          type: 'followup',
+          urgency: 2,
+          text: days
+            ? t('trainerAnalytics.insightFollowup', { name: firstName, days })
+            : t('trainerAnalytics.insightFollowupNever', { name: firstName }),
+          action: 'message',
+          clientId: c.id,
+        });
+      }
+    });
+
     items.sort((a, b) => b.urgency - a.urgency);
-    return items.slice(0, 5);
-  }, [clients, sessions, prs, t]);
+    return items.slice(0, 6);
+  }, [clients, sessions, prs, followUps, period, t]);
 
-  // --- Retention Score (Task 3) ---
-  const retentionData = useMemo(() => {
-    const now = new Date();
-    const weeks = [];
-    for (let i = 3; i >= 0; i--) {
-      const wStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
-      const wEnd = endOfWeek(wStart, { weekStartsOn: 1 });
-      const activeIds = new Set(
-        sessions.filter(s => {
-          const d = new Date(s.started_at);
-          return d >= wStart && d <= wEnd;
-        }).map(s => s.profile_id)
-      );
-      const score = clients.length > 0 ? Math.round((activeIds.size / clients.length) * 100) : 0;
-      weeks.push({
-        label: format(wStart, 'MMM d'),
-        score,
-        active: activeIds.size,
-      });
-    }
-    return weeks;
-  }, [clients, sessions]);
-
-  const currentRetention = retentionData.length > 0 ? retentionData[retentionData.length - 1].score : 0;
-  const retentionColor = currentRetention >= 80 ? 'var(--color-success)' : currentRetention >= 60 ? 'var(--color-warning)' : 'var(--color-danger)';
-  const retentionBg = currentRetention >= 80 ? 'bg-emerald-500/10' : currentRetention >= 60 ? 'bg-amber-500/10' : 'bg-red-500/10';
-  const retentionTextColor = currentRetention >= 80 ? 'text-emerald-400' : currentRetention >= 60 ? 'text-amber-400' : 'text-red-400';
+  /* ---------- render ---------- */
 
   if (loading) {
     return (
       <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6 truncate">{t('trainerAnalytics.title')}</h1>
+        <Skeleton className="h-6 w-32 mb-1" />
+        <Skeleton className="h-4 w-56 mb-6" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-[100px]" />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-[88px]" />)}
         </div>
         <div className="grid md:grid-cols-2 gap-4">
-          <CardSkeleton /> <CardSkeleton /> <CardSkeleton /> <CardSkeleton />
+          <CardSkeleton /> <CardSkeleton /> <CardSkeleton />
         </div>
       </div>
     );
@@ -299,7 +321,8 @@ export default function TrainerAnalytics() {
   if (clients.length === 0) {
     return (
       <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6 truncate">{t('trainerAnalytics.title')}</h1>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-1">{t('trainerAnalytics.titleInsights')}</h1>
+        <p className="text-[13px] text-[#6B7280] mb-6">{t('trainerAnalytics.subtitle')}</p>
         <div className="text-center py-20">
           <TrendingUp size={32} className="text-[#4B5563] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">{t('trainerAnalytics.noClients')}</p>
@@ -309,26 +332,181 @@ export default function TrainerAnalytics() {
     );
   }
 
+  const TrendIcon = ({ trend }) => {
+    if (trend === 'up') return <ArrowUpRight size={14} className="text-emerald-400" />;
+    if (trend === 'down') return <ArrowDownRight size={14} className="text-red-400" />;
+    return <Minus size={14} className="text-[#6B7280]" />;
+  };
+
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
-      <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6 truncate">{t('trainerAnalytics.title')}</h1>
+      {/* ---- Header ---- */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+        <div>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{t('trainerAnalytics.titleInsights')}</h1>
+          <p className="text-[13px] text-[#6B7280]">{t('trainerAnalytics.subtitle')}</p>
+        </div>
 
-      {/* Insights Section */}
+        {/* Period selector */}
+        <div className="flex gap-1.5">
+          {Object.keys(PERIODS).map(key => (
+            <button
+              key={key}
+              onClick={() => setPeriod(key)}
+              className={`min-h-[44px] min-w-[44px] px-3 py-2 rounded-full text-[12px] font-semibold transition-colors ${
+                period === key
+                  ? 'bg-[#D4AF37] text-[#0F172A]'
+                  : 'bg-white/[0.04] text-[#6B7280] hover:bg-white/[0.08]'
+              }`}
+            >
+              {t(`trainerAnalytics.period_${key}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- Section 1: KPI row ---- */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          {
+            label: t('trainerAnalytics.kpiActiveClients'),
+            value: kpis.activeClients,
+            icon: Activity,
+            color: '#D4AF37',
+            bg: 'bg-[#D4AF37]/10',
+          },
+          {
+            label: t('trainerAnalytics.kpiAvgWorkouts'),
+            value: kpis.avgWorkoutsPerWeek,
+            icon: Dumbbell,
+            color: '#D4AF37',
+            bg: 'bg-[#D4AF37]/10',
+          },
+          {
+            label: t('trainerAnalytics.kpiAdherence'),
+            value: `${kpis.avgAdherence}%`,
+            icon: CalendarCheck,
+            color: kpis.avgAdherence >= 70 ? '#34D399' : kpis.avgAdherence >= 50 ? '#FBBF24' : '#F87171',
+            bg: kpis.avgAdherence >= 70 ? 'bg-emerald-500/10' : kpis.avgAdherence >= 50 ? 'bg-amber-500/10' : 'bg-red-500/10',
+          },
+          {
+            label: t('trainerAnalytics.kpiSessionCompletion'),
+            value: `${kpis.sessionCompletion}%`,
+            icon: TrendingUp,
+            color: kpis.sessionCompletion >= 70 ? '#34D399' : kpis.sessionCompletion >= 50 ? '#FBBF24' : '#F87171',
+            bg: kpis.sessionCompletion >= 70 ? 'bg-emerald-500/10' : kpis.sessionCompletion >= 50 ? 'bg-amber-500/10' : 'bg-red-500/10',
+          },
+        ].map(card => {
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className="bg-[#111827] rounded-xl border border-white/[0.06] p-4 overflow-hidden">
+              <div className={`w-8 h-8 ${card.bg} rounded-full flex items-center justify-center mb-2.5`}>
+                <Icon size={16} style={{ color: card.color }} />
+              </div>
+              <div className="text-[22px] font-bold text-[#E5E7EB] truncate">{card.value}</div>
+              <div className="text-[11px] text-[#6B7280] mt-0.5 truncate">{card.label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ---- Section 2: Trend charts ---- */}
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        {/* Activity Trend */}
+        <div className="bg-[#111827] border border-white/[0.08] rounded-xl p-4 overflow-hidden">
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.chartActivity')}</p>
+          <div className="h-[200px] md:h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={weeklyData}>
+                <defs>
+                  <linearGradient id="actGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#D4AF37" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#D4AF37" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="label" tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212,175,55,0.06)' }} />
+                <Area
+                  type="monotone"
+                  dataKey="workouts"
+                  stroke="#D4AF37"
+                  fill="url(#actGrad)"
+                  strokeWidth={2}
+                  name={t('trainerAnalytics.chartWorkouts')}
+                  dot={false}
+                  activeDot={{ r: 5, strokeWidth: 2 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Adherence Trend */}
+        <div className="bg-[#111827] border border-white/[0.08] rounded-xl p-4 overflow-hidden">
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.chartAdherence')}</p>
+          <div className="h-[200px] md:h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={weeklyData}>
+                <defs>
+                  <linearGradient id="adhGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#34D399" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="label" tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} width={30} domain={[0, 100]} tickFormatter={v => `${v}%`} />
+                <Tooltip content={<ChartTooltip formatter={v => `${v}%`} />} cursor={{ fill: 'rgba(52,211,153,0.06)' }} />
+                <Area
+                  type="monotone"
+                  dataKey="adherence"
+                  stroke="#34D399"
+                  fill="url(#adhGrad)"
+                  strokeWidth={2}
+                  name={t('trainerAnalytics.kpiAdherence')}
+                  dot={false}
+                  activeDot={{ r: 5, strokeWidth: 2 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Client Progress (bar chart) */}
+        <div className="bg-[#111827] border border-white/[0.08] rounded-xl p-4 overflow-hidden md:col-span-2">
+          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.chartClientProgress')}</p>
+          <div className="h-[200px] md:h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={clientComparison} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} width={60} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212,175,55,0.06)' }} />
+                <Bar dataKey="workouts" fill="#D4AF37" radius={[0, 4, 4, 0]} barSize={18} name={t('trainerAnalytics.chartWorkouts')} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* ---- Section 3: Actionable Insights ---- */}
       {insights.length > 0 && (
         <div className="mb-6">
           <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
             <Lightbulb size={16} className="text-[#D4AF37]" />
-            {t('trainerAnalytics.insights')}
+            {t('trainerAnalytics.sectionInsights')}
           </h2>
           <div className="space-y-2">
             {insights.map((insight, idx) => {
               const iconMap = {
-                decline: { Icon: TrendingDown, color: 'text-red-400', bg: 'bg-red-500/10' },
-                inactive: { Icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-                pr: { Icon: Trophy, color: 'text-[#D4AF37]', bg: 'bg-[#D4AF37]/10' },
-                avg_sessions: { Icon: Activity, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                improving: { Icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+                declining: { Icon: TrendingDown, color: 'text-red-400', bg: 'bg-red-500/10' },
+                pr:        { Icon: PartyPopper, color: 'text-[#D4AF37]', bg: 'bg-[#D4AF37]/10' },
+                followup:  { Icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
               };
-              const style = iconMap[insight.type] || iconMap.avg_sessions;
+              const style = iconMap[insight.type] || iconMap.followup;
               const Icon = style.Icon;
 
               return (
@@ -343,13 +521,13 @@ export default function TrainerAnalytics() {
                     <p className="text-[13px] text-[#E5E7EB] leading-snug">{insight.text}</p>
                   </div>
                   {insight.action === 'message' && (
-                    <button className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors">
+                    <button className="shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors">
                       <MessageCircle size={12} className="text-amber-400" />
                       <span className="text-[11px] font-medium text-amber-400">{t('trainerAnalytics.message')}</span>
                     </button>
                   )}
                   {insight.action === 'congrats' && (
-                    <button className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 transition-colors">
+                    <button className="shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 transition-colors">
                       <PartyPopper size={12} className="text-[#D4AF37]" />
                       <span className="text-[11px] font-medium text-[#D4AF37]">{t('trainerAnalytics.congrats')}</span>
                     </button>
@@ -361,209 +539,46 @@ export default function TrainerAnalytics() {
         </div>
       )}
 
-      {/* Retention Score + Stat Cards Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {/* Retention Score Card */}
-        <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-4 overflow-hidden col-span-2 md:col-span-1">
-          <div className={`w-9 h-9 ${retentionBg} rounded-full flex items-center justify-center mb-3`}>
-            <Shield size={18} style={{ color: retentionColor }} />
+      {/* ---- Section 4: Client Rankings ---- */}
+      <div className="mb-6">
+        <h2 className="text-[14px] font-semibold text-[#E5E7EB] mb-3">{t('trainerAnalytics.sectionRankings')}</h2>
+        <div className="bg-[#111827] border border-white/[0.08] rounded-xl overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[1fr_60px_70px_36px_72px] md:grid-cols-[1fr_80px_80px_50px_100px] gap-2 px-4 py-2.5 border-b border-white/[0.06] text-[10px] md:text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">
+            <span>{t('trainerAnalytics.colName')}</span>
+            <span className="text-right">{t('trainerAnalytics.colWorkouts')}</span>
+            <span className="text-right">{t('trainerAnalytics.colAdherence')}</span>
+            <span className="text-center">{t('trainerAnalytics.colTrend')}</span>
+            <span className="text-right">{t('trainerAnalytics.colLastActive')}</span>
           </div>
-          <div className={`text-[24px] font-bold truncate ${retentionTextColor}`}>
-            {currentRetention}%
-          </div>
-          <div className="text-[11px] text-[#6B7280] mt-0.5 truncate">{t('trainerAnalytics.retentionScore')}</div>
-          {/* Mini trend */}
-          <div className="flex items-end gap-1 mt-2 h-[20px]">
-            {retentionData.map((w, i) => {
-              const barColor = w.score >= 80 ? 'bg-emerald-400' : w.score >= 60 ? 'bg-amber-400' : 'bg-red-400';
-              const isLast = i === retentionData.length - 1;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
-                  <div
-                    className={`w-full rounded-sm ${barColor} ${isLast ? 'opacity-100' : 'opacity-40'}`}
-                    style={{ height: `${Math.max(4, (w.score / 100) * 20)}px` }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-between mt-1">
-            {retentionData.map((w, i) => (
-              <span key={i} className="text-[8px] text-[#4B5563] flex-1 text-center">{w.label.split(' ')[1]}</span>
-            ))}
-          </div>
-        </div>
-
-        {[
-          { label: t('trainerAnalytics.totalClients'), value: clients.length, icon: Users, color: 'var(--color-blue)', bg: 'bg-blue-500/10' },
-          { label: t('trainerAnalytics.activeThisWeek'), value: activeThisWeek, icon: Activity, color: 'var(--color-success)', bg: 'bg-emerald-500/10' },
-          { label: t('trainerAnalytics.workouts12w'), value: totalWorkouts, icon: Dumbbell, color: 'var(--color-accent)', bg: 'bg-[#D4AF37]/10' },
-        ].map(card => {
-          const Icon = card.icon;
-          return (
-            <div key={card.label} className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-4 overflow-hidden">
-              <div className={`w-9 h-9 ${card.bg} rounded-full flex items-center justify-center mb-3`}>
-                <Icon size={18} style={{ color: card.color }} />
-              </div>
-              <div className="text-[24px] font-bold text-[#E5E7EB] truncate">{card.value}</div>
-              <div className="text-[11px] text-[#6B7280] mt-0.5 truncate">{card.label}</div>
+          {/* Rows */}
+          {clientRankings.map((client, idx) => (
+            <div
+              key={client.id}
+              className={`grid grid-cols-[1fr_60px_70px_36px_72px] md:grid-cols-[1fr_80px_80px_50px_100px] gap-2 px-4 py-3 items-center ${
+                idx < clientRankings.length - 1 ? 'border-b border-white/[0.04]' : ''
+              }`}
+            >
+              <span className="text-[13px] text-[#E5E7EB] truncate">{client.name}</span>
+              <span className="text-[13px] text-[#9CA3AF] text-right tabular-nums">{client.workouts}</span>
+              <span className={`text-[13px] text-right tabular-nums font-medium ${
+                client.adherence >= 70 ? 'text-emerald-400' : client.adherence >= 50 ? 'text-amber-400' : 'text-red-400'
+              }`}>
+                {client.adherence}%
+              </span>
+              <span className="flex justify-center">
+                <TrendIcon trend={client.trend} />
+              </span>
+              <span className="text-[11px] text-[#6B7280] text-right truncate">
+                {client.lastActive
+                  ? format(new Date(client.lastActive), 'MMM d')
+                  : '—'}
+              </span>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Workout Frequency Chart */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.workoutFrequency')}</p>
-          <div className="h-[200px] md:h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyData}>
-                <defs>
-                  <linearGradient id="wkGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="label" tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                <Area type="monotone" dataKey="workouts" stroke="var(--color-accent)" fill="url(#wkGrad)" strokeWidth={2} name="Workouts" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Volume Trend Chart */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.totalVolume')}</p>
-          <div className="h-[200px] md:h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyData}>
-                <defs>
-                  <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-blue)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="var(--color-blue)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="label" tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} width={40}
-                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                <Tooltip content={<ChartTooltip formatter={(v) => `${v.toLocaleString()} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                <Area type="monotone" dataKey="volume" stroke="var(--color-blue)" fill="url(#volGrad)" strokeWidth={2} name="Volume" dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Per-Client Comparison */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.clientWorkouts')}</p>
-          <div className="h-[200px] md:h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={clientComparison} layout="vertical">
-                <XAxis type="number" tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} width={60} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                <Bar dataKey="workouts" fill="var(--color-accent)" radius={[0, 4, 4, 0]} barSize={18} name="Workouts" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Active Clients per Week */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.activeClientsPerWeek')}</p>
-          <div className="h-[200px] md:h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyData}>
-                <XAxis dataKey="label" tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                <Bar dataKey="activeClients" fill="var(--color-success)" radius={[4, 4, 0, 0]} barSize={20} name="Active Clients" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Body Weight Trends */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('trainerAnalytics.clientWeightTrend')}</p>
-            <div className="relative">
-              <select
-                value={selectedClient}
-                onChange={e => setSelectedClient(e.target.value)}
-                className="appearance-none bg-[#111827] border border-white/6 rounded-lg pl-3 pr-7 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
-              >
-                <option value="all">{t('trainerAnalytics.selectClient')}</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.full_name}</option>
-                ))}
-              </select>
-              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
-            </div>
-          </div>
-          <div className="h-[200px] md:h-[300px]">
-            {selectedClient === 'all' || weightChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center">
-                <p className="text-[12px] text-[#4B5563]">
-                  {selectedClient === 'all' ? t('trainerAnalytics.selectClientHint') : t('trainerAnalytics.noWeightData')}
-                </p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weightChartData}>
-                  <defs>
-                    <linearGradient id="wtGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'var(--color-text-subtle)', fontSize: 10 }} axisLine={false} tickLine={false} width={40} domain={['auto', 'auto']} />
-                  <Tooltip content={<ChartTooltip formatter={(v) => `${v} lbs`} />} cursor={{ fill: 'rgba(212, 175, 55, 0.06)' }} />
-                  <Area type="monotone" dataKey="weight" stroke="#8B5CF6" fill="url(#wtGrad)" strokeWidth={2} dot={false} activeDot={{ r: 6, strokeWidth: 2 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Recent PRs */}
-        <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">{t('trainerAnalytics.recentPRs')}</p>
-          {prs.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center">
-              <p className="text-[12px] text-[#4B5563]">{t('trainerAnalytics.noPRs')}</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[200px] md:max-h-[300px] overflow-y-auto">
-              {prs.map(pr => {
-                const clientName = clients.find(c => c.id === pr.profile_id)?.full_name?.split(' ')[0] || 'Client';
-                const improvement = pr.old_1rm > 0 ? Math.round(pr.new_1rm - pr.old_1rm) : null;
-                return (
-                  <div key={pr.id} className="flex items-center gap-3 p-2.5 bg-[#111827] rounded-xl">
-                    <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/12 flex items-center justify-center flex-shrink-0">
-                      <Trophy size={13} className="text-[#D4AF37]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
-                        {clientName} — {pr.exercises?.name || 'Exercise'}
-                      </p>
-                      <p className="text-[10px] text-[#6B7280]">
-                        {format(new Date(pr.achieved_at), 'MMM d')}
-                      </p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-[12px] font-bold text-[#E5E7EB]">{Math.round(pr.new_1rm)} lbs</p>
-                      {improvement !== null && improvement > 0 && (
-                        <p className="text-[10px] text-emerald-400">+{improvement} lbs</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+          ))}
+          {clientRankings.length === 0 && (
+            <div className="py-8 text-center text-[13px] text-[#4B5563]">
+              {t('trainerAnalytics.noClients')}
             </div>
           )}
         </div>

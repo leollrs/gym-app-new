@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
@@ -18,6 +19,8 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 // Shared components
 import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell } from '../../components/admin';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
+
+import { translateSignal } from '../../lib/churn/signalI18n';
 
 // Sub-components
 import SendMessageModal from './components/SendMessageModal';
@@ -231,7 +234,6 @@ const METHOD_LABELS = {
   in_app_message: 'Message',
   email: 'Email',
   push: 'Push',
-  sms: 'SMS',
   win_back: 'Win-Back',
   manual: 'Manual',
 };
@@ -302,6 +304,174 @@ function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
   );
 }
 
+// ── Member Detail Panel (right pane for at-risk tab) ─────
+function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts, onMessage, onContact, onWinBack, t }) {
+  if (!member) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-6">
+        <div className="w-14 h-14 rounded-2xl bg-white/4 flex items-center justify-center mb-4">
+          <Users size={24} className="text-[#4B5563]" />
+        </div>
+        <p className="text-[14px] font-semibold text-[#6B7280] mb-1">{t('admin.churn.detailEmpty', 'Select a member')}</p>
+        <p className="text-[12px] text-[#4B5563]">{t('admin.churn.detailEmptySub', 'Click a row to view details')}</p>
+      </div>
+    );
+  }
+
+  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
+  const daysInactive = member.daysSinceLastCheckIn != null ? Math.round(member.daysSinceLastCheckIn) : member.daysSinceLastActivity != null ? Math.round(member.daysSinceLastActivity) : null;
+  const tenureMonths = member.tenureMonths != null ? Math.round(member.tenureMonths) : null;
+  const isContacted = contactedIds.has(member.id);
+
+  const activityStatus = daysInactive === null
+    ? t('admin.churn.neverActive', 'Never active')
+    : daysInactive < 1
+      ? t('admin.churn.activeToday', 'Active today')
+      : daysInactive <= 7
+        ? t('admin.churn.recentlyActive', 'Recently active')
+        : t('admin.churn.inactive', 'Inactive');
+
+  const activityColor = daysInactive === null ? '#6B7280' : daysInactive < 1 ? '#10B981' : daysInactive <= 7 ? '#F59E0B' : '#EF4444';
+
+  // Contact history for this member
+  const memberContactLogs = contactLogs
+    .filter(l => l.member_id === member.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 5);
+
+  // Win-back attempts for this member
+  const memberWinBacks = winBackAttempts
+    .filter(a => a.user_id === member.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 3);
+
+  const signals = member.keySignals || [member.keySignal].filter(Boolean);
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      {/* Header: Avatar + Name + Badge + Score */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/6">
+        <div className="flex items-center gap-2.5">
+          <Avatar name={member.full_name} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-[14px] font-bold text-[#E5E7EB] truncate">{member.full_name}</p>
+              <RiskBadge tier={riskTier} />
+            </div>
+            {member.username && member.username !== member.full_name && (
+              <p className="text-[11px] text-[#6B7280] truncate">@{member.username}</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-2.5">
+          <ScoreBar score={member.churnScore} />
+        </div>
+      </div>
+
+      {/* Inline Stats */}
+      <div className="px-4 py-3 border-b border-white/6">
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.daysInactive', 'Days Inactive')}</p>
+            <p className="text-[15px] font-bold text-[#E5E7EB]">{daysInactive ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.tenure', 'Tenure (mo)')}</p>
+            <p className="text-[15px] font-bold text-[#E5E7EB]">{tenureMonths ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.activity', 'Activity')}</p>
+            <p className="text-[12px] font-bold mt-0.5" style={{ color: activityColor }}>{activityStatus}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Key Signals — compact inline */}
+      {signals.length > 0 && (
+        <div className="px-4 py-2.5 border-b border-white/6">
+          <div className="flex flex-wrap gap-1">
+            {signals.map((sig, i) => (
+              <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#9CA3AF] border border-white/8">
+                {translateSignal(t, sig)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contact History */}
+      <div className="px-4 py-2.5 border-b border-white/6">
+        <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.contactHistory', 'Contact History')}</p>
+        {memberContactLogs.length === 0 && memberWinBacks.length === 0 ? (
+          <p className="text-[11px] text-[#4B5563] italic">{t('admin.churn.noContactHistory', 'No contact history')}</p>
+        ) : (
+          <div className="space-y-1">
+            {memberContactLogs.map(log => {
+              const parts = log.note?.split('\n---\n');
+              const subject = parts?.[0] || null;
+              const body = parts?.[1] || null;
+              return (
+                <details key={log.id} className="group">
+                  <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
+                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] flex-shrink-0" />
+                    <span className="font-medium text-[#E5E7EB]">{METHOD_LABELS[log.method] || log.method}</span>
+                    {subject && <span className="text-[#6B7280] truncate flex-1 min-w-0">— {subject}</span>}
+                    <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(log.created_at), 'MMM d')}</span>
+                  </summary>
+                  {body && (
+                    <div className="ml-3 mt-1 mb-1.5 pl-2 border-l border-white/6">
+                      <p className="text-[10px] text-[#6B7280] whitespace-pre-line line-clamp-4">{body}</p>
+                    </div>
+                  )}
+                </details>
+              );
+            })}
+            {memberWinBacks.map(wb => {
+              const outCfg = outcomeConfig[wb.outcome] || outcomeConfig.pending;
+              return (
+                <details key={wb.id} className="group">
+                  <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
+                    <div className="w-1 h-1 rounded-full bg-[#EF4444] flex-shrink-0" />
+                    <span className="font-medium text-[#E5E7EB]">{t('admin.churn.winBackAttempt', 'Win-Back')}</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border" style={{ color: outCfg.color, background: outCfg.bg, borderColor: `${outCfg.color}33` }}>{outCfg.label}</span>
+                    <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(wb.created_at), 'MMM d')}</span>
+                  </summary>
+                  {wb.message && (
+                    <div className="ml-3 mt-1 mb-1.5 pl-2 border-l border-white/6">
+                      <p className="text-[10px] text-[#6B7280] whitespace-pre-line line-clamp-4">{wb.message}</p>
+                      {wb.offer && <p className="text-[10px] text-[#D4AF37] mt-0.5">{wb.offer}</p>}
+                    </div>
+                  )}
+                </details>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons — compact row */}
+      <div className="px-4 py-3 mt-auto">
+        <div className="flex gap-2">
+          <button onClick={() => onMessage(member)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
+            <MessageSquare size={12} /> {t('admin.churn.message', 'Message')}
+          </button>
+          <button onClick={() => onContact(member)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold border transition-colors ${isContacted ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-white/4 text-[#9CA3AF] border-white/8 hover:text-[#E5E7EB]'}`}>
+            <Phone size={12} /> {isContacted ? t('admin.churn.contacted', 'Contacted') : t('admin.churn.contact', 'Contact')}
+          </button>
+          {member.churnScore >= 60 && (
+            <button onClick={() => onWinBack(member)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
+              <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminChurn() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -320,6 +490,10 @@ export default function AdminChurn() {
   const [winBackModal, setWinBackModal] = useState(null);
   const [contactPanel, setContactPanel] = useState(null);
   const [savingOutcome, setSavingOutcome] = useState(null);
+
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [mobileVisibleCount, setMobileVisibleCount] = useState(10);
 
   // A/B campaign state
   const [createCampaignModal, setCreateCampaignModal] = useState(false);
@@ -514,14 +688,25 @@ export default function AdminChurn() {
 
   const handleExport = () => {
     const visibleData = tab === 'at-risk' ? atRiskMembers : tab === 'churned' ? churnedMembers : winBackAttempts;
+    // Translate signals and velocity labels for the CSV
+    const translatedData = visibleData.map(m => ({
+      ...m,
+      keySignals: Array.isArray(m.keySignals)
+        ? m.keySignals.map(s => translateSignal(t, s)).join(', ')
+        : m.keySignal ? translateSignal(t, m.keySignal) : '',
+      velocityLabel: m.velocityLabel ? translateSignal(t, m.velocityLabel) : '',
+    }));
     exportCSV({
       filename: `churn-${tab}`,
       columns: [
-        { key: 'full_name', label: 'Name' }, { key: 'churnScore', label: 'Score' },
-        { key: 'risk_tier', label: 'Risk Tier' }, { key: 'keySignals', label: 'Key Signals' },
-        { key: 'daysSinceLastCheckIn', label: 'Days Inactive' }, { key: 'velocityLabel', label: 'Velocity' },
+        { key: 'full_name', label: t('admin.churn.csvName', 'Name') },
+        { key: 'churnScore', label: t('admin.churn.csvScore', 'Score') },
+        { key: 'risk_tier', label: t('admin.churn.csvRiskTier', 'Risk Tier') },
+        { key: 'keySignals', label: t('admin.churn.csvSignals', 'Key Signals') },
+        { key: 'daysSinceLastCheckIn', label: t('admin.churn.csvDaysInactive', 'Days Inactive') },
+        { key: 'velocityLabel', label: t('admin.churn.csvVelocity', 'Velocity') },
       ],
-      data: visibleData,
+      data: translatedData,
     });
   };
 
@@ -553,7 +738,7 @@ export default function AdminChurn() {
           <div className="min-w-0">
             <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
             <p className="text-[12px] text-[#6B7280]">
-              {m.daysSinceLastCheckIn === null ? 'Never checked in' : m.daysSinceLastCheckIn < 1 ? 'Checked in today' : `Last visit ${Math.round(m.daysSinceLastCheckIn)}d ago`}
+              {m.daysSinceLastCheckIn === null ? t('admin.churn.neverCheckedIn', 'Never checked in') : m.daysSinceLastCheckIn < 1 ? t('admin.churn.checkedInToday', 'Checked in today') : t('admin.churn.lastVisitDaysAgo', { days: Math.round(m.daysSinceLastCheckIn), defaultValue: `Last visit ${Math.round(m.daysSinceLastCheckIn)}d ago` })}
             </p>
           </div>
         </div>
@@ -575,38 +760,6 @@ export default function AdminChurn() {
       label: t('admin.churn.risk', 'Risk'),
       sortable: true,
       render: (m) => <RiskBadge tier={m.churnScore >= 80 ? 'critical' : m.churnScore >= 55 ? 'high' : 'medium'} />,
-    },
-    {
-      key: 'keySignals',
-      label: t('admin.churn.signals', 'Signals'),
-      render: (m) => (
-        <p className="text-[12px] text-[#9CA3AF] max-w-[320px] truncate">
-          {(m.keySignals || [m.keySignal]).slice(0, 2).join(' · ')}
-        </p>
-      ),
-    },
-    {
-      key: 'actions',
-      label: t('admin.churn.colAction', 'Action'),
-      render: (m) => {
-        const isContacted = contactedIds.has(m.id);
-        return (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMsgModal(m); }}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/18 transition-colors"
-            >
-              {t('admin.churn.message', 'Message')}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setContactPanel(m); }}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${isContacted ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-white/4 text-[#9CA3AF] border-white/8 hover:text-[#E5E7EB]'}`}
-            >
-              {isContacted ? t('admin.churn.contacted', 'Contacted') : t('admin.churn.contact', 'Contact')}
-            </button>
-          </div>
-        );
-      },
     },
   ];
 
@@ -738,15 +891,6 @@ export default function AdminChurn() {
         </div>
       )}
 
-      {/* No campaigns yet — show create button */}
-      {!loading && campaigns.length === 0 && (
-        <div className="mb-6">
-          <button onClick={() => setCreateCampaignModal(true)}
-            className="w-full bg-[#0F172A] border border-dashed border-white/10 rounded-[14px] p-5 flex items-center justify-center gap-2 text-[13px] font-semibold text-[#6B7280] hover:text-[#D4AF37] hover:border-[#D4AF37]/30 transition-colors">
-            <FlaskConical size={15} /> {t('admin.churn.ab.createFirst', 'Create your first A/B win-back campaign')}
-          </button>
-        </div>
-      )}
 
       <div className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#05070B]/95 lg:backdrop-blur-xl lg:py-3 mb-4 border-b border-white/6">
         <div className="flex gap-1">
@@ -771,7 +915,7 @@ export default function AdminChurn() {
               <input type="text" placeholder={t('admin.churn.searchMembers', 'Search members…')} value={search} onChange={e => setSearch(e.target.value)}
                 className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
             </div>
-            <FilterBar options={[{ key: 'all', label: 'All' }, { key: 'critical', label: 'Critical' }, { key: 'high', label: 'High' }, { key: 'medium', label: 'Medium' }]} active={riskFilter} onChange={setRiskFilter} />
+            <FilterBar options={[{ key: 'all', label: t('admin.churn.filterAll', 'All') }, { key: 'critical', label: t('admin.churn.filterCritical', 'Critical') }, { key: 'high', label: t('admin.churn.filterHigh', 'High') }, { key: 'medium', label: t('admin.churn.filterMedium', 'Medium') }]} active={riskFilter} onChange={setRiskFilter} />
           </div>
 
           {!loading && atRiskMembers.length > 0 && (
@@ -828,19 +972,38 @@ export default function AdminChurn() {
             </div>
           ) : (
             <div>
-              <div className="hidden lg:block">
-                <AdminTable columns={atRiskTableColumns} data={atRiskMembers} stickyHeader />
+              {/* Desktop two-pane layout */}
+              <div className="hidden lg:flex gap-4 items-start">
+                <div className="w-full lg:w-[60%] lg:flex-shrink-0">
+                  <AdminTable columns={atRiskTableColumns} data={atRiskMembers} stickyHeader onRowClick={(m) => setSelectedMember(m)} activeRowId={selectedMember?.id} />
+                </div>
+                <div className="hidden lg:block flex-1 min-w-0 sticky top-4">
+                  <div className="w-full bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+                    <MemberDetailPanel
+                      member={selectedMember}
+                      contactLogs={contactLogs}
+                      contactedIds={contactedIds}
+                      winBackAttempts={winBackAttempts}
+                      onMessage={(m) => setMsgModal(m)}
+                      onContact={(m) => setContactPanel(m)}
+                      onWinBack={(m) => setWinBackModal(m)}
+                      t={t}
+                    />
+                  </div>
+                </div>
               </div>
+              {/* Mobile card list */}
               <div className="lg:hidden bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden divide-y divide-white/4">
-                {atRiskMembers.map(m => {
+                {atRiskMembers.slice(0, mobileVisibleCount).map(m => {
                   const isContacted = contactedIds.has(m.id);
                   const lastContact = contactedMap[m.id];
                   const lastContactDate = lastContact ? format(new Date(lastContact.created_at), 'MMM d') : null;
                   const isSelected = selectedIds.has(m.id);
                   return (
-                    <div key={m.id} className={`px-4 py-4 hover:bg-white/[0.03] transition-all ${isSelected ? 'bg-[#D4AF37]/[0.04]' : ''}`}>
+                    <div key={m.id} onClick={() => { setSelectedMember(m); setMobileDetailOpen(true); }}
+                      className={`px-4 py-4 hover:bg-white/[0.03] transition-all cursor-pointer ${isSelected ? 'bg-[#D4AF37]/[0.04]' : ''}`}>
                       <div className="flex items-start gap-3">
-                        <button onClick={() => toggleSelected(m.id)} className="mt-1 flex-shrink-0 text-[#6B7280] hover:text-[#D4AF37] transition-colors">
+                        <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} className="mt-1 flex-shrink-0 text-[#6B7280] hover:text-[#D4AF37] transition-colors">
                           {isSelected ? <CheckSquare size={18} className="text-[#D4AF37]" /> : <Square size={18} />}
                         </button>
                         <Avatar name={m.full_name} />
@@ -895,6 +1058,12 @@ export default function AdminChurn() {
                   );
                 })}
               </div>
+              {atRiskMembers.length > mobileVisibleCount && (
+                <button onClick={() => setMobileVisibleCount(c => c + 10)}
+                  className="lg:hidden w-full mt-3 py-3 rounded-xl text-[13px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/15 transition-colors">
+                  {t('admin.churn.loadMore', 'Load more')} ({atRiskMembers.length - mobileVisibleCount} {t('admin.churn.remaining', 'remaining')})
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1054,6 +1223,26 @@ export default function AdminChurn() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Mobile detail sheet */}
+      {mobileDetailOpen && selectedMember && createPortal(
+        <div className="lg:hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setMobileDetailOpen(false)}>
+          <div className="w-full max-w-md max-h-[85vh] bg-[#0F172A] border border-white/8 rounded-[14px] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+            <MemberDetailPanel
+              member={selectedMember}
+              contactLogs={contactLogs}
+              contactedIds={contactedIds}
+              winBackAttempts={winBackAttempts}
+              onMessage={(m) => { setMobileDetailOpen(false); setMsgModal(m); }}
+              onContact={(m) => { setMobileDetailOpen(false); setContactPanel(m); }}
+              onWinBack={(m) => { setMobileDetailOpen(false); setWinBackModal(m); }}
+              t={t}
+            />
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* Modals */}

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { Target, Check, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale/es';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
+import { useTranslation } from 'react-i18next';
 import { FadeIn, PageHeader, AdminPageShell } from '../../components/admin';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
@@ -19,12 +21,12 @@ import TrainerPerformance from './components/analytics/TrainerPerformance';
 import MonthlySummary from './components/analytics/MonthlySummary';
 
 const KPI_METRICS = [
-  { key: 'retention_rate', label: 'Retention Rate', unit: '%', icon: '📊' },
-  { key: 'new_members', label: 'New Members', unit: '', icon: '👥' },
-  { key: 'active_rate', label: 'Active Rate', unit: '%', icon: '🔥' },
-  { key: 'avg_workouts', label: 'Avg Workouts/Member', unit: '', icon: '💪' },
-  { key: 'checkin_rate', label: 'Check-in Rate', unit: '%', icon: '📍' },
-  { key: 'churn_rate', label: 'Churn Rate', unit: '%', icon: '⚠️', invertColor: true },
+  { key: 'retention_rate', labelKey: 'admin.analytics.retentionRate', unit: '%', icon: '📊' },
+  { key: 'new_members', labelKey: 'admin.analytics.newMembers', unit: '', icon: '👥' },
+  { key: 'active_rate', labelKey: 'admin.analytics.activeRate', unit: '%', icon: '🔥' },
+  { key: 'avg_workouts', labelKey: 'admin.analytics.avgWorkouts', unit: '', icon: '💪' },
+  { key: 'checkin_rate', labelKey: 'admin.analytics.checkinRate', unit: '%', icon: '📍' },
+  { key: 'churn_rate', labelKey: 'admin.analytics.churnRate', unit: '%', icon: '⚠️', invertColor: true },
 ];
 
 function getStatusColor(current, target, invert) {
@@ -54,8 +56,11 @@ function getTextColor(current, target, invert) {
 }
 
 function KPITargets({ gymId }) {
+  const { t, i18n } = useTranslation('pages');
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const isEs = i18n.language?.startsWith('es');
+  const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const month = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState('');
@@ -84,10 +89,10 @@ function KPITargets({ gymId }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.analytics.all(gymId) });
-      addToast('Target saved', 'success');
+      addToast(t('admin.analytics.targetSaved', 'Target saved'), 'success');
       setEditing(null);
     },
-    onError: () => addToast('Failed to save target', 'error'),
+    onError: () => addToast(t('admin.analytics.targetSaveFailed', 'Failed to save target'), 'error'),
   });
 
   const save = (metric) => {
@@ -100,8 +105,8 @@ function KPITargets({ gymId }) {
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <Target className="w-5 h-5 text-[color:var(--color-accent)]" />
-        <h3 className="text-white font-semibold text-lg">KPI Targets</h3>
-        <span className="text-white/40 text-sm ml-auto">{format(new Date(), 'MMMM yyyy')}</span>
+        <h3 className="text-white font-semibold text-lg">{t('admin.analytics.kpiTargets', 'KPI Targets')}</h3>
+        <span className="text-white/40 text-sm ml-auto">{format(new Date(), 'MMMM yyyy', dateFnsLocale)}</span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {KPI_METRICS.map((m) => {
@@ -115,7 +120,7 @@ function KPITargets({ gymId }) {
             <div key={m.key} className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{m.icon}</span>
-                <span className="text-white/70 text-xs font-medium leading-tight">{m.label}</span>
+                <span className="text-white/70 text-xs font-medium leading-tight">{t(m.labelKey)}</span>
               </div>
 
               <div className="flex items-baseline gap-1">
@@ -155,7 +160,7 @@ function KPITargets({ gymId }) {
                   onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
                   className="text-xs text-white/40 hover:text-[color:var(--color-accent)] transition-colors text-left mt-1"
                 >
-                  {target != null ? `Target: ${target}${m.unit}` : '+ Set Target'}
+                  {target != null ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' }) : t('admin.analytics.setTarget', '+ Set Target')}
                 </button>
               )}
             </div>
@@ -167,10 +172,20 @@ function KPITargets({ gymId }) {
 }
 
 export default function AdminAnalytics() {
+  const { t } = useTranslation('pages');
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
+  const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
-  useEffect(() => { document.title = 'Admin - Analytics | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('admin.analytics.title', 'Analytics') + ' | TuGymPR'; }, [t]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied</p>
+      </div>
+    );
+  }
 
   return (
     <AdminPageShell>
@@ -178,8 +193,8 @@ export default function AdminAnalytics() {
       {/* Page header */}
       <FadeIn>
         <PageHeader
-          title="Analytics"
-          subtitle="Retention, growth, and engagement metrics"
+          title={t('admin.analytics.title', 'Analytics')}
+          subtitle={t('admin.analytics.subtitle', 'Retention, growth, and engagement metrics')}
           className="mb-6"
         />
       </FadeIn>
@@ -222,17 +237,17 @@ export default function AdminAnalytics() {
           </div>
         </FadeIn>
 
-        {/* Row 3: Challenge Participation + Onboarding Completion */}
-        <FadeIn delay={300} className="xl:col-span-8">
-          <div className="grid md:grid-cols-2 gap-4">
+        {/* Trainer Performance */}
+        <FadeIn delay={300} className="xl:col-span-12">
+          <TrainerPerformance gymId={gymId} />
+        </FadeIn>
+
+        {/* Row 4: Challenge Participation (60%) + Onboarding Completion (40%) — full width */}
+        <FadeIn delay={360} className="xl:col-span-12">
+          <div className="grid md:grid-cols-[3fr_2fr] gap-4">
             <ChallengeStats gymId={gymId} />
             <OnboardingFunnel gymId={gymId} />
           </div>
-        </FadeIn>
-
-        {/* Trainer Performance */}
-        <FadeIn delay={360} className="xl:col-span-4">
-          <TrainerPerformance gymId={gymId} />
         </FadeIn>
       </div>
     </AdminPageShell>

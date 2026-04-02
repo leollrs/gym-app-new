@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import logger from '../../../../lib/logger';
@@ -63,6 +64,7 @@ async function fetchTrainerData(gymId) {
 }
 
 export default function TrainerPerformance({ gymId }) {
+  const { t } = useTranslation('pages');
   const { data: trainers = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.trainers(gymId),
     queryFn: () => fetchTrainerData(gymId),
@@ -70,32 +72,32 @@ export default function TrainerPerformance({ gymId }) {
   });
 
   if (isLoading) return <CardSkeleton h="h-[200px]" />;
-  if (isError) return <ErrorCard message="Failed to load trainer data" onRetry={refetch} />;
+  if (isError) return <ErrorCard message={t('admin.analytics.trainerError', 'Failed to load trainer data')} onRetry={refetch} />;
   if (trainers.length === 0) return null;
 
   return (
     <AdminCard hover className="mt-4 hover:border-white/10 transition-colors duration-300">
-      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">Trainer Performance</p>
-      <p className="text-[11px] text-[#6B7280] mb-4">Client retention and engagement by trainer</p>
+      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-1">{t('admin.analytics.trainerTitle', 'Trainer Performance')}</p>
+      <p className="text-[11px] text-[#6B7280] mb-4">{t('admin.analytics.trainerSubtitle', 'Client retention and engagement by trainer')}</p>
 
       <div className="divide-y divide-white/4">
-        {trainers.map(t => (
-          <div key={t.id} className="flex items-center gap-4 py-3">
+        {trainers.map(tr => (
+          <div key={tr.id} className="flex items-center gap-4 py-3">
             <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-              <span className="text-[12px] font-bold text-[#D4AF37]">{t.name[0]}</span>
+              <span className="text-[12px] font-bold text-[#D4AF37]">{tr.name[0]}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{t.name}</p>
-              <p className="text-[11px] text-[#6B7280]">{t.clientCount} active client{t.clientCount !== 1 ? 's' : ''}</p>
+              <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{tr.name}</p>
+              <p className="text-[11px] text-[#6B7280]">{t('admin.analytics.trainerActiveClients', { count: tr.clientCount, defaultValue: '{{count}} active clients' })}</p>
             </div>
             <div className="flex gap-4 text-right flex-shrink-0">
               <div>
-                <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.retention}%</p>
-                <p className="text-[10px] text-[#6B7280]">retention</p>
+                <p className="text-[13px] font-semibold text-[#E5E7EB]">{tr.retention}%</p>
+                <p className="text-[10px] text-[#6B7280]">{t('admin.analytics.trainerRetention', 'retention')}</p>
               </div>
               <div>
-                <p className="text-[13px] font-semibold text-[#E5E7EB]">{t.avgWorkouts}</p>
-                <p className="text-[10px] text-[#6B7280]">wk/client</p>
+                <p className="text-[13px] font-semibold text-[#E5E7EB]">{tr.avgWorkouts}</p>
+                <p className="text-[10px] text-[#6B7280]">{t('admin.analytics.trainerWkPerClient', 'wk/client')}</p>
               </div>
             </div>
           </div>

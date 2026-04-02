@@ -1,333 +1,121 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, Trophy, Dumbbell, ChevronRight, FileText, Search, Filter, SortAsc, BarChart3 } from 'lucide-react';
+import { Users, X, ChevronRight, Search, Filter, SortAsc, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
-import { format, formatDistanceToNow, subDays, startOfWeek, endOfWeek, differenceInWeeks } from 'date-fns';
+import { formatDistanceToNow, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
-// ── Client detail modal ─────────────────────────────────────────────────────
-const ClientModal = ({ client, gymId, onClose, onViewProfile }) => {
+// ── Client quick-preview modal ──────────────────────────────────────────────
+const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
   const { t } = useTranslation('pages');
-  const [tab,      setTab]      = useState('workouts');
-  const [sessions, setSessions] = useState([]);
-  const [prs,      setPrs]      = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [assigning, setAssigning] = useState(false);
-  const [assignedId, setAssignedId] = useState(client.assigned_program_id ?? null);
-  const [programProgress, setProgramProgress] = useState(null); // { name, currentWeek, totalWeeks, completedThisWeek, expectedThisWeek }
-
-  useEffect(() => {
-    const load = async () => {
-      const [sessRes, prRes, progRes] = await Promise.all([
-        supabase
-          .from('workout_sessions')
-          .select('id, name, started_at, total_volume_lbs, duration_seconds')
-          .eq('profile_id', client.id)
-          .eq('status', 'completed')
-          .order('started_at', { ascending: false })
-          .limit(12),
-        supabase
-          .from('personal_records')
-          .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name)')
-          .eq('profile_id', client.id)
-          .order('estimated_1rm', { ascending: false })
-          .limit(8),
-        supabase
-          .from('gym_programs')
-          .select('id, name, duration_weeks')
-          .eq('gym_id', gymId)
-          .eq('is_published', true)
-          .order('name'),
-      ]);
-      if (sessRes.error) logger.error('ClientModal: failed to load sessions:', sessRes.error);
-      if (prRes.error) logger.error('ClientModal: failed to load PRs:', prRes.error);
-      if (progRes.error) logger.error('ClientModal: failed to load programs:', progRes.error);
-      setSessions(sessRes.data || []);
-      setPrs(prRes.data || []);
-      setPrograms(progRes.data || []);
-
-      // Load program progress if client has an assigned program
-      const currentProgramId = client.assigned_program_id;
-      if (currentProgramId) {
-        // Try gym_program_enrollments first, then gym_programs directly
-        const { data: enrollment } = await supabase
-          .from('gym_program_enrollments')
-          .select('started_at, gym_programs(name, duration_weeks, days_per_week)')
-          .eq('profile_id', client.id)
-          .eq('program_id', currentProgramId)
-          .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        let progName = '';
-        let totalWeeks = 0;
-        let daysPerWeek = 3;
-        let programStart = null;
-
-        if (enrollment?.gym_programs) {
-          progName = enrollment.gym_programs.name;
-          totalWeeks = enrollment.gym_programs.duration_weeks || 0;
-          daysPerWeek = enrollment.gym_programs.days_per_week || 3;
-          programStart = enrollment.started_at ? new Date(enrollment.started_at) : null;
-        } else {
-          // Fallback: fetch program directly
-          const { data: prog } = await supabase
-            .from('gym_programs')
-            .select('name, duration_weeks, days_per_week')
-            .eq('id', currentProgramId)
-            .maybeSingle();
-          if (prog) {
-            progName = prog.name;
-            totalWeeks = prog.duration_weeks || 0;
-            daysPerWeek = prog.days_per_week || 3;
-          }
-        }
-
-        if (progName) {
-          const now = new Date();
-          const currentWeek = programStart
-            ? Math.min(Math.max(differenceInWeeks(now, programStart) + 1, 1), totalWeeks || 1)
-            : 1;
-
-          // Count completed sessions this week
-          const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-          const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-          const { count: completedThisWeek } = await supabase
-            .from('workout_sessions')
-            .select('id', { count: 'exact', head: true })
-            .eq('profile_id', client.id)
-            .eq('status', 'completed')
-            .gte('started_at', weekStart.toISOString())
-            .lte('started_at', weekEnd.toISOString());
-
-          setProgramProgress({
-            name: progName,
-            currentWeek,
-            totalWeeks: totalWeeks || currentWeek,
-            completedThisWeek: completedThisWeek || 0,
-            expectedThisWeek: daysPerWeek,
-          });
-        }
-      }
-
-      setLoading(false);
-    };
-    load();
-  }, [client.id, gymId]);
-
-  const handleAssign = async (programId) => {
-    setAssigning(true);
-    await supabase.from('profiles').update({ assigned_program_id: programId || null }).eq('id', client.id);
-    setAssignedId(programId || null);
-    setAssigning(false);
-  };
 
   const daysInactive = client.last_active_at
     ? Math.floor((Date.now() - new Date(client.last_active_at)) / 86400000)
     : null;
+  const isActive = daysInactive !== null && daysInactive <= 7;
+  const isAtRisk = churnScore
+    ? churnScore.score >= 30
+    : (daysInactive === null || daysInactive > 14);
+
+  const statusLabel = isActive
+    ? t('trainerClients.statusActive', 'Active')
+    : isAtRisk
+      ? t('trainerClients.statusAtRisk', 'At Risk')
+      : t('trainerClients.statusInactive', 'Inactive');
+  const statusColor = isActive
+    ? 'text-emerald-400 bg-emerald-500/10'
+    : isAtRisk
+      ? 'text-amber-400 bg-amber-500/10'
+      : 'text-[#6B7280] bg-white/5';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="client-detail-title" className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-lg md:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/6 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/12 flex items-center justify-center flex-shrink-0">
-              <span className="text-[15px] font-bold text-[#D4AF37]">{(client.full_name || 'U')[0]}</span>
-            </div>
-            <div>
-              <p id="client-detail-title" className="text-[15px] font-bold text-[#E5E7EB]">{client.full_name}</p>
-              <p className="text-[11px] text-[#6B7280]">
-                @{client.username}
-                {daysInactive !== null
-                  ? ` · active ${daysInactive === 0 ? 'today' : `${daysInactive}d ago`}`
-                  : ' · never active'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onViewProfile} className="text-[11px] font-medium text-[#D4AF37] hover:text-[#E5C94B] flex items-center gap-1 transition-colors">
-              <FileText size={13} /> Full Profile
-            </button>
-            <button onClick={onClose} aria-label="Close client detail" className="text-[#6B7280] hover:text-[#E5E7EB] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"><X size={20} /></button>
-          </div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="client-preview-title"
+        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-sm overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <div className="flex justify-end p-3 pb-0">
+          <button
+            onClick={onClose}
+            aria-label={t('trainerClients.close', 'Close')}
+            className="text-[#6B7280] hover:text-[#E5E7EB] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-white/6 flex-shrink-0">
-          {[
-            { key: 'workouts', label: 'Workouts' },
-            { key: 'prs',      label: 'PRs' },
-            { key: 'program',  label: 'Program' },
-          ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${
-                tab === t.key
-                  ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
+        {/* Avatar + Name */}
+        <div className="flex flex-col items-center px-5 pb-4">
+          <div className="w-16 h-16 rounded-full bg-[#1E293B] flex items-center justify-center mb-3 relative">
+            <span className="text-[22px] font-bold text-[#9CA3AF]">{(client.full_name || 'U')[0]}</span>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#0F172A] ${
+              isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[#374151]'
+            }`} />
+          </div>
+          <p id="client-preview-title" className="text-[18px] font-bold text-[#E5E7EB] text-center">{client.full_name}</p>
+          <span className={`mt-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusColor}`}>
+            {statusLabel}
+          </span>
+        </div>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-px bg-white/6 mx-5 rounded-xl overflow-hidden mb-5">
+          {/* Last active */}
+          <div className="bg-[#111827] px-3.5 py-3">
+            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">
+              {client.last_active_at
+                ? formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true })
+                : t('trainerClients.never', 'Never')}
+            </p>
+          </div>
+
+          {/* Recent workouts */}
+          <div className="bg-[#111827] px-3.5 py-3">
+            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.recentWorkouts', 'Workouts (14d)')}</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">{client.recentWorkouts ?? 0}</p>
+          </div>
+
+          {/* Program */}
+          <div className="bg-[#111827] px-3.5 py-3">
+            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.program', 'Program')}</p>
+            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+              {client.assigned_program_id
+                ? t('trainerClients.assigned', 'Assigned')
+                : t('trainerClients.none', 'None')}
+            </p>
+          </div>
+
+          {/* Churn risk */}
+          <div className="bg-[#111827] px-3.5 py-3">
+            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.churnRisk', 'Churn Risk')}</p>
+            {churnScore && churnScore.score >= 30 ? (
+              <p className={`text-[13px] font-semibold ${
+                churnScore.score >= 80 ? 'text-red-400' : churnScore.score >= 55 ? 'text-orange-400' : 'text-yellow-400'
               }`}>
-              {t.label}
-            </button>
-          ))}
+                {Math.round(churnScore.score)}%
+              </p>
+            ) : (
+              <p className="text-[13px] font-semibold text-emerald-400">{t('trainerClients.low', 'Low')}</p>
+            )}
+          </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-            </div>
-          ) : tab === 'workouts' ? (
-            sessions.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-8">No workouts logged yet</p>
-            ) : (
-              <div className="space-y-2">
-                {sessions.map(s => (
-                  <div key={s.id} className="flex items-center justify-between p-3 bg-[#111827] rounded-xl">
-                    <div>
-                      <p className="text-[13px] font-medium text-[#E5E7EB]">{s.name || 'Workout'}</p>
-                      <p className="text-[11px] text-[#6B7280]">{format(new Date(s.started_at), 'EEE, MMM d · h:mm a')}</p>
-                    </div>
-                    <div className="text-right">
-                      {s.total_volume_lbs > 0 && (
-                        <p className="text-[12px] font-semibold text-[#9CA3AF]">{Math.round(s.total_volume_lbs).toLocaleString()} lbs</p>
-                      )}
-                      {s.duration_seconds > 0 && (
-                        <p className="text-[11px] text-[#6B7280]">{Math.floor(s.duration_seconds / 60)}m</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          ) : tab === 'prs' ? (
-            prs.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] text-center py-8">No PRs recorded yet</p>
-            ) : (
-              <div className="space-y-2">
-                {prs.map((pr, i) => (
-                  <div key={pr.exercise_id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
-                      <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{pr.exercises?.name ?? pr.exercise_id}</p>
-                      {pr.achieved_at && (
-                        <p className="text-[11px] text-[#6B7280]">{format(new Date(pr.achieved_at), 'MMM d, yyyy')}</p>
-                      )}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-[13px] font-bold text-[#E5E7EB]">{pr.weight_lbs} lbs × {pr.reps}</p>
-                      {pr.estimated_1rm > 0 && (
-                        <p className="text-[10px] text-[#6B7280]">{Math.round(pr.estimated_1rm)} lbs e1RM</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          ) : (
-            /* Program assignment */
-            <div>
-              {/* Program Progress section */}
-              {programProgress ? (
-                <div className="mb-5 bg-[#111827] rounded-xl p-4 border border-white/6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <BarChart3 size={14} className="text-[#D4AF37]" />
-                    <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('trainer.programProgress', 'Program Progress')}</p>
-                  </div>
-                  <p className="text-[12px] text-[#9CA3AF] mb-1">{programProgress.name}</p>
-                  <p className="text-[11px] text-[#6B7280] mb-2">
-                    {t('trainer.weekXOfY', 'Week {{current}} of {{total}}', { current: programProgress.currentWeek, total: programProgress.totalWeeks })}
-                  </p>
-                  {/* Week progress bar */}
-                  <div className="w-full h-2 bg-white/6 rounded-full overflow-hidden mb-3">
-                    <div
-                      className="h-full bg-[#D4AF37] rounded-full transition-all duration-500"
-                      style={{ width: `${Math.round((programProgress.currentWeek / programProgress.totalWeeks) * 100)}%` }}
-                    />
-                  </div>
-                  {/* Sessions this week */}
-                  {(() => {
-                    const pct = programProgress.expectedThisWeek > 0
-                      ? Math.round((programProgress.completedThisWeek / programProgress.expectedThisWeek) * 100)
-                      : 0;
-                    const color = pct >= 80 ? 'text-emerald-400' : pct >= 50 ? 'text-amber-400' : 'text-red-400';
-                    return (
-                      <div className="flex items-center justify-between">
-                        <p className="text-[12px] text-[#9CA3AF]">
-                          {t('trainer.sessionsThisWeek', 'Sessions this week')}
-                        </p>
-                        <p className={`text-[13px] font-bold ${color}`}>
-                          {programProgress.completedThisWeek} / {programProgress.expectedThisWeek}
-                          <span className="text-[11px] font-normal text-[#6B7280] ml-1">({pct}%)</span>
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              ) : !loading && !assignedId ? (
-                <div className="mb-5 bg-[#111827]/50 rounded-xl p-4 border border-white/4 text-center">
-                  <Dumbbell size={20} className="text-[#6B7280] mx-auto mb-2" />
-                  <p className="text-[12px] text-[#6B7280]">{t('trainer.noProgramAssigned', 'No program assigned')}</p>
-                  <button onClick={() => setTab('program')} className="text-[12px] text-[#D4AF37] mt-1 hover:text-[#E5C94B] transition-colors">
-                    {t('trainer.assignOne', 'Assign one')}
-                  </button>
-                </div>
-              ) : null}
-
-              <p className="text-[12px] text-[#6B7280] mb-4">
-                Assign a gym program for {(client.full_name || 'this client').split(' ')[0]} to follow.
-                The program will appear in their Workouts tab.
-              </p>
-              {programs.length === 0 ? (
-                <div className="text-center py-8">
-                  <Dumbbell size={24} className="text-[#6B7280] mx-auto mb-2" />
-                  <p className="text-[13px] text-[#6B7280]">No published programs yet</p>
-                  <p className="text-[11px] text-[#6B7280] mt-1">Ask your admin to create programs first</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {/* None option */}
-                  <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                    !assignedId ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
-                  }`}>
-                    <input type="radio" name="program" checked={!assignedId} onChange={() => handleAssign(null)}
-                      className="accent-[#D4AF37]" disabled={assigning} />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#E5E7EB]">No program assigned</p>
-                      <p className="text-[11px] text-[#6B7280]">Client trains on their own schedule</p>
-                    </div>
-                  </label>
-                  {programs.map(p => (
-                    <label key={p.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                      assignedId === p.id ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
-                    }`}>
-                      <input type="radio" name="program" checked={assignedId === p.id} onChange={() => handleAssign(p.id)}
-                        className="accent-[#D4AF37]" disabled={assigning} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{p.name}</p>
-                        <p className="text-[11px] text-[#6B7280]">{p.duration_weeks} weeks</p>
-                      </div>
-                      {assignedId === p.id && (
-                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
-                          Assigned
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {assigning && (
-                <p className="text-[12px] text-[#6B7280] mt-3 text-center animate-pulse">Saving…</p>
-              )}
-            </div>
-          )}
+        {/* Action buttons */}
+        <div className="px-5 pb-5 space-y-2.5">
+          <button
+            onClick={onOpen}
+            className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E5C94B] text-black font-bold rounded-xl py-3 text-[14px] transition-colors min-h-[44px]"
+          >
+            <ExternalLink size={16} />
+            {t('trainerClients.openClient', 'Open Client')}
+          </button>
         </div>
       </div>
     </div>
@@ -621,11 +409,11 @@ export default function TrainerClients() {
       )}
 
       {selected && (
-        <ClientModal
+        <ClientPreview
           client={selected}
-          gymId={profile.gym_id}
+          churnScore={churnScores[selected.id]}
           onClose={() => setSelected(null)}
-          onViewProfile={() => {
+          onOpen={() => {
             setSelected(null);
             navigate(`/trainer/client/${selected.id}`);
           }}

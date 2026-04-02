@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -36,6 +37,7 @@ async function fetchGrowthData(gymId) {
 }
 
 export default function GrowthChart({ gymId }) {
+  const { t } = useTranslation('pages');
   const { data: growthData = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.growth(gymId),
     queryFn: () => fetchGrowthData(gymId),
@@ -46,30 +48,30 @@ export default function GrowthChart({ gymId }) {
     exportCSV({
       filename: 'member-growth',
       columns: [
-        { key: 'month', label: 'Month' },
-        { key: 'count', label: 'New Members' },
+        { key: 'month', label: t('admin.analytics.growthExportMonth', 'Month') },
+        { key: 'count', label: t('admin.analytics.growthExportNewMembers', 'New Members') },
       ],
       data: growthData,
     });
   };
 
   if (isLoading) return <CardSkeleton />;
-  if (isError) return <ErrorCard message="Failed to load growth data" onRetry={refetch} />;
+  if (isError) return <ErrorCard message={t('admin.analytics.growthError', 'Failed to load growth data')} onRetry={refetch} />;
 
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-semibold text-[#E5E7EB] min-w-0 flex-1 truncate">Member Growth</p>
+        <p className="text-[13px] font-semibold text-[#E5E7EB] min-w-0 flex-1 truncate">{t('admin.analytics.growthTitle', 'Member Growth')}</p>
         <button
           onClick={handleExport}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
         >
           <Download size={13} />
-          Export
+          {t('admin.analytics.export', 'Export')}
         </button>
       </div>
       {growthData.length === 0 ? (
-        <p className="text-[13px] text-[#6B7280] text-center py-10">No member data yet</p>
+        <p className="text-[13px] text-[#6B7280] text-center py-10">{t('admin.analytics.growthEmpty', 'No member data yet')}</p>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={growthData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -96,7 +98,7 @@ export default function GrowthChart({ gymId }) {
             <Area
               type="monotone"
               dataKey="count"
-              name="New members"
+              name={t('admin.analytics.newMembersChartName', 'New members')}
               stroke="var(--color-accent)"
               strokeWidth={2}
               fill="url(#growthGrad)"
@@ -108,7 +110,7 @@ export default function GrowthChart({ gymId }) {
           </AreaChart>
         </ResponsiveContainer>
       )}
-      <p className="text-[10px] text-[#4B5563] mt-2">New signups per month — last 12 months</p>
+      <p className="text-[10px] text-[#4B5563] mt-2">{t('admin.analytics.growthFooter', 'New signups per month — last 12 months')}</p>
     </AdminCard>
   );
 }

@@ -171,6 +171,17 @@
     "insane": "Insane"
   },
 
+  "generatePlan": {
+    "title": "Want a personalized workout plan?",
+    "desc": "We'll generate a training program based on your goals, experience level, and schedule. Ready in seconds.",
+    "generate": "Generate My Plan",
+    "generating": "Building your plan...",
+    "ready": "Your plan is ready! \ud83c\udf89",
+    "readyDesc": "We've created personalized routines based on your profile. You can view and start them from your dashboard.",
+    "goToDashboard": "Let's go",
+    "skip": "I'll set up later"
+  },
+
   "disclaimer": "This app provides fitness tracking tools only and does not constitute medical advice. Consult a healthcare professional before beginning any exercise program.",
   "finish": "Got it, let's go!",
   "initialWeightNote": "Initial weight at signup"

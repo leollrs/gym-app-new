@@ -1,9 +1,12 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
-import { subDays, format, startOfWeek } from 'date-fns';
-import { Users, Dumbbell, TrendingUp, AlertTriangle, Activity, ChevronRight, CalendarDays, MessageCircle, TrendingDown, MessageSquare, Bell, Phone, X, Check } from 'lucide-react';
+import { subDays, format, startOfWeek, startOfDay, endOfDay, isToday } from 'date-fns';
+import {
+  Users, Dumbbell, AlertTriangle, Activity, ChevronRight, CalendarDays,
+  MessageSquare, Bell, Phone, X, Check, Trophy, Flame, Clock, Eye,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -15,8 +18,8 @@ export default function TrainerDashboard() {
   const [clients, setClients] = useState([]);
   const [weekSessions, setWeekSessions] = useState([]);
   const [prevWeekSessions, setPrevWeekSessions] = useState([]);
-  const [recentSessions, setRecentSessions] = useState([]);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [todaySessions, setTodaySessions] = useState([]);
   const [churnScores, setChurnScores] = useState({});
   const [trainerNotes, setTrainerNotes] = useState([]);
   const [contactedMap, setContactedMap] = useState({});
@@ -24,7 +27,8 @@ export default function TrainerDashboard() {
   const [callNote, setCallNote] = useState('');
   const [callOutcome, setCallOutcome] = useState('no_answer');
   const [submittingAction, setSubmittingAction] = useState(null);
-  const atRiskRef = useRef(null);
+  const [recentPRs, setRecentPRs] = useState([]);
+  const [activeStreaks, setActiveStreaks] = useState([]);
 
   useEffect(() => { document.title = 'Trainer - Dashboard | TuGymPR'; }, []);
 
@@ -39,6 +43,9 @@ export default function TrainerDashboard() {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
       const prevWeekStart = startOfWeek(subDays(new Date(), 7), { weekStartsOn: 1 }).toISOString();
       const now = new Date().toISOString();
+      const todayStart = startOfDay(new Date()).toISOString();
+      const todayEnd = endOfDay(new Date()).toISOString();
+      const sevenDaysAgo = subDays(new Date(), 7).toISOString();
 
       // 1. Get assigned client IDs
       const { data: tcRows, error: tcError } = await supabase
@@ -56,9 +63,11 @@ export default function TrainerDashboard() {
       if (clientIds.length === 0) {
         setWeekSessions([]);
         setPrevWeekSessions([]);
-        setRecentSessions([]);
         setUpcomingSessions([]);
+        setTodaySessions([]);
         setTrainerNotes([]);
+        setRecentPRs([]);
+        setActiveStreaks([]);
         setLoading(false);
         return;
       }
@@ -74,8 +83,8 @@ export default function TrainerDashboard() {
       (churnRows || []).forEach(row => { churnMap[row.profile_id] = row; });
       setChurnScores(churnMap);
 
-      // 3. Fetch week sessions, prev week sessions, recent sessions, upcoming sessions, and notes
-      const [weekRes, prevWeekRes, recentRes, upcomingRes, notesRes, followupsRes] = await Promise.all([
+      // 3. Fetch all parallel data
+      const [weekRes, prevWeekRes, upcomingRes, todayRes, notesRes, followupsRes, prsRes, streaksRes] = await Promise.all([
         supabase
           .from('workout_sessions')
           .select('id, profile_id, name, started_at, total_volume_lbs, duration_seconds')
@@ -92,13 +101,6 @@ export default function TrainerDashboard() {
           .lt('started_at', weekStart)
           .order('started_at', { ascending: false }),
         supabase
-          .from('workout_sessions')
-          .select('id, profile_id, name, started_at, total_volume_lbs')
-          .in('profile_id', clientIds)
-          .eq('status', 'completed')
-          .order('started_at', { ascending: false })
-          .limit(8),
-        supabase
           .from('trainer_sessions')
           .select('id, client_id, title, scheduled_at, duration_mins, status, profiles!trainer_sessions_client_id_fkey(full_name)')
           .eq('trainer_id', profile.id)
@@ -107,29 +109,54 @@ export default function TrainerDashboard() {
           .order('scheduled_at', { ascending: true })
           .limit(5),
         supabase
+          .from('trainer_sessions')
+          .select('id, client_id, title, scheduled_at, duration_mins, status, profiles!trainer_sessions_client_id_fkey(full_name)')
+          .eq('trainer_id', profile.id)
+          .gte('scheduled_at', todayStart)
+          .lte('scheduled_at', todayEnd)
+          .in('status', ['scheduled', 'confirmed', 'completed'])
+          .order('scheduled_at', { ascending: true }),
+        supabase
           .from('trainer_client_notes')
           .select('id, client_id, created_at')
           .eq('trainer_id', profile.id)
-          .gte('created_at', subDays(new Date(), 7).toISOString()),
+          .gte('created_at', sevenDaysAgo),
         supabase
           .from('trainer_followups')
           .select('client_id, created_at')
           .eq('trainer_id', profile.id)
           .in('client_id', clientIds)
-          .gte('created_at', subDays(new Date(), 7).toISOString())
+          .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('personal_records')
+          .select('id, profile_id, exercise_id, weight_lbs, reps, recorded_at, exercises(name)')
+          .in('profile_id', clientIds)
+          .gte('recorded_at', sevenDaysAgo)
+          .order('recorded_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('streak_cache')
+          .select('profile_id, current_streak')
+          .in('profile_id', clientIds)
+          .gte('current_streak', 7),
       ]);
 
       if (weekRes.error) logger.error('TrainerDashboard: failed to load week sessions:', weekRes.error);
       if (prevWeekRes.error) logger.error('TrainerDashboard: failed to load prev week sessions:', prevWeekRes.error);
-      if (recentRes.error) logger.error('TrainerDashboard: failed to load recent sessions:', recentRes.error);
       if (upcomingRes.error) logger.error('TrainerDashboard: failed to load upcoming sessions:', upcomingRes.error);
+      if (todayRes.error) logger.error('TrainerDashboard: failed to load today sessions:', todayRes.error);
       if (notesRes.error) logger.error('TrainerDashboard: failed to load notes:', notesRes.error);
+      if (prsRes.error) logger.error('TrainerDashboard: failed to load PRs:', prsRes.error);
+      if (streaksRes.error) logger.error('TrainerDashboard: failed to load streaks:', streaksRes.error);
+
       setWeekSessions(weekRes.data || []);
       setPrevWeekSessions(prevWeekRes.data || []);
-      setRecentSessions(recentRes.data || []);
       setUpcomingSessions(upcomingRes.data || []);
+      setTodaySessions(todayRes.data || []);
       setTrainerNotes(notesRes.data || []);
+      setRecentPRs(prsRes.data || []);
+      setActiveStreaks(streaksRes.data || []);
 
       // Build contacted map: client_id -> most recent followup date
       const cMap = {};
@@ -237,9 +264,9 @@ export default function TrainerDashboard() {
 
   // Computed stats
   const totalClients = clients.length;
-
   const activeProfileIds = new Set(weekSessions.map((s) => s.profile_id));
   const activeThisWeek = activeProfileIds.size;
+  const workoutsThisWeek = weekSessions.length;
 
   const fourteenDaysAgo = subDays(new Date(), 14);
   const atRiskClients = clients
@@ -258,19 +285,30 @@ export default function TrainerDashboard() {
       return aDate - bDate;
     });
 
-  const workoutsThisWeek = weekSessions.length;
-
-  // Weekly priority digest computations
-  const priorityDigest = useMemo(() => {
-    const sevenDaysAgo = subDays(new Date(), 7);
+  // Unified "needs attention" list: at-risk, volume decline, inactive, follow-up overdue
+  const needsAttentionList = useMemo(() => {
     const contactedClientIds = new Set(trainerNotes.map(n => n.client_id));
+    const items = [];
+    const seenIds = new Set();
 
-    // Clients needing follow-up: no note/contact in 7+ days
-    const needFollowUp = clients.filter(c => !contactedClientIds.has(c.id));
+    // 1. At-risk clients (highest priority)
+    atRiskClients.forEach(c => {
+      const churn = churnScores[c.id];
+      const score = churn ? Math.round(churn.score) : null;
+      items.push({
+        client: c,
+        reason: score
+          ? t('trainerDashboard.attention.atRiskScore', { score })
+          : t('trainerDashboard.attention.inactive'),
+        priority: 1,
+        type: 'at-risk',
+      });
+      seenIds.add(c.id);
+    });
 
-    // Clients with declining volume (>20% drop week-over-week)
-    const decliningVolume = [];
+    // 2. Declining volume
     clients.forEach(c => {
+      if (seenIds.has(c.id)) return;
       const thisWeekVol = weekSessions
         .filter(s => s.profile_id === c.id)
         .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
@@ -280,23 +318,62 @@ export default function TrainerDashboard() {
       if (prevWeekVol > 0 && thisWeekVol < prevWeekVol) {
         const dropPct = Math.round(((prevWeekVol - thisWeekVol) / prevWeekVol) * 100);
         if (dropPct > 20) {
-          decliningVolume.push({
-            ...c,
-            dropPct,
-            thisWeekVol,
-            prevWeekVol,
+          items.push({
+            client: c,
+            reason: t('trainerDashboard.attention.volumeDeclined', { pct: dropPct }),
+            priority: 2,
+            type: 'volume',
           });
+          seenIds.add(c.id);
         }
       }
     });
-    decliningVolume.sort((a, b) => b.dropPct - a.dropPct);
 
-    return { needFollowUp, decliningVolume };
-  }, [clients, weekSessions, prevWeekSessions, trainerNotes]);
+    // 3. Inactive (no workout in 8+ days, not already flagged)
+    const eightDaysAgo = subDays(new Date(), 8);
+    clients.forEach(c => {
+      if (seenIds.has(c.id)) return;
+      const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
+      if (!lastActive || lastActive < eightDaysAgo) {
+        const days = lastActive ? Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24)) : 30;
+        items.push({
+          client: c,
+          reason: t('trainerDashboard.attention.noActivity', { days }),
+          priority: 3,
+          type: 'inactive',
+        });
+        seenIds.add(c.id);
+      }
+    });
 
-  const hasPriorityItems = atRiskClients.length > 0 || priorityDigest.needFollowUp.length > 0 || priorityDigest.decliningVolume.length > 0;
+    // 4. Follow-up overdue (no contact in 7+ days, not already flagged)
+    clients.forEach(c => {
+      if (seenIds.has(c.id)) return;
+      if (!contactedClientIds.has(c.id)) {
+        items.push({
+          client: c,
+          reason: t('trainerDashboard.attention.followUpOverdue'),
+          priority: 4,
+          type: 'followup',
+        });
+        seenIds.add(c.id);
+      }
+    });
 
-  // Map client id -> name
+    items.sort((a, b) => a.priority - b.priority);
+    return items;
+  }, [clients, atRiskClients, churnScores, weekSessions, prevWeekSessions, trainerNotes, t]);
+
+  // Priority clients for Section 3 (top 5 needing attention)
+  const priorityClients = useMemo(() => {
+    return needsAttentionList.slice(0, 5).map(item => {
+      const daysInactive = getDaysInactive(item.client.last_active_at);
+      const churn = churnScores[item.client.id];
+      return { ...item, daysInactive, churn };
+    });
+  }, [needsAttentionList, churnScores]);
+
+  // Client name map
   const clientMap = {};
   clients.forEach((m) => {
     clientMap[m.id] = m.full_name || m.username || 'Unknown';
@@ -308,8 +385,7 @@ export default function TrainerDashboard() {
 
   function getDaysInactive(lastActiveAt) {
     if (!lastActiveAt) return '30+';
-    const days = Math.floor((Date.now() - new Date(lastActiveAt).getTime()) / (1000 * 60 * 60 * 24));
-    return days;
+    return Math.floor((Date.now() - new Date(lastActiveAt).getTime()) / (1000 * 60 * 60 * 24));
   }
 
   function getChurnLevel(score) {
@@ -318,10 +394,22 @@ export default function TrainerDashboard() {
     return { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
   }
 
-  function formatVolume(lbs) {
-    if (!lbs) return '\u2014';
-    if (lbs >= 1000) return `${(lbs / 1000).toFixed(1)}k lbs`;
-    return `${Math.round(lbs)} lbs`;
+  function getAttentionColor(type) {
+    switch (type) {
+      case 'at-risk': return { text: 'text-red-400', bg: 'bg-red-500/10', icon: AlertTriangle };
+      case 'volume': return { text: 'text-amber-400', bg: 'bg-amber-500/10', icon: Activity };
+      case 'inactive': return { text: 'text-orange-400', bg: 'bg-orange-500/10', icon: Clock };
+      case 'followup': return { text: 'text-blue-400', bg: 'bg-blue-500/10', icon: MessageSquare };
+      default: return { text: 'text-[#9CA3AF]', bg: 'bg-white/[0.04]', icon: AlertTriangle };
+    }
+  }
+
+  function getStatusBadge(status) {
+    switch (status) {
+      case 'confirmed': return { label: t('trainerDashboard.statusConfirmed'), cls: 'bg-emerald-500/10 text-emerald-400' };
+      case 'completed': return { label: t('trainerDashboard.statusCompleted'), cls: 'bg-blue-500/10 text-blue-400' };
+      default: return { label: t('trainerDashboard.statusScheduled'), cls: 'bg-[#D4AF37]/10 text-[#D4AF37]' };
+    }
   }
 
   if (loading) {
@@ -332,157 +420,238 @@ export default function TrainerDashboard() {
     );
   }
 
-  const statCards = [
-    {
-      label: t('trainerDashboard.myClients'),
-      value: totalClients,
-      icon: Users,
-      color: 'var(--color-blue)',
-      bg: 'bg-blue-500/10',
-    },
-    {
-      label: t('trainerDashboard.activeThisWeek'),
-      value: activeThisWeek,
-      icon: Activity,
-      color: 'var(--color-success)',
-      bg: 'bg-emerald-500/10',
-    },
-    {
-      label: t('trainerDashboard.atRisk'),
-      value: atRiskClients.length,
-      icon: AlertTriangle,
-      color: 'var(--color-warning)',
-      bg: 'bg-amber-500/10',
-    },
-    {
-      label: t('trainerDashboard.workoutsThisWeek'),
-      value: workoutsThisWeek,
-      icon: Dumbbell,
-      color: 'var(--color-accent)',
-      bg: 'bg-[#D4AF37]/10',
-    },
+  const todayDate = format(new Date(), 'EEEE, MMMM d');
+  const sessionsToday = todaySessions.length;
+  const subtitle = sessionsToday > 0
+    ? t('trainerDashboard.subtitleSessions', { count: sessionsToday })
+    : todayDate;
+
+  // KPI strip items
+  const kpis = [
+    { label: t('trainerDashboard.kpi.clients'), value: totalClients, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { label: t('trainerDashboard.kpi.activeWeek'), value: activeThisWeek, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: t('trainerDashboard.kpi.atRisk'), value: atRiskClients.length, color: atRiskClients.length > 0 ? 'text-red-400' : 'text-[#9CA3AF]', bg: atRiskClients.length > 0 ? 'bg-red-500/10' : 'bg-white/[0.04]' },
+    { label: t('trainerDashboard.kpi.sessionsToday'), value: sessionsToday, color: 'text-[#D4AF37]', bg: 'bg-[#D4AF37]/10' },
+    { label: t('trainerDashboard.kpi.sessionsWeek'), value: workoutsThisWeek, color: 'text-purple-400', bg: 'bg-purple-500/10' },
   ];
 
   return (
     <div className="min-h-screen bg-[#05070B]">
       <div className="max-w-[480px] mx-auto md:max-w-4xl px-4 py-6 pb-28 md:pb-12">
-        {/* Header */}
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-6 truncate">{t('trainerDashboard.title')}</h1>
 
-        {/* This Week's Priority Card */}
-        {hasPriorityItems && (
-          <div className="mb-8 bg-[#0F172A] rounded-2xl border-2 border-[#D4AF37]/40 p-5 overflow-hidden">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-[#D4AF37]/10 rounded-full flex items-center justify-center">
-                <AlertTriangle size={16} className="text-[#D4AF37]" />
-              </div>
-              <h2 className="text-[15px] font-bold text-[#D4AF37]">
-                {t('trainerDashboard.weeklyPriority')}
-              </h2>
-            </div>
-
-            <ul className="space-y-3">
-              {atRiskClients.length > 0 && (
-                <li>
-                  <button
-                    onClick={() => atRiskRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    className="w-full flex items-start gap-3 text-left group"
-                  >
-                    <div className="w-5 h-5 mt-0.5 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
-                      <AlertTriangle size={11} className="text-red-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] group-hover:text-[#D4AF37] transition-colors">
-                        <span className="font-semibold text-red-400">{atRiskClients.length}</span>{' '}
-                        {t('trainerDashboard.priorityAtRisk', { count: atRiskClients.length })}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">
-                        {atRiskClients.slice(0, 3).map(c => (c.full_name || c.username || '').split(' ')[0]).join(', ')}
-                        {atRiskClients.length > 3 ? ` +${atRiskClients.length - 3}` : ''}
-                      </p>
-                    </div>
-                    <ChevronRight size={14} className="text-[#6B7280] mt-1 shrink-0 group-hover:text-[#D4AF37] transition-colors" />
-                  </button>
-                </li>
-              )}
-
-              {priorityDigest.needFollowUp.length > 0 && (
-                <li>
-                  <button
-                    onClick={() => navigate('/trainer/clients')}
-                    className="w-full flex items-start gap-3 text-left group"
-                  >
-                    <div className="w-5 h-5 mt-0.5 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
-                      <MessageCircle size={11} className="text-amber-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] group-hover:text-[#D4AF37] transition-colors">
-                        <span className="font-semibold text-amber-400">{priorityDigest.needFollowUp.length}</span>{' '}
-                        {t('trainerDashboard.priorityFollowUp', { count: priorityDigest.needFollowUp.length })}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] mt-0.5">
-                        {t('trainerDashboard.noContactIn7Days')}
-                      </p>
-                    </div>
-                    <ChevronRight size={14} className="text-[#6B7280] mt-1 shrink-0 group-hover:text-[#D4AF37] transition-colors" />
-                  </button>
-                </li>
-              )}
-
-              {priorityDigest.decliningVolume.length > 0 && (
-                <li>
-                  <button
-                    onClick={() => navigate('/trainer/analytics')}
-                    className="w-full flex items-start gap-3 text-left group"
-                  >
-                    <div className="w-5 h-5 mt-0.5 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
-                      <TrendingDown size={11} className="text-purple-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] group-hover:text-[#D4AF37] transition-colors">
-                        <span className="font-semibold text-purple-400">{priorityDigest.decliningVolume.length}</span>{' '}
-                        {t('trainerDashboard.priorityDecliningVolume', { count: priorityDigest.decliningVolume.length })}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">
-                        {priorityDigest.decliningVolume.slice(0, 2).map(c =>
-                          `${(c.full_name || '').split(' ')[0]} -${c.dropPct}%`
-                        ).join(', ')}
-                      </p>
-                    </div>
-                    <ChevronRight size={14} className="text-[#6B7280] mt-1 shrink-0 group-hover:text-[#D4AF37] transition-colors" />
-                  </button>
-                </li>
-              )}
-            </ul>
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{t('trainerDashboard.title')}</h1>
+            <p className="text-[13px] text-[#9CA3AF] mt-0.5">{subtitle}</p>
           </div>
-        )}
-
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          {statCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <div
-                key={card.label}
-                className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-4 overflow-hidden"
-              >
-                <div
-                  className={`w-9 h-9 ${card.bg} rounded-full flex items-center justify-center mb-3`}
-                >
-                  <Icon size={18} style={{ color: card.color }} />
-                </div>
-                <div className="text-[24px] font-bold text-[#E5E7EB] truncate">{card.value}</div>
-                <div className="text-[11px] text-[#6B7280] mt-0.5 truncate">{card.label}</div>
-              </div>
-            );
-          })}
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <button
+              onClick={() => navigate('/trainer/schedule')}
+              className="h-[36px] px-3 rounded-lg border border-white/[0.08] bg-[#0F172A] text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/[0.15] transition-colors flex items-center gap-1.5"
+            >
+              <CalendarDays size={14} />
+              <span className="hidden sm:inline">{t('trainerDashboard.viewSchedule')}</span>
+            </button>
+            <button
+              onClick={() => navigate('/trainer/clients')}
+              className="h-[36px] px-3 rounded-lg border border-white/[0.08] bg-[#0F172A] text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/[0.15] transition-colors flex items-center gap-1.5"
+            >
+              <Users size={14} />
+              <span className="hidden sm:inline">{t('trainerDashboard.viewClients')}</span>
+            </button>
+          </div>
         </div>
 
-        {/* Upcoming Sessions + At-Risk Clients -- side by side on desktop */}
+        {/* ── Section 1: KPI Strip ── */}
+        <div className="flex gap-2 mb-8 overflow-x-auto scrollbar-hide pb-1">
+          {kpis.map((kpi) => (
+            <div
+              key={kpi.label}
+              className={`flex items-center gap-2 px-3 py-2 rounded-full border border-white/[0.06] ${kpi.bg} shrink-0`}
+            >
+              <span className={`text-[15px] font-bold ${kpi.color}`}>{kpi.value}</span>
+              <span className="text-[11px] text-[#6B7280] whitespace-nowrap">{kpi.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Section 2: Today's Priorities (hero section) ── */}
+        <div className="mb-8 bg-[#0F172A] rounded-2xl border-2 border-[#D4AF37]/30 overflow-hidden">
+          <div className="px-5 pt-5 pb-3 border-b border-white/[0.06]">
+            <h2 className="text-[16px] font-bold text-[#E5E7EB] flex items-center gap-2">
+              <div className="w-7 h-7 bg-[#D4AF37]/10 rounded-full flex items-center justify-center">
+                <AlertTriangle size={14} className="text-[#D4AF37]" />
+              </div>
+              {t('trainerDashboard.todaysPriorities')}
+            </h2>
+          </div>
+
+          {/* Needs Attention */}
+          {needsAttentionList.length > 0 ? (
+            <div className="divide-y divide-white/[0.04]">
+              {needsAttentionList.slice(0, 8).map((item) => {
+                const name = item.client.full_name || item.client.username || 'Unknown';
+                const colors = getAttentionColor(item.type);
+                const ItemIcon = colors.icon;
+                const lastContacted = contactedMap[item.client.id];
+                return (
+                  <div key={item.client.id} className="px-5 py-3.5 hover:bg-white/[0.02] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${colors.bg}`}>
+                        <span className={`text-[13px] font-semibold ${colors.text}`}>
+                          {getInitial(name)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] text-[#E5E7EB] font-medium truncate">{name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <ItemIcon size={11} className={colors.text} />
+                          <span className={`text-[11px] ${colors.text}`}>{item.reason}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleSMS(item.client)}
+                          disabled={submittingAction === `sms-${item.client.id}`}
+                          title={t('trainerDashboard.reachOut.sms')}
+                          className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                        >
+                          <MessageSquare size={13} className="text-[#3B82F6]" />
+                        </button>
+                        <button
+                          onClick={() => handlePush(item.client)}
+                          disabled={submittingAction === `push-${item.client.id}`}
+                          title={t('trainerDashboard.reachOut.push')}
+                          className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center hover:bg-purple-500/20 transition-colors disabled:opacity-50"
+                        >
+                          <Bell size={13} className="text-[#A855F7]" />
+                        </button>
+                        <button
+                          onClick={() => handleCallOpen(item.client)}
+                          title={t('trainerDashboard.reachOut.call')}
+                          className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center hover:bg-emerald-500/20 transition-colors"
+                        >
+                          <Phone size={13} className="text-[#10B981]" />
+                        </button>
+                      </div>
+                    </div>
+                    {lastContacted && (
+                      <div className="ml-12 mt-1.5 flex items-center gap-1 w-fit px-2 py-0.5 rounded-full bg-emerald-500/10">
+                        <Check size={10} className="text-[#10B981]" />
+                        <span className="text-[10px] font-medium text-[#10B981]">
+                          {t('trainerDashboard.contacted')} {format(new Date(lastContacted), 'MMM d')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-5 py-8 text-center">
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Check size={20} className="text-[#10B981]" />
+              </div>
+              <p className="text-[14px] text-[#10B981] font-medium">{t('trainerDashboard.allGood')}</p>
+              <p className="text-[12px] text-[#6B7280] mt-1">{t('trainerDashboard.allGoodDesc')}</p>
+            </div>
+          )}
+
+          {/* Today's Sessions */}
+          {todaySessions.length > 0 && (
+            <div className="border-t border-white/[0.06]">
+              <div className="px-5 pt-4 pb-2">
+                <h3 className="text-[13px] font-semibold text-[#9CA3AF] uppercase tracking-wide flex items-center gap-1.5">
+                  <CalendarDays size={13} className="text-[#D4AF37]" />
+                  {t('trainerDashboard.todaysSessions')}
+                </h3>
+              </div>
+              <div className="divide-y divide-white/[0.04]">
+                {todaySessions.map((session) => {
+                  const badge = getStatusBadge(session.status);
+                  return (
+                    <div key={session.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors">
+                      <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
+                        <span className="text-[13px] font-semibold text-[#D4AF37]">
+                          {getInitial(session.profiles?.full_name || 'C')}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] text-[#E5E7EB] font-medium truncate">
+                          {session.profiles?.full_name || 'Client'}
+                        </p>
+                        <p className="text-[11px] text-[#6B7280]">{session.title}</p>
+                      </div>
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                        <p className="text-[13px] text-[#9CA3AF]">
+                          {format(new Date(session.scheduled_at), 'h:mm a')}
+                        </p>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 3: Two-column workspace ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
 
-        {/* Upcoming Sessions */}
-        {upcomingSessions.length > 0 && (
+          {/* Left: Priority Clients */}
+          <div>
+            <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
+              <Users size={16} className="text-red-400" />
+              {t('trainerDashboard.priorityClients')}
+            </h2>
+            {priorityClients.length > 0 ? (
+              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
+                {priorityClients.map((item) => {
+                  const name = item.client.full_name || item.client.username || 'Unknown';
+                  const level = item.churn ? getChurnLevel(item.churn.score) : null;
+                  return (
+                    <button
+                      key={item.client.id}
+                      onClick={() => navigate(`/trainer/client/${item.client.id}`)}
+                      className="w-full flex items-center gap-3 p-3.5 hover:bg-white/[0.03] transition-all text-left group"
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${level ? level.bg : 'bg-amber-500/10'}`}>
+                        <span className={`text-[12px] font-semibold ${level ? level.color : 'text-amber-400'}`}>
+                          {getInitial(name)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] text-[#E5E7EB] font-medium truncate group-hover:text-[#D4AF37] transition-colors">{name}</p>
+                        <p className="text-[10px] text-[#6B7280]">
+                          {item.client.last_active_at
+                            ? `${t('trainerDashboard.lastActive')} ${format(new Date(item.client.last_active_at), 'MMM d')}`
+                            : t('trainerDashboard.noActivityRecorded')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {level && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${level.bg} ${level.color}`}>
+                            {Math.round(item.churn.score)}
+                          </span>
+                        )}
+                        <Eye size={14} className="text-[#6B7280] group-hover:text-[#D4AF37] transition-colors" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
+                <p className="text-[13px] text-[#6B7280]">{t('trainerDashboard.noPriorityClients')}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Upcoming Sessions */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
@@ -496,198 +665,100 @@ export default function TrainerDashboard() {
                 {t('trainerDashboard.viewAll')} <ChevronRight size={14} />
               </button>
             </div>
+            {upcomingSessions.length > 0 ? (
+              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
+                {upcomingSessions.map((session) => {
+                  const badge = getStatusBadge(session.status);
+                  return (
+                    <div key={session.id} className="flex items-center gap-3 p-3.5 hover:bg-white/[0.03] transition-all">
+                      <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <CalendarDays size={14} className="text-[#3B82F6]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] text-[#E5E7EB] font-medium truncate">
+                          {session.profiles?.full_name || 'Client'}
+                        </p>
+                        <p className="text-[10px] text-[#6B7280]">{session.title}</p>
+                      </div>
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                        <p className="text-[12px] text-[#9CA3AF]">
+                          {isToday(new Date(session.scheduled_at))
+                            ? format(new Date(session.scheduled_at), 'h:mm a')
+                            : format(new Date(session.scheduled_at), 'EEE, MMM d')}
+                        </p>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
+                <p className="text-[13px] text-[#6B7280]">{t('trainerDashboard.noUpcomingSessions')}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Section 4: Recent Wins ── */}
+        {(recentPRs.length > 0 || activeStreaks.length > 0) && (
+          <div className="mb-8">
+            <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
+              <Trophy size={16} className="text-[#D4AF37]" />
+              {t('trainerDashboard.recentWins')}
+            </h2>
             <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-              {upcomingSessions.map((session) => (
-                <div key={session.id} className="flex items-center gap-3 p-4 hover:border-white/20 hover:bg-white/[0.03] transition-all">
-                  <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                    <CalendarDays size={16} className="text-[#3B82F6]" />
+              {/* PRs */}
+              {recentPRs.map((pr) => {
+                const name = clientMap[pr.profile_id] || 'Client';
+                return (
+                  <div key={pr.id} className="flex items-center gap-3 p-3.5">
+                    <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
+                      <Trophy size={14} className="text-[#D4AF37]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[#E5E7EB] truncate">
+                        <span className="font-medium">{name}</span>
+                        {' '}<span className="text-emerald-400">{t('trainerDashboard.newPR')}</span>
+                      </p>
+                      <p className="text-[10px] text-[#6B7280] truncate">
+                        {pr.exercises?.name || 'Exercise'} — {pr.weight_lbs} lbs x {pr.reps}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-[#6B7280] shrink-0">
+                      {format(new Date(pr.recorded_at), 'MMM d')}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] text-[#E5E7EB] font-medium truncate">
-                      {session.profiles?.full_name || 'Client'}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280]">{session.title}</p>
+                );
+              })}
+
+              {/* Streaks */}
+              {activeStreaks.map((s) => {
+                const name = clientMap[s.profile_id] || 'Client';
+                return (
+                  <div key={`streak-${s.profile_id}`} className="flex items-center gap-3 p-3.5">
+                    <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                      <Flame size={14} className="text-orange-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[#E5E7EB] truncate">
+                        <span className="font-medium">{name}</span>
+                      </p>
+                      <p className="text-[10px] text-[#6B7280]">
+                        {t('trainerDashboard.streakDays', { count: s.current_streak })}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold text-orange-400">
+                      {s.current_streak}d
+                    </span>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-[13px] text-[#9CA3AF]">
-                      {format(new Date(session.scheduled_at), 'EEE, MMM d')}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280]">
-                      {format(new Date(session.scheduled_at), 'h:mm a')} · {session.duration_mins}m
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
-
-        {/* At-Risk Clients */}
-        <div ref={atRiskRef}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
-              <AlertTriangle size={16} className="text-amber-500" />
-              {t('trainerDashboard.atRiskClients')}
-            </h2>
-            {atRiskClients.length > 5 && (
-              <span className="text-[12px] text-[#D4AF37] flex items-center gap-0.5">
-                {t('trainerDashboard.viewAll')} <ChevronRight size={14} />
-              </span>
-            )}
-          </div>
-
-          {atRiskClients.length === 0 ? (
-            <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
-              <div className="w-10 h-10 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                <TrendingUp size={20} className="text-[#10B981]" />
-              </div>
-              <p className="text-[14px] text-[#10B981] font-medium">{t('trainerDashboard.allClientsActive')}</p>
-              <p className="text-[12px] text-[#6B7280] mt-1">
-                {t('trainerDashboard.allClientsActiveDesc')}
-              </p>
-            </div>
-          ) : (
-            <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-              {atRiskClients.slice(0, 5).map((member) => {
-                const name = member.full_name || member.username || 'Unknown';
-                const daysInactive = getDaysInactive(member.last_active_at);
-                const churn = churnScores[member.id];
-                const level = churn ? getChurnLevel(churn.score) : null;
-                const signals = churn?.key_signals
-                  ? (Array.isArray(churn.key_signals) ? churn.key_signals : []).slice(0, 2)
-                  : [];
-                const lastContacted = contactedMap[member.id];
-                return (
-                  <div key={member.id} className="p-4 hover:bg-white/[0.03] transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${level ? level.bg : 'bg-amber-500/10'}`}>
-                        <span className={`text-[13px] font-semibold ${level ? level.color : 'text-amber-500'}`}>
-                          {getInitial(name)}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-[14px] text-[#E5E7EB] font-medium truncate">{name}</p>
-                          {churn && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${level.bg} ${level.color}`}>
-                              {Math.round(churn.score)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-[#6B7280]">
-                          {member.last_active_at
-                            ? `${t('trainerDashboard.lastActive')} ${format(new Date(member.last_active_at), 'MMM d')}`
-                            : t('trainerDashboard.noActivityRecorded')}
-                        </p>
-                        {signals.length > 0 && (
-                          <div className="flex gap-1 mt-1">
-                            {signals.map((sig, i) => (
-                              <span key={i} className="text-[10px] text-[#9CA3AF] bg-white/[0.04] px-1.5 py-0.5 rounded">
-                                {sig}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        {churn ? (
-                          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${level.bg} ${level.color}`}>
-                            {level.label}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500">
-                            {t('trainerDashboard.inactiveDays', { count: daysInactive })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Reach-out actions + contacted badge */}
-                    <div className="flex items-center gap-2 mt-3 ml-12">
-                      <button
-                        onClick={() => handleSMS(member)}
-                        disabled={submittingAction === `sms-${member.id}`}
-                        title={t('trainerDashboard.reachOut.sms')}
-                        className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center hover:bg-blue-500/20 transition-colors disabled:opacity-50"
-                      >
-                        <MessageSquare size={14} className="text-[#3B82F6]" />
-                      </button>
-                      <button
-                        onClick={() => handlePush(member)}
-                        disabled={submittingAction === `push-${member.id}`}
-                        title={t('trainerDashboard.reachOut.push')}
-                        className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center hover:bg-purple-500/20 transition-colors disabled:opacity-50"
-                      >
-                        <Bell size={14} className="text-[#A855F7]" />
-                      </button>
-                      <button
-                        onClick={() => handleCallOpen(member)}
-                        title={t('trainerDashboard.reachOut.call')}
-                        className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center hover:bg-emerald-500/20 transition-colors"
-                      >
-                        <Phone size={14} className="text-[#10B981]" />
-                      </button>
-
-                      {lastContacted && (
-                        <div className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10">
-                          <Check size={10} className="text-[#10B981]" />
-                          <span className="text-[10px] font-medium text-[#10B981]">
-                            {t('trainerDashboard.contacted')} {format(new Date(lastContacted), 'MMM d')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        </div>
-
-        {/* Recent Activity */}
-        <div>
-          <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
-            <Activity size={16} className="text-[#D4AF37]" />
-            {t('trainerDashboard.recentActivity')}
-          </h2>
-
-          {recentSessions.length === 0 ? (
-            <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
-              <p className="text-[13px] text-[#6B7280]">{t('trainerDashboard.noRecentWorkouts')}</p>
-            </div>
-          ) : (
-            <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-              {recentSessions.map((session) => {
-                const memberName = clientMap[session.profile_id] || 'Client';
-                return (
-                  <div key={session.id} className="flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-all">
-                    <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
-                      <Dumbbell size={16} className="text-[#D4AF37]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] text-[#E5E7EB] font-medium truncate">
-                        {memberName}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280] truncate">
-                        {session.name || 'Workout'}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[13px] text-[#9CA3AF]">
-                        {formatVolume(session.total_volume_lbs)}
-                      </p>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {format(new Date(session.started_at), 'MMM d')}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Call Note Modal */}

@@ -8,15 +8,6 @@ import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import logger from '../../../lib/logger';
 
-function generateInviteCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = 'TGP-';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
-
 export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
   const k = (key) => t(`admin.createInvite.${key}`);
@@ -38,57 +29,14 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setLoading(true);
     setError(null);
     try {
-      // Try RPC first, fall back to client-side generation
-      let code;
-      let expiresAt;
-      try {
-        const { data, error: rpcError } = await supabase.rpc('generate_invite_code', {
-          p_gym_id: gymId,
-        });
-        if (rpcError) throw rpcError;
-        code = data;
-      } catch {
-        code = generateInviteCode();
-      }
-
-      expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      const { data: insertData, error: insertError } = await supabase
-        .from('member_invites')
-        .insert({
-          gym_id: gymId,
-          invite_code: code,
-          member_name: name.trim(),
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          status: 'pending',
-          expires_at: expiresAt.toISOString(),
-        })
-        .select('id, invite_code, expires_at, status')
-        .single();
-
-      if (insertError) {
-        // If member_invites table doesn't exist, try gym_invites (existing table)
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('gym_invites')
-          .insert({
-            gym_id: gymId,
-            invite_code: code,
-            member_name: name.trim(),
-            phone: phone.trim() || null,
-            email: email.trim() || null,
-            expires_at: expiresAt.toISOString(),
-          })
-          .select('id, invite_code, expires_at')
-          .single();
-
-        if (fallbackError) throw fallbackError;
-        setResult({ code: fallbackData.invite_code, expires_at: fallbackData.expires_at });
-      } else {
-        setResult({ code: insertData.invite_code, expires_at: insertData.expires_at });
-      }
-
+      const { data, error: rpcError } = await supabase.rpc('admin_create_invite_code', {
+        p_gym_id: gymId,
+        p_member_name: name.trim(),
+        p_phone: phone.trim() || null,
+        p_email: email.trim() || null,
+      });
+      if (rpcError) throw rpcError;
+      setResult(data);
       setPhase('result');
       if (onCreated) onCreated();
     } catch (err) {
