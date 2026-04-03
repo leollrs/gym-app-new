@@ -576,11 +576,16 @@ const Workouts = () => {
     for (const e of schedMap.last_week_map) lastWeekDowToIdx[e.day_of_week] = e.routine_index;
   }
 
-  // Reverse map: routine_index → routine_id (using workoutScheduleMap which is routine_id→dow)
-  // workoutScheduleMap stores normal (week 2+) DOW assignments
+  // Fallback: if no schedule_map, build normalDowToIdx from workoutScheduleMap
+  if (!schedMap && Object.keys(workoutScheduleMap).length > 0) {
+    const dows = [...new Set(Object.values(workoutScheduleMap))].sort((a, b) => a - b);
+    dows.forEach((d, i) => { normalDowToIdx[d] = i; });
+  }
+
+  // Reverse map: DOW → routine_id (using workoutScheduleMap which is routine_id→dow)
   const routineIdByNormalDow = {};
   for (const [rid, dow] of Object.entries(workoutScheduleMap)) {
-    routineIdByNormalDow[dow] = rid;
+    routineIdByNormalDow[String(dow)] = rid; // ensure string key for consistent lookup
   }
 
   // Get routines for a specific week, with correct DOW labels per week
@@ -610,13 +615,13 @@ const Workouts = () => {
       // Find the routine assigned to this DOW in the normal schedule
       // (workout_schedule stores normal DOW, so for week 1 we need to find routine by index)
       let routine;
-      if (weekNum === 1 || weekNum === totalProgramWeeks) {
-        // For partial weeks, find routine by its normal DOW (routine_index maps to normal_dows[routine_index])
+      if (hasWrappedDays && (weekNum === 1 || weekNum === totalProgramWeeks)) {
+        // For partial weeks, find routine by its normal DOW via routine_index
         const normalDow = schedMap?.normal_dows?.[routineIdx];
-        const rid = normalDow !== undefined ? routineIdByNormalDow[normalDow] : null;
+        const rid = normalDow !== undefined ? routineIdByNormalDow[String(normalDow)] : null;
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
       } else {
-        const rid = routineIdByNormalDow[dow];
+        const rid = routineIdByNormalDow[String(dow)];
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
       }
       if (routine) {

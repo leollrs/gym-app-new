@@ -1177,11 +1177,12 @@ const Dashboard = () => {
           const isClosed = gymClosedDays.has(dow);
           if (isClosed) return { label, name: label, exercises: [], isRest: false, isClosed: true };
 
-          // For partial weeks, days not in the active map are either "not started" or rest
+          // For week 1, any day before start that has no workout = "not started"
+          if (planWeek === 1 && !activeDowSet.has(dow) && dow !== 0) {
+            // All non-workout days in week 1 before start are "not yet started"
+            return { label, name: label, exercises: [], isRest: true, isClosed: false, notStarted: true };
+          }
           if (hasWrapped) {
-            if (planWeek === 1 && !activeDowSet.has(dow)) {
-              return { label, name: label, exercises: [], isRest: true, isClosed: false, notStarted: dow < progStartDow };
-            }
             if (planWeek === totalWeeks && !activeDowSet.has(dow)) {
               return { label, name: label, exercises: [], isRest: true, isClosed: false };
             }
