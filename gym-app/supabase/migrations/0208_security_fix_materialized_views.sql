@@ -41,6 +41,6 @@ AS $$
   WHERE gym_id = p_gym_id AND p_gym_id = public.current_gym_id();
 $$;
 
-GRANT EXECUTE ON FUNCTION get_gym_stats_daily TO authenticated;
-GRANT EXECUTE ON FUNCTION get_gym_member_summary TO authenticated;
-GRANT EXECUTE ON FUNCTION get_gym_exercise_popularity TO authenticated;
+GRANT EXECUTE ON FUNCTION get_gym_stats_daily(UUID, DATE, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_gym_member_summary(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_gym_exercise_popularity(UUID) TO authenticated;

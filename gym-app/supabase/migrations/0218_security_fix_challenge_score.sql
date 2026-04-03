@@ -1,5 +1,6 @@
 -- Security fix: Add bounds validation to increment_challenge_score
 -- Prevents users from inflating scores with arbitrarily large deltas
+DROP FUNCTION IF EXISTS public.increment_challenge_score(UUID, NUMERIC);
 CREATE OR REPLACE FUNCTION public.increment_challenge_score(p_challenge_id UUID, p_delta NUMERIC)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public

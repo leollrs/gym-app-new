@@ -239,6 +239,12 @@ $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Fix 5: Check-in deduplication — prevent multiple check-ins per day
+-- timestamptz::date is not IMMUTABLE (depends on timezone), so we use
+-- an IMMUTABLE wrapper that pins to UTC for index purposes.
 -- ═══════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION public.checkin_date(ts TIMESTAMPTZ)
+RETURNS DATE LANGUAGE sql IMMUTABLE PARALLEL SAFE
+AS $$ SELECT (ts AT TIME ZONE 'UTC')::date; $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS check_ins_one_per_day
-  ON check_ins (profile_id, (checked_in_at::date));
+  ON check_ins (profile_id, public.checkin_date(checked_in_at));
