@@ -472,7 +472,7 @@ const Workouts = () => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
       const [{ data: allGp }, { data: ob }, { data: latestWeight }] = await Promise.all([
-        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
         supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
@@ -557,17 +557,12 @@ const Workouts = () => {
   const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
 
-  // Start DOW of the program (e.g. Friday=5 if started on Friday)
-  const programStartDow = programActive ? new Date(generatedProgram.program_start).getDay() : 1;
-
-  // Build sets of DOWs that belong to week 1 (partial) and last week (partial)
-  // by looking at which routines are scheduled on which DOWs
-  const allScheduledDows = programActive
-    ? [...new Set(Object.values(workoutScheduleMap))].sort((a, b) => a - b)
-    : [];
-  const week1Dows = new Set(allScheduledDows.filter(d => d >= programStartDow));
-  const lastWeekDows = new Set(allScheduledDows.filter(d => d < programStartDow));
-  const hasWrappedDays = lastWeekDows.size > 0;
+  // Use schedule_map from generated_programs (authoritative), fall back to computed
+  const schedMap = generatedProgram?.schedule_map || null;
+  const programStartDow = schedMap?.start_dow ?? (programActive ? new Date(generatedProgram.program_start).getDay() : 1);
+  const week1DowSet = new Set(schedMap?.week1_dows ?? []);
+  const wrappedDowSet = new Set(schedMap?.wrapped_dows ?? []);
+  const hasWrappedDays = wrappedDowSet.size > 0;
 
   // Filter routines for a given week number, accounting for partial first/last weeks
   const getRoutinesForWeek = (weekNum) => {
@@ -584,20 +579,18 @@ const Workouts = () => {
       filtered = filtered.filter(r => {
         const dow = workoutScheduleMap[r.id];
         if (dow === undefined) return true;
-        if (weekNum === 1) {
-          // First week: only days from start day onward (e.g. Fri, Sat)
-          return week1Dows.has(dow);
-        } else if (weekNum === totalProgramWeeks) {
-          // Last week (extension): only wrapped days (e.g. Mon, Tue, Wed, Thu)
-          return lastWeekDows.has(dow);
-        }
+        if (weekNum === 1) return week1DowSet.has(dow);
+        if (weekNum === totalProgramWeeks) return wrappedDowSet.has(dow);
         return true;
       });
     }
 
+    // Sort by DOW, rotated from start day for proper visual order
     return filtered.sort((a, b) => {
-      const dayA = workoutScheduleMap[a.id] ?? 99;
-      const dayB = workoutScheduleMap[b.id] ?? 99;
+      const rawA = workoutScheduleMap[a.id] ?? 99;
+      const rawB = workoutScheduleMap[b.id] ?? 99;
+      const dayA = rawA >= programStartDow ? rawA - programStartDow : rawA + 7 - programStartDow;
+      const dayB = rawB >= programStartDow ? rawB - programStartDow : rawB + 7 - programStartDow;
       return dayA - dayB;
     });
   };
@@ -766,34 +759,49 @@ const Workouts = () => {
         .sort((a, b) => a - b);
       const fallbackPattern = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
 
-      // Get user's preferred training days that are NOT on closed gym days
+      // Get ALL user's preferred training days that are NOT on closed gym days
       const rawCandidates = userDbDays.length > 0 ? userDbDays : (fallbackPattern[firstWeek.length] || [1, 3, 5]);
       const openCandidates = rawCandidates.filter(d => !closedDays.has(d));
 
-      // If we don't have enough open days, fill from other open days
-      let weeklyTrainingDays = openCandidates.length >= firstWeek.length
-        ? openCandidates.slice(0, firstWeek.length)
-        : [...openCandidates];
-      if (weeklyTrainingDays.length < firstWeek.length) {
+      // If not enough open preferred days, fill from other open days
+      let allAvailableDays = [...openCandidates];
+      if (allAvailableDays.length < firstWeek.length) {
         const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !closedDays.has(d));
-        const used = new Set(weeklyTrainingDays);
+        const used = new Set(allAvailableDays);
         for (const d of allOpenDays) {
-          if (weeklyTrainingDays.length >= firstWeek.length) break;
-          if (!used.has(d)) { weeklyTrainingDays.push(d); used.add(d); }
+          if (allAvailableDays.length >= firstWeek.length) break;
+          if (!used.has(d)) { allAvailableDays.push(d); used.add(d); }
         }
-        weeklyTrainingDays.sort((a, b) => a - b);
+        allAvailableDays.sort((a, b) => a - b);
       }
 
-      // Chain from start date: find training days from today onward, then wrap
+      // CRITICAL: Rotate FIRST (chain from start date), THEN slice to N routines.
+      // This ensures mid-week starts pick the correct days.
+      // E.g. available=[1,2,3,4,5,6], startDow=5, 5 routines:
+      //   fromStart=[5,6], beforeStart=[1,2,3,4]
+      //   rotated=[5,6,1,2,3,4], sliced=[5,6,1,2,3]
+      //   → Fri,Sat,Mon,Tue,Wed (Saturday is NOT dropped)
       const startDow = startDate.getDay();
-      const sorted = [...weeklyTrainingDays].sort((a, b) => a - b);
+      const sorted = [...allAvailableDays].sort((a, b) => a - b);
       const fromStart = sorted.filter(d => d >= startDow);
       const beforeStart = sorted.filter(d => d < startDow);
-      // scheduleDays[0] = first workout day (today or next available), wraps into next week
-      let scheduleDays = [...fromStart, ...beforeStart];
-      const needsExtraWeek = beforeStart.length > 0;
+      const rotated = [...fromStart, ...beforeStart];
+      let scheduleDays = rotated.slice(0, firstWeek.length); // slice AFTER rotation
+
+      // Determine partial week info
+      const week1Dows = scheduleDays.filter(d => d >= startDow);
+      const wrappedDows = scheduleDays.filter(d => d < startDow);
+      const needsExtraWeek = wrappedDows.length > 0;
       const baseDuration = selectedTemplate.durationWeeks || 6;
       const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
+
+      // Build schedule_map for display logic
+      const scheduleMapData = {
+        routine_day_map: scheduleDays.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
+        start_dow: startDow,
+        week1_dows: week1Dows,
+        wrapped_dows: wrappedDows,
+      };
 
       const expiresAt = new Date(startDate);
       expiresAt.setDate(expiresAt.getDate() + totalDurationWeeks * 7);
@@ -806,6 +814,7 @@ const Workouts = () => {
         expires_at: expiresAt.toISOString(),
         routines_a_count: selectedTemplate.daysPerWeek,
         duration_weeks: totalDurationWeeks,
+        schedule_map: scheduleMapData,
       };
 
       let insertRes = await supabase.from('generated_programs').insert({
@@ -904,7 +913,7 @@ const Workouts = () => {
 
       // 4. Refresh state
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
       setGeneratedProgram(programs[0] || null);
@@ -1385,7 +1394,7 @@ const Workouts = () => {
                       } else {
                         await supabase.from('generated_programs').delete().eq('id', prog.id);
                       }
-                      const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+                      const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
                       const programs = allGp || [];
                       setAllPrograms(programs);
                       setGeneratedProgram(programs[0] || null);
@@ -1678,7 +1687,7 @@ const Workouts = () => {
                     await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', prog.id);
                     setSelectedMyProgram(null);
                     // Refresh programs
-                    const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+                    const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
                     const programs = allGp || [];
                     setAllPrograms(programs);
                     setGeneratedProgram(programs[0] || null);
@@ -1894,7 +1903,7 @@ const Workouts = () => {
         onClose={() => setShowGenerator(false)}
         onGenerated={() => {
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);

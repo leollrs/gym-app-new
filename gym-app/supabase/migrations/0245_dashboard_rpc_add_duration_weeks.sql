@@ -74,7 +74,7 @@ BEGIN
     'program', (
       SELECT row_to_json(p)
         FROM (
-          SELECT id, program_start, split_type, expires_at, routines_a_count, duration_weeks
+          SELECT id, program_start, split_type, expires_at, routines_a_count, duration_weeks, schedule_map
             FROM generated_programs
            WHERE profile_id = _uid
              AND expires_at > NOW()
