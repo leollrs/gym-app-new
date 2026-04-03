@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
   Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle, CalendarCheck,
-  Activity,
+  Activity, ArrowLeftRight,
 } from 'lucide-react';
 import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek } from 'date-fns';
@@ -588,9 +588,21 @@ const Dashboard = () => {
     : [];
 
   const liftCount = selectedRoutineExercises.length;
+  // Estimate time: use last session if available, otherwise calculate from sets/reps/rest
   const estimatedMin = lastSessionForRoutine?.duration_seconds
     ? Math.round(lastSessionForRoutine.duration_seconds / 60)
-    : liftCount * 4;
+    : (() => {
+        // Per exercise: (sets × reps × 4s) + (sets × rest) + 60s setup
+        let totalSec = 0;
+        for (const ex of selectedRoutineExercises) {
+          const sets = ex.target_sets || 3;
+          const repsStr = String(ex.target_reps || '10');
+          const reps = parseInt(repsStr) || 10;
+          const rest = ex.rest_seconds || 90;
+          totalSec += sets * reps * 4 + (sets - 1) * rest + 60;
+        }
+        return Math.max(Math.round(totalSec / 60), liftCount * 6);
+      })();
   const estimatedCal = Math.round(estimatedMin * 5.2);
 
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -670,15 +682,6 @@ const Dashboard = () => {
             >
               <QrCode size={14} className="text-[#D4AF37]" />
               <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.qr')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCardioLog(true)}
-              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              aria-label="Log Cardio"
-            >
-              <Activity size={14} className="text-[#10B981]" />
-              <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.cardio', 'Cardio')}</span>
             </button>
             <Link
               to="/messages"
@@ -780,24 +783,24 @@ const Dashboard = () => {
                   </div>
 
                   {selectedRoutine && !isGymClosedToday ? (
-                    <div className="flex items-center gap-1 mb-1">
-                      <button
-                        type="button"
-                        onClick={() => handleAssignDay(selectedDate.getDay())}
-                        className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                        style={{ color: 'var(--color-text-subtle)' }}
-                        aria-label="Change workout"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
+                    <div className="flex items-center gap-1.5 mb-1">
                       <button
                         type="button"
                         onClick={() => navigate(`/workouts/${selectedRoutine.id}/edit?from=/`)}
-                        className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                        style={{ color: 'var(--color-text-subtle)' }}
-                        aria-label="Edit workout"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-semibold active:scale-[0.95] transition-transform"
+                        style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
                       >
-                        <Pencil size={14} />
+                        <Pencil size={11} />
+                        {t('dashboard.edit', 'Edit')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAssignDay(selectedDate.getDay())}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-semibold active:scale-[0.95] transition-transform"
+                        style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                      >
+                        <ArrowLeftRight size={11} />
+                        {t('dashboard.swap', 'Swap')}
                       </button>
                     </div>
                   ) : null}
@@ -809,7 +812,7 @@ const Dashboard = () => {
                  ════════════════════════════════════════════════ */}
               {selectedRoutine && !isGymClosedToday && (
                 <section className="mb-5">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <span className="text-[11px] flex items-center gap-1.5 bg-white/[0.04] rounded-lg px-2.5 py-1.5" style={{ color: 'var(--color-text-subtle)' }}>
                       <Dumbbell size={11} style={{ color: 'var(--color-text-subtle)' }} />
                       {liftCount} {t('dashboard.exercises')}
@@ -820,6 +823,15 @@ const Dashboard = () => {
                     <span className="text-[11px] bg-white/[0.04] rounded-lg px-2.5 py-1.5" style={{ color: 'var(--color-text-subtle)' }}>
                       ~{estimatedCal} {t('dashboard.cal')}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCardioLog(true)}
+                      className="ml-auto text-[11px] flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 active:scale-[0.95] transition-transform"
+                      style={{ backgroundColor: 'rgba(16,185,129,0.08)', color: '#10B981' }}
+                    >
+                      <Activity size={11} />
+                      {t('dashboard.addCardio', '+ Cardio')}
+                    </button>
                   </div>
                 </section>
               )}
