@@ -593,9 +593,12 @@ const Workouts = () => {
   const getRoutinesForWeek = (weekNum) => {
     if (!programActive) return [];
     const weekVariant = weekNum % 2 === 1;
+    // Check if this program uses A/B alternation at all
+    const hasAB = routines.some(r => r.name.startsWith('Auto:') && r.name.endsWith(' B'));
     const autoRoutines = routines.filter(r => {
       if (!r.name.startsWith('Auto:')) return false;
-      if (weekVariant) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
+      if (!hasAB) return true; // no A/B variants — include all Auto: routines
+      if (weekVariant) return r.name.endsWith(' A');
       return r.name.endsWith(' B');
     });
 
@@ -1502,28 +1505,90 @@ const Workouts = () => {
           <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.programs')}</h2>
         </div>
 
-        {/* Category filter chips */}
+        {/* Category filter chips — Gym Exclusive added */}
         <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-5 -mx-1 px-1">
-          {PROGRAM_CATEGORIES.map(cat => (
+          {['Gym Exclusive', ...PROGRAM_CATEGORIES].map(cat => (
             <button
               key={cat}
               onClick={() => setProgramCategoryFilter(cat)}
               className={`shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-medium transition-all ${
-                programCategoryFilter === cat ? '' : ''
+                cat === 'Gym Exclusive' ? 'border' : ''
               }`}
               style={programCategoryFilter === cat
-                ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }
-                : { color: 'var(--color-text-subtle)' }
+                ? cat === 'Gym Exclusive'
+                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)' }
+                  : { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }
+                : cat === 'Gym Exclusive'
+                  ? { color: 'var(--color-accent)', borderColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }
+                  : { color: 'var(--color-text-subtle)' }
               }
             >
-              {t(`workouts.programCategories.${cat}`)}
+              {cat === 'Gym Exclusive' ? t('workouts.gymExclusive', 'Gym Exclusive') : t(`workouts.programCategories.${cat}`)}
             </button>
           ))}
         </div>
 
+        {/* Gym Exclusive programs section */}
+        {programCategoryFilter !== 'Gym Exclusive' && gymPrograms.length > 0 && (
+          <div className="mb-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-accent)' }}>
+              {t('workouts.gymExclusive', 'Gym Exclusive')}
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {gymPrograms.slice(0, 2).map(prog => (
+                <button
+                  key={prog.id}
+                  onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
+                  className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
+                  style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
+                  <div className="absolute top-3 left-3 z-10">
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }}>
+                      {t('workouts.gymExclusive', 'Gym Exclusive')}
+                    </span>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
+                    <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {prog.duration_weeks || 6} {t('workouts.weeks', 'weeks')} · {prog.weeks?.['1']?.length || '?'} {t('workouts.daysPerWeekShort', 'days/wk')}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Program cards grid */}
         <div className="grid grid-cols-2 gap-4">
           {(() => {
+            // Gym Exclusive filter shows only gym programs
+            if (programCategoryFilter === 'Gym Exclusive') {
+              return gymPrograms.map(prog => (
+                <button
+                  key={prog.id}
+                  onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
+                  className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
+                  style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                >
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
+                  <div className="absolute top-3 left-3 z-10">
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }}>
+                      {t('workouts.gymExclusive', 'Gym Exclusive')}
+                    </span>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 p-3.5 z-10">
+                    <p className="text-[14px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>{prog.name}</p>
+                    {prog.description && <p className="text-[10px] mt-1 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>{prog.description}</p>}
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                      {prog.duration_weeks || 6} {t('workouts.weeks', 'weeks')} · {prog.weeks?.['1']?.length || '?'} {t('workouts.daysPerWeekShort', 'days/wk')}
+                    </p>
+                  </div>
+                </button>
+              ));
+            }
+
             const filtered = programTemplates
               .filter(p => programCategoryFilter === 'All' || p.category === programCategoryFilter);
             // Score and sort: recommended first, then by category
@@ -1538,7 +1603,6 @@ const Workouts = () => {
               ...item,
               isRecommended: item.score >= 70 && (recommendedCount++ < 3),
             }));
-            // Reset counter (it was used inline)
             return withBadge.map(({ tmpl, isRecommended }) => (
               <button
                 key={tmpl.id}
