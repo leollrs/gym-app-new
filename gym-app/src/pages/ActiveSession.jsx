@@ -1622,17 +1622,12 @@ const ActiveSession = () => {
 
   // ── Skip/remove exercise from current session ──────────────────────────────
   const handleSkipExercise = () => {
-    if (exercises.length <= 1) {
-      // Last exercise — just mark workout complete
+    // Skip just advances to the next exercise without removing it
+    if (currentExerciseIndex < exercises.length - 1) {
+      setCurrentExerciseIndex(currentExerciseIndex + 1);
+    } else {
+      // Last exercise — mark workout complete
       setWorkoutComplete(true);
-      return;
-    }
-    const removedIndex = currentExerciseIndex;
-    setExercises(prev => prev.filter((_, idx) => idx !== removedIndex));
-    // Adjust current index: stay at same index (next exercise slides in),
-    // unless we were at the end, in which case go back one
-    if (removedIndex >= exercises.length - 1) {
-      setCurrentExerciseIndex(Math.max(0, removedIndex - 1));
     }
   };
 

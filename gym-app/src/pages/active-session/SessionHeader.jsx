@@ -143,25 +143,27 @@ const SessionHeader = ({
         </div>
       )}
 
-      {/* ── Exercise nav dots ──────────────────────────────────── */}
-      <div className="flex items-center justify-center gap-1.5 py-3 px-4">
-        {exercises.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onSetCurrentExerciseIndex(i)}
-            className="flex items-center justify-center min-w-[44px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded"
-            aria-label={`Exercise ${i + 1}`}
-          >
-            <span className={`rounded-full transition-all duration-300 block ${
-              i === currentExerciseIndex
-                ? 'w-6 h-2 bg-[#D4AF37]'
-                : i < currentExerciseIndex
-                ? 'w-2 h-2 bg-[#D4AF37]/40'
-                : 'w-2 h-2 bg-white/[0.10]'
-            }`} />
-          </button>
-        ))}
+      {/* ── Exercise nav dots — scrollable when many exercises ─── */}
+      <div className="overflow-x-auto scrollbar-none py-2 px-4">
+        <div className="flex items-center justify-center gap-1" style={{ minWidth: 'min-content' }}>
+          {exercises.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSetCurrentExerciseIndex(i)}
+              className="flex items-center justify-center p-1.5 focus:outline-none rounded"
+              aria-label={`Exercise ${i + 1}`}
+            >
+              <span className={`rounded-full transition-all duration-300 block ${
+                i === currentExerciseIndex
+                  ? 'h-2 bg-[#D4AF37]'
+                  : i < currentExerciseIndex
+                  ? 'w-2 h-2 bg-[#D4AF37]/40'
+                  : 'w-2 h-2 bg-white/[0.10]'
+              }`} style={i === currentExerciseIndex ? { width: exercises.length > 10 ? 12 : 24 } : undefined} />
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );
