@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft } from 'lucide-react';
+import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -319,6 +319,7 @@ const ActiveSession = () => {
   const currentRestDurationRef = useRef(restoredRest.current?.duration ?? 90);
 
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [workoutComplete, setWorkoutComplete] = useState(false);
   const [saving, setSaving]                   = useState(false);
   const [saveError, setSaveError]             = useState('');
 
@@ -530,6 +531,11 @@ const ActiveSession = () => {
     setShowAddExercise(false);
     setExerciseSearch('');
     setSelectedMuscle('');
+    setWorkoutComplete(false);
+    // Navigate to the newly added exercise
+    if (exercises.length > 0) {
+      setCurrentExerciseIndex(exercises.length); // will be the new last index after state update
+    }
   };
 
   // ── Load routine + prev session + PRs ──────────────────────────────────────
@@ -1604,13 +1610,29 @@ const ActiveSession = () => {
         if (lastGroupIdx < exercises.length - 1) {
           setCurrentExerciseIndex(lastGroupIdx + 1);
         } else {
-          setShowFinishModal(true);
+          setWorkoutComplete(true);
         }
       } else {
         setCurrentExerciseIndex(currentExerciseIndex + 1);
       }
     } else {
-      setShowFinishModal(true);
+      setWorkoutComplete(true);
+    }
+  };
+
+  // ── Skip/remove exercise from current session ──────────────────────────────
+  const handleSkipExercise = () => {
+    if (exercises.length <= 1) {
+      // Last exercise — just mark workout complete
+      setWorkoutComplete(true);
+      return;
+    }
+    const removedIndex = currentExerciseIndex;
+    setExercises(prev => prev.filter((_, idx) => idx !== removedIndex));
+    // Adjust current index: stay at same index (next exercise slides in),
+    // unless we were at the end, in which case go back one
+    if (removedIndex >= exercises.length - 1) {
+      setCurrentExerciseIndex(Math.max(0, removedIndex - 1));
     }
   };
 
@@ -1901,6 +1923,19 @@ const ActiveSession = () => {
               {t('activeSession.addExercise')}
             </button>
           </div>
+        ) : workoutComplete ? (
+          /* ── Workout complete — all exercises done ── */
+          <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center mb-4">
+              <Trophy size={28} className="text-[#10B981]" />
+            </div>
+            <p className="text-[18px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              {t('activeSession.workoutCompleteTitle', 'Workout Complete!')}
+            </p>
+            <p className="text-[13px]" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('activeSession.workoutCompleteSubtitle', 'Add more exercises or finish your workout')}
+            </p>
+          </div>
         ) : currentExercise ? (() => {
           // ── Superset/Circuit context ──
           const groupId = currentExercise.groupId;
@@ -1992,6 +2027,7 @@ const ActiveSession = () => {
                   onDuplicateLastSet={handleDuplicateLastSet}
                   onFillSuggestion={handleFillSuggestion}
                   onSwap={currentSets.some(s => s.completed) ? undefined : () => { setSwapSearch(''); setSwapSelectedReason(null); setShowSwapModal(true); }}
+                  onSkip={handleSkipExercise}
                   isPRCheck={isPR}
                   livePRs={livePRs.current}
                   nextInGroup={nextInGroup}
@@ -2385,29 +2421,58 @@ const ActiveSession = () => {
               )}
             </div>
           </div>
+        ) : workoutComplete ? (
+          /* Workout complete — user chooses to add more or finish */
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => setShowAddExercise(true)}
+              className="flex-1 flex items-center justify-center gap-2 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-white/[0.06] border border-white/[0.06] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              <Plus size={18} />
+              {t('activeSession.addExercise')}
+            </button>
+            <button
+              onClick={() => setShowFinishModal(true)}
+              className="flex-1 font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#10B981] text-white shadow-[0_4px_24px_rgba(16,185,129,0.3)] focus:ring-2 focus:ring-[#10B981] focus:outline-none"
+            >
+              {t('activeSession.finishWorkoutButton')} →
+            </button>
+          </div>
         ) : (
           /* Normal mode */
-          allSetsComplete ? (
+          <div className="flex gap-2.5">
             <button
-              onClick={handleNext}
-              className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              onClick={() => setShowAddExercise(true)}
+              className="w-14 h-14 flex items-center justify-center rounded-2xl bg-white/[0.06] border border-white/[0.06] text-[#D4AF37] active:scale-[0.95] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label={t('activeSession.addExercise')}
             >
-              {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
+              <Plus size={22} />
             </button>
-          ) : (
-            <button
-              onClick={handleCompleteSet}
-              disabled={!canComplete}
-              className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
-                canComplete
-                  ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
-                  : 'bg-white/[0.06] cursor-not-allowed'
-              }`}
-              style={!canComplete ? { color: 'var(--color-text-muted)' } : undefined}
-            >
-              {t('activeSession.completeSet')} →
-            </button>
-          )
+            <div className="flex-1">
+              {allSetsComplete ? (
+                <button
+                  onClick={handleNext}
+                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                >
+                  {hasNextExercise ? `${t('activeSession.nextExerciseButton')} →` : `${t('activeSession.finishWorkoutButton')} →`}
+                </button>
+              ) : (
+                <button
+                  onClick={handleCompleteSet}
+                  disabled={!canComplete}
+                  className={`w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
+                    canComplete
+                      ? 'bg-[#D4AF37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.3)]'
+                      : 'bg-white/[0.06] cursor-not-allowed'
+                  }`}
+                  style={!canComplete ? { color: 'var(--color-text-muted)' } : undefined}
+                >
+                  {t('activeSession.completeSet')} →
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

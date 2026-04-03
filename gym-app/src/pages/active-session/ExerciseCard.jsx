@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { CheckCircle, Trophy, Plus, Clock, Play, X, MessageSquare, ArrowLeftRight } from 'lucide-react';
+import { CheckCircle, Trophy, Plus, Clock, Play, X, MessageSquare, ArrowLeftRight, SkipForward } from 'lucide-react';
 import { exercises as exerciseLibrary } from '../../data/exercises';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -104,7 +104,7 @@ const SetNoteInput = ({ value, onChange, onClose, t }) => (
 );
 
 /* ── Exercise Info Card (video hidden by default) ─────────────── */
-const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap }) => {
+const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, onSkip }) => {
   const [showVideo, setShowVideo] = useState(false);
   const resolvedSrc = showVideo ? resolveVideoSrc(videoUrl) : null;
 
@@ -180,6 +180,16 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap }) =>
               <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.swap') ?? 'Swap'}</span>
             </button>
           )}
+          {onSkip && (
+            <button
+              onClick={onSkip}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-red-500/30 transition-colors active:scale-95"
+              aria-label={t?.('activeSession.skipExercise') ?? 'Skip exercise'}
+            >
+              <SkipForward size={13} style={{ color: 'var(--color-text-muted)' }} />
+              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t?.('activeSession.skipExercise') ?? 'Skip'}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -197,6 +207,7 @@ const ExerciseCard = ({
   onDuplicateLastSet,
   onFillSuggestion,
   onSwap,
+  onSkip,
   // Accept but don't use — keeps parent compat
   showPlateCalc, onTogglePlateCalc, showHeatmap, onToggleHeatmap,
   workedRegions, completedSetsCount, expandedNotesSet, onSetExpandedNotesSet,
@@ -277,6 +288,7 @@ const ExerciseCard = ({
         knownPR={knownPR}
         t={t}
         onSwap={onSwap}
+        onSkip={onSkip}
       />
 
       {/* ── MAIN INSTRUCTION ──────────────────────────────────── */}

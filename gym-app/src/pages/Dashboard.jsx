@@ -135,6 +135,7 @@ const Dashboard = () => {
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [todaysSessions, setTodaysSessions] = useState([]);
+  const [todayCardioSessions, setTodayCardioSessions] = useState([]);
   const [todaysSessionsLoaded, setTodaysSessionsLoaded] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const [localSkipped, setLocalSkipped] = useState(false);
@@ -275,7 +276,7 @@ const Dashboard = () => {
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
       if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
-      // Start RPC + class bookings in parallel (gymConfig is from AuthContext, available immediately)
+      // Start RPC + class bookings + cardio sessions in parallel (gymConfig is from AuthContext, available immediately)
       const rpcPromise = supabase.rpc('get_dashboard_data');
       const classPromise = gymConfig?.classesEnabled
         ? supabase
@@ -285,8 +286,15 @@ const Dashboard = () => {
             .eq('booking_date', new Date().toISOString().split('T')[0])
             .in('status', ['confirmed', 'attended'])
         : Promise.resolve({ data: [] });
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const cardioPromise = supabase
+        .from('cardio_sessions')
+        .select('id, cardio_type, duration_seconds, calories_burned, distance_km, started_at')
+        .eq('profile_id', user.id)
+        .gte('started_at', todayStart.toISOString());
 
-      const [{ data: rpcData, error: rpcError }, { data: classBookings }] = await Promise.all([rpcPromise, classPromise]);
+      const [{ data: rpcData, error: rpcError }, { data: classBookings }, { data: cardioData }] = await Promise.all([rpcPromise, classPromise, cardioPromise]);
 
       if (rpcError) {
         console.error('get_dashboard_data RPC error:', rpcError);
@@ -297,8 +305,9 @@ const Dashboard = () => {
         return;
       }
 
-      // Class bookings already fetched in parallel above
+      // Class bookings + cardio sessions already fetched in parallel above
       if (!cancelled) setTodayClassBookings(classBookings || []);
+      if (!cancelled) setTodayCardioSessions(cardioData || []);
 
       const allSessions = rpcData?.sessions || [];
       const fetchedRoutines = rpcData?.routines || [];
@@ -624,6 +633,7 @@ const Dashboard = () => {
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const selectedDayName = t(`days.${DAY_KEYS[selectedDate.getDay()]}`, { ns: 'common' });
   const isToday = isSameDay(selectedDate, new Date());
+  const hasTrainedToday = todaysSessions.length > 0 || todayCardioSessions.length > 0;
 
   const isGymClosedToday = gymClosedDays.has(selectedDate.getDay());
 
@@ -1014,6 +1024,42 @@ const Dashboard = () => {
                       );
                     })()}
 
+                    {/* Cardio sessions completed today */}
+                    {todayCardioSessions.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-[10px] font-semibold text-[#10B981] uppercase tracking-[0.12em] mb-2">
+                          {t('dashboard.cardioToday', 'Cardio')}
+                        </p>
+                        {todayCardioSessions.map(cs => {
+                          const mins = Math.round((cs.duration_seconds || 0) / 60);
+                          const cals = Math.round(cs.calories_burned || 0);
+                          const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
+                          return (
+                            <div
+                              key={cs.id}
+                              className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                                <Activity size={13} className="text-[#10B981]" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                                <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                  <span>{mins}m</span>
+                                  {cals > 0 && (
+                                    <>
+                                      <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                      <span>{cals} kcal</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* In-progress workouts (drafts) — show resume */}
                     {allActiveDrafts.length > 0 && (
                       <div className="mb-3">
@@ -1054,8 +1100,8 @@ const Dashboard = () => {
                       {t('dashboard.doAnotherWorkout')}
                     </button>
                   </div>
-                ) : isToday && todaysSessions.length > 0 && selectedRoutine && !todaysSessions.some(s => s.routine_id === selectedRoutine.id) && !(activeSession && activeSession.routineId === selectedRoutine.id) && !skippedToday ? (
-                  /* Trained today but with a different routine — scheduled one still pending */
+                ) : isToday && hasTrainedToday && selectedRoutine && !todaysSessions.some(s => s.routine_id === selectedRoutine.id) && !(activeSession && activeSession.routineId === selectedRoutine.id) && !skippedToday ? (
+                  /* Trained today (workout or cardio) but scheduled routine still pending */
                   <div className="w-full rounded-2xl bg-gradient-to-br from-[#D4AF37]/8 to-[#D4AF37]/[0.01] border border-[#D4AF37]/15 p-6">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
@@ -1082,7 +1128,7 @@ const Dashboard = () => {
                       </button>
                     </div>
                   </div>
-                ) : isToday && skippedToday && todaysSessions.length > 0 ? (
+                ) : isToday && skippedToday && hasTrainedToday ? (
                   /* User dismissed the "already trained" banner — show completed state */
                   <div className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/8 to-[#10B981]/[0.01] border border-[#10B981]/15 p-5">
                     <div className="flex items-center gap-2 mb-3">
@@ -1107,6 +1153,30 @@ const Dashboard = () => {
                           </div>
                           <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
                         </Link>
+                      );
+                    })}
+                    {todayCardioSessions.map(cs => {
+                      const mins = Math.round((cs.duration_seconds || 0) / 60);
+                      const cals = Math.round(cs.calories_burned || 0);
+                      const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
+                      return (
+                        <div key={cs.id} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left">
+                          <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                            <Activity size={13} className="text-[#10B981]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                              <span>{mins}m</span>
+                              {cals > 0 && (
+                                <>
+                                  <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                  <span>{cals} kcal</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       );
                     })}
                     <button onClick={() => navigate('/workouts')}
@@ -1187,6 +1257,43 @@ const Dashboard = () => {
                     activeSetsTotal={activeSetsTotal}
                     activeElapsedTime={activeSession?.elapsedTime}
                   />
+                ) : isToday && todayCardioSessions.length > 0 ? (
+                  /* Rest day but cardio was done — show cardio completed card */
+                  <div className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/8 to-[#10B981]/[0.01] border border-[#10B981]/15 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <CheckCircle2 size={16} className="text-[#10B981]" />
+                      <p className="text-[13px] font-semibold text-[#10B981]">{t('dashboard.youveTrainedToday')}</p>
+                    </div>
+                    {todayCardioSessions.map(cs => {
+                      const mins = Math.round((cs.duration_seconds || 0) / 60);
+                      const cals = Math.round(cs.calories_burned || 0);
+                      const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
+                      return (
+                        <div key={cs.id} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left">
+                          <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                            <Activity size={13} className="text-[#10B981]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                              <span>{mins}m</span>
+                              {cals > 0 && (
+                                <>
+                                  <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                  <span>{cals} kcal</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <button onClick={() => navigate('/workouts')}
+                      className="w-full mt-2 py-3 rounded-xl text-[12px] font-semibold bg-white/[0.04] hover:bg-white/[0.06] transition-colors"
+                      style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('dashboard.doAnotherWorkout')}
+                    </button>
+                  </div>
                 ) : hasRoutines ? (
                   <div className="w-full rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] p-5 text-center">
                     <p className="text-[32px] mb-3">😴</p>
