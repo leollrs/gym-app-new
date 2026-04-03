@@ -5882,8 +5882,21 @@
       "jump_rope": "Saltar Cuerda",
       "swimming": "Natacion",
       "walking": "Caminar",
-      "hiit": "HIIT"
+      "hiit": "HIIT",
+      "basketball": "Baloncesto",
+      "soccer": "Fútbol",
+      "tennis": "Tenis",
+      "boxing": "Boxeo",
+      "dance": "Baile",
+      "yoga": "Yoga",
+      "pilates": "Pilates",
+      "martial_arts": "Artes Marciales",
+      "skiing": "Esquí",
+      "hiking": "Senderismo",
+      "other": "Otro"
     },
+    "showMore": "Más actividades",
+    "showLess": "Ver menos",
     "intensities": {
       "easy": "Facil",
       "moderate": "Moderado",

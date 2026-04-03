@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  X, Minus, Plus,
+  X, Minus, Plus, ChevronDown,
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Zap, Droplets, PersonStanding, Flame,
+  Swords, CircleDashed, Music, Mountain, Snowflake, Heart,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,19 +15,33 @@ import useFocusTrap from '../hooks/useFocusTrap';
 // Intensity multipliers applied on top of the base MET estimate
 const INTENSITY_MULT = { easy: 0.75, moderate: 1.0, hard: 1.25, max: 1.5 };
 
-const CARDIO_TYPES = [
+const CARDIO_MAIN = [
   { key: 'running',       icon: Footprints,     color: '#10B981' },
   { key: 'cycling',       icon: Bike,           color: '#3B82F6' },
   { key: 'rowing',        icon: Waves,          color: '#06B6D4' },
   { key: 'elliptical',    icon: CircleDot,      color: '#8B5CF6' },
-  { key: 'stair_climber', icon: TrendingUp,      color: '#F59E0B' },
+  { key: 'stair_climber', icon: TrendingUp,     color: '#F59E0B' },
   { key: 'jump_rope',     icon: Zap,            color: '#EF4444' },
   { key: 'swimming',      icon: Droplets,       color: '#0EA5E9' },
   { key: 'walking',       icon: PersonStanding, color: '#22C55E' },
   { key: 'hiit',          icon: Flame,          color: '#F97316' },
 ];
 
-const DISTANCE_TYPES = new Set(['running', 'cycling', 'rowing', 'swimming', 'walking']);
+const CARDIO_MORE = [
+  { key: 'basketball',    icon: CircleDashed,   color: '#F97316' },
+  { key: 'soccer',        icon: CircleDashed,   color: '#22C55E' },
+  { key: 'tennis',        icon: CircleDashed,   color: '#FBBF24' },
+  { key: 'boxing',        icon: Swords,         color: '#EF4444' },
+  { key: 'dance',         icon: Music,          color: '#EC4899' },
+  { key: 'yoga',          icon: Heart,          color: '#8B5CF6' },
+  { key: 'pilates',       icon: Heart,          color: '#06B6D4' },
+  { key: 'martial_arts',  icon: Swords,         color: '#DC2626' },
+  { key: 'skiing',        icon: Snowflake,      color: '#60A5FA' },
+  { key: 'hiking',        icon: Mountain,       color: '#10B981' },
+  { key: 'other',         icon: Flame,          color: '#6B7280' },
+];
+
+const DISTANCE_TYPES = new Set(['running', 'cycling', 'rowing', 'swimming', 'walking', 'hiking']);
 
 const INTENSITIES = ['easy', 'moderate', 'hard', 'max'];
 const INTENSITY_COLORS = {
@@ -48,13 +63,18 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
   const [distanceUnit, setDistanceUnit] = useState('km');
   const [intensity, setIntensity] = useState('moderate');
   const [submitting, setSubmitting] = useState(false);
+  const [showMoreTypes, setShowMoreTypes] = useState(false);
 
   // Body weight for calorie estimation (from profile or default 165lbs)
   const bodyWeightLbs = profile?.weight_lbs
     ?? (profile?.weight_kg ? profile.weight_kg * 2.20462 : 165);
 
-  const baseCal = estimateCardioCalories(cardioType, duration * 60, bodyWeightLbs);
-  const estimatedCalories = Math.round(baseCal * (INTENSITY_MULT[intensity] ?? 1));
+  // Distance in km for calorie calc
+  const distanceKm = distance ? (distanceUnit === 'mi' ? parseFloat(distance) * 1.60934 : parseFloat(distance)) : null;
+
+  // Use distance-based calculation when distance is provided (more accurate)
+  const baseCal = estimateCardioCalories(cardioType, duration * 60, bodyWeightLbs, distanceKm);
+  const estimatedCalories = distanceKm ? baseCal : Math.round(baseCal * (INTENSITY_MULT[intensity] ?? 1));
 
   const showDistance = DISTANCE_TYPES.has(cardioType);
 
@@ -147,7 +167,7 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
             {t('cardio.activity')}
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {CARDIO_TYPES.map(ct => {
+            {[...CARDIO_MAIN, ...(showMoreTypes ? CARDIO_MORE : [])].map(ct => {
               const Icon = ct.icon;
               const selected = cardioType === ct.key;
               return (
@@ -170,12 +190,21 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
                     className="text-[11px] font-semibold leading-tight text-center"
                     style={{ color: selected ? ct.color : 'var(--color-text-subtle)' }}
                   >
-                    {t(`cardio.types.${ct.key}`)}
+                    {t(`cardio.types.${ct.key}`, ct.key.replace(/_/g, ' '))}
                   </span>
                 </button>
               );
             })}
           </div>
+          <button
+            type="button"
+            onClick={() => setShowMoreTypes(s => !s)}
+            className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 text-[11px] font-medium"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <ChevronDown size={12} className={`transition-transform ${showMoreTypes ? 'rotate-180' : ''}`} />
+            {showMoreTypes ? t('cardio.showLess', 'Show less') : t('cardio.showMore', 'More activities')}
+          </button>
         </div>
 
         {/* ── Duration ───────────────────────────────────── */}

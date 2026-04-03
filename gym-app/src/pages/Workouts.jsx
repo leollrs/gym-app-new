@@ -255,7 +255,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
         <Link
           to={`/session/${routineId}`}
           className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
-          style={{ backgroundColor: '#D4AF37', color: '#000000' }}
+          style={{ backgroundColor: 'var(--color-accent)', color: '#000000' }}
         >
           {t('workouts.startWorkout')}
         </Link>
@@ -1190,7 +1190,7 @@ const Workouts = () => {
                               <div className="flex items-center gap-2">
                                 <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</p>
                                 {dayLabel && (
-                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${isToday ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : ''}`} style={!isToday ? { color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' } : undefined}>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase`} style={isToday ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' } : { color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}>
                                     {dayLabel}{isToday ? ` - ${t('workouts.today', 'Today')}` : ''}
                                   </span>
                                 )}

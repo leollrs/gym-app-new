@@ -5882,8 +5882,21 @@
       "jump_rope": "Jump Rope",
       "swimming": "Swimming",
       "walking": "Walking",
-      "hiit": "HIIT"
+      "hiit": "HIIT",
+      "basketball": "Basketball",
+      "soccer": "Soccer",
+      "tennis": "Tennis",
+      "boxing": "Boxing",
+      "dance": "Dance",
+      "yoga": "Yoga",
+      "pilates": "Pilates",
+      "martial_arts": "Martial Arts",
+      "skiing": "Skiing",
+      "hiking": "Hiking",
+      "other": "Other"
     },
+    "showMore": "More activities",
+    "showLess": "Show less",
     "intensities": {
       "easy": "Easy",
       "moderate": "Moderate",

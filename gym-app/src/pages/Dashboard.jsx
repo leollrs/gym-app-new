@@ -588,21 +588,19 @@ const Dashboard = () => {
     : [];
 
   const liftCount = selectedRoutineExercises.length;
-  // Estimate time: use last session if available, otherwise calculate from sets/reps/rest
-  const estimatedMin = lastSessionForRoutine?.duration_seconds
-    ? Math.round(lastSessionForRoutine.duration_seconds / 60)
-    : (() => {
-        // Per exercise: (sets × reps × 4s) + (sets × rest) + 60s setup
-        let totalSec = 0;
-        for (const ex of selectedRoutineExercises) {
-          const sets = ex.target_sets || 3;
-          const repsStr = String(ex.target_reps || '10');
-          const reps = parseInt(repsStr) || 10;
-          const rest = ex.rest_seconds || 90;
-          totalSec += sets * reps * 4 + (sets - 1) * rest + 60;
-        }
-        return Math.max(Math.round(totalSec / 60), liftCount * 6);
-      })();
+  // Always calculate from routine exercise data (sets × reps × rest)
+  const estimatedMin = (() => {
+    if (liftCount === 0) return 0;
+    let totalSec = 0;
+    for (const ex of selectedRoutineExercises) {
+      const sets = ex.target_sets || 3;
+      const repsStr = String(ex.target_reps || '10');
+      const reps = parseInt(repsStr) || 10;
+      const rest = ex.rest_seconds || 90;
+      totalSec += sets * reps * 4 + (sets - 1) * rest + 60;
+    }
+    return Math.max(Math.round(totalSec / 60), liftCount * 6);
+  })();
   const estimatedCal = Math.round(estimatedMin * 5.2);
 
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
