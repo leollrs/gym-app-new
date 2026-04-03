@@ -557,10 +557,17 @@ const Workouts = () => {
   const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
 
-  // Start DOW of the program (e.g. Thursday=4 if started on Thursday)
-  const programStartDow = programActive ? new Date(generatedProgram.program_start).getDay() : 0;
-  // Whether the program wraps (mid-week start pushed days into an extra week)
-  const programWraps = programActive && totalProgramWeeks > (generatedProgram?.duration_weeks ? totalProgramWeeks - 1 : 5);
+  // Start DOW of the program (e.g. Friday=5 if started on Friday)
+  const programStartDow = programActive ? new Date(generatedProgram.program_start).getDay() : 1;
+
+  // Build sets of DOWs that belong to week 1 (partial) and last week (partial)
+  // by looking at which routines are scheduled on which DOWs
+  const allScheduledDows = programActive
+    ? [...new Set(Object.values(workoutScheduleMap))].sort((a, b) => a - b)
+    : [];
+  const week1Dows = new Set(allScheduledDows.filter(d => d >= programStartDow));
+  const lastWeekDows = new Set(allScheduledDows.filter(d => d < programStartDow));
+  const hasWrappedDays = lastWeekDows.size > 0;
 
   // Filter routines for a given week number, accounting for partial first/last weeks
   const getRoutinesForWeek = (weekNum) => {
@@ -572,19 +579,18 @@ const Workouts = () => {
       return r.name.endsWith(' B');
     });
 
-    // If program started mid-week, filter by which DOWs belong to this week
-    if (programStartDow !== 1) { // not Monday = mid-week start
+    // Filter by partial weeks when program started mid-week
+    if (hasWrappedDays) {
       filtered = filtered.filter(r => {
         const dow = workoutScheduleMap[r.id];
         if (dow === undefined) return true;
         if (weekNum === 1) {
-          // First week: only days from start day onward (Thu, Fri)
-          return dow >= programStartDow;
-        } else if (weekNum === totalProgramWeeks && programStartDow > 1) {
-          // Last week (extension): only wrapped days before start day (Mon, Tue, Wed)
-          return dow < programStartDow;
+          // First week: only days from start day onward (e.g. Fri, Sat)
+          return week1Dows.has(dow);
+        } else if (weekNum === totalProgramWeeks) {
+          // Last week (extension): only wrapped days (e.g. Mon, Tue, Wed, Thu)
+          return lastWeekDows.has(dow);
         }
-        // Middle weeks: all days
         return true;
       });
     }
@@ -592,11 +598,6 @@ const Workouts = () => {
     return filtered.sort((a, b) => {
       const dayA = workoutScheduleMap[a.id] ?? 99;
       const dayB = workoutScheduleMap[b.id] ?? 99;
-      // Week 1: sort naturally from start day; last week: sort from Monday
-      if (weekNum === 1) {
-        return dayA - dayB; // Thu(4) before Fri(5)
-      }
-      // Other weeks: Mon-Fri natural order
       return dayA - dayB;
     });
   };
@@ -754,7 +755,7 @@ const Workouts = () => {
         : fullFirstWeek;
       const createdRoutineIds = [];
 
-      // Smart day alignment: use user's preferred training days
+      // Smart day alignment: use user's preferred training days, skip closed gym days
       // DB day_of_week: Sunday=0, Monday=1, ..., Saturday=6
       const dayNameToDbNum = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
       const dbNumToDayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -764,45 +765,33 @@ const Workouts = () => {
         .filter(n => n !== undefined)
         .sort((a, b) => a - b);
       const fallbackPattern = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
-      const candidateDays = userDbDays.length >= firstWeek.length
-        ? userDbDays.slice(0, firstWeek.length)
-        : (fallbackPattern[firstWeek.length] || [1, 3, 5]);
 
-      // Remove closed days from candidate schedule
-      const availableDays = candidateDays.filter(d => !closedDays.has(d));
+      // Get user's preferred training days that are NOT on closed gym days
+      const rawCandidates = userDbDays.length > 0 ? userDbDays : (fallbackPattern[firstWeek.length] || [1, 3, 5]);
+      const openCandidates = rawCandidates.filter(d => !closedDays.has(d));
 
-      // If closed days reduced available slots, fill from remaining open days
-      let scheduleDays = [...availableDays];
-      if (scheduleDays.length < firstWeek.length) {
+      // If we don't have enough open days, fill from other open days
+      let weeklyTrainingDays = openCandidates.length >= firstWeek.length
+        ? openCandidates.slice(0, firstWeek.length)
+        : [...openCandidates];
+      if (weeklyTrainingDays.length < firstWeek.length) {
         const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !closedDays.has(d));
-        const used = new Set(scheduleDays);
+        const used = new Set(weeklyTrainingDays);
         for (const d of allOpenDays) {
-          if (scheduleDays.length >= firstWeek.length) break;
-          if (!used.has(d)) {
-            scheduleDays.push(d);
-            used.add(d);
-          }
+          if (weeklyTrainingDays.length >= firstWeek.length) break;
+          if (!used.has(d)) { weeklyTrainingDays.push(d); used.add(d); }
         }
-        scheduleDays.sort((a, b) => a - b);
+        weeklyTrainingDays.sort((a, b) => a - b);
       }
 
-      // "Start from today" mode: chain workouts from today forward using training days.
-      // E.g. if schedule is [Mon,Tue,Wed,Thu,Fri] but start is Wednesday,
-      // Day 1→Wed, Day 2→Thu, Day 3→Fri, Day 4→Mon(next week), Day 5→Tue(next week).
-      if (useStartMode === 'today' && scheduleDays.length > 0) {
-        const todayDow = new Date().getDay();
-        const sorted = [...scheduleDays].sort((a, b) => a - b);
-        // Find training days from today onward (this week), then wrap to next week
-        const fromToday = sorted.filter(d => d >= todayDow);
-        const beforeToday = sorted.filter(d => d < todayDow);
-        scheduleDays = [...fromToday, ...beforeToday];
-      }
-
-      // Now that scheduleDays is computed, calculate duration and create program entry
+      // Chain from start date: find training days from today onward, then wrap
       const startDow = startDate.getDay();
-      const sortedSched = [...scheduleDays].sort((a, b) => a - b);
-      const daysWrapped = sortedSched.filter(d => d < startDow);
-      const needsExtraWeek = daysWrapped.length > 0;
+      const sorted = [...weeklyTrainingDays].sort((a, b) => a - b);
+      const fromStart = sorted.filter(d => d >= startDow);
+      const beforeStart = sorted.filter(d => d < startDow);
+      // scheduleDays[0] = first workout day (today or next available), wraps into next week
+      let scheduleDays = [...fromStart, ...beforeStart];
+      const needsExtraWeek = beforeStart.length > 0;
       const baseDuration = selectedTemplate.durationWeeks || 6;
       const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
 

@@ -1138,6 +1138,12 @@ const Dashboard = () => {
         const canPrev = planWeek > 1;
         const canNext = planWeek < totalWeeks;
 
+        // Build DOW sets for partial week detection using actual schedule data
+        const allSchedDows = Object.keys(schedule).map(Number).sort((a, b) => a - b);
+        const week1Dows = new Set(allSchedDows.filter(d => d >= progStartDow));
+        const lastWeekDows = new Set(allSchedDows.filter(d => d < progStartDow));
+        const hasWrapped = lastWeekDows.size > 0;
+
         // Build 7-day view for current week, filtering partial first/last weeks
         const DAY_LABELS = [t('days.sunday', { ns: 'common' }), t('days.monday', { ns: 'common' }), t('days.tuesday', { ns: 'common' }), t('days.wednesday', { ns: 'common' }), t('days.thursday', { ns: 'common' }), t('days.friday', { ns: 'common' }), t('days.saturday', { ns: 'common' })];
         const fullWeek = DAY_LABELS.map((label, i) => {
@@ -1145,13 +1151,13 @@ const Dashboard = () => {
           if (isClosed) return { label, name: label, exercises: [], isRest: false, isClosed: true };
 
           // Partial week filtering for mid-week starts
-          if (progStartDow !== 1 && progStartDow !== 0) { // not Monday/Sunday start
-            if (planWeek === 1 && i < progStartDow) {
-              // First week: days before start day are not part of the program
-              return { label, name: label, exercises: [], isRest: true, isClosed: false };
+          if (hasWrapped) {
+            if (planWeek === 1 && !week1Dows.has(i)) {
+              // First week: only show days from start onward, others = not yet started
+              return { label, name: label, exercises: [], isRest: true, isClosed: false, notStarted: true };
             }
-            if (planWeek === totalWeeks && i >= progStartDow) {
-              // Last week (extension): days from start day onward are not part of the program
+            if (planWeek === totalWeeks && !lastWeekDows.has(i)) {
+              // Last week: only show wrapped days, others = program ended
               return { label, name: label, exercises: [], isRest: true, isClosed: false };
             }
           }
@@ -1259,6 +1265,8 @@ const Dashboard = () => {
                                 </span>
                                 {day.isClosed ? (
                                   <span className="text-[11px] text-red-400 flex items-center gap-1">🔒 {t('dashboard.gymClosed', 'Gym Closed')}</span>
+                                ) : day.notStarted ? (
+                                  <span className="text-[11px] text-[var(--color-text-muted)] italic">{t('dashboard.notYetStarted', 'Program not yet started')}</span>
                                 ) : day.isRest ? (
                                   <span className="text-[11px] text-[var(--color-text-muted)]">{t('dashboard.restDay')}</span>
                                 ) : (
