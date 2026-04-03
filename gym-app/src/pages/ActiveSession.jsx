@@ -1796,8 +1796,20 @@ const ActiveSession = () => {
     if (currentExerciseIndex < exercises.length - 1) {
       setCurrentExerciseIndex(currentExerciseIndex + 1);
     } else {
-      // Last exercise — mark workout complete
       setWorkoutComplete(true);
+    }
+  };
+
+  const handleRemoveExercise = () => {
+    // Remove exercise from session (doesn't delete from routine)
+    if (exercises.length <= 1) {
+      setWorkoutComplete(true);
+      return;
+    }
+    const idx = currentExerciseIndex;
+    setExercises(prev => prev.filter((_, i) => i !== idx));
+    if (idx >= exercises.length - 1) {
+      setCurrentExerciseIndex(Math.max(0, idx - 1));
     }
   };
 
@@ -1939,15 +1951,15 @@ const ActiveSession = () => {
 
       {/* Session Header */}
       <SessionHeader
-        routineName={isInWarmUp ? t('activeSession.warmUpPhase', 'Warm-Up') : routineName}
+        routineName={isInWarmUp ? t('activeSession.warmUpPhase', 'Warm-Up') : cooldownPhase === 'active' ? t('activeSession.cooldownPhase', 'Cool Down') : routineName}
         className={className}
         isPaused={isPaused}
         elapsedTime={elapsedTime}
         formatTime={formatTime}
         completedSets={completedSets}
         totalSets={totalSets}
-        exercises={isInWarmUp ? warmUpExercises : exercises}
-        currentExerciseIndex={isInWarmUp ? warmUpIndex : currentExerciseIndex}
+        exercises={isInWarmUp ? warmUpExercises : cooldownPhase === 'active' ? selectCoolDownStretches([...new Set(exercises.map(e => e.muscle).filter(Boolean))]) : exercises}
+        currentExerciseIndex={isInWarmUp ? warmUpIndex : cooldownPhase === 'active' ? cooldownIndex : currentExerciseIndex}
         showResumedBanner={showResumedBanner}
         savedSession={savedSession}
         sessionKey={sessionKey}
@@ -2090,37 +2102,55 @@ const ActiveSession = () => {
           </div>
         ) : workoutComplete ? (
           cooldownPhase === 'active' ? (
-            /* ── Cooldown active — per-stretch with timer, same as warm-up ── */
+            /* ── Cooldown active — same layout as warm-up ── */
             (() => {
               const muscleGroups = [...new Set(exercises.map(e => e.muscle).filter(Boolean))];
               const stretches = selectCoolDownStretches(muscleGroups);
               const stretch = stretches[cooldownIndex];
               if (!stretch) { setCooldownPhase('done'); return null; }
               const stretchName = i18n.language === 'es' && stretch.name_es ? stretch.name_es : stretch.name;
-              const isLast = cooldownIndex === stretches.length - 1;
 
               return (
                 <div className="flex-1 overflow-y-auto">
-                  <div className="px-4 pt-3 pb-6">
-                    <div className="mb-4">
-                      <h2 className="text-[20px] font-black tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                        {stretchName}
-                      </h2>
-                      <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                        {stretch.durationSec}s · {t('activeSession.cooldownPhase', 'Cool Down')} {cooldownIndex + 1}/{stretches.length}
-                      </p>
+                  <div className="px-4 pt-3 pb-32">
+                    {/* Card — same as warm-up exercise card */}
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+                      {/* Blue gradient header (warm-up uses orange) */}
+                      <div className="w-full h-32 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(96,165,250,0.03))' }}>
+                        <span className="text-[48px]">🧘</span>
+                      </div>
+
+                      {/* Stretch info */}
+                      <div className="px-4 pt-4 pb-3">
+                        <h3 className="text-[18px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                          {stretchName}
+                        </h3>
+                        <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                          {stretch.durationSec}s · {t('activeSession.cooldownPhase', 'Cool Down')} {cooldownIndex + 1}/{stretches.length}
+                        </p>
+                      </div>
+
+                      {/* Timer */}
+                      <div className="px-4 pb-4">
+                        <WarmUpTimer
+                          key={stretch.id}
+                          durationSec={stretch.durationSec}
+                          onComplete={() => {
+                            const isLast = cooldownIndex >= stretches.length - 1;
+                            if (isLast) { setCooldownPhase('done'); } else { setCooldownIndex(i => i + 1); }
+                          }}
+                        />
+                      </div>
                     </div>
-                    <WarmUpTimer
-                      key={stretch.id}
-                      durationSec={stretch.durationSec}
-                      onComplete={() => {
-                        if (isLast) {
-                          setCooldownPhase('done');
-                        } else {
-                          setCooldownIndex(i => i + 1);
-                        }
-                      }}
-                    />
+
+                    {/* Skip */}
+                    <button
+                      onClick={() => setCooldownPhase('done')}
+                      className="w-full mt-4 py-2 text-[12px] font-medium"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      {t('activeSession.skipWarmUp', 'Skip')}
+                    </button>
                   </div>
                 </div>
               );
@@ -2220,6 +2250,7 @@ const ActiveSession = () => {
                   onFillSuggestion={handleFillSuggestion}
                   onSwap={currentSets.some(s => s.completed) ? undefined : () => { setSwapSearch(''); setSwapSelectedReason(null); setShowSwapModal(true); }}
                   onSkip={handleSkipExercise}
+                  onRemoveExercise={exercises.length > 1 ? handleRemoveExercise : undefined}
                   isPRCheck={isPR}
                   livePRs={livePRs.current}
                   nextInGroup={nextInGroup}
