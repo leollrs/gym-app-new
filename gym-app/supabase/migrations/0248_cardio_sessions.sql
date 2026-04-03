@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS cardio_sessions (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_cardio_sessions_profile ON cardio_sessions(profile_id, completed_at DESC);
-CREATE INDEX idx_cardio_sessions_gym     ON cardio_sessions(gym_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cardio_sessions_profile ON cardio_sessions(profile_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cardio_sessions_gym     ON cardio_sessions(gym_id, completed_at DESC);
 
 
 -- ── 3. RLS ───────────────────────────────────────────────────────────────────
