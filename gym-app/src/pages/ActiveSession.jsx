@@ -146,7 +146,7 @@ const isPR = (exerciseId, weight, reps, knownPRs) => {
 
 // ── PR Celebration Banner ─────────────────────────────────────────────────────
 const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
-  <div className="fixed top-0 left-0 right-0 z-[200] animate-scale-pop">
+  <div className="fixed top-0 left-0 right-0 z-[200] animate-scale-pop" style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
     <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 px-5 py-5 shadow-2xl flex items-center gap-4 w-full" style={{ boxShadow: '0 8px 32px rgba(212, 175, 55, 0.4)' }}>
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20 flex-shrink-0"><Trophy size={28} className="text-white drop-shadow-lg" /></div>
       <div className="flex-1 min-w-0">
@@ -2239,7 +2239,8 @@ const ActiveSession = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-sm flex flex-col"
+            className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-md flex flex-col"
+            style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}
           >
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex-1 min-w-0">
