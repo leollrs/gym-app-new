@@ -95,7 +95,7 @@ const ActiveSession = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile } = useAuth();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
 
   // ── Class booking context (when starting from a class template) ────────────
   const classBookingId = location.state?.classBookingId ?? null;
