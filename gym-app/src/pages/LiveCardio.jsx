@@ -58,7 +58,7 @@ export default function LiveCardio() {
     return null;
   });
 
-  const [phase, setPhase] = useState(state ? 'tracking' : 'pick'); // pick → tracking → done
+  const [phase, setPhase] = useState(state ? (state.phase || 'tracking') : 'pick'); // pick → tracking → done
   const [cardioType, setCardioType] = useState(state?.cardioType || 'running');
   const [showMore, setShowMore] = useState(false);
 
@@ -119,19 +119,35 @@ export default function LiveCardio() {
         accumulatedSec: totalAccum,
         startedAt: running ? new Date().toISOString() : null,
         running,
+        phase,
       }));
     };
-    save(); // save immediately
-    const interval = setInterval(save, 5000);
+    save();
+    const interval = setInterval(save, 3000);
     return () => clearInterval(interval);
   }, [phase, running, cardioType]);
 
-  // Clean up on unmount if still running — persist state
+  // Save state on unmount so it survives navigation
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      // Persist current state on unmount
+      if (phase === 'tracking' || (phase === 'done' && accumRef.current > 0)) {
+        const totalAccum = running && startRef.current
+          ? accumRef.current + (Date.now() - startRef.current) / 1000
+          : accumRef.current;
+        if (totalAccum > 0) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            cardioType,
+            accumulatedSec: totalAccum,
+            startedAt: running ? new Date().toISOString() : null,
+            running,
+            phase,
+          }));
+        }
+      }
     };
-  }, []);
+  }, [phase, running, cardioType]);
 
   const handleStart = () => {
     setPhase('tracking');
@@ -191,6 +207,19 @@ export default function LiveCardio() {
     }
   }, [submitting, cardioType, distance, distanceUnit, intensity, bodyWeightLbs, showToast, t, navigate]);
 
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const handleBack = () => {
+    if (phase === 'tracking' || (phase === 'done' && accumRef.current > 0)) {
+      // Active session — just navigate back, state is auto-saved on unmount
+      navigate(-1);
+    } else {
+      // Pick phase — nothing to save
+      localStorage.removeItem(STORAGE_KEY);
+      navigate(-1);
+    }
+  };
+
   const handleDiscard = () => {
     localStorage.removeItem(STORAGE_KEY);
     navigate(-1);
@@ -211,7 +240,7 @@ export default function LiveCardio() {
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12">
-        <button onClick={handleDiscard} className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ color: 'var(--color-text-muted)' }}>
+        <button onClick={handleBack} className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ color: 'var(--color-text-muted)' }}>
           <ChevronLeft size={22} />
         </button>
         <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>

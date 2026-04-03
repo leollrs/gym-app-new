@@ -837,6 +837,41 @@ const Dashboard = () => {
               {/* ════════════════════════════════════════════════
                   2c. IN-PROGRESS WORKOUTS — Resume banners (above hero)
                  ════════════════════════════════════════════════ */}
+              {/* Live cardio resume banner */}
+              {isToday && (() => {
+                try {
+                  const lc = JSON.parse(localStorage.getItem('tugympr_live_cardio'));
+                  if (lc && lc.accumulatedSec > 10) {
+                    const mins = Math.floor(lc.accumulatedSec / 60);
+                    const typeName = t(`cardio.types.${lc.cardioType}`, lc.cardioType);
+                    return (
+                      <section className="mb-3">
+                        <Link
+                          to="/cardio-live"
+                          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border active:scale-[0.98] transition-transform"
+                          style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, #10B981 25%, transparent)' }}
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-[#10B981]/15 flex items-center justify-center flex-shrink-0">
+                            <Activity size={16} className="text-[#10B981]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                              {typeName} {t('cardio.inProgress', 'in progress')}
+                            </p>
+                            <p className="text-[11px] text-[#10B981]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {mins} {t('dashboard.min', 'min')} · {t('dashboard.tapToResume')}
+                            </p>
+                          </div>
+                          <ChevronRight size={14} className="text-[#10B981]" />
+                        </Link>
+                      </section>
+                    );
+                  }
+                } catch {}
+                return null;
+              })()}
+
+              {/* Workout draft resume banners */}
               {isToday && allActiveDrafts.length > 0 && (
                 <section className="mb-3">
                   {allActiveDrafts.map(draft => {

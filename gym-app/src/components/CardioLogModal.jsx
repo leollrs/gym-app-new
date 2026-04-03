@@ -203,7 +203,7 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
               <button
                 key={m}
                 type="button"
-                onClick={() => { if (m === 'live') { onClose(); navigate('/cardio-live'); return; } setMode(m); }}
+                onClick={() => { if (m === 'live') { onClose(); setTimeout(() => navigate('/cardio-live'), 150); return; } setMode(m); }}
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-all"
                 style={mode === m
                   ? { backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }
