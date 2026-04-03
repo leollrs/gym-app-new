@@ -14,6 +14,7 @@ export const PROGRAM_CATEGORIES = [
   'Athletic',
   'Bodyweight',
   'Glute Building',
+  'Cardio',
 ];
 
 export const programTemplates = [
