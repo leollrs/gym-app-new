@@ -254,7 +254,8 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
       <div className="flex flex-col gap-2 mt-3 pt-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <Link
           to={`/session/${routineId}`}
-          className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#C9A432] transition-colors active:scale-[0.98]"
+          className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
+          style={{ backgroundColor: '#D4AF37', color: '#000000' }}
         >
           {t('workouts.startWorkout')}
         </Link>
@@ -1084,7 +1085,7 @@ const Workouts = () => {
         return (
         <section className="mb-10">
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.currentProgram')}</p>
-          <div className="rounded-2xl p-6" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+          <div className="rounded-2xl px-4 py-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
             {/* Title & progress with week navigator */}
             <div className="flex items-start justify-between mb-5">
               <div className="flex items-center gap-3">
