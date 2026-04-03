@@ -45,23 +45,23 @@ CREATE INDEX IF NOT EXISTS idx_cardio_sessions_gym     ON cardio_sessions(gym_id
 
 ALTER TABLE cardio_sessions ENABLE ROW LEVEL SECURITY;
 
--- Users can SELECT their own cardio sessions
+DROP POLICY IF EXISTS cardio_sessions_select_own ON cardio_sessions;
 CREATE POLICY cardio_sessions_select_own ON cardio_sessions
   FOR SELECT USING (profile_id = auth.uid());
 
--- Users can INSERT their own cardio sessions
+DROP POLICY IF EXISTS cardio_sessions_insert_own ON cardio_sessions;
 CREATE POLICY cardio_sessions_insert_own ON cardio_sessions
   FOR INSERT WITH CHECK (profile_id = auth.uid());
 
--- Users can UPDATE their own cardio sessions
+DROP POLICY IF EXISTS cardio_sessions_update_own ON cardio_sessions;
 CREATE POLICY cardio_sessions_update_own ON cardio_sessions
   FOR UPDATE USING (profile_id = auth.uid());
 
--- Users can DELETE their own cardio sessions
+DROP POLICY IF EXISTS cardio_sessions_delete_own ON cardio_sessions;
 CREATE POLICY cardio_sessions_delete_own ON cardio_sessions
   FOR DELETE USING (profile_id = auth.uid());
 
--- Admins and trainers can SELECT cardio sessions for their gym
+DROP POLICY IF EXISTS cardio_sessions_select_gym_staff ON cardio_sessions;
 CREATE POLICY cardio_sessions_select_gym_staff ON cardio_sessions
   FOR SELECT USING (
     gym_id = public.current_gym_id()
