@@ -94,6 +94,173 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
   );
 };
 
+// ── In-Session Cardio — open timer with finish + distance/intensity ──────────
+const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
+  const [phase, setPhase] = useState('ready'); // ready → running → done
+  const [elapsed, setElapsed] = useState(0);
+  const [distance, setDistance] = useState('');
+  const [intensity, setIntensity] = useState('moderate');
+  const startRef = useRef(null);
+  const accumRef = useRef(0);
+  const rafRef = useRef(null);
+
+  // Drift-free count-up timer
+  useEffect(() => {
+    if (phase !== 'running') { cancelAnimationFrame(rafRef.current); return; }
+    if (!startRef.current) startRef.current = Date.now();
+    const tick = () => {
+      const e = accumRef.current + (Date.now() - startRef.current) / 1000;
+      setElapsed(Math.floor(e));
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [phase]);
+
+  // Reset on exercise change
+  useEffect(() => {
+    setPhase('ready'); setElapsed(0); setDistance(''); setIntensity('moderate');
+    accumRef.current = 0; startRef.current = null;
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [exercise.id]);
+
+  const handlePauseResume = () => {
+    if (phase === 'running') {
+      accumRef.current += (Date.now() - startRef.current) / 1000;
+      startRef.current = null;
+      setPhase('ready'); // paused
+    } else {
+      startRef.current = Date.now();
+      setPhase('running');
+    }
+  };
+
+  const handleFinish = () => {
+    if (phase === 'running') {
+      accumRef.current += (Date.now() - startRef.current) / 1000;
+      startRef.current = null;
+    }
+    setElapsed(Math.floor(accumRef.current));
+    setPhase('done');
+  };
+
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  const exNameStr = i18n.language === 'es' && exercise.name_es ? exercise.name_es : exercise.name;
+
+  const INTENSITIES = ['easy', 'moderate', 'hard', 'max'];
+  const INT_COLORS = { easy: '#22C55E', moderate: '#F59E0B', hard: '#EF4444', max: '#DC2626' };
+
+  return (
+    <div className="px-4 pt-3 pb-4">
+      <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
+        {/* Exercise name */}
+        <div className="px-4 py-3.5 text-center">
+          <h2 className="text-[18px] font-black leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+            {exNameStr}
+          </h2>
+        </div>
+
+        {phase !== 'done' ? (
+          <>
+            {/* Timer */}
+            <div className="text-center pb-4">
+              <p className="text-[48px] font-black tabular-nums" style={{ color: phase === 'running' ? '#10B981' : 'var(--color-text-primary)' }}>
+                {timeStr}
+              </p>
+              <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                {phase === 'running' ? t('cardio.tracking', 'Tracking...') : elapsed > 0 ? t('cardio.paused', 'Paused') : t('cardio.tapToStart', 'Tap to start')}
+              </p>
+            </div>
+
+            {/* Controls */}
+            <div className="flex justify-center gap-3 px-4 pb-4">
+              <button
+                onClick={handlePauseResume}
+                className="px-8 py-3 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                style={phase === 'running'
+                  ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }
+                  : { backgroundColor: '#10B981', color: '#fff' }
+                }
+              >
+                {phase === 'running' ? t('cardio.pause', 'Pause') : elapsed > 0 ? t('cardio.resume', 'Resume') : t('cardio.start', 'Start')}
+              </button>
+              {elapsed > 10 && phase !== 'running' && (
+                <button
+                  onClick={handleFinish}
+                  className="px-6 py-3 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                  style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                >
+                  {t('cardio.finish', 'Finish')}
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Done — show summary + distance/intensity */}
+            <div className="text-center pb-3">
+              <p className="text-[32px] font-black tabular-nums" style={{ color: '#10B981' }}>{timeStr}</p>
+            </div>
+
+            {/* Distance (optional) */}
+            <div className="px-4 pb-3">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('cardio.distance', 'Distance')} ({t('cardio.optional', 'optional')})
+              </label>
+              <input
+                type="number" inputMode="decimal" min="0" step="0.1" placeholder="0.0"
+                value={distance} onChange={e => setDistance(e.target.value)}
+                className="w-full border border-white/[0.06] rounded-xl px-3 py-2.5 outline-none"
+                style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', fontSize: '16px' }}
+              />
+            </div>
+
+            {/* Intensity */}
+            <div className="px-4 pb-4">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('cardio.intensity', 'Intensity')}
+              </label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {INTENSITIES.map(i => (
+                  <button key={i} type="button" onClick={() => setIntensity(i)}
+                    className="py-2 rounded-lg text-[10px] font-bold uppercase border transition-all"
+                    style={intensity === i
+                      ? { backgroundColor: `${INT_COLORS[i]}20`, borderColor: `${INT_COLORS[i]}50`, color: INT_COLORS[i] }
+                      : { borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+                    }
+                  >{t(`cardio.intensities.${i}`, i)}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Complete button */}
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => onComplete(Math.floor(accumRef.current))}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+              >
+                {t('activeSession.completeSet', 'Complete')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Skip */}
+      <button
+        onClick={onSkip}
+        className="w-full mt-3 py-2 text-[12px] font-medium text-center"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        {t('activeSession.skipExercise', 'Skip')}
+      </button>
+    </div>
+  );
+};
+
 // ── Error Boundary ──────────────────────────────────────────────────────────
 class ActiveSessionErrorBoundary extends Component {
   constructor(props) {
@@ -1967,49 +2134,26 @@ const ActiveSession = () => {
                 </div>
               )}
               {isCurrentCardio ? (
-                /* Cardio exercise — timer-based card instead of weight/reps */
-                <div className="px-4 pt-3 pb-4">
-                  <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
-                    {/* Exercise info */}
-                    <div className="px-4 py-3.5 text-center">
-                      <h2 className="text-[18px] font-black leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {exName(currentExercise)}
-                      </h2>
-                      <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                        {currentExercise.targetSets} × {currentExercise.targetReps}
-                      </p>
-                    </div>
-                    {/* Timer */}
-                    <div className="px-4 pb-4">
-                      <WarmUpTimer
-                        key={`cardio-${currentExercise.id}`}
-                        durationSec={(() => {
-                          // Parse target_reps for duration (e.g. "20min" → 1200, "15min" → 900)
-                          const reps = String(currentExercise.targetReps || '20min');
-                          const minMatch = reps.match(/(\d+)\s*min/i);
-                          if (minMatch) return parseInt(minMatch[1]) * 60;
-                          const secMatch = reps.match(/(\d+)\s*s/i);
-                          if (secMatch) return parseInt(secMatch[1]);
-                          return 20 * 60; // default 20 min
-                        })()}
-                        onComplete={() => {
-                          // Auto-complete the current set when timer finishes
-                          if (currentSets.length > 0) {
-                            const incompleteIdx = currentSets.findIndex(s => !s.completed);
-                            if (incompleteIdx >= 0) {
-                              handleToggleComplete(
-                                currentExercise.id,
-                                incompleteIdx,
-                                exName(currentExercise),
-                                0 // no rest after cardio
-                              );
-                            }
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                /* Cardio exercise — open-ended timer, user controls start/finish */
+                <InSessionCardio
+                  key={`cardio-${currentExercise.id}`}
+                  exercise={currentExercise}
+                  onComplete={(durationSec) => {
+                    // Mark the set as completed with the actual duration
+                    if (currentSets.length > 0) {
+                      const incompleteIdx = currentSets.findIndex(s => !s.completed);
+                      if (incompleteIdx >= 0) {
+                        // Store duration in the reps field for logging
+                        handleUpdateSet(currentExercise.id, incompleteIdx, 'reps', Math.ceil(durationSec / 60));
+                        handleUpdateSet(currentExercise.id, incompleteIdx, 'weight', '0');
+                        handleToggleComplete(currentExercise.id, incompleteIdx, exName(currentExercise), 0);
+                      }
+                    }
+                  }}
+                  onSkip={handleSkipExercise}
+                  t={t}
+                  i18n={i18n}
+                />
               ) : (
                 <ExerciseCard
                   exercise={currentExercise}
