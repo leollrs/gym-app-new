@@ -39,6 +39,7 @@ export default function GymWOD() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [todayRoutineName, setTodayRoutineName] = useState(null);
   const [wodDraft, setWodDraft] = useState(null); // resumable WOD session
+  const [wodCompleted, setWodCompleted] = useState(false); // already done today
   const [expanded, setExpanded] = useState(false); // collapsed by default
 
   const gymId = profile?.gym_id;
@@ -157,6 +158,24 @@ export default function GymWOD() {
     } catch {}
   }, []);
 
+  // Check if user already completed a WOD today
+  useEffect(() => {
+    if (!user?.id) return;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    supabase
+      .from('workout_sessions')
+      .select('id, name')
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .like('name', 'WOD:%')
+      .gte('completed_at', todayStart.toISOString())
+      .limit(1)
+      .then(({ data }) => {
+        if (data?.length > 0) setWodCompleted(true);
+      });
+  }, [user?.id]);
+
   // Check if user has a scheduled workout today
   useEffect(() => {
     if (!user?.id) return;
@@ -184,19 +203,35 @@ export default function GymWOD() {
     }
   };
 
-  // ── Start workout: create temp routine and navigate to session ─────────────
+  // ── Start workout: reuse existing WOD routine or create new one ─────────────
   const handleStart = async () => {
     if (!wod || saving) return;
     setSaving(true);
 
     try {
       const exercises = wod.workout_data?.exercises || [];
+      const wodRoutineName = `WOD: ${wod.theme}`;
 
-      // Create a temporary routine
+      // Check if a routine for today's WOD already exists (avoid duplicates)
+      const { data: existing } = await supabase
+        .from('routines')
+        .select('id')
+        .eq('created_by', user.id)
+        .eq('name', wodRoutineName)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.id) {
+        // Reuse existing routine
+        navigate(`/session/${existing.id}`);
+        return;
+      }
+
+      // Create a new routine
       const { data: routine, error: rErr } = await supabase
         .from('routines')
         .insert({
-          name: `WOD: ${wod.theme}`,
+          name: wodRoutineName,
           gym_id: gymId,
           created_by: user.id,
         })
@@ -357,7 +392,13 @@ export default function GymWOD() {
 
       {/* CTA area — always visible */}
       <div className="px-4 pb-4">
-        {wodDraft ? (
+        {wodCompleted ? (
+          /* Already completed today */
+          <div className="w-full flex items-center justify-center gap-2 font-semibold text-sm py-3 rounded-xl" style={{ backgroundColor: 'color-mix(in srgb, #10B981 10%, var(--color-bg-card))', color: '#10B981' }}>
+            <span className="text-[14px]">✓</span>
+            {t('gymWOD.completedToday', 'Completed today')}
+          </div>
+        ) : wodDraft ? (
           /* Resume WOD in progress */
           <button
             onClick={() => navigate(`/session/${wodDraft.routineId}`)}

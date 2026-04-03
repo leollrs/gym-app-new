@@ -299,29 +299,52 @@ const Dashboard = () => {
       const programStart = fetchedProgram ? new Date(fetchedProgram.program_start) : null;
 
       const scheduleMap = {};
-      // Determine if we're in week 1 of the program (partial week)
       const sMap = fetchedProgram?.schedule_map;
       const isWeek1 = fetchedProgram && programStart
         && Math.floor((today - programStart) / (7 * 86400000)) === 0;
-      const week1DowSet = isWeek1 && sMap?.week1_dows ? new Set(sMap.week1_dows) : null;
 
+      // Build a reverse map: normalDow → routineId from workout_schedule
+      const normalDowToRoutineId = {};
+      const autoRoutines = fetchedProgram
+        ? fetchedRoutines.filter(r => r.name.startsWith('Auto:') && new Date(r.created_at || 0) >= programStart)
+        : [];
       for (const row of scheduleData) {
         const routine = fetchedRoutines.find(r => r.id === row.routine_id);
         if (routine) {
-          // When an active program exists, only include Auto: routines created
-          // after the program start — this filters out stale manual schedule entries
           if (fetchedProgram) {
-            const isAutoRoutine = routine.name.startsWith('Auto:');
-            const createdAfterProgram = new Date(routine.created_at || 0) >= programStart;
-            if (!isAutoRoutine || !createdAfterProgram) continue;
+            if (!routine.name.startsWith('Auto:') || new Date(routine.created_at || 0) < programStart) continue;
           }
-          // In week 1, only show routines for days from the start date onward
-          if (week1DowSet && !week1DowSet.has(row.day_of_week)) continue;
+          normalDowToRoutineId[row.day_of_week] = row.routine_id;
+        }
+      }
 
-          scheduleMap[row.day_of_week] = {
-            routineId: row.routine_id,
-            label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
-          };
+      if (isWeek1 && sMap?.week1_map && sMap?.normal_dows) {
+        // Week 1: use the shifted DOW mapping from schedule_map
+        // week1_map has {routine_index, day_of_week} — map routine_index to routineId via normal_dows
+        for (const entry of sMap.week1_map) {
+          const normalDow = sMap.normal_dows[entry.routine_index];
+          const routineId = normalDow !== undefined ? normalDowToRoutineId[normalDow] : null;
+          const routine = routineId ? fetchedRoutines.find(r => r.id === routineId) : null;
+          if (routine) {
+            scheduleMap[entry.day_of_week] = {
+              routineId: routine.id,
+              label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
+            };
+          }
+        }
+      } else {
+        // Normal weeks: use workout_schedule directly
+        for (const row of scheduleData) {
+          const routine = fetchedRoutines.find(r => r.id === row.routine_id);
+          if (routine) {
+            if (fetchedProgram) {
+              if (!routine.name.startsWith('Auto:') || new Date(routine.created_at || 0) < programStart) continue;
+            }
+            scheduleMap[row.day_of_week] = {
+              routineId: row.routine_id,
+              label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
+            };
+          }
         }
       }
 
