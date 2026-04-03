@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
-  ScrollText, MoreHorizontal, X, Shield, MessageSquare, Bug,
+  ScrollText, MoreHorizontal, X, Shield, Bug,
   Activity, HeadphonesIcon, AlertTriangle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +23,6 @@ const NAV_SECTIONS = [
     items: [
       { to: '/platform/error-logs',  labelKey: 'platformNav.errorLogs',  icon: Bug },
       { to: '/platform/audit-log',   labelKey: 'platformNav.auditLog',   icon: ScrollText },
-      { to: '/platform/sms',         labelKey: 'platformNav.sms',        icon: MessageSquare },
     ],
   },
   {

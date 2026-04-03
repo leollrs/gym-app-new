@@ -4,7 +4,9 @@ import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { PostHogProvider } from '@posthog/react';
+// PostHog is lazy-loaded to keep it out of the critical rendering path.
+// The LazyPostHogProvider below renders children immediately and wraps them
+// with the real <PostHogProvider> once the @posthog/react chunk has loaded.
 import { Capacitor } from '@capacitor/core';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
@@ -48,7 +50,8 @@ persistQueryClient({
     shouldDehydrateQuery: (query) => {
       // Only persist successful queries, skip real-time data
       const key = query.queryKey?.[0];
-      const skipKeys = ['notifications', 'realtime', 'feed'];
+      // Skip real-time data and admin queries that contain sensitive PII
+      const skipKeys = ['notifications', 'realtime', 'feed', 'admin-members', 'admin-churn', 'admin-audit'];
       return query.state.status === 'success' && !skipKeys.includes(key);
     },
   },
@@ -64,6 +67,8 @@ CapacitorUpdater.notifyAppReady();
 initWatchListeners();
 
 // Global error tracking — catches JS errors, promise rejections, network failures, slow APIs, auth/HTTP errors
+// These listeners are intentionally never removed: they live at module scope and their
+// lifetime matches the application's lifetime (the module is loaded once and never unloaded).
 import { trackError, installFetchInterceptor } from './lib/errorTracker';
 installFetchInterceptor();
 window.addEventListener('error', (event) => {
@@ -81,17 +86,14 @@ window.addEventListener('online', () => {
 });
 
 // Handle watch messages at app level (routines sync, QR open, etc.)
-onWatchMessage((msg) => {
+onWatchMessage(async (msg) => {
   if (!msg) return;
   const action = msg.action || msg.type;
 
   if (action === 'request_routines') {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const supabaseRef = supabaseUrl.match(/https:\/\/([^.]+)\./)?.[1] || '';
-      const storageKey = `sb-${supabaseRef}-auth-token`;
-      // TODO: Use supabase.auth.getSession() instead of direct localStorage access
-      const userId = JSON.parse(localStorage.getItem(storageKey) || '{}')?.user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
       if (userId) {
         const cached = getCached(`routines:${userId}`);
         if (cached?.data?.length) {
@@ -225,7 +227,10 @@ if (isNative) {
     if (Capacitor.getPlatform() === 'android') {
       StatusBar.setOverlaysWebView({ overlay: true });
     }
-    // Watch for theme changes to update status bar
+    // Watch for theme changes to update status bar.
+    // This observer is intentionally never disconnected: it is created at module scope
+    // (inside a one-time dynamic import) and its lifetime matches the application's
+    // lifetime. The module is loaded once on native platforms and never unloaded.
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.attributeName === 'class') {
@@ -337,9 +342,27 @@ const posthogOptions = {
   },
 };
 
+// Lazy PostHog wrapper — renders children immediately, then wraps with the
+// real PostHogProvider once the chunk loads. Analytics events fired before
+// the provider mounts are simply missed (acceptable tradeoff for faster TTI).
+function LazyPostHogProvider({ apiKey, options, children }) {
+  const [Provider, setProvider] = React.useState(null);
+
+  React.useEffect(() => {
+    import('@posthog/react').then((mod) => {
+      setProvider(() => mod.PostHogProvider);
+    }).catch(() => {});
+  }, []);
+
+  if (Provider) {
+    return <Provider apiKey={apiKey} options={options}>{children}</Provider>;
+  }
+  return children;
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <PostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>
+    <LazyPostHogProvider apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN} options={posthogOptions}>
       <QueryClientProvider client={queryClient}>
         <Router>
           <ThemeProvider>
@@ -352,6 +375,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           </ThemeProvider>
         </Router>
       </QueryClientProvider>
-    </PostHogProvider>
+    </LazyPostHogProvider>
   </React.StrictMode>
 );

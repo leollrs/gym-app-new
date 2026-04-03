@@ -5,8 +5,11 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const MAX_FAILED_ATTEMPTS = 5;
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 

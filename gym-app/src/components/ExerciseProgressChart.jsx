@@ -51,7 +51,7 @@ function CustomTooltip({ active, payload, label }) {
   return null;
 }
 
-export default function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
+function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
   const { user } = useAuth();
   const [data, setData]       = useState([]);
   const [loading, setLoading] = useState(true);
@@ -239,3 +239,5 @@ export default function ExerciseProgressChart({ exerciseId, exerciseName, onClos
     </div>
   );
 }
+
+export default React.memo(ExerciseProgressChart);

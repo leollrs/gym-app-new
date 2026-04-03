@@ -1,3 +1,4 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -36,7 +37,7 @@ async function fetchGrowthData(gymId) {
   return Object.entries(monthMap).map(([month, count]) => ({ month, count }));
 }
 
-export default function GrowthChart({ gymId }) {
+function GrowthChart({ gymId }) {
   const { t } = useTranslation('pages');
   const { data: growthData = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.growth(gymId),
@@ -130,3 +131,5 @@ export default function GrowthChart({ gymId }) {
     </AdminCard>
   );
 }
+
+export default React.memo(GrowthChart);

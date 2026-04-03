@@ -182,14 +182,13 @@ const Profile = () => {
     const load = async () => {
       setLoading(true);
 
-      // 1. Gym info (select only needed columns)
-      const { data: gym } = await supabase
-        .from('gyms').select('id, name, slug, is_active').eq('id', profile.gym_id).single();
+      // 1. Gym info + user points in parallel (independent queries)
+      const [{ data: gym }, ptsData] = await Promise.all([
+        supabase.from('gyms').select('id, name, slug, is_active').eq('id', profile.gym_id).single(),
+        getUserPoints(user.id),
+      ]);
       setGymName(gym?.name ?? '');
       setGymInfo(gym ?? null);
-
-      // Fetch user points for level display
-      const ptsData = await getUserPoints(user.id);
       setUserPoints(ptsData.lifetime_points || 0);
 
       // Friend code: check if profile has one, generate if not
@@ -379,7 +378,8 @@ const Profile = () => {
           return;
         }
 
-        const ext = file.name.split('.').pop();
+        const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+        const ext = mimeToExt[file.type] || 'jpg';
         const path = `${user.id}/${Date.now()}.${ext}`;
 
         const { error: storageErr } = await supabase.storage

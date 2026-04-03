@@ -52,7 +52,7 @@ const StatPill = ({ label, value }) => (
 );
 
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
-const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavorite }) => {
+const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite }) => {
   const { t } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
@@ -241,16 +241,22 @@ const ExerciseCard = ({ exercise, onSelect, selectable, isFavorite, onToggleFavo
       )}
     </div>
   );
-};
+});
 
 /* ── Exercise Library (browseable list with search + filters) ────────────────── */
 const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extraExercises = [], favoriteIds = new Set(), onToggleFavorite }) => {
   const { t } = useTranslation('pages');
-  const [query, setQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [activeMuscle, setActiveMuscle] = useState('All');
   const [activeEquipment, setActiveEquipment] = useState('All');
   const [activeCategory, setActiveCategory] = useState('All');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // Scroll locking for advanced filters modal
   useEffect(() => {
@@ -285,7 +291,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
+    const q = debouncedQuery.toLowerCase();
     return allExercises.filter(e => {
       const matchesQuery = !q ||
         e.name.toLowerCase().includes(q) ||
@@ -297,7 +303,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       const matchesCategory  = activeCategory  === 'All' || e.category  === activeCategory;
       return matchesQuery && matchesMuscle && matchesEquipment && matchesCategory;
     });
-  }, [query, activeMuscle, activeEquipment, activeCategory, allExercises]);
+  }, [debouncedQuery, activeMuscle, activeEquipment, activeCategory, allExercises]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -319,17 +325,17 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
         <input
           type="text"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
           placeholder={t('exerciseLibrary.searchPlaceholder')}
           aria-label={t('exerciseLibrary.searchPlaceholder')}
           className="w-full rounded-xl pl-10 pr-12 py-3 text-[14px] focus:outline-none transition-all border border-white/[0.06] placeholder-[#3B4252] focus:border-white/[0.12]"
           style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          {query && (
+          {searchInput && (
             <button
-              onClick={() => setQuery('')}
+              onClick={() => { setSearchInput(''); setDebouncedQuery(''); }}
               aria-label="Clear search"
               className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{ color: 'var(--color-text-subtle)' }}
@@ -360,7 +366,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       <div className="flex items-center justify-between mb-4">
         <p className="text-[12.5px] font-medium text-[#5B6276]">
           {t('exerciseLibrary.resultCount', { count: sorted.length })}
-          {query && <span style={{ color: 'var(--color-text-muted)' }}> {t('exerciseLibrary.forQuery', { query })}</span>}
+          {debouncedQuery && <span style={{ color: 'var(--color-text-muted)' }}> {t('exerciseLibrary.forQuery', { query: debouncedQuery })}</span>}
         </p>
         <div ref={sortRef} className="relative">
           <button
@@ -1008,11 +1014,11 @@ export const ExerciseLibraryPage = () => {
     setLoading(true);
 
     try {
-      // Fetch global exercises (video_url included via *)
+      // Fetch global exercises
       const [globalsRes, customsRes, savedRes, fshipsRes, favsRes] = await Promise.all([
-        supabase.from('exercises').select('*').is('gym_id', null).eq('is_active', true),
+        supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').is('gym_id', null).eq('is_active', true),
         profile.gym_id
-          ? supabase.from('exercises').select('*').eq('gym_id', profile.gym_id).eq('is_active', true)
+          ? supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').eq('gym_id', profile.gym_id).eq('is_active', true)
           : Promise.resolve({ data: [] }),
         supabase.from('user_saved_exercises').select('exercise_id').eq('user_id', user.id),
         // SECURITY: user.id comes from supabase.auth context, not user input.

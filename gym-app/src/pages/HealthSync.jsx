@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Heart, Activity, Dumbbell, RefreshCw, Settings } from 'lucide-react';
-import * as healthSync from '../lib/healthSync';
+import { isAvailable, readTodaySteps, readWeeklyActivitySummary, requestPermissions } from '../lib/healthSync';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,7 +23,7 @@ const HealthSync = () => {
     if (/iphone|ipad/i.test(navigator.userAgent)) {
       setAvailable(true);
     } else {
-      healthSync.isAvailable().then(setAvailable);
+      isAvailable().then(setAvailable);
     }
   }, []);
 
@@ -62,11 +62,11 @@ const HealthSync = () => {
     if (!connected || !available) return;
     setRefreshing(true);
     try {
-      const ok = await healthSync.isAvailable();
+      const ok = await isAvailable();
       if (!ok) { setRefreshing(false); return; }
       const [steps, weekly] = await Promise.all([
-        healthSync.readTodaySteps(),
-        healthSync.readWeeklyActivitySummary(),
+        readTodaySteps(),
+        readWeeklyActivitySummary(),
       ]);
       setTodaySteps(steps);
       setWeeklyCalories(weekly.calories);
@@ -95,7 +95,7 @@ const HealthSync = () => {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      await healthSync.requestPermissions();
+      await requestPermissions();
       setConnected(true);
       await persistConnected(true);
       // Enable all syncs (settings kept in localStorage for now)

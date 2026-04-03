@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, QrCode } from 'lucide-react';
@@ -56,13 +56,13 @@ export default function CheckIn() {
   }, [user]);
 
   // ── Group history by date label ──────────────────────────────────────────────
-  const grouped = checkins.reduce((acc, c) => {
+  const grouped = useMemo(() => checkins.reduce((acc, c) => {
     const d   = new Date(c.checked_in_at);
     const key = isToday(d) ? t('checkIn.today') : isYesterday(d) ? t('checkIn.yesterday') : format(d, 'MMMM d, yyyy');
     if (!acc[key]) acc[key] = [];
     acc[key].push(c);
     return acc;
-  }, {});
+  }, {}), [checkins, t]);
 
   return (
     <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">

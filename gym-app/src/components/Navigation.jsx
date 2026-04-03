@@ -101,10 +101,14 @@ const Navigation = () => {
     fetchUnread();
 
     // Realtime subscription for new DMs (debounced to prevent excessive refetches)
+    // Note: direct_messages has no receiver_id column, so we can't filter by
+    // receiver at the channel level. RLS already restricts events to the user's
+    // conversations. We narrow to INSERT events only (new messages) since the
+    // unread count is also re-fetched on every route change via location.pathname.
     let debounceTimer;
     const channel = supabase
       .channel('nav-dm-unread')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => fetchUnread(), 2000);
       })

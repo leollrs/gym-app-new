@@ -26,14 +26,21 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ISSUER_ID = Deno.env.get('GOOGLE_WALLET_ISSUER_ID') || '';
 const SERVICE_ACCOUNT_KEY_B64 = Deno.env.get('GOOGLE_WALLET_KEY_BASE64') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -65,17 +72,11 @@ serve(async (req: Request) => {
       .eq('id', user.id)
       .single();
 
-    const { data: branding } = await supabase
-      .from('gym_branding')
-      .select('primary_color, logo_url')
-      .eq('gym_id', profile?.gym_id)
-      .single();
-
-    const { data: gymData } = await supabase
-      .from('gyms')
-      .select('qr_display_format')
-      .eq('id', profile?.gym_id)
-      .single();
+    // Branding and gym data both depend on gym_id but are independent of each other
+    const [{ data: branding }, { data: gymData }] = await Promise.all([
+      supabase.from('gym_branding').select('primary_color, logo_url').eq('gym_id', profile?.gym_id).single(),
+      supabase.from('gyms').select('qr_display_format').eq('id', profile?.gym_id).single(),
+    ]);
 
     const displayFormat = gymData?.qr_display_format || 'qr_code';
 
@@ -172,7 +173,7 @@ serve(async (req: Request) => {
       aud: 'google',
       typ: 'savetowallet',
       iat: now,
-      origins: ['*'],
+      origins: [ALLOWED_ORIGIN || 'https://app.tugympr.com'],
       payload: {
         genericClasses: [passClass],
         genericObjects: [passObject],

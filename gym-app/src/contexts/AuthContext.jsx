@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyBranding } from '../lib/branding';
 import { getPalette } from '../lib/palettes';
@@ -67,9 +67,10 @@ export const AuthProvider = ({ children }) => {
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
   const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
   const [mfaRequired, setMfaRequired] = useState(false);
+  const watchSyncTimeoutRef = useRef(null);
 
   // Fetch unread notification count for the current profile
-  const fetchUnreadNotifications = async (profileId) => {
+  const fetchUnreadNotifications = useCallback(async (profileId) => {
     const { count, error } = await supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
@@ -77,11 +78,11 @@ export const AuthProvider = ({ children }) => {
       .is('read_at', null)
       .is('dismissed_at', null);
     if (!error) setUnreadNotifications(count || 0);
-  };
+  }, []);
 
-  const refreshNotifications = () => {
+  const refreshNotifications = useCallback(() => {
     if (profile?.id) fetchUnreadNotifications(profile.id);
-  };
+  }, [profile?.id, fetchUnreadNotifications]);
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
@@ -187,9 +188,16 @@ export const AuthProvider = ({ children }) => {
         setupCompleted: gym?.setup_completed ?? true, // default true so existing gyms don't see wizard
       });
 
-      // Cache critical data for offline access
+      // Cache minimal non-sensitive data for offline display only
       try {
-        localStorage.setItem('offline_profile', JSON.stringify({ ...data, gym_id: data.gym_id, role: data.role }));
+        localStorage.setItem('offline_profile', JSON.stringify({
+          id: data.id,
+          full_name: data.full_name,
+          username: data.username,
+          avatar_url: data.avatar_url,
+          avatar_type: data.avatar_type,
+          avatar_value: data.avatar_value,
+        }));
         localStorage.setItem('offline_gym', JSON.stringify({
           name: gym?.name || branding?.custom_app_name || '',
           qrEnabled: gym?.qr_enabled ?? false,
@@ -243,100 +251,104 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(false);
 
-    // Sync user context to Apple Watch (non-blocking)
+    // Defer Watch sync to after render — these queries are non-critical and should
+    // not block the auth path. Profile data is already set above.
     if (data?.id) {
-      Promise.all([
-        supabase.from('check_ins').select('checked_in_at').eq('profile_id', data.id).order('checked_in_at', { ascending: false }).limit(30),
-        supabase.from('workout_sessions').select('completed_at').eq('profile_id', data.id).eq('status', 'completed').gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString()),
-      ]).then(([checkInsRes, weeklyRes]) => {
-        // Calculate streak from check-ins
-        let streak = 0;
-        const checkIns = checkInsRes.data || [];
-        if (checkIns.length > 0) {
-          const today = new Date(); today.setHours(0,0,0,0);
-          let checkDay = new Date(checkIns[0].checked_in_at); checkDay.setHours(0,0,0,0);
-          const diffDays = Math.round((today - checkDay) / 86400000);
-          if (diffDays <= 1) {
-            streak = 1;
-            for (let i = 1; i < checkIns.length; i++) {
-              const prev = new Date(checkIns[i].checked_in_at); prev.setHours(0,0,0,0);
-              if (Math.round((checkDay - prev) / 86400000) === 1) {
-                streak++;
-                checkDay = prev;
-              } else break;
+      const capturedData = data;
+      watchSyncTimeoutRef.current = setTimeout(() => {
+        Promise.all([
+          supabase.from('check_ins').select('checked_in_at').eq('profile_id', capturedData.id).order('checked_in_at', { ascending: false }).limit(30),
+          supabase.from('workout_sessions').select('completed_at').eq('profile_id', capturedData.id).eq('status', 'completed').gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString()),
+        ]).then(([checkInsRes, weeklyRes]) => {
+          // Calculate streak from check-ins
+          let streak = 0;
+          const checkIns = checkInsRes.data || [];
+          if (checkIns.length > 0) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            let checkDay = new Date(checkIns[0].checked_in_at); checkDay.setHours(0,0,0,0);
+            const diffDays = Math.round((today - checkDay) / 86400000);
+            if (diffDays <= 1) {
+              streak = 1;
+              for (let i = 1; i < checkIns.length; i++) {
+                const prev = new Date(checkIns[i].checked_in_at); prev.setHours(0,0,0,0);
+                if (Math.round((checkDay - prev) / 86400000) === 1) {
+                  streak++;
+                  checkDay = prev;
+                } else break;
+              }
             }
           }
-        }
-        syncUserContextToWatch({
-          qrPayload: data.qr_code_payload || '',
-          userName: data.full_name || data.username || '',
-          streak,
-          lastWorkoutDate: weeklyRes.data?.[0]?.completed_at || '',
-          weeklyWorkoutCount: weeklyRes.data?.length || 0,
-        });
-      }).catch(() => {});
-
-      // Sync friends activity to Watch (non-blocking)
-      supabase
-        .from('friendships')
-        .select('requester_id, addressee_id')
-        .or(`requester_id.eq.${data.id},addressee_id.eq.${data.id}`)
-        .eq('status', 'accepted')
-        .limit(20)
-        .then(({ data: friendships }) => {
-          if (!friendships?.length) return;
-          const friendIds = friendships.map(f => f.requester_id === data.id ? f.addressee_id : f.requester_id);
-          const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours
-          Promise.all([
-            supabase.from('profiles').select('id, full_name, username').in('id', friendIds),
-            supabase.from('workout_sessions').select('profile_id, started_at, status, name').in('profile_id', friendIds).gte('started_at', cutoff).order('started_at', { ascending: false }),
-          ]).then(([profilesRes, sessionsRes]) => {
-            const profiles = profilesRes.data || [];
-            const sessions = sessionsRes.data || [];
-            const friends = profiles.map(p => {
-              const activeSession = sessions.find(s => s.profile_id === p.id && s.status === 'in_progress');
-              const lastSession = sessions.find(s => s.profile_id === p.id);
-              return {
-                name: p.full_name || p.username || 'Friend',
-                isActive: !!activeSession,
-                status: activeSession ? (activeSession.name || 'Working out') : (lastSession ? 'Recently active' : ''),
-              };
-            }).filter(f => f.isActive || f.status);
-            syncFriendsToWatch(friends);
+          syncUserContextToWatch({
+            qrPayload: capturedData.qr_code_payload || '',
+            userName: capturedData.full_name || capturedData.username || '',
+            streak,
+            lastWorkoutDate: weeklyRes.data?.[0]?.completed_at || '',
+            weeklyWorkoutCount: weeklyRes.data?.length || 0,
           });
         }).catch(() => {});
 
-      // Sync routines to Watch on login (non-blocking)
-      Promise.all([
-        supabase.from('routines').select('id, name, routine_exercises(id)').eq('created_by', data.id).eq('is_template', false).order('created_at', { ascending: false }),
-        supabase.from('workout_sessions').select('routine_id, completed_at').eq('profile_id', data.id).eq('status', 'completed').order('completed_at', { ascending: false }).limit(50),
-        supabase.from('generated_programs').select('program_start, expires_at').eq('profile_id', data.id).order('created_at', { ascending: false }).limit(1),
-      ]).then(([routinesRes, sessionsRes, programsRes]) => {
-        const routines = routinesRes.data || [];
-        const lastPerformed = {};
-        (sessionsRes.data || []).forEach(s => {
-          if (s.routine_id && !lastPerformed[s.routine_id]) lastPerformed[s.routine_id] = s.completed_at;
-        });
-        // Determine today's program routines
-        let todayIds = new Set();
-        const prog = programsRes.data?.[0];
-        if (prog && new Date(prog.expires_at) > new Date()) {
-          const weekNum = Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1;
-          const isWeekA = weekNum % 2 === 1;
-          todayIds = new Set(
-            routines.filter(r => r.name?.startsWith('Auto:') && (isWeekA ? (r.name.endsWith(' A') || !r.name.endsWith(' B')) : r.name.endsWith(' B'))).map(r => r.id)
-          );
-        }
-        syncRoutinesToWatch(routines.map(r => ({
-          id: r.id,
-          name: r.name,
-          exercises: r.routine_exercises || [],
-          exerciseCount: r.routine_exercises?.length || 0,
-          lastUsed: lastPerformed[r.id] || '',
-          isProgram: r.name?.startsWith('Auto:') || false,
-          isTodayWorkout: todayIds.has(r.id),
-        })));
-      }).catch(() => {});
+        // Sync friends activity to Watch (non-blocking)
+        supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${capturedData.id},addressee_id.eq.${capturedData.id}`)
+          .eq('status', 'accepted')
+          .limit(20)
+          .then(({ data: friendships }) => {
+            if (!friendships?.length) return;
+            const friendIds = friendships.map(f => f.requester_id === capturedData.id ? f.addressee_id : f.requester_id);
+            const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours
+            Promise.all([
+              supabase.from('profiles').select('id, full_name, username').in('id', friendIds),
+              supabase.from('workout_sessions').select('profile_id, started_at, status, name').in('profile_id', friendIds).gte('started_at', cutoff).order('started_at', { ascending: false }),
+            ]).then(([profilesRes, sessionsRes]) => {
+              const profiles = profilesRes.data || [];
+              const sessions = sessionsRes.data || [];
+              const friends = profiles.map(p => {
+                const activeSession = sessions.find(s => s.profile_id === p.id && s.status === 'in_progress');
+                const lastSession = sessions.find(s => s.profile_id === p.id);
+                return {
+                  name: p.full_name || p.username || 'Friend',
+                  isActive: !!activeSession,
+                  status: activeSession ? (activeSession.name || 'Working out') : (lastSession ? 'Recently active' : ''),
+                };
+              }).filter(f => f.isActive || f.status);
+              syncFriendsToWatch(friends);
+            });
+          }).catch(() => {});
+
+        // Sync routines to Watch on login (non-blocking)
+        Promise.all([
+          supabase.from('routines').select('id, name, routine_exercises(id)').eq('created_by', capturedData.id).eq('is_template', false).order('created_at', { ascending: false }),
+          supabase.from('workout_sessions').select('routine_id, completed_at').eq('profile_id', capturedData.id).eq('status', 'completed').order('completed_at', { ascending: false }).limit(50),
+          supabase.from('generated_programs').select('program_start, expires_at').eq('profile_id', capturedData.id).order('created_at', { ascending: false }).limit(1),
+        ]).then(([routinesRes, sessionsRes, programsRes]) => {
+          const routines = routinesRes.data || [];
+          const lastPerformed = {};
+          (sessionsRes.data || []).forEach(s => {
+            if (s.routine_id && !lastPerformed[s.routine_id]) lastPerformed[s.routine_id] = s.completed_at;
+          });
+          // Determine today's program routines
+          let todayIds = new Set();
+          const prog = programsRes.data?.[0];
+          if (prog && new Date(prog.expires_at) > new Date()) {
+            const weekNum = Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1;
+            const isWeekA = weekNum % 2 === 1;
+            todayIds = new Set(
+              routines.filter(r => r.name?.startsWith('Auto:') && (isWeekA ? (r.name.endsWith(' A') || !r.name.endsWith(' B')) : r.name.endsWith(' B'))).map(r => r.id)
+            );
+          }
+          syncRoutinesToWatch(routines.map(r => ({
+            id: r.id,
+            name: r.name,
+            exercises: r.routine_exercises || [],
+            exerciseCount: r.routine_exercises?.length || 0,
+            lastUsed: lastPerformed[r.id] || '',
+            isProgram: r.name?.startsWith('Auto:') || false,
+            isTodayWorkout: todayIds.has(r.id),
+          })));
+        }).catch(() => {});
+      }, 0);
     }
   };
 
@@ -370,7 +382,14 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      // Clean up any pending Watch sync timeout
+      if (watchSyncTimeoutRef.current) {
+        clearTimeout(watchSyncTimeoutRef.current);
+        watchSyncTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   // Fetch unread notification count whenever the profile is loaded/changed
@@ -399,7 +418,7 @@ export const AuthProvider = ({ children }) => {
 
   // ── SIGN UP ────────────────────────────────────────────────
   // Creates the Supabase auth user then immediately inserts a profiles row.
-  const signUp = async ({ email, password, fullName, username, gymSlug }) => {
+  const signUp = useCallback(async ({ email, password, fullName, username, gymSlug }) => {
     // 1. Look up the gym by slug
     const { data: gym, error: gymError } = await supabase
       .from('gyms')
@@ -455,26 +474,26 @@ export const AuthProvider = ({ children }) => {
     }
 
     return data;
-  };
+  }, []);
 
   // ── SIGN IN ────────────────────────────────────────────────
-  const signIn = async ({ email, password }) => {
+  const signIn = useCallback(async ({ email, password }) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-  };
+  }, []);
 
   // ── SIGN OUT ───────────────────────────────────────────────
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     // Remove push tokens so the device stops receiving notifications
     if (user?.id) await removePushTokens(user.id);
 
     clearPersistedUserData();
 
     await supabase.auth.signOut();
-  };
+  }, [user?.id]);
 
   // ── DELETE ACCOUNT ───────────────────────────────────────────
-  const deleteAccount = async () => {
+  const deleteAccount = useCallback(async () => {
     // Server-side cascade delete via RPC
     const { error } = await supabase.rpc('delete_user_account');
     if (error) throw new Error(error.message || 'Failed to delete account. Please try again.');
@@ -482,47 +501,76 @@ export const AuthProvider = ({ children }) => {
     clearPersistedUserData();
 
     await supabase.auth.signOut();
-  };
+  }, []);
 
   // ── REFRESH PROFILE ────────────────────────────────────────
   // Call this after onboarding completes to pick up is_onboarded = true
-  const refreshProfile = () => {
+  const refreshProfile = useCallback(() => {
     if (user) return fetchProfile(user.id);
-  };
+  }, [user]);
 
-  // Optimistic patch — merges fields into the local profile immediately
-  // without a DB round-trip.  Follow up with refreshProfile() to confirm.
-  const patchProfile = (fields) => {
-    setProfile((prev) => (prev ? { ...prev, ...fields } : prev));
-  };
+  // Optimistic patch — merges safelisted fields into the local profile
+  // immediately without a DB round-trip.  Follow up with refreshProfile() to confirm.
+  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible'];
+  const patchProfile = useCallback((fields) => {
+    const safe = Object.fromEntries(
+      Object.entries(fields).filter(([k]) => PATCHABLE_FIELDS.includes(k))
+    );
+    if (Object.keys(safe).length === 0) return;
+    setProfile((prev) => (prev ? { ...prev, ...safe } : prev));
+  }, []);
+
+  const refreshLifetimePoints = useCallback(() => {
+    if (profile?.id) {
+      supabase.from('reward_points').select('lifetime_points').eq('profile_id', profile.id).maybeSingle()
+        .then(({ data: pts }) => setLifetimePoints(pts?.lifetime_points ?? 0));
+    }
+  }, [profile?.id]);
+
+  const contextValue = useMemo(() => ({
+    user,
+    profile,
+    gymName,
+    gymLogoUrl,
+    loading,
+    gymDeactivated,
+    gymConfig,
+    memberBlocked,
+    lifetimePoints,
+    refreshLifetimePoints,
+    signUp,
+    signIn,
+    signOut,
+    deleteAccount,
+    refreshProfile,
+    patchProfile,
+    unreadNotifications,
+    refreshNotifications,
+    mfaRequired,
+  }), [
+    user,
+    profile,
+    gymName,
+    gymLogoUrl,
+    loading,
+    gymDeactivated,
+    gymConfig,
+    memberBlocked,
+    lifetimePoints,
+    refreshLifetimePoints,
+    signUp,
+    signIn,
+    signOut,
+    deleteAccount,
+    refreshProfile,
+    patchProfile,
+    unreadNotifications,
+    refreshNotifications,
+    mfaRequired,
+  ]);
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      profile,
-      gymName,
-      gymLogoUrl,
-      loading,
-      gymDeactivated,
-      gymConfig,
-      memberBlocked,
-      lifetimePoints,
-      refreshLifetimePoints: () => {
-        if (profile?.id) {
-          supabase.from('reward_points').select('lifetime_points').eq('profile_id', profile.id).maybeSingle()
-            .then(({ data: pts }) => setLifetimePoints(pts?.lifetime_points ?? 0));
-        }
-      },
-      signUp,
-      signIn,
-      signOut,
-      deleteAccount,
-      refreshProfile,
-      patchProfile,
-      unreadNotifications,
-      refreshNotifications,
-      mfaRequired,
-    }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

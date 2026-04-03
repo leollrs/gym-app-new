@@ -80,6 +80,22 @@ export default defineConfig({
     // Target modern browsers only (iOS 16+, Android 10+)
     target: ['es2020', 'safari16', 'chrome91'],
     // Generate source maps for Capgo crash reporting
-    sourcemap: 'hidden',
+    sourcemap: false,
+    // Warn about chunks exceeding 1000 kB
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'recharts': ['recharts'],
+          'framer-motion': ['framer-motion'],
+          'supabase': ['@supabase/supabase-js'],
+          'date-fns': ['date-fns'],
+          'i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+        },
+        chunkFileNames: 'js/[name]-[hash].js',
+        entryFileNames: 'js/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
   },
 })

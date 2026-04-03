@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Camera, ScanLine } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
+import { verifyQRPayload } from '../../lib/qrSecurity';
 
 /**
  * QR scanner for admins.
@@ -34,12 +35,8 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
       setScanning(false);
 
       if (barcodes.length > 0 && barcodes[0].rawValue) {
-        const parsed = parseQRPayload(barcodes[0].rawValue);
-        if (parsed) {
-          onScan(parsed);
-        } else {
-          setError(`Not a valid purchase QR: "${barcodes[0].rawValue.substring(0, 50)}"`);
-        }
+        const result = await handleScannedValue(barcodes[0].rawValue, onScan, setError);
+        if (!result) setError(`Not a valid purchase QR: "${barcodes[0].rawValue.substring(0, 50)}"`);
       }
     } catch (err) {
       setScanning(false);
@@ -67,15 +64,11 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
       await html5Qrcode.start(
         { facingMode: 'environment' },
         { fps: 15, qrbox: { width: Math.round(qrboxSize), height: Math.round(qrboxSize) } },
-        (decodedText) => {
+        async (decodedText) => {
           html5Qrcode.stop().catch(() => {});
           setScanning(false);
-          const parsed = parseQRPayload(decodedText);
-          if (parsed) {
-            onScan(parsed);
-          } else {
-            setError(`Not a valid purchase QR: "${decodedText.substring(0, 50)}"`);
-          }
+          const result = await handleScannedValue(decodedText, onScan, setError);
+          if (!result) setError(`Not a valid purchase QR: "${decodedText.substring(0, 50)}"`);
         },
         () => {}
       );
@@ -162,32 +155,60 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
   );
 }
 
-function parseQRPayload(text) {
-  if (!text || typeof text !== 'string') return null;
-  const trimmed = text.trim();
+/**
+ * Verify signature server-side, then parse the payload.
+ * Returns true if onScan was called, false if the QR is invalid.
+ */
+async function handleScannedValue(rawText, onScan, setError) {
+  if (!rawText || typeof rawText !== 'string') return false;
+  const trimmed = rawText.trim();
 
-  // Try JSON-based QR payloads first (e.g. password_reset)
+  // JSON payloads (password_reset) are not signed
   if (trimmed.startsWith('{')) {
     try {
       const json = JSON.parse(trimmed);
       if (json.type === 'password_reset' && json.request_id && json.token) {
-        return { type: 'password_reset', request_id: json.request_id, token: json.token };
+        onScan({ type: 'password_reset', request_id: json.request_id, token: json.token });
+        return true;
       }
-    } catch {
-      // Not valid JSON — fall through to other parsers
-    }
+    } catch { /* fall through */ }
   }
 
-  if (trimmed.startsWith('gym-purchase:')) {
-    const parts = trimmed.split(':');
-    if (parts.length === 4 && parts[1] && parts[2] && parts[3]) {
+  // Signed payloads: payload:timestamp|signature
+  // Verify signature + expiry server-side before trusting
+  const lastPipe = trimmed.lastIndexOf('|');
+  if (lastPipe !== -1) {
+    const { valid, payload } = await verifyQRPayload(trimmed);
+    if (!valid) {
+      setError('QR code signature invalid or expired. Ask member to refresh their QR.');
+      return true; // error was set, don't show generic error
+    }
+    // Parse the verified payload (strip the :timestamp suffix)
+    const withoutTimestamp = payload?.replace(/:\d+$/, '') || '';
+    const parsed = parseQRContent(withoutTimestamp);
+    if (parsed) { onScan(parsed); return true; }
+  }
+
+  // Unsigned legacy fallback — try parsing directly
+  const parsed = parseQRContent(trimmed);
+  if (parsed) { onScan(parsed); return true; }
+
+  return false;
+}
+
+function parseQRContent(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  if (text.startsWith('gym-purchase:')) {
+    const parts = text.split(':');
+    if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
       return { type: 'purchase', gymId: parts[1], memberId: parts[2], productId: parts[3] };
     }
     return null;
   }
 
-  if (trimmed.length > 0) {
-    return { type: 'checkin', qrPayload: trimmed };
+  if (text.length > 0) {
+    return { type: 'checkin', qrPayload: text };
   }
 
   return null;

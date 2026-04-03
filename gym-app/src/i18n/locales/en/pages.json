@@ -5110,7 +5110,6 @@
     "streakDays": "{{count}}-day streak",
     "contacted": "Contacted",
     "reachOut": {
-      "sms": "Send SMS",
       "push": "Send Push",
       "call": "Log Call",
       "logCall": "Log Call Outcome",
@@ -5120,8 +5119,6 @@
       "cancel": "Cancel",
       "saving": "Saving...",
       "logCallBtn": "Log Call",
-      "smsTitle": "{{name}} wants to check in with you",
-      "smsBody": "Your trainer is reaching out — come back and crush your goals!",
       "pushTitle": "{{name}} wants to check in with you",
       "pushBody": "Your trainer is reaching out — come back and crush your goals!"
     },

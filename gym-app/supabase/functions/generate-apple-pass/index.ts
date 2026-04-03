@@ -11,6 +11,7 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as base64Encode } from 'https://deno.land/std@0.177.0/encoding/base64.ts';
 import { crypto } from 'https://deno.land/std@0.177.0/crypto/mod.ts';
+import forge from 'https://esm.sh/node-forge@1.3.1?no-dts&target=denonext';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -21,8 +22,11 @@ const PASS_CERT_B64 = Deno.env.get('APPLE_PASS_CERT_BASE64') || '';
 const PASS_KEY_B64 = Deno.env.get('APPLE_PASS_KEY_BASE64') || '';
 const WWDR_CERT_B64 = Deno.env.get('APPLE_WWDR_CERT_BASE64') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -75,6 +79,10 @@ function getContrastColors(hexColor: string): { fg: string; label: string; isDar
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -366,7 +374,7 @@ serve(async (req: Request) => {
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
     files['manifest.json'] = manifestBytes;
 
-    // ── Sign manifest with PKCS#7 using node-forge (dynamic import) ──
+    // ── Sign manifest with PKCS#7 using node-forge ──
     let signature: Uint8Array;
     try {
       // Polyfill Node.js crypto.randomBytes for Deno
@@ -388,8 +396,6 @@ serve(async (req: Request) => {
           throw new Error(`Cannot require ${mod}`);
         };
       }
-
-      const forge = (await import('https://esm.sh/node-forge@1.3.1?no-dts&target=denonext')).default;
 
       const certPem = atob(PASS_CERT_B64);
       const keyPem = atob(PASS_KEY_B64);

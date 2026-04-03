@@ -15,6 +15,7 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as base64Encode } from 'https://deno.land/std@0.177.0/encoding/base64.ts';
 import { crypto } from 'https://deno.land/std@0.177.0/crypto/mod.ts';
+import forge from 'https://esm.sh/node-forge@1.3.1?no-dts&target=denonext';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -41,6 +42,11 @@ const PLACEHOLDER_PNG = new Uint8Array([
 
 function getAuthToken(req: Request): string {
   return (req.headers.get('Authorization') ?? '').replace('ApplePass ', '');
+}
+
+async function hashAuthToken(token: string): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 serve(async (req: Request) => {
@@ -124,8 +130,9 @@ serve(async (req: Request) => {
       const authToken = getAuthToken(req);
       if (!authToken) return new Response('', { status: 401 });
 
+      const hashedToken = await hashAuthToken(authToken);
       const { data: profile } = await supabase.from('profiles').select('id, gym_id')
-        .eq('wallet_auth_token', authToken).single();
+        .eq('wallet_auth_token', hashedToken).single();
       if (!profile) return new Response('', { status: 401 });
 
       const body = await req.json().catch(() => ({}));
@@ -171,8 +178,9 @@ serve(async (req: Request) => {
       if (!reg) return new Response('', { status: 404 });
 
       // Verify the auth token belongs to the profile that owns this registration
+      const hashedToken = await hashAuthToken(authToken);
       const { data: profile } = await supabase.from('profiles').select('id')
-        .eq('wallet_auth_token', authToken)
+        .eq('wallet_auth_token', hashedToken)
         .eq('id', reg.profile_id)
         .maybeSingle();
 
@@ -194,9 +202,10 @@ serve(async (req: Request) => {
 
       console.log(`[Wallet] Fetch pass: type=${passTypeId} serial=${serial}`);
 
+      const hashedToken = await hashAuthToken(authToken);
       const { data: profile } = await supabase.from('profiles')
         .select('id, gym_id, full_name, wallet_auth_token, wallet_pass_serial, qr_code_payload')
-        .eq('wallet_auth_token', authToken).single();
+        .eq('wallet_auth_token', hashedToken).single();
       if (!profile) return new Response('', { status: 401 });
 
       // Fetch punch cards (needed for both pass types)
@@ -433,7 +442,6 @@ serve(async (req: Request) => {
         (globalThis as any).require = (m: string) => { if (m === 'crypto') return nc; throw new Error(`Cannot require ${m}`); };
       }
 
-      const forge = (await import('https://esm.sh/node-forge@1.3.1?no-dts&target=denonext')).default;
       const cert = forge.pki.certificateFromPem(atob(certB64));
       const key = forge.pki.privateKeyFromPem(atob(keyB64));
       const wwdr = forge.pki.certificateFromPem(atob(WWDR_CERT_B64));

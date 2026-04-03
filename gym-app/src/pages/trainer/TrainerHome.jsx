@@ -190,24 +190,6 @@ export default function TrainerDashboard() {
     }
   }
 
-  async function handleSMS(member) {
-    setSubmittingAction(`sms-${member.id}`);
-    try {
-      await supabase.from('notifications').insert({
-        profile_id: member.id,
-        gym_id: profile.gym_id,
-        type: 'trainer_message',
-        title: t('trainerDashboard.reachOut.smsTitle', { name: profile.full_name || t('trainerDashboard.yourTrainerFallback') }),
-        body: t('trainerDashboard.reachOut.smsBody'),
-      });
-      await logFollowup(member.id, 'sms', 'Sent SMS notification');
-    } catch (err) {
-      logger.error('Failed to send SMS:', err);
-    } finally {
-      setSubmittingAction(null);
-    }
-  }
-
   async function handlePush(member) {
     setSubmittingAction(`push-${member.id}`);
     try {

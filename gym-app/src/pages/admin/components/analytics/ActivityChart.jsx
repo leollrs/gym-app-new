@@ -1,3 +1,4 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -52,7 +53,7 @@ async function fetchActivityData(gymId) {
   return months;
 }
 
-export default function ActivityChart({ gymId }) {
+function ActivityChart({ gymId }) {
   const { t } = useTranslation('pages');
   const { data: activityData = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.activity(gymId),
@@ -150,3 +151,5 @@ export default function ActivityChart({ gymId }) {
     </AdminCard>
   );
 }
+
+export default React.memo(ActivityChart);

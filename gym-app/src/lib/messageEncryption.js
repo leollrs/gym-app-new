@@ -1,20 +1,21 @@
 /**
  * Message encryption for direct messages.
- * Uses AES-GCM with a key derived from the conversation ID + a static app secret.
+ * Uses AES-GCM with a key derived from the conversation ID + a per-conversation
+ * encryption seed stored in the `conversations.encryption_seed` column.
  * This provides at-rest encryption in the DB — messages are stored as ciphertext.
+ *
+ * The `seed` parameter must be fetched from the conversations table by the caller.
+ * It is a random UUID string unique to each conversation, readable only by
+ * conversation participants (enforced by RLS).
+ *
  * NOTE: This is not true E2E encryption (server could derive the key).
  * For true E2E, you'd need per-user key pairs with key exchange.
  */
 
-// SECURITY WARNING: This secret is embedded in the client bundle and provides
-// only obfuscation, not true encryption. For actual message security, move
-// key derivation to a server-side Edge Function with a proper secret.
-const APP_SECRET = 'tugympr-msg-v1';
-
-async function deriveKey(conversationId) {
+async function deriveKey(conversationId, seed) {
   const material = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(APP_SECRET + conversationId),
+    new TextEncoder().encode(seed + conversationId),
     'PBKDF2',
     false,
     ['deriveKey']
@@ -28,9 +29,9 @@ async function deriveKey(conversationId) {
   );
 }
 
-export async function encryptMessage(text, conversationId) {
+export async function encryptMessage(text, conversationId, seed) {
   try {
-    const key = await deriveKey(conversationId);
+    const key = await deriveKey(conversationId, seed);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
@@ -49,13 +50,13 @@ export async function encryptMessage(text, conversationId) {
   }
 }
 
-export async function decryptMessage(ciphertext, conversationId) {
+export async function decryptMessage(ciphertext, conversationId, seed) {
   try {
     if (!ciphertext?.startsWith('enc:')) return ciphertext; // Not encrypted, return as-is
     const data = Uint8Array.from(atob(ciphertext.slice(4)), c => c.charCodeAt(0));
     const iv = data.slice(0, 12);
     const encrypted = data.slice(12);
-    const key = await deriveKey(conversationId);
+    const key = await deriveKey(conversationId, seed);
     const decrypted = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv },
       key,

@@ -402,7 +402,9 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   useEffect(() => {
     if (mentionQuery === null || mentionQuery.length < 1) { setMentionResults([]); return; }
     const timer = setTimeout(async () => {
-      const pattern = `%${mentionQuery}%`;
+      const cleanQuery = mentionQuery.replace(/[%_\\,()."']/g, '');
+      if (!cleanQuery) { setMentionResults([]); return; }
+      const pattern = `%${cleanQuery}%`;
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
@@ -1351,7 +1353,7 @@ const SocialFeed = ({ embedded = false }) => {
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             {gymLogoUrl ? (
-              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-12 h-12 rounded-2xl object-cover" />
+              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-12 h-12 rounded-2xl object-cover" width={48} height={48} loading="lazy" />
             ) : (
               <div className="w-12 h-12 rounded-2xl bg-white/[0.06] flex items-center justify-center">
                 <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
@@ -1558,12 +1560,12 @@ const SocialFeed = ({ embedded = false }) => {
         />
 
         {/* Report Modal */}
-        <ReportModal
+        {!!reportTarget && <ReportModal
           open={!!reportTarget}
           onClose={() => setReportTarget(null)}
           onSubmit={handleReportSubmit}
           t={t}
-        />
+        />}
       </div>
     </div>
   );
@@ -1643,7 +1645,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
           {/* Photo preview */}
           {photoPreview && (
             <div className="relative">
-              <img src={photoPreview} alt="Preview" className="w-full max-h-[200px] object-cover rounded-xl" />
+              <img src={photoPreview} alt="Preview" className="w-full max-h-[200px] object-cover rounded-xl" loading="lazy" />
               <button
                 type="button"
                 onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}

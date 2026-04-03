@@ -18,8 +18,10 @@ const FCM_PROJECT_ID   = Deno.env.get('FCM_PROJECT_ID') || '';
 const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY  = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -53,6 +55,10 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
     result |= sigA[i] ^ sigB[i];
   }
   return result === 0;
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, '');
 }
 
 function jsonResp(data: unknown, status = 200) {
@@ -210,6 +216,18 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
+  }
+
+  if (!ALLOWED_ORIGIN) {
+    console.error('ALLOWED_ORIGIN environment variable is not set');
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonResp({ error: 'Unauthorized' }, 401);
@@ -232,10 +250,44 @@ serve(async (req) => {
       userId = user.id;
     }
 
-    const { profile_id, gym_id, title, body, data: pushData } = await req.json();
+    let { profile_id, gym_id, title, body, data: pushData } = await req.json();
 
     if (!title) return jsonResp({ error: 'title is required' }, 400);
     if (!profile_id) return jsonResp({ error: 'profile_id is required' }, 400);
+
+    // Input validation
+    if (typeof title !== 'string' || title.length > 200) {
+      return jsonResp({ error: 'Title too long (max 200 chars)' }, 400);
+    }
+    if (typeof body !== 'string' || body.length > 1000) {
+      return jsonResp({ error: 'Body too long (max 1000 chars)' }, 400);
+    }
+    if (pushData && JSON.stringify(pushData).length > 4096) {
+      return jsonResp({ error: 'Push data payload too large' }, 400);
+    }
+
+    // Strip HTML tags
+    title = stripHtml(title);
+    body = stripHtml(body);
+
+    // Rate limiting: max 20 pushes per target user per hour (database-backed)
+    {
+      const supabaseRL = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabaseRL
+        .from('ai_rate_limits')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', profile_id)
+        .eq('endpoint', 'send-push-user')
+        .gte('created_at', oneHourAgo);
+      if ((count ?? 0) >= 20) {
+        return jsonResp({ error: 'Rate limit exceeded — too many pushes to this user' }, 429);
+      }
+      // Record this push for rate limiting
+      await supabaseRL
+        .from('ai_rate_limits')
+        .insert({ profile_id: profile_id, endpoint: 'send-push-user' });
+    }
 
     // Auth check: service role can push to anyone; users can only push to themselves or if admin/trainer
     if (!isServiceRole && userId && profile_id !== userId) {

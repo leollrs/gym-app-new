@@ -537,13 +537,13 @@ export default function AdminAuditLog() {
       </FadeIn>
 
       {/* Detail modal */}
-      <AuditDetailModal
+      {selectedEntry && <AuditDetailModal
         entry={selectedEntry}
         isOpen={!!selectedEntry}
         onClose={() => setSelectedEntry(null)}
         t={t}
         dateFnsOpts={dateFnsOpts}
-      />
+      />}
     </AdminPageShell>
   );
 }

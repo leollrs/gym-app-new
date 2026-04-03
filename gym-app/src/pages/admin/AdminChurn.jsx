@@ -606,11 +606,17 @@ export default function AdminChurn() {
     });
   }, [members]);
 
-  const criticalCount = members.filter(m => m.churnScore >= 80).length;
-  const highRiskCount = members.filter(m => m.churnScore >= 55 && m.churnScore < 80).length;
-  const medRiskCount = members.filter(m => m.churnScore >= 30 && m.churnScore < 55).length;
+  const { criticalCount, highRiskCount, medRiskCount } = useMemo(() => {
+    let critical = 0, high = 0, med = 0;
+    for (const m of members) {
+      if (m.churnScore >= 80) critical++;
+      else if (m.churnScore >= 55) high++;
+      else if (m.churnScore >= 30) med++;
+    }
+    return { criticalCount: critical, highRiskCount: high, medRiskCount: med };
+  }, [members]);
   const contactedCount = contactedIds.size;
-  const returnedCount = winBackAttempts.filter(a => a.outcome === 'returned').length;
+  const returnedCount = useMemo(() => winBackAttempts.filter(a => a.outcome === 'returned').length, [winBackAttempts]);
 
   // "Needs Action" = at-risk members who have NOT been contacted
   const needsActionMembers = useMemo(() => {

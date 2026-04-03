@@ -441,8 +441,9 @@ function CreateGymModal({ onClose, onCreated }) {
     try {
       let ownerUserId = null;
       if (ownerEmail.trim()) {
+        const cleanEmail = ownerEmail.trim().replace(/[%_\\,()."']/g, '');
         const { data: ownerProfile } = await supabase
-          .from('profiles').select('id').ilike('full_name', ownerEmail.trim()).maybeSingle();
+          .from('profiles').select('id').ilike('full_name', cleanEmail).maybeSingle();
         if (!ownerProfile) {
           const { data: byEmail } = await supabase
             .from('profiles').select('id').eq('email', ownerEmail.trim().toLowerCase()).maybeSingle();

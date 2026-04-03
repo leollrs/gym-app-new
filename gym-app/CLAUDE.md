@@ -224,7 +224,7 @@ A **white-label B2B SaaS churn reduction platform** sold to gyms. Each gym gets 
 
 #### 19. Referral System
 - Unique referral code generation per member (via RPC)
-- Share via clipboard, native share (Capacitor), SMS
+- Share via clipboard, native share (Capacitor)
 - QR code for referral link
 - Referral history: status tracking (pending/completed/expired), referred friend name
 - Gym-configurable rewards (referrer + referred friend rewards)
@@ -369,7 +369,7 @@ A complete native watchOS companion app:
 - ML-based churn scoring across attendance, workout frequency, social engagement, streak data
 - At-risk member list with risk scores and tier colors
 - Follow-up settings with customizable templates
-- Win-back modal for targeted outreach (SMS/call/email)
+- Win-back modal for targeted outreach (push/call/email)
 - Contact history tracking
 
 #### Analytics (9 charts)
@@ -409,7 +409,7 @@ A complete native watchOS companion app:
 - Referral program configuration
 - Store management (product CRUD, reward categories, purchase logging)
 - Moderation tools (reported content dashboard, approve/delete/restore)
-- Messaging system (SMS-style chat, delivery status)
+- Messaging system (in-app chat, delivery status)
 - Trainer management (add/demote, client counts, CSV export)
 - Leaderboard management (6 metrics, period/tier filtering, CSV export)
 - Attendance tracking (30/60/90-day trends, heatmaps by day/hour, CSV export)
@@ -438,7 +438,6 @@ A complete native watchOS companion app:
 - **Error Logs** — 50-item pagination, 9 error types, device/browser info, timestamps
 - **Analytics** — 9 stat cards, monthly/weekly/all-time views, growth/churn/engagement charts
 - **Settings** — exercise library editor, **email configuration** (status/templates), **feature flags** (7 toggles), **default gym config** (calories/days/language/theme), **system health** (Supabase status, active users, edge functions, storage)
-- **SMS Management** — per-gym Twilio config, usage tracking by month, rate management
 
 ---
 
@@ -579,7 +578,7 @@ A complete native watchOS companion app:
 - [x] Admin Dashboard (15 pages: Overview, Members, Attendance, Challenges, Programs, Leaderboard, Announcements, Settings, Store, Moderation, Messaging, Churn, Analytics, Trainers, Classes)
 - [x] Churn Prediction (ML scoring, follow-up workflows, win-back campaigns)
 - [x] Trainer Tier (8 pages: Dashboard, Clients, Schedule, Plans, Analytics, Programs, Notes, Classes)
-- [x] Platform Tier (8 pages: Gyms, Detail, Lookup, Audit, Errors, Analytics, Settings, SMS)
+- [x] Platform Tier (7 pages: Gyms, Detail, Lookup, Audit, Errors, Analytics, Settings)
 - [x] Dark + Light Mode (CSS variable architecture, 2,315+ colors refactored, toggle in settings)
 - [x] White-label Branding (runtime CSS injection, 10 palettes, surface tinting)
 - [x] Performance (lazy loading, RPCs, persistent cache, offline support, service worker)

@@ -105,7 +105,7 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
         <div className="px-5 pt-5 pb-3 text-center">
           <div className="w-14 h-14 rounded-full bg-white/[0.06] flex items-center justify-center mx-auto mb-3 overflow-hidden">
             {entry.avatar ? (
-              <img src={entry.avatar} alt="" className="w-full h-full object-cover" />
+              <img src={entry.avatar} alt="" className="w-full h-full object-cover" width={56} height={56} loading="lazy" />
             ) : (
               <span className="text-[18px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
             )}
@@ -538,7 +538,7 @@ const Leaderboard = ({ embedded = false }) => {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 ring-2 ring-[#10B981]/20">
                 {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} loading="lazy" />
                 ) : (
                   <span className="text-[14px] font-bold text-[var(--color-text-muted)]">{profile?.full_name?.charAt(0)?.toUpperCase() ?? '?'}</span>
                 )}

@@ -60,14 +60,14 @@ export default function AdminAttendance() {
           .eq('status', 'completed')
           .gte('started_at', from)
           .order('started_at', { ascending: true })
-          .limit(5000),
+          .limit(1000),
         supabase
           .from('check_ins')
           .select('profile_id, checked_in_at')
           .eq('gym_id', gymId)
           .gte('checked_in_at', from)
           .order('checked_in_at', { ascending: true })
-          .limit(5000),
+          .limit(1000),
       ]);
 
       const sessionList = sessions || [];

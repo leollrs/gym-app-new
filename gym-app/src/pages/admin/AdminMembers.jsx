@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake } from 'lucide-react';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../lib/supabase';
@@ -65,15 +65,16 @@ function estimateChurnScore(daysInactive, recentWorkouts, neverActive) {
   return { score, risk_tier, key_signals };
 }
 
+const MEMBERS_PAGE_SIZE = 200;
+
 // ── Data fetcher ──────────────────────────────────────────
-async function fetchMembers(gymId) {
+async function fetchMembers(gymId, page = 0) {
+  const from = page * MEMBERS_PAGE_SIZE;
+  const to = from + MEMBERS_PAGE_SIZE - 1;
   const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    // Fetch up to 2000 members to avoid silently truncating bigger gyms.
-    // Filters, counts, bulk actions, and exports all operate on this list,
-    // so a low limit would make them incorrect without any visible warning.
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).limit(2000),
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
-    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()),
+    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
       logger.error('AdminMembers: fetchMembersWithChurnScores:', err);
       return [];
@@ -170,6 +171,10 @@ export default function AdminMembers() {
   const [inviteFilter, setInviteFilter] = useState('pending');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null); // 'message' | 'freeze' | 'export' | 'assign_trainer'
+  const [membersPage, setMembersPage] = useState(0);
+  const [allMembers, setAllMembers] = useState([]);
+  const [hasMoreMembers, setHasMoreMembers] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -188,12 +193,37 @@ export default function AdminMembers() {
 
   useEffect(() => { document.title = 'Admin - Members | TuGymPR'; }, []);
 
-  const { data: members = [], isLoading, refetch } = useQuery({
+  const { data: initialMembers = [], isLoading, refetch } = useQuery({
     queryKey: adminKeys.members.all(gymId),
-    queryFn: () => fetchMembers(gymId),
+    queryFn: async () => {
+      const result = await fetchMembers(gymId, 0);
+      setMembersPage(0);
+      setHasMoreMembers(result.length >= MEMBERS_PAGE_SIZE);
+      setAllMembers(result);
+      return result;
+    },
     enabled: !!gymId,
     staleTime: 30_000,
   });
+
+  const members = allMembers.length > 0 ? allMembers : initialMembers;
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMoreMembers) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = membersPage + 1;
+      const moreMembers = await fetchMembers(gymId, nextPage);
+      setMembersPage(nextPage);
+      setHasMoreMembers(moreMembers.length >= MEMBERS_PAGE_SIZE);
+      // NOTE: allMembers grows unbounded across pages. If gyms reach very high member counts,
+      // consider capping or virtualizing the list to avoid excessive memory usage.
+      setAllMembers(prev => [...prev, ...moreMembers]);
+    } catch (err) {
+      logger.error('AdminMembers: load more failed:', err);
+    }
+    setLoadingMore(false);
+  };
 
   const { data: allInvites = [], isLoading: invitesLoading, refetch: refetchInvites } = useQuery({
     queryKey: [...adminKeys.members.all(gymId), 'all-invites'],
@@ -621,11 +651,11 @@ export default function AdminMembers() {
       <AdminTabs tabs={tabOptions} active={tab} onChange={(key) => { setTab(key); setSearch(''); setFilter('all'); clearSelection(); }} className="mb-4" />
 
       {/* Member limit warning */}
-      {members.length >= 2000 && tab === 'members' && (
+      {!hasMoreMembers && members.length >= MEMBERS_PAGE_SIZE && tab === 'members' && (
         <div className="mb-3 px-4 py-2.5 rounded-xl text-[12px] flex items-center gap-2"
           style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)', color: 'var(--color-warning)' }}>
           <AlertTriangle size={14} className="flex-shrink-0" />
-          {t('admin.members.memberLimitWarning', 'Showing first 2,000 members. Use search to find specific members.')}
+          {t('admin.members.memberLimitWarning', 'All loaded members are shown. Use search to find specific members.')}
         </div>
       )}
 
@@ -772,6 +802,30 @@ export default function AdminMembers() {
                   })}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Load More button */}
+          {hasMoreMembers && !isLoading && filtered.length > 0 && (
+            <div className="flex justify-center mt-4 mb-2">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:scale-[1.02] disabled:opacity-50"
+                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
+              >
+                {loadingMore ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    {t('admin.members.loadingMore', 'Loading...')}
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    {t('admin.members.loadMore', 'Load More Members')}
+                  </>
+                )}
+              </button>
             </div>
           )}
         </>

@@ -16,7 +16,9 @@ export async function signQRPayload(payload) {
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
 
-  return `${payload}|${data.signature}`;
+  // Use the timestamped payload returned by the server (not the original)
+  // so that verify-qr can check both signature and expiry.
+  return `${data.payload}|${data.signature}`;
 }
 
 export async function verifyQRPayload(signedPayload) {

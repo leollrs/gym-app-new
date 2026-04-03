@@ -1,3 +1,4 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -47,7 +48,7 @@ async function fetchRetentionData(gymId) {
   return months;
 }
 
-export default function RetentionChart({ gymId }) {
+function RetentionChart({ gymId }) {
   const { t } = useTranslation('pages');
   const { data: retentionData = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.analytics.retention(gymId),
@@ -168,3 +169,5 @@ export default function RetentionChart({ gymId }) {
     </AdminCard>
   );
 }
+
+export default React.memo(RetentionChart);

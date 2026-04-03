@@ -16,7 +16,7 @@ const ExercisePreviewList = ({ exercises = [], maxVisible = 3 }) => {
       <div className="space-y-1.5">
         {visible.map((ex, i) => (
           <motion.div
-            key={ex.id || i}
+            key={ex.id ?? `ex-${i}`}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.06, duration: 0.3 }}

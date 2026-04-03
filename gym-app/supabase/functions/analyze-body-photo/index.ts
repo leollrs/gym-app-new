@@ -42,14 +42,30 @@ function stripExifFromJpeg(base64: string): string {
   }
 }
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) {
+  console.error('FATAL: ALLOWED_ORIGIN environment variable is not set');
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
+  if (!ALLOWED_ORIGIN) {
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -112,13 +128,20 @@ serve(async (req) => {
       );
     }
 
-    // ── RATE LIMIT (15/hour) — fail closed ──────────────────────
+    // ── RATE LIMIT (15/hour) — insert-first to close race condition ──
     let rateLimitOk = false;
     try {
       const RATE_LIMIT = 15;
       const ENDPOINT = 'analyze-body-photo';
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+      // Insert first so concurrent requests both consume a slot
+      await supabase.from('ai_rate_limits').insert({
+        profile_id: user.id,
+        endpoint: ENDPOINT,
+      });
+
+      // Then check total count (including the one we just inserted)
       const { count: requestCount } = await supabase
         .from('ai_rate_limits')
         .select('*', { count: 'exact', head: true })
@@ -126,17 +149,13 @@ serve(async (req) => {
         .eq('endpoint', ENDPOINT)
         .gte('requested_at', oneHourAgo);
 
-      if ((requestCount ?? 0) >= RATE_LIMIT) {
+      if ((requestCount ?? 0) > RATE_LIMIT) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      await supabase.from('ai_rate_limits').insert({
-        profile_id: user.id,
-        endpoint: ENDPOINT,
-      });
       rateLimitOk = true;
     } catch (rateLimitError) {
       console.error('Rate limit check failed:', rateLimitError);
@@ -175,18 +194,24 @@ serve(async (req) => {
       : 'You are given a FRONT view photo only.';
 
     // ── AI CALL ─────────────────────────────────────────────────
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5-nano',
-        input: [
-          {
-            role: 'system',
-            content: `You are a precise body composition analysis API. Respond with ONLY a valid JSON object.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/responses', {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-5-nano',
+          input: [
+            {
+              role: 'system',
+              content: `You are a precise body composition analysis API. Respond with ONLY a valid JSON object.
 
 CRITICAL RULES:
 - Use real anatomical and fitness knowledge
@@ -196,14 +221,14 @@ CRITICAL RULES:
 - It is better to return null than a bad guess
 
 IMPORTANT: If the image contains inappropriate, explicit, or offensive content that is not a legitimate body/fitness photo, respond with exactly: {"error": "inappropriate_content", "message": "This image cannot be analyzed"}${langInstruction}`,
-          },
-          {
-            role: 'user',
-            content: [
-              ...imageInputs,
-              {
-                type: 'input_text',
-                text: `${photoCountStr}
+            },
+            {
+              role: 'user',
+              content: [
+                ...imageInputs,
+                {
+                  type: 'input_text',
+                  text: `${photoCountStr}
 
 ${contextStr ? `Known info: ${contextStr}` : ''}
 
@@ -221,17 +246,29 @@ Analyze body composition and estimate measurements. Return JSON with these field
 - muscle_quality: "low" | "moderate" | "athletic" | "muscular" (string)
 - scan_quality: "good" | "fair" | "poor" (based on lighting, clothing, angle)
 - scan_notes: brief note about what could improve the scan (string, max 80 chars)`,
-              },
-            ],
-          },
-        ],
-        text: { format: { type: 'json_object' } },
-      }),
-    });
+                },
+              ],
+            },
+          ],
+          text: { format: { type: 'json_object' } },
+        }),
+      });
+      clearTimeout(timeout);
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+        return new Response(
+          JSON.stringify({ error: 'AI analysis timed out' }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw fetchErr;
+    }
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} - ${errText}`);
+      console.error(`OpenAI API error: ${response.status} - ${errText}`);
+      throw new Error('AI analysis temporarily unavailable');
     }
 
     const result = await response.json();
@@ -305,9 +342,9 @@ Analyze body composition and estimate measurements. Return JSON with these field
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    console.error('analyze-body-photo error:', err);
     return new Response(
-      JSON.stringify({ error: msg }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

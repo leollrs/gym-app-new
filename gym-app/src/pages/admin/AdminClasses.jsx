@@ -636,13 +636,13 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'})</label>
-            <input type="number" min={5} value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))}
+            <input type="number" min={5} max={480} value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
           </div>
           <div>
             <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')}</label>
-            <input type="number" min={1} value={form.max_capacity} onChange={e => setForm(f => ({ ...f, max_capacity: Number(e.target.value) }))}
+            <input type="number" min={1} max={1000} value={form.max_capacity} onChange={e => setForm(f => ({ ...f, max_capacity: Number(e.target.value) }))}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
               style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
           </div>

@@ -199,6 +199,9 @@ export function useInvalidate() {
     invalidateNotifications: (userId) => queryClient.invalidateQueries({ queryKey: ['notifications', userId] }),
     invalidateChallenges: (gymId) => queryClient.invalidateQueries({ queryKey: ['challenges', gymId] }),
     invalidatePRs: (userId) => queryClient.invalidateQueries({ queryKey: ['personal-records', userId] }),
+    // Prefer scoped helpers above (e.g. invalidateSessions, invalidateRoutines) over
+    // invalidateAll — a blanket invalidation refetches every cached query and should
+    // only be used as a last resort (e.g. role change, gym switch).
     invalidateAll: () => queryClient.invalidateQueries(),
   };
 }

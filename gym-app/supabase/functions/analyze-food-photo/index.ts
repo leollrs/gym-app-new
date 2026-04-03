@@ -39,14 +39,25 @@ function stripExifFromJpeg(base64: string): string {
   }
 }
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
+  if (!ALLOWED_ORIGIN) {
+    console.error('ALLOWED_ORIGIN environment variable is not set');
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), { status: 500 });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -103,12 +114,21 @@ serve(async (req) => {
     const image = stripExifFromJpeg(rawImage);
 
     // ── RATE LIMIT CHECK (15 requests/hour per user) — fail closed ──
+    // Insert FIRST to claim a slot, then count. This prevents race conditions
+    // where two concurrent requests both pass the check before either inserts.
     let rateLimitOk = false;
     try {
       const RATE_LIMIT = 15;
       const ENDPOINT = 'analyze-food-photo';
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+      // Insert the rate limit record first to claim the slot
+      await supabase.from('ai_rate_limits').insert({
+        profile_id: user.id,
+        endpoint: ENDPOINT,
+      });
+
+      // Now count including the just-inserted record
       const { count: requestCount } = await supabase
         .from('ai_rate_limits')
         .select('*', { count: 'exact', head: true })
@@ -116,17 +136,13 @@ serve(async (req) => {
         .eq('endpoint', ENDPOINT)
         .gte('requested_at', oneHourAgo);
 
-      if ((requestCount ?? 0) >= RATE_LIMIT) {
+      if ((requestCount ?? 0) > RATE_LIMIT) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      await supabase.from('ai_rate_limits').insert({
-        profile_id: user.id,
-        endpoint: ENDPOINT,
-      });
       rateLimitOk = true;
     } catch (rateLimitError) {
       console.error('Rate limit check failed:', rateLimitError);
@@ -138,18 +154,24 @@ serve(async (req) => {
     // ── END RATE LIMIT ──────────────────────────────────────────
 
     // ── AI Vision — identify foods, portions, and macros ────────
-    const aiResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5-nano',
-        input: [
-          {
-            role: 'system',
-            content: `You are a precise food nutrition API. You MUST respond with ONLY a valid JSON object.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    let aiResponse: Response;
+    try {
+      aiResponse = await fetch('https://api.openai.com/v1/responses', {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-5-nano',
+          input: [
+            {
+              role: 'system',
+              content: `You are a precise food nutrition API. You MUST respond with ONLY a valid JSON object.
 
 CRITICAL RULES:
 - Water, sparkling water, mineral water = ALWAYS 0 calories, 0 protein, 0 carbs, 0 fat
@@ -160,32 +182,44 @@ CRITICAL RULES:
 - Do NOT hallucinate or guess. Use real nutritional knowledge only.
 
 IMPORTANT: If the image contains inappropriate, explicit, or offensive content that is not a legitimate food photo, respond with exactly: {"error": "inappropriate_content", "message": "This image cannot be analyzed"}${langInstruction}`,
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_image',
-                image_url: `data:image/jpeg;base64,${image}`,
-              },
-              {
-                type: 'input_text',
-                text: `Identify each food/drink item in this photo. For each item provide the name, estimated weight in grams (or ml for liquids), and accurate macronutrient values for that portion.
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_image',
+                  image_url: `data:image/jpeg;base64,${image}`,
+                },
+                {
+                  type: 'input_text',
+                  text: `Identify each food/drink item in this photo. For each item provide the name, estimated weight in grams (or ml for liquids), and accurate macronutrient values for that portion.
 
 Return JSON: { "food_name": "short meal description", "items": [{ "name": "food name", "estimated_grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }], "confidence": "high"|"medium"|"low" }
 
 If no food or drink visible: { "error": "no_food_detected" }${lang === 'es' ? '\n\nREMEMBER: All text in the JSON response MUST be in Spanish.' : ''}`,
-              },
-            ],
-          },
-        ],
-        text: { format: { type: 'json_object' } },
-      }),
-    });
+                },
+              ],
+            },
+          ],
+          text: { format: { type: 'json_object' } },
+        }),
+      });
+      clearTimeout(timeout);
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+        return new Response(
+          JSON.stringify({ error: 'AI analysis timed out' }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw fetchErr;
+    }
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      throw new Error(`OpenAI API error: ${aiResponse.status} - ${errText}`);
+      console.error(`OpenAI API error: ${aiResponse.status} - ${errText}`);
+      throw new Error('AI analysis temporarily unavailable');
     }
 
     const aiResult = await aiResponse.json();

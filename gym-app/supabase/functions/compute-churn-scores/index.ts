@@ -30,8 +30,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -299,6 +302,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
+  }
+
   try {
     // ── Auth: only allow calls with a valid cron secret or service-role token ──
     // Timing-safe comparison to prevent timing-based secret extraction
@@ -395,7 +402,7 @@ serve(async (req) => {
         // New signal data fetches
         scheduleRes, recentSessionDaysRes, notificationsRes,
         outreachNotifsRes, referralsRes,
-        muscleGroupsLast30Res, muscleGroupsPrev30Res,
+        sessionIdsLast30Res, sessionIdsPrev30Res,
         socialActionsRes,
       ] = await Promise.all([
         // ── Original queries ──
@@ -457,17 +464,19 @@ serve(async (req) => {
           .in('referrer_id', memberIds)
           .limit(5000),
 
-        // Workout Type Shift: muscle groups last 30 days
-        supabase.from('session_exercises').select('session_id, muscle_group')
-          .in('session_id',
-            // We'll filter by session IDs from sessions in last 30 days after fetch
-            // For now, fetch broadly and filter in memory
-            []
-          ).limit(0), // placeholder — we'll use a different approach below
+        // Workout Type Shift: session IDs for last 30 days (needed for muscle group fetch)
+        supabase.from('workout_sessions').select('id, profile_id')
+          .eq('gym_id', gymId).eq('status', 'completed')
+          .gte('started_at', thirtyDaysAgo)
+          .in('profile_id', memberIds)
+          .limit(5000),
 
-        // Workout Type Shift: muscle groups previous 30 days (placeholder)
-        supabase.from('session_exercises').select('session_id, muscle_group')
-          .in('session_id', []).limit(0), // placeholder
+        // Workout Type Shift: session IDs for previous 30 days
+        supabase.from('workout_sessions').select('id, profile_id')
+          .eq('gym_id', gymId).eq('status', 'completed')
+          .gte('started_at', sixtyDaysAgo).lt('started_at', thirtyDaysAgo)
+          .in('profile_id', memberIds)
+          .limit(5000),
 
         // App Engagement: social actions (likes, comments) — days since last action
         supabase.from('activity_feed_items').select('actor_id, created_at')
@@ -478,55 +487,34 @@ serve(async (req) => {
       ]);
 
       // ── Workout Type Shift: fetch session_exercises via session IDs ──
-      // Get session IDs for last 30 days and previous 30 days
-      const sessionsLast30Ids: Record<string, string[]> = {};
-      const sessionsPrev30Ids: Record<string, string[]> = {};
-
-      // We need session IDs — fetch them from workout_sessions with IDs
-      const { data: sessionIdsLast30 } = await supabase
-        .from('workout_sessions')
-        .select('id, profile_id')
-        .eq('gym_id', gymId).eq('status', 'completed')
-        .gte('started_at', thirtyDaysAgo)
-        .in('profile_id', memberIds)
-        .limit(5000);
-
-      const { data: sessionIdsPrev30 } = await supabase
-        .from('workout_sessions')
-        .select('id, profile_id')
-        .eq('gym_id', gymId).eq('status', 'completed')
-        .gte('started_at', sixtyDaysAgo).lt('started_at', thirtyDaysAgo)
-        .in('profile_id', memberIds)
-        .limit(5000);
+      // Session IDs already fetched in the parallel batch above
+      const sessionIdsLast30 = sessionIdsLast30Res.data || [];
+      const sessionIdsPrev30 = sessionIdsPrev30Res.data || [];
 
       // Map session IDs to profiles
-      const allSessionIdsLast30 = (sessionIdsLast30 || []).map((s: any) => s.id);
-      const allSessionIdsPrev30 = (sessionIdsPrev30 || []).map((s: any) => s.id);
+      const allSessionIdsLast30 = sessionIdsLast30.map((s: any) => s.id);
+      const allSessionIdsPrev30 = sessionIdsPrev30.map((s: any) => s.id);
       const sessionToProfile: Record<string, string> = {};
-      (sessionIdsLast30 || []).forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
-      (sessionIdsPrev30 || []).forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
+      sessionIdsLast30.forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
+      sessionIdsPrev30.forEach((s: any) => { sessionToProfile[s.id] = s.profile_id; });
 
-      // Fetch session_exercises for muscle groups (batch in chunks if needed)
-      let muscleGroupDataLast30: any[] = [];
-      let muscleGroupDataPrev30: any[] = [];
-
-      if (allSessionIdsLast30.length > 0) {
-        const { data } = await supabase
-          .from('session_exercises')
-          .select('session_id, muscle_group')
-          .in('session_id', allSessionIdsLast30.slice(0, 2000))
-          .limit(10000);
-        muscleGroupDataLast30 = data || [];
-      }
-
-      if (allSessionIdsPrev30.length > 0) {
-        const { data } = await supabase
-          .from('session_exercises')
-          .select('session_id, muscle_group')
-          .in('session_id', allSessionIdsPrev30.slice(0, 2000))
-          .limit(10000);
-        muscleGroupDataPrev30 = data || [];
-      }
+      // Fetch session_exercises for muscle groups in parallel (batch in chunks if needed)
+      const [muscleGroupLast30Res, muscleGroupPrev30Res] = await Promise.all([
+        allSessionIdsLast30.length > 0
+          ? supabase.from('session_exercises')
+              .select('session_id, muscle_group')
+              .in('session_id', allSessionIdsLast30.slice(0, 2000))
+              .limit(10000)
+          : Promise.resolve({ data: [] }),
+        allSessionIdsPrev30.length > 0
+          ? supabase.from('session_exercises')
+              .select('session_id, muscle_group')
+              .in('session_id', allSessionIdsPrev30.slice(0, 2000))
+              .limit(10000)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const muscleGroupDataLast30 = muscleGroupLast30Res.data || [];
+      const muscleGroupDataPrev30 = muscleGroupPrev30Res.data || [];
 
       // Build muscle group counts per member
       const muscleGroupsL30: Record<string, Set<string>> = {};
@@ -926,7 +914,7 @@ serve(async (req) => {
   } catch (err) {
     console.error('compute-churn-scores error:', err);
     return new Response(
-      JSON.stringify({ error: (err as Error).message }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

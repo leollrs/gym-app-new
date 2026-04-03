@@ -9,6 +9,7 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as base64Encode } from 'https://deno.land/std@0.177.0/encoding/base64.ts';
 import { crypto } from 'https://deno.land/std@0.177.0/crypto/mod.ts';
+import forge from 'https://esm.sh/node-forge@1.3.1?no-dts&target=denonext';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -19,8 +20,11 @@ const PASS_CERT_B64 = Deno.env.get('APPLE_PUNCH_CERT_BASE64') || '';
 const PASS_KEY_B64 = Deno.env.get('APPLE_PUNCH_KEY_BASE64') || '';
 const WWDR_CERT_B64 = Deno.env.get('APPLE_WWDR_CERT_BASE64') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -131,9 +135,27 @@ function pickTopCard(cards: any[]): any {
   })[0];
 }
 
+// ── Timing-safe string comparison (prevents timing attacks) ──
+
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const ka = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const kb = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sa = new Uint8Array(await crypto.subtle.sign('HMAC', ka, enc.encode('compare')));
+  const sb = new Uint8Array(await crypto.subtle.sign('HMAC', kb, enc.encode('compare')));
+  if (sa.length !== sb.length) return false;
+  let result = 0;
+  for (let i = 0; i < sa.length; i++) result |= sa[i] ^ sb[i];
+  return result === 0;
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -151,7 +173,7 @@ serve(async (req: Request) => {
     if (user) {
       userId = user.id;
     } else if (bodyProfileId) {
-      if (token === SUPABASE_SERVICE_ROLE_KEY) {
+      if (await timingSafeEqual(token, SUPABASE_SERVICE_ROLE_KEY)) {
         userId = bodyProfileId;
       }
     }
@@ -375,8 +397,6 @@ serve(async (req: Request) => {
           throw new Error(`Cannot require ${mod}`);
         };
       }
-
-      const forge = (await import('https://esm.sh/node-forge@1.3.1?no-dts&target=denonext')).default;
 
       const certPem = atob(PASS_CERT_B64);
       const keyPem = atob(PASS_KEY_B64);

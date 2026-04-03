@@ -136,6 +136,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const threadEndRef = useRef(null);
   const inputRef = useRef(null);
   const convoIdsRef = useRef([]);
+  const seedMapRef = useRef({});
 
   // ── Load conversations + member list ──────────────────
   const loadConversations = useCallback(async () => {
@@ -174,7 +175,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
 
       let preview = null;
       if (lastMsgRes.data?.body) {
-        try { preview = await decryptMessage(lastMsgRes.data.body, c.id); }
+        try { preview = await decryptMessage(lastMsgRes.data.body, c.id, c.encryption_seed); }
         catch { preview = lastMsgRes.data.body; }
       }
 
@@ -188,6 +189,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
 
     setConversations(enriched);
     convoIdsRef.current = enriched.map(c => c.id);
+    seedMapRef.current = Object.fromEntries(convos.map(c => [c.id, c.encryption_seed]));
     setMembers(memberRes.data || []);
     setLoading(false);
 
@@ -217,9 +219,10 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
         .select('*').eq('conversation_id', activeConvoId)
         .order('created_at', { ascending: true }).limit(200);
       if (error) logger.error('AdminMessaging: messages:', error);
+      const seed = seedMapRef.current[activeConvoId];
       const decrypted = await Promise.all(
         (data || []).map(async (m) => {
-          try { return { ...m, body: await decryptMessage(m.body, activeConvoId) }; }
+          try { return { ...m, body: await decryptMessage(m.body, activeConvoId, seed) }; }
           catch { return m; }
         })
       );
@@ -260,7 +263,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       if (!convoIdsRef.current.includes(newMsg.conversation_id)) return;
 
       if (newMsg.conversation_id === activeConvoId) {
-        decryptMessage(newMsg.body, activeConvoId).then(decryptedBody => {
+        decryptMessage(newMsg.body, activeConvoId, seedMapRef.current[activeConvoId]).then(decryptedBody => {
           setMessages(prev => {
             if (prev.some(m => m.id === newMsg.id)) return prev;
             return [...prev, { ...newMsg, body: decryptedBody }];
@@ -279,7 +282,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
         }
       }
 
-      decryptMessage(newMsg.body, newMsg.conversation_id).then(decryptedPreview => {
+      decryptMessage(newMsg.body, newMsg.conversation_id, seedMapRef.current[newMsg.conversation_id]).then(decryptedPreview => {
         setConversations(prev => prev.map(c =>
           c.id === newMsg.conversation_id
             ? {
@@ -360,7 +363,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     }]);
 
     let encrypted;
-    try { encrypted = await encryptMessage(body, activeConvoId); }
+    try { encrypted = await encryptMessage(body, activeConvoId, seedMapRef.current[activeConvoId]); }
     catch { encrypted = body; }
 
     const { error } = await supabase.from('direct_messages').insert({
@@ -415,6 +418,12 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     });
 
     if (error) { logger.error('AdminMessaging: create convo:', error); return; }
+
+    // Fetch the encryption seed for the new/existing conversation so it's
+    // available before messages are loaded or sent.
+    const { data: convoRow } = await supabase.from('conversations')
+      .select('encryption_seed').eq('id', convoId).single();
+    if (convoRow) seedMapRef.current[convoId] = convoRow.encryption_seed;
 
     setShowNewMsg(false);
     setActiveConvoId(convoId);

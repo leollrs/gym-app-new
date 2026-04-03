@@ -162,6 +162,8 @@ function KPITargets({ gymId }) {
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
+                    min="0"
+                    max="100000"
                     className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5
                       text-sm text-white outline-none
                       focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]/20

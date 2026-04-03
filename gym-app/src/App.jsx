@@ -98,7 +98,6 @@ const PlatformAnalytics  = lazy(() => import('./pages/platform/PlatformAnalytics
 const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'));
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
-const SmsManagement      = lazy(() => import('./pages/platform/SmsManagement'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
 
 // ── APPLY SAVED THEME PREFERENCE ────────────────────────────
@@ -714,7 +713,6 @@ function App() {
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
                 <Route path="/support"      element={<SupportConsole />} />
                 <Route path="/settings"     element={<PlatformSettings />} />
-                <Route path="/sms"          element={<SmsManagement />} />
                 <Route path="/audit-log"    element={<AuditLog />} />
                 <Route path="/error-logs"   element={<ErrorLogs />} />
                 <Route path="*"             element={<Navigate to="/platform/operations" replace />} />

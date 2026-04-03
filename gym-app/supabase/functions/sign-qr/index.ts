@@ -2,13 +2,22 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
-// TODO: Ideally use a dedicated QR_SIGNING_SECRET instead of SERVICE_ROLE_KEY
-// to limit blast radius if the signing secret is ever compromised.
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+// Fail closed: QR_SIGNING_SECRET must be explicitly configured.
+const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET');
+if (!QR_SIGNING_SECRET) {
+  throw new Error('QR_SIGNING_SECRET environment variable is required');
+}
+
+// Fail closed: ALLOWED_ORIGIN must be explicitly configured.
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) {
+  throw new Error('ALLOWED_ORIGIN environment variable is required');
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -23,7 +32,7 @@ async function hmacSign(payload: string): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(SUPABASE_SERVICE_KEY),
+    encoder.encode(QR_SIGNING_SECRET),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
@@ -37,6 +46,10 @@ async function hmacSign(payload: string): Promise<string> {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -62,6 +75,6 @@ serve(async (req) => {
     return jsonResp({ signature, payload: timestampedPayload });
   } catch (err) {
     console.error('sign-qr error:', err);
-    return jsonResp({ error: err.message || 'Internal error' }, 500);
+    return jsonResp({ error: 'Internal server error' }, 500);
   }
 });

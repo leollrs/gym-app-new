@@ -75,7 +75,7 @@ const ParticipantList = ({ challengeId, t }) => {
     <div className="mt-4 space-y-2">
       <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')}</p>
       {names.map((name, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+        <div key={`${name}-${i}`} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
           <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
             <span className="text-[12px] font-bold text-[#D4AF37]">{name[0]}</span>
           </div>

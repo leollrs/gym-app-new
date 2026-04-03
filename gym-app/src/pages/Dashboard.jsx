@@ -235,8 +235,19 @@ const Dashboard = () => {
       const hasCached = !!getCached(`dash:${user.id}`)?.data;
       if (!hasCached) dispatch({ type: 'SET_LOADING', payload: true });
 
-      // Single RPC call replaces 5+ sequential/parallel queries
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_data');
+      // Start RPC + class bookings in parallel (gymConfig is from AuthContext, available immediately)
+      const rpcPromise = supabase.rpc('get_dashboard_data');
+      const classPromise = gymConfig?.classesEnabled
+        ? supabase
+            .from('gym_class_bookings')
+            .select('id, schedule_id, status, booking_date, gym_class_schedules(start_time, end_time, gym_classes(name, name_es, image_url))')
+            .eq('user_id', user.id)
+            .eq('booking_date', new Date().toISOString().split('T')[0])
+            .in('status', ['confirmed', 'attended'])
+        : Promise.resolve({ data: [] });
+
+      const [{ data: rpcData, error: rpcError }, { data: classBookings }] = await Promise.all([rpcPromise, classPromise]);
+
       if (rpcError) {
         console.error('get_dashboard_data RPC error:', rpcError);
         if (!cancelled) {
@@ -245,6 +256,9 @@ const Dashboard = () => {
         }
         return;
       }
+
+      // Class bookings already fetched in parallel above
+      if (!cancelled) setTodayClassBookings(classBookings || []);
 
       const allSessions = rpcData?.sessions || [];
       const fetchedRoutines = rpcData?.routines || [];
@@ -384,17 +398,7 @@ const Dashboard = () => {
         setLiveChallenge(rpcData.challenge);
       }
 
-      // Fetch today's class bookings if classes are enabled
-      if (gymConfig?.classesEnabled) {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const { data: classBookings } = await supabase
-          .from('gym_class_bookings')
-          .select('id, schedule_id, status, booking_date, gym_class_schedules(start_time, end_time, gym_classes(name, name_es, image_url))')
-          .eq('user_id', user.id)
-          .eq('booking_date', todayStr)
-          .in('status', ['confirmed', 'attended']);
-        if (!cancelled) setTodayClassBookings(classBookings || []);
-      }
+      // Class bookings already fetched in parallel with RPC (see Promise.all above)
     };
 
     load();

@@ -21,13 +21,6 @@ export default function AchievementToast({ achievements, onDone }) {
     return () => clearTimeout(t);
   }, [index, achievements]);
 
-  // Auto-dismiss after 4 seconds
-  useEffect(() => {
-    if (!visible) return;
-    const t = setTimeout(() => advance(), 4000);
-    return () => clearTimeout(t);
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const advance = useCallback(() => {
     setExiting(true);
     setTimeout(() => {
@@ -39,6 +32,13 @@ export default function AchievementToast({ achievements, onDone }) {
       }
     }, 350);
   }, [index, achievements, onDone]);
+
+  // Auto-dismiss after 4 seconds
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => advance(), 4000);
+    return () => clearTimeout(t);
+  }, [visible, advance]);
 
   if (!achievements?.length) return null;
 

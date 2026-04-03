@@ -2,13 +2,12 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
-// TODO: Ideally use a dedicated QR_SIGNING_SECRET instead of SERVICE_ROLE_KEY
-// to limit blast radius if the signing secret is ever compromised.
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const QR_SIGNING_SECRET    = Deno.env.get('QR_SIGNING_SECRET');
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
+const ALLOWED_ORIGIN       = Deno.env.get('ALLOWED_ORIGIN');
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -38,7 +37,7 @@ async function hmacSign(payload: string): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(SUPABASE_SERVICE_KEY),
+    encoder.encode(QR_SIGNING_SECRET),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
@@ -50,8 +49,26 @@ async function hmacSign(payload: string): Promise<string> {
 }
 
 serve(async (req) => {
+  // ── Fail-closed env checks ────────────────────────────────────
+  if (!ALLOWED_ORIGIN) {
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!QR_SIGNING_SECRET) {
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -78,15 +95,19 @@ serve(async (req) => {
       return jsonResp({ valid: false });
     }
 
+    // ── Validate payload structure ─────────────────────────────
+    // Expected format: <qr_code_payload>:<timestamp>  (at least 2 colon-separated parts)
+    const parts = payload.split(':');
+    if (parts.length < 2 || !parts[0]) {
+      return jsonResp({ error: 'Invalid payload format' }, 400);
+    }
+
     // ── Check expiration (5-minute window) ───────────────────────
     const QR_EXPIRY_MS = 300_000; // 5 minutes
-    const parts = payload.split(':');
     const timestamp = parseInt(parts[parts.length - 1]);
 
     if (isNaN(timestamp)) {
-      // Backward compatibility: accept payloads without a timestamp but warn
-      console.warn('verify-qr: payload has no timestamp — accepting for backward compatibility');
-      return jsonResp({ valid: true });
+      return jsonResp({ error: 'Invalid payload format' }, 400);
     }
 
     if (Date.now() - timestamp > QR_EXPIRY_MS) {
@@ -96,6 +117,6 @@ serve(async (req) => {
     return jsonResp({ valid: true });
   } catch (err) {
     console.error('verify-qr error:', err);
-    return jsonResp({ error: err.message || 'Internal error' }, 500);
+    return jsonResp({ error: 'Internal server error' }, 500);
   }
 });

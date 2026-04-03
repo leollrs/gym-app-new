@@ -193,7 +193,7 @@ table tr:nth-child(even){background:#f8fafc}
 
 <div class="callout">
   <h3>${esc(L.highlights)}</h3>
-  <p>${highlightText}</p>
+  <p>${esc(highlightText)}</p>
 </div>
 
 <div class="footer">${esc(L.confidential)}</div>

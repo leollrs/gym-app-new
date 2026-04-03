@@ -621,7 +621,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
             style={{ background: 'var(--color-surface-hover)', border: '2px dashed var(--color-border-subtle)' }}>
             {scanStep === 1 && frontPhoto ? (
               <div className="relative w-full h-full">
-                <img src={frontPhoto.preview} alt="Front" className="w-full h-full object-cover opacity-30" />
+                <img src={frontPhoto.preview} alt="Front" className="w-full h-full object-cover opacity-30" loading="lazy" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <Check size={32} className="text-[#10B981] mb-2" />
                   <p className="text-[12px] font-semibold text-[#10B981]">{t('progressBody.frontCaptured')}</p>
@@ -708,8 +708,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
               <div className="rounded-[16px] overflow-hidden" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
                 <div className="px-4 py-3.5 flex items-center gap-3">
                   <div className="flex gap-2">
-                    {frontPhoto && <img src={frontPhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid var(--color-border-subtle)' }} />}
-                    {sidePhoto && <img src={sidePhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {frontPhoto && <img src={frontPhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {sidePhoto && <img src={sidePhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">

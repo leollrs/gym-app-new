@@ -28,8 +28,11 @@ const PUSH_KEY_B64 = Deno.env.get('APPLE_PUSH_KEY_BASE64') || '';
 const PUSH_KEY_ID = Deno.env.get('APPLE_PUSH_KEY_ID') || '';
 const TEAM_ID = Deno.env.get('APPLE_TEAM_ID') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 

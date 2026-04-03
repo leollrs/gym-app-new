@@ -181,8 +181,8 @@ const GymPulse = () => {
 
     // Realtime — listen for workout sessions + check-ins so the feed
     // refreshes when someone starts/finishes a workout or checks in.
-    // Debounced because these tables lack a direct gym_id column, so we
-    // cannot filter at the channel level and must refetch selectively.
+    // Filtered by gym_id so we only receive events for the current gym.
+    const gymId = profile.gym_id;
     let debounceTimer;
     const debouncedFetch = () => {
       clearTimeout(debounceTimer);
@@ -194,16 +194,19 @@ const GymPulse = () => {
         event: 'INSERT',
         schema: 'public',
         table: 'workout_sessions',
+        filter: `gym_id=eq.${gymId}`,
       }, debouncedFetch)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'workout_sessions',
+        filter: `gym_id=eq.${gymId}`,
       }, debouncedFetch)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'check_ins',
+        filter: `gym_id=eq.${gymId}`,
       }, debouncedFetch)
       .subscribe();
 

@@ -180,6 +180,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
               type="number"
               step="0.01"
               min="0"
+              max="99999"
               value={form.price}
               onChange={e => set('price', e.target.value)}
               placeholder="0.00"
@@ -191,6 +192,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
             <input
               type="number"
               min="0"
+              max="99999"
               value={form.points_per_purchase}
               onChange={e => set('points_per_purchase', e.target.value)}
               placeholder="10"

@@ -347,7 +347,10 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' })
 // ── CATEGORY ROW ────────────────────────────────────────────
 const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen, lang = 'en' }) => {
   const { t } = useTranslation('pages');
-  const items = (recipes || []).filter(r => r?.category === category.id);
+  const items = useMemo(
+    () => (recipes || []).filter(r => r?.category === category.id),
+    [recipes, category.id]
+  );
   if (!items.length) return null;
   return (
     <div className="mb-7">
@@ -398,7 +401,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, gro
       >
         {/* ── Hero image ── */}
         <div className="relative flex-shrink-0 overflow-hidden w-full" style={{ aspectRatio: '10 / 5', borderRadius: '20px 20px 0 0' }}>
-          <img src={foodImageUrl(recipe.image)} alt={mealTitle} className="w-full h-full object-cover" />
+          <img src={foodImageUrl(recipe.image)} alt={mealTitle} className="w-full h-full object-cover" loading="lazy" />
           {/* gradient overlay */}
           <div className="absolute inset-0" style={{
             background: 'linear-gradient(to top, color-mix(in srgb, var(--color-bg-card) 95%, transparent) 0%, color-mix(in srgb, var(--color-bg-card) 30%, transparent) 50%, transparent 100%)',
@@ -671,7 +674,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeRes
       // Sanitize query to prevent PostgREST filter injection
       const safeQuery = query.replace(/[%_\\,()."']/g, '');
       if (!safeQuery) { setResults([]); setSearching(false); return; }
-      const { data } = await supabase.from('food_items').select('*')
+      const { data } = await supabase.from('food_items').select('id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g')
         .or(`name.ilike.%${safeQuery}%,name_es.ilike.%${safeQuery}%`).limit(20);
       setResults(data || []);
       setSearching(false);
@@ -954,7 +957,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
           <div className="px-5 py-16 text-center">
             {photoPreview && (
               <div className="w-24 h-24 mx-auto mb-5 rounded-2xl overflow-hidden">
-                <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+                <img src={photoPreview} alt="" className="w-full h-full object-cover" width={96} height={96} loading="lazy" />
               </div>
             )}
             <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mx-auto mb-4" />
@@ -982,7 +985,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
             <div className="relative">
               {photoPreview ? (
                 <div className="relative aspect-[16/9] overflow-hidden rounded-t-[24px]">
-                  <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+                  <img src={photoPreview} alt="" className="w-full h-full object-cover" loading="lazy" />
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), color-mix(in srgb, var(--color-bg-secondary) 40%, transparent), color-mix(in srgb, black 10%, transparent))' }} />
                 </div>
               ) : <div className="h-16" />}
@@ -1047,9 +1050,10 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
                       <input
                         type="number"
                         inputMode="numeric"
+                        min="0"
                         value={Math.round(totalGrams) || ''}
                         onFocus={e => e.target.select()}
-                        onChange={e => handleGramsChange(e.target.value)}
+                        onChange={e => { const val = parseFloat(e.target.value); if (val < 0) return; handleGramsChange(e.target.value); }}
                         className="w-full text-center text-[24px] font-black text-[var(--color-text-primary)] leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                       />
                       <p className="text-[9px] text-[#6B7280] mt-1">{t('nutrition.gramsAdjust', 'grams (adjust to match actual portion)')}</p>
@@ -1077,9 +1081,10 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
                         <input
                           type="number"
                           inputMode="decimal"
+                          min="0"
                           value={macros[m.key] ?? ''}
                           onFocus={e => e.target.select()}
-                          onChange={e => setEditedMacros(prev => ({ ...prev, [m.key]: parseFloat(e.target.value) || 0 }))}
+                          onChange={e => { const val = parseFloat(e.target.value); if (val < 0) return; setEditedMacros(prev => ({ ...prev, [m.key]: val || 0 })); }}
                           className="w-full text-center text-[18px] font-black leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                           style={{ color: m.c }}
                         />
@@ -1211,7 +1216,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
         <div className="relative">
           {photoSrc ? (
             <div className="relative aspect-[4/3] overflow-hidden rounded-t-[28px]">
-              <img src={photoSrc} alt="" className="w-full h-full object-cover scale-[1.02]" />
+              <img src={photoSrc} alt="" className="w-full h-full object-cover scale-[1.02]" loading="lazy" />
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--color-bg-card) 0%, color-mix(in srgb, var(--color-bg-card) 70%, transparent) 35%, color-mix(in srgb, var(--color-bg-card) 15%, transparent) 65%, rgba(0,0,0,0.2) 100%)' }} />
             </div>
           ) : (
@@ -1263,9 +1268,10 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
                 {editing ? (
                   <input
                     type="number" inputMode="numeric"
+                    min="0"
                     value={editValues.calories || ''}
                     onFocus={e => e.target.select()}
-                    onChange={e => setEditValues(prev => ({ ...prev, calories: e.target.value }))}
+                    onChange={e => { const val = parseFloat(e.target.value); if (val < 0) return; setEditValues(prev => ({ ...prev, calories: e.target.value })); }}
                     className="w-full text-center text-[24px] font-black leading-none tabular-nums bg-transparent outline-none text-[#F59E0B] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                   />
                 ) : (
@@ -1288,9 +1294,10 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
                     {editing ? (
                       <input
                         type="number" inputMode="decimal"
+                        min="0"
                         value={editValues[m.key] || ''}
                         onFocus={e => e.target.select()}
-                        onChange={e => setEditValues(prev => ({ ...prev, [m.key]: e.target.value }))}
+                        onChange={e => { const val = parseFloat(e.target.value); if (val < 0) return; setEditValues(prev => ({ ...prev, [m.key]: e.target.value })); }}
                         className="w-full text-center text-[18px] font-black leading-none tabular-nums bg-transparent outline-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
                         style={{ color: m.c }}
                       />
@@ -1354,7 +1361,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
               <div key={f.key}>
                 <label htmlFor={`target-${f.key}`} className="block text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider mb-1.5">{f.label}</label>
                 <div className="relative">
-                  <input id={`target-${f.key}`} type="number" value={draft[f.key] || ''} onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
+                  <input id={`target-${f.key}`} type="number" min="0" value={draft[f.key] || ''} onChange={e => { const val = parseFloat(e.target.value); if (val < 0) return; setDraft(d => ({ ...d, [f.key]: e.target.value })); }}
                     className="w-full rounded-xl px-4 py-3 text-[15px] outline-none focus:border-[#D4AF37]/40 transition-colors pr-14"
                     style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[#9CA3AF]">{f.unit}</span>
@@ -3561,8 +3568,8 @@ export default function Nutrition({ embedded = false }) {
       supabase.from('nutrition_targets').select('*').eq('profile_id', user.id).maybeSingle(),
       supabase.from('member_onboarding').select('primary_goal,training_days_per_week,initial_weight_lbs,height_inches,age,sex').eq('profile_id', user.id).maybeSingle(),
       supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('food_logs').select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)').eq('profile_id', user.id).eq('log_date', todayStr()).order('created_at', { ascending: false }),
-      supabase.from('favorite_foods').select('food_item_id, food_item:food_items(*)').eq('profile_id', user.id),
+      supabase.from('food_logs').select('id, food_item_id, calories, protein_g, carbs_g, fat_g, meal_type, servings, serving_grams, custom_name, photo_url, created_at, log_date, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)').eq('profile_id', user.id).eq('log_date', todayStr()).order('created_at', { ascending: false }),
+      supabase.from('favorite_foods').select('food_item_id, food_item:food_items(id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g)').eq('profile_id', user.id),
     ]);
 
     setOnboarding(ob ?? null);
@@ -3599,7 +3606,7 @@ export default function Nutrition({ embedded = false }) {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('food_logs').select('food_item_id, food_item:food_items(*)')
+    supabase.from('food_logs').select('food_item_id, food_item:food_items(id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g)')
       .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(50)
       .then(({ data }) => {
         if (!data) return;

@@ -197,6 +197,7 @@ const ChatView = ({ conversationId, onBack }) => {
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
   const [kbHeight, setKbHeight] = useState(0);
+  const encryptionSeedRef = useRef(null);
 
   // Native keyboard events — get exact height from Capacitor plugin
   useEffect(() => {
@@ -222,11 +223,14 @@ const ChatView = ({ conversationId, onBack }) => {
 
       const { data: conv } = await supabase
         .from('conversations')
-        .select('participant_1, participant_2')
+        .select('participant_1, participant_2, encryption_seed')
         .eq('id', conversationId)
         .single();
 
       if (cancelled || !conv) return;
+
+      const seed = conv.encryption_seed;
+      encryptionSeedRef.current = seed;
 
       const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
@@ -246,7 +250,7 @@ const ChatView = ({ conversationId, onBack }) => {
 
       if (!cancelled) {
         const decrypted = await Promise.all(
-          (msgs || []).map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId) }))
+          (msgs || []).map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
         );
         setMessages(decrypted);
         setLoading(false);
@@ -279,7 +283,7 @@ const ChatView = ({ conversationId, onBack }) => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `conversation_id=eq.${conversationId}` },
         (payload) => {
-          decryptMessage(payload.new.body, conversationId).then(decryptedBody => {
+          decryptMessage(payload.new.body, conversationId, encryptionSeedRef.current).then(decryptedBody => {
             setMessages(prev => {
               if (prev.some(m => m.id === payload.new.id)) return prev;
               return [...prev, { ...payload.new, body: decryptedBody }];
@@ -324,7 +328,7 @@ const ChatView = ({ conversationId, onBack }) => {
       inputRef.current.style.height = 'auto';
     }
 
-    const body = await encryptMessage(plaintext, conversationId);
+    const body = await encryptMessage(plaintext, conversationId, encryptionSeedRef.current);
     const { error } = await supabase.from('direct_messages').insert({
       conversation_id: conversationId,
       sender_id: user.id,
@@ -490,6 +494,7 @@ const ChatView = ({ conversationId, onBack }) => {
         <textarea
           ref={inputRef}
           value={input}
+          maxLength={5000}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('messages.typeMessage', { defaultValue: 'Message...' })}
@@ -736,7 +741,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
 
     const { data: convs } = await supabase
       .from('conversations')
-      .select('id, participant_1, participant_2, last_message_at')
+      .select('id, participant_1, participant_2, last_message_at, encryption_seed')
       .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
       .order('last_message_at', { ascending: false });
 
@@ -775,7 +780,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
         .neq('sender_id', user.id)
         .is('read_at', null);
 
-      const decryptedBody = lastMsg?.body ? await decryptMessage(lastMsg.body, conv.id) : null;
+      const decryptedBody = lastMsg?.body ? await decryptMessage(lastMsg.body, conv.id, conv.encryption_seed) : null;
 
       return {
         ...conv,
@@ -1043,11 +1048,11 @@ const Messages = ({ embedded = false }) => {
         onNewMessage={handleNewMessage}
         onGoBack={() => navigate(location.pathname.startsWith('/trainer') ? '/trainer' : '/')}
       />
-      <MemberPicker
+      {showPicker && <MemberPicker
         isOpen={showPicker}
         onClose={() => setShowPicker(false)}
         onSelect={handleSelectMember}
-      />
+      />}
     </>
   );
 };

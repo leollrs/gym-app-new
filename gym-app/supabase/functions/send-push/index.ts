@@ -19,8 +19,11 @@ const FCM_PROJECT_ID   = Deno.env.get('FCM_PROJECT_ID') || '';
 const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY  = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -324,6 +327,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
+  }
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonResp({ error: 'Unauthorized' }, 401);
@@ -449,6 +456,6 @@ serve(async (req) => {
     });
   } catch (err) {
     console.error('send-push error:', err);
-    return jsonResp({ error: err.message || 'Internal error' }, 500);
+    return jsonResp({ error: 'Internal server error' }, 500);
   }
 });

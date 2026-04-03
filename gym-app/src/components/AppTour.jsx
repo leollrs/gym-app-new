@@ -40,6 +40,7 @@ export default function AppTour({ userId }) {
   const location = useLocation();
   const storageKey = `${STORAGE_PREFIX}${userId || 'anon'}`;
   const findRef = useRef(null);
+  const throttleRef = useRef(false);
 
   // Show tour on first visit for this user — check both localStorage and DB
   useEffect(() => {
@@ -122,18 +123,24 @@ export default function AppTour({ userId }) {
 
   useEffect(() => { findTarget(); }, [findTarget]);
 
-  useEffect(() => {
-    if (!show || !rect) return;
-    const handler = () => {
+  const throttledScrollHandler = useCallback(() => {
+    if (throttleRef.current) return;
+    throttleRef.current = true;
+    requestAnimationFrame(() => {
       const current = TOUR_STEP_KEYS[step];
       if (current) {
         const r = getTargetRect(current.target);
         if (r) setRect(r);
       }
-    };
-    window.addEventListener('scroll', handler, true);
-    return () => window.removeEventListener('scroll', handler, true);
-  }, [show, step, rect]);
+      throttleRef.current = false;
+    });
+  }, [step]);
+
+  useEffect(() => {
+    if (!show || !rect) return;
+    window.addEventListener('scroll', throttledScrollHandler, true);
+    return () => window.removeEventListener('scroll', throttledScrollHandler, true);
+  }, [show, rect, throttledScrollHandler]);
 
   const dismiss = useCallback(() => {
     setShow(false);

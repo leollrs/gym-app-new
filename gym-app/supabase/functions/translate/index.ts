@@ -9,14 +9,27 @@ const DEEPL_BASE = DEEPL_API_KEY?.endsWith(':fx')
   ? 'https://api-free.deepl.com'
   : 'https://api.deepl.com';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://app.tugympr.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 
 serve(async (req) => {
+  if (!ALLOWED_ORIGIN) {
+    return new Response(JSON.stringify({ error: 'Server misconfiguration: ALLOWED_ORIGIN not set' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -36,11 +49,37 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: `Auth failed: ${authError?.message || 'no user'}` }),
+        JSON.stringify({ error: 'Authentication failed' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     // ── END AUTH CHECK ─────────────────────────────────────────
+
+    // ── Database-based rate limiting (60 requests per user per hour) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: rlError } = await supabase
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', user.id)
+      .eq('endpoint', 'translate')
+      .gte('created_at', oneHourAgo);
+
+    if (rlError) {
+      console.error('Rate limit check failed:', rlError);
+      return new Response(
+        JSON.stringify({ error: 'Internal server error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if ((count ?? 0) >= 60) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded — max 60 requests per hour' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'translate' });
 
     if (!DEEPL_API_KEY) {
       return new Response(JSON.stringify({ error: 'DeepL API key not configured' }), {
@@ -53,7 +92,20 @@ serve(async (req) => {
     // source_lang omitted = DeepL auto-detects
 
     if (!texts || !Array.isArray(texts) || texts.length === 0) {
-      return new Response(JSON.stringify({ error: 'texts array is required' }), {
+      return new Response(JSON.stringify({ error: 'texts must be a non-empty array' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (texts.length > 50) {
+      return new Response(JSON.stringify({ error: 'Too many texts (max 50)' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const totalChars = texts.reduce((sum: number, t: string) => sum + (typeof t === 'string' ? t.length : 0), 0);
+    if (totalChars > 50000) {
+      return new Response(JSON.stringify({ error: 'Total text too long (max 50000 chars)' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -82,7 +134,8 @@ serve(async (req) => {
 
     if (!res.ok) {
       const err = await res.text();
-      return new Response(JSON.stringify({ error: `DeepL error: ${res.status}`, details: err }), {
+      console.error(`DeepL error: ${res.status}`, err);
+      return new Response(JSON.stringify({ error: 'Translation service error' }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -103,7 +156,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    console.error('translate error:', err);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -282,7 +282,7 @@ export default function TrainerClientNotes() {
       const photosWithUrls = await Promise.all(
         (photosRes.data || []).map(async (photo) => {
           const { data: urlData } = await supabase.storage
-            .from('progress_photos')
+            .from('progress-photos')
             .createSignedUrl(photo.storage_path, 3600);
           return { ...photo, signedUrl: urlData?.signedUrl || '' };
         })
@@ -532,7 +532,6 @@ export default function TrainerClientNotes() {
   }
 
   const METHOD_ICONS = {
-    sms: MessageSquare,
     push: Bell,
     email: Mail,
     call: Phone,
@@ -1720,10 +1719,9 @@ export default function TrainerClientNotes() {
             <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
               {t('trainerNotes.followUp.method')}
             </label>
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-4 gap-2 mb-4">
               {[
                 { value: 'call', icon: Phone, label: t('trainerNotes.followUp.methods.call') },
-                { value: 'sms', icon: MessageSquare, label: t('trainerNotes.followUp.methods.sms') },
                 { value: 'push', icon: Bell, label: t('trainerNotes.followUp.methods.push') },
                 { value: 'email', icon: Mail, label: t('trainerNotes.followUp.methods.email') },
                 { value: 'in_person', icon: UserCheck, label: t('trainerNotes.followUp.methods.inPerson') },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronRight, Trophy, Dumbbell, Clock, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -34,6 +34,11 @@ const SessionCard = ({ session }) => {
   const allSets    = exercises.flatMap(e => e.session_sets ?? []).filter(s => s.is_completed);
   const prSets     = allSets.filter(s => s.is_pr);
   const volumeK    = (parseFloat(session.total_volume_lbs) || 0);
+
+  const sortedExercises = useMemo(
+    () => [...exercises].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+    [exercises]
+  );
   const volumeStr  = volumeK >= 1000
     ? `${(volumeK / 1000).toFixed(1)}k lbs`
     : `${Math.round(volumeK)} lbs`;
@@ -92,10 +97,10 @@ const SessionCard = ({ session }) => {
       {expanded && (
         <div className="px-5 pb-4 border-t border-white/[0.06]">
           <div className="pt-3 flex flex-col gap-3">
-            {exercises
-              .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+            {sortedExercises
               .map((ex) => {
                 const completedSets = (ex.session_sets ?? []).filter(s => s.is_completed);
+                const sortedSets = [...completedSets].sort((a, b) => a.set_number - b.set_number);
                 const hasPR = completedSets.some(s => s.is_pr);
 
                 return (
@@ -109,8 +114,7 @@ const SessionCard = ({ session }) => {
 
                     <div className="flex flex-col gap-1.5">
                       <div className="flex flex-wrap gap-1.5">
-                        {completedSets
-                          .sort((a, b) => a.set_number - b.set_number)
+                        {sortedSets
                           .map((set) => (
                             <div
                               key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
@@ -139,10 +143,9 @@ const SessionCard = ({ session }) => {
                         }
                       </div>
                       {/* Show notes for sets that have them */}
-                      {completedSets.filter(s => s.notes).length > 0 && (
+                      {sortedSets.filter(s => s.notes).length > 0 && (
                         <div className="flex flex-col gap-0.5 pl-0.5">
-                          {completedSets
-                            .sort((a, b) => a.set_number - b.set_number)
+                          {sortedSets
                             .filter(s => s.notes)
                             .map(set => (
                               <p key={`note-${set.set_number}`} className="text-[11px] italic truncate" style={{ color: 'var(--color-text-subtle)' }}>

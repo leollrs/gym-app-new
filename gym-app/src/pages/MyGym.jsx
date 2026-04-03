@@ -54,9 +54,9 @@ export default function MyGym() {
     if (!profile?.gym_id) return;
     const load = async () => {
       const [gymRes, hoursRes, holidaysRes, annRes] = await Promise.all([
-        supabase.from('gyms').select('*').eq('id', profile.gym_id).maybeSingle(),
-        supabase.from('gym_hours').select('*').eq('gym_id', profile.gym_id).order('day_of_week'),
-        supabase.from('gym_holidays').select('*').eq('gym_id', profile.gym_id).gte('date', new Date().toISOString().split('T')[0]).order('date').limit(5),
+        supabase.from('gyms').select('id, name, open_days, open_time, close_time, country, address').eq('id', profile.gym_id).maybeSingle(),
+        supabase.from('gym_hours').select('day_of_week, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).order('day_of_week'),
+        supabase.from('gym_holidays').select('id, label, date, is_closed, open_time, close_time').eq('gym_id', profile.gym_id).gte('date', new Date().toISOString().split('T')[0]).order('date').limit(5),
         supabase
           .from('announcements')
           .select('id, title, message, type, published_at')
@@ -75,7 +75,7 @@ export default function MyGym() {
         const todayDow = new Date().getDay();
         const classRes = await supabase
           .from('gym_class_schedules')
-          .select('*, gym_classes(*)')
+          .select('id, start_time, end_time, gym_classes(name, color, instructor)')
           .eq('gym_id', profile.gym_id)
           .eq('day_of_week', todayDow)
           .order('start_time')
@@ -86,7 +86,7 @@ export default function MyGym() {
       // Fetch active offers
       const offersRes = await supabase
         .from('gym_offers')
-        .select('*')
+        .select('id, title, title_es, description, description_es, offer_type, badge_label, valid_until, sort_order')
         .eq('gym_id', profile.gym_id)
         .eq('is_active', true)
         .or('valid_until.is.null,valid_until.gte.' + new Date().toISOString().slice(0, 10))

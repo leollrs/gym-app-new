@@ -5110,7 +5110,6 @@
     "streakDays": "racha de {{count}} días",
     "contacted": "Contactado",
     "reachOut": {
-      "sms": "Enviar SMS",
       "push": "Enviar Push",
       "call": "Registrar Llamada",
       "logCall": "Registrar Resultado de Llamada",
@@ -5120,8 +5119,6 @@
       "cancel": "Cancelar",
       "saving": "Guardando...",
       "logCallBtn": "Registrar Llamada",
-      "smsTitle": "{{name}} quiere hablar contigo",
-      "smsBody": "Tu entrenador te busca — vuelve y alcanza tus metas!",
       "pushTitle": "{{name}} quiere hablar contigo",
       "pushBody": "Tu entrenador te busca — vuelve y alcanza tus metas!"
     },

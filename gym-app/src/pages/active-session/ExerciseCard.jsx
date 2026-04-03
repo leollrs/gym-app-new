@@ -37,7 +37,7 @@ const rpeLabel = (v, t) => {
 };
 
 /* ── RPE Selector (horizontal 1–10 circles) ───────────────── */
-const RpeSelector = ({ value, onChange, t }) => (
+const RpeSelector = React.memo(({ value, onChange, t }) => (
   <div className="rounded-2xl border border-white/[0.06] px-3 py-3" style={{ background: 'var(--color-bg-card)' }}>
     <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: 'var(--color-text-subtle)' }}>
       {t?.('activeSession.rpeLabel') ?? 'RPE — How hard was it?'}
@@ -72,7 +72,7 @@ const RpeSelector = ({ value, onChange, t }) => (
       <span className="text-[9px] text-red-400/70 font-medium w-[56px] text-right">{t?.('activeSession.rpeMax') ?? 'Max'}</span>
     </div>
   </div>
-);
+));
 
 /* ── Set Note Input ────────────────────────────────────────── */
 const SetNoteInput = ({ value, onChange, onClose, t }) => (
@@ -335,8 +335,14 @@ const ExerciseCard = ({
                 id={`weight-${activeExId}`}
                 type="number"
                 inputMode="decimal"
+                min="0"
+                max="9999"
                 value={set.weight}
-                onChange={e => onUpdateSet(activeExId, activeSetIndex, 'weight', e.target.value)}
+                onChange={e => {
+                  let v = e.target.value;
+                  if (v !== '' && (Number(v) < 0 || Number(v) > 9999)) return;
+                  onUpdateSet(activeExId, activeSetIndex, 'weight', v);
+                }}
                 placeholder={suggestedWeight ? String(suggestedWeight) : '0'}
                 className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
                 style={{ color: 'var(--color-text-primary)' }}
@@ -352,8 +358,14 @@ const ExerciseCard = ({
                 id={`reps-${activeExId}`}
                 type="number"
                 inputMode="numeric"
+                min="0"
+                max="999"
                 value={set.reps}
-                onChange={e => onUpdateSet(activeExId, activeSetIndex, 'reps', e.target.value)}
+                onChange={e => {
+                  let v = e.target.value;
+                  if (v !== '' && (Number(v) < 0 || Number(v) > 999)) return;
+                  onUpdateSet(activeExId, activeSetIndex, 'reps', v);
+                }}
                 placeholder={suggestedReps ? String(suggestedReps) : '0'}
                 className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
                 style={{ color: 'var(--color-text-primary)' }}

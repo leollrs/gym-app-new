@@ -119,6 +119,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
               const v = e.target.value;
               if (v === '' || v === '-') return onChange(index, 'reps', v);
               const n = parseInt(v, 10);
+              if (!isNaN(n) && n > 999) return onChange(index, 'reps', '999');
               onChange(index, 'reps', (!isNaN(n) && n < 0) ? '0' : v);
             }}
             className="w-full border border-white/[0.06] rounded-xl px-2 py-2 text-[14px] font-semibold text-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
