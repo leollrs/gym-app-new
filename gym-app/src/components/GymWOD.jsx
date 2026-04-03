@@ -204,15 +204,34 @@ export default function GymWOD() {
 
       if (rErr) throw rErr;
 
-      // Insert routine exercises
-      const rows = exercises.map((ex, i) => ({
+      // Prepend warm-up exercises, then workout exercises
+      const warmUpExercises = [
+        { exercise_id: 'ex_wu_jj', target_sets: 1, target_reps: '45s', rest_seconds: 10 },
+        { exercise_id: 'ex_wu_ac', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
+        { exercise_id: 'ex_wu_ls', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
+        { exercise_id: 'ex_wu_hc', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
+        { exercise_id: 'ex_wu_lc', target_sets: 1, target_reps: '60s', rest_seconds: 30 },
+      ];
+
+      const warmUpRows = warmUpExercises.map((wu, i) => ({
+        routine_id:   routine.id,
+        exercise_id:  wu.exercise_id,
+        position:     i + 1,
+        target_sets:  wu.target_sets,
+        target_reps:  wu.target_reps,
+        rest_seconds: wu.rest_seconds,
+      }));
+
+      const workoutRows = exercises.map((ex, i) => ({
         routine_id:   routine.id,
         exercise_id:  ex.exerciseId,
-        position:     i + 1,
+        position:     warmUpExercises.length + i + 1,
         target_sets:  ex.sets,
         target_reps:  ex.reps,
         rest_seconds: ex.restSeconds,
       }));
+
+      const rows = [...warmUpRows, ...workoutRows];
 
       const { error: exErr } = await supabase
         .from('routine_exercises')
@@ -300,6 +319,28 @@ export default function GymWOD() {
         </div>
       </div>
 
+      {/* Resume banner for in-progress WOD — shown at top */}
+      {wodDraft && (
+        <button
+          onClick={() => navigate(`/session/${wodDraft.routineId}`)}
+          className="w-full flex items-center gap-3 p-3 rounded-xl mb-3 border transition-colors active:scale-[0.98]"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+        >
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}>
+            <Zap className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-[12px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+              {t('gymWOD.resumeWOD', 'Resume WOD in progress')}
+            </p>
+            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {wodDraft.completedSets}/{wodDraft.totalSets} {t('dashboard.sets', 'sets')} · {t('dashboard.tapToResume', 'Tap to resume')}
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+      )}
+
       {/* Theme name */}
       <h2 className="text-[var(--color-text-primary)] font-bold text-[18px] leading-tight mb-2 truncate">
         {t(`gymWOD.themes.${wod.theme.replace(/[^a-zA-Z]/g, '_').toLowerCase()}`, wod.theme)}
@@ -352,28 +393,6 @@ export default function GymWOD() {
           );
         })}
       </div>
-
-      {/* Resume banner for in-progress WOD */}
-      {wodDraft && (
-        <button
-          onClick={() => navigate(`/session/${wodDraft.routineId}`)}
-          className="w-full flex items-center gap-3 p-3 rounded-xl mb-3 border transition-colors active:scale-[0.98]"
-          style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-        >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}>
-            <Zap className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-[12px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-              {t('gymWOD.resumeWOD', 'Resume WOD in progress')}
-            </p>
-            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              {wodDraft.completedSets}/{wodDraft.totalSets} {t('dashboard.sets', 'sets')} · {t('dashboard.tapToResume', 'Tap to resume')}
-            </p>
-          </div>
-          <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-        </button>
-      )}
 
       {/* CTA */}
       <button
