@@ -25,60 +25,42 @@ import { selectWarmUps } from '../lib/warmUpSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
-// ── Warm-Up Timer — drift-free countdown using Date.now() anchor ────────────
+// ── Warm-Up Timer — auto-starting, drift-free, same style as rest timer ─────
 const WarmUpTimer = ({ durationSec, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(durationSec);
-  const [running, setRunning] = useState(false);
-  const startedAtRef = useRef(null);   // Date.now() when play was pressed
-  const elapsedBeforePause = useRef(0); // seconds elapsed before last pause
+  const [done, setDone] = useState(false);
+  const startedAtRef = useRef(Date.now()); // auto-start immediately
   const rafRef = useRef(null);
   const completedRef = useRef(false);
 
-  // Reset on exercise change
+  // Reset and auto-start on exercise change
   useEffect(() => {
     setTimeLeft(durationSec);
-    setRunning(false);
-    startedAtRef.current = null;
-    elapsedBeforePause.current = 0;
+    setDone(false);
     completedRef.current = false;
-    cancelAnimationFrame(rafRef.current);
+    startedAtRef.current = Date.now();
+    return () => cancelAnimationFrame(rafRef.current);
   }, [durationSec]);
 
-  // Drift-free tick using requestAnimationFrame + Date.now()
+  // Drift-free tick
   useEffect(() => {
-    if (!running) { cancelAnimationFrame(rafRef.current); return; }
-    if (!startedAtRef.current) startedAtRef.current = Date.now();
-
     const tick = () => {
-      const elapsed = elapsedBeforePause.current + (Date.now() - startedAtRef.current) / 1000;
+      const elapsed = (Date.now() - startedAtRef.current) / 1000;
       const remaining = Math.max(0, durationSec - elapsed);
       setTimeLeft(remaining);
 
       if (remaining <= 0 && !completedRef.current) {
         completedRef.current = true;
-        setRunning(false);
-        onComplete();
+        setDone(true);
+        // Vibrate + alert
+        try { navigator.vibrate?.([200, 100, 200]); } catch {}
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
-
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [running, durationSec, onComplete]);
-
-  const handlePlayPause = () => {
-    if (running) {
-      // Pause: accumulate elapsed time
-      elapsedBeforePause.current += (Date.now() - startedAtRef.current) / 1000;
-      startedAtRef.current = null;
-      setRunning(false);
-    } else {
-      // Play
-      startedAtRef.current = Date.now();
-      setRunning(true);
-    }
-  };
+  }, [durationSec, onComplete]);
 
   const progress = 1 - (timeLeft / durationSec);
   const circumference = 2 * Math.PI * 58;
@@ -88,40 +70,26 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
   const secs = displaySeconds % 60;
 
   return (
-    <div className="flex flex-col items-center">
-      {/* Timer ring */}
-      <div className="relative w-44 h-44 mb-6">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128">
-          <circle cx="64" cy="64" r="58" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
-          <circle
-            cx="64" cy="64" r="58" fill="none"
-            stroke={timeLeft === 0 ? '#10B981' : '#f97316'}
-            strokeWidth="5" strokeLinecap="round"
-            strokeDasharray={circumference} strokeDashoffset={dashOffset}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[40px] font-black tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-            {mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : secs}
-          </span>
-          {displaySeconds === 0 && <span className="text-[13px] font-bold text-[#10B981] mt-1">Done</span>}
+    <div className="w-full rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+      {/* Timer display — same layout as rest timer */}
+      <div className="flex items-center justify-center py-6">
+        <div className="relative w-32 h-32">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128">
+            <circle cx="64" cy="64" r="58" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+            <circle
+              cx="64" cy="64" r="58" fill="none"
+              stroke={done ? '#10B981' : '#f97316'}
+              strokeWidth="5" strokeLinecap="round"
+              strokeDasharray={circumference} strokeDashoffset={dashOffset}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-[32px] font-black tabular-nums" style={{ color: done ? '#10B981' : 'var(--color-text-primary)' }}>
+              {done ? '✓' : mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : secs}
+            </span>
+          </div>
         </div>
       </div>
-
-      {/* Play/Pause button */}
-      {displaySeconds > 0 && (
-        <button
-          onClick={handlePlayPause}
-          className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-          style={{ backgroundColor: running ? 'rgba(255,255,255,0.08)' : '#f97316' }}
-        >
-          {running ? (
-            <Pause size={28} fill={running ? 'var(--color-text-primary)' : '#000'} strokeWidth={0} />
-          ) : (
-            <Play size={28} fill="#fff" strokeWidth={0} style={{ marginLeft: 3 }} />
-          )}
-        </button>
-      )}
     </div>
   );
 };
@@ -1666,7 +1634,8 @@ const ActiveSession = () => {
               </button>
               <button
                 onClick={handleDiscardConflict}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-white bg-red-500 hover:bg-red-600 transition-colors"
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-colors"
+                style={{ backgroundColor: '#EF4444', color: '#FFFFFF' }}
               >
                 Discard & Start New
               </button>
@@ -1847,37 +1816,38 @@ const ActiveSession = () => {
         />
       )}
 
-      {/* Warm-Up Active Phase — fullscreen per-exercise with countdown timer */}
+      {/* Warm-Up Active Phase — same style as workout exercises */}
       {isInWarmUp && warmUpExercises.length > 0 && (() => {
         const wu = warmUpExercises[warmUpIndex];
         if (!wu) return null;
         const wuName = i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name;
         const isLast = warmUpIndex === warmUpExercises.length - 1;
-        const isFirst = warmUpIndex === 0;
+        const localWu = localExercises.find(e => e.id === wu.id);
 
         return (
-          <div className="flex-1 flex flex-col overflow-y-auto">
-            {/* Exercise name + counter */}
-            <div className="px-5 pt-4 pb-3">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-orange-400">
-                  {t('activeSession.warmUpPhase', 'Warm-Up')} · {warmUpIndex + 1}/{warmUpExercises.length}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 pt-3 pb-6">
+              {/* Exercise name — same as workout exercise card header */}
+              <div className="mb-4">
+                <h2 className="text-[20px] font-black tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                  {wuName}
+                </h2>
+                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                  {wu.durationSec}s · {t('activeSession.warmUpPhase', 'Warm-Up')}
                 </p>
-                <button
-                  onClick={() => setWarmUpPhase('done')}
-                  className="text-[11px] font-medium"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  {t('activeSession.skipWarmUp', 'Skip')}
-                </button>
               </div>
-              <h2 className="text-[22px] font-black tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
-                {wuName}
-              </h2>
-            </div>
 
-            {/* Timer area */}
-            <div className="flex-1 flex flex-col items-center justify-center px-6">
+              {/* Video demo button — if exercise has a video */}
+              {localWu?.videoUrl && (
+                <button
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12px] font-semibold mb-4 transition-colors"
+                  style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                >
+                  <Play size={14} /> {t('activeSession.watchDemo', 'Watch Demo')}
+                </button>
+              )}
+
+              {/* Timer card — auto-starts, same card style as exercise sets */}
               <WarmUpTimer
                 key={wu.id}
                 durationSec={wu.durationSec}
@@ -1889,34 +1859,8 @@ const ActiveSession = () => {
                   }
                 }}
               />
-            </div>
 
-            {/* Navigation dots */}
-            <div className="flex justify-center gap-1.5 py-3">
-              {warmUpExercises.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setWarmUpIndex(idx)}
-                  className="w-2 h-2 rounded-full transition-all"
-                  style={{
-                    backgroundColor: idx === warmUpIndex ? '#f97316' : idx < warmUpIndex ? '#10B981' : 'rgba(255,255,255,0.12)',
-                    width: idx === warmUpIndex ? 16 : 8,
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Bottom buttons */}
-            <div className="px-5 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] flex gap-3">
-              {!isFirst && (
-                <button
-                  onClick={() => setWarmUpIndex(i => i - 1)}
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
-                >
-                  <ChevronLeft size={20} />
-                </button>
-              )}
+              {/* Next / Begin Workout button — same position as "Complete Set" */}
               <button
                 onClick={() => {
                   if (isLast) {
@@ -1925,16 +1869,25 @@ const ActiveSession = () => {
                     setWarmUpIndex(i => i + 1);
                   }
                 }}
-                className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                className="w-full mt-4 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
                 style={isLast
-                  ? { backgroundColor: '#10B981', color: '#fff' }
-                  : { backgroundColor: 'var(--color-accent)', color: '#000' }
+                  ? { backgroundColor: '#10B981', color: '#FFFFFF' }
+                  : { backgroundColor: 'var(--color-accent)', color: '#000000' }
                 }
               >
                 {isLast
                   ? t('activeSession.beginWorkout', 'Begin Workout')
                   : t('activeSession.nextWarmUp', 'Next')
                 }
+              </button>
+
+              {/* Skip to workout */}
+              <button
+                onClick={() => setWarmUpPhase('done')}
+                className="w-full mt-3 py-2 text-[12px] font-medium"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('activeSession.skipWarmUp', 'Skip to workout')}
               </button>
             </div>
           </div>
