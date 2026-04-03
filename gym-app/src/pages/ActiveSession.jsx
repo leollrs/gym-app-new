@@ -1816,75 +1816,60 @@ const ActiveSession = () => {
         />
       )}
 
-      {/* Warm-Up Active Phase — same style as workout exercises */}
+      {/* Warm-Up Active Phase — rendered in the exercise area, same layout as ExerciseCard */}
       {isInWarmUp && warmUpExercises.length > 0 && (() => {
         const wu = warmUpExercises[warmUpIndex];
         if (!wu) return null;
         const wuName = i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name;
-        const isLast = warmUpIndex === warmUpExercises.length - 1;
         const localWu = localExercises.find(e => e.id === wu.id);
 
         return (
           <div className="flex-1 overflow-y-auto">
-            <div className="px-4 pt-3 pb-6">
-              {/* Exercise name — same as workout exercise card header */}
-              <div className="mb-4">
-                <h2 className="text-[20px] font-black tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                  {wuName}
-                </h2>
-                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                  {wu.durationSec}s · {t('activeSession.warmUpPhase', 'Warm-Up')}
-                </p>
+            <div className="px-4 pt-3 pb-32">
+              {/* Exercise card — mirrors ExerciseCard layout */}
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+                {/* Video placeholder / demo area */}
+                {localWu?.videoUrl ? (
+                  <div className="relative w-full aspect-video bg-black/40 flex items-center justify-center">
+                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                  </div>
+                ) : (
+                  <div className="w-full h-32 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.08), rgba(234,88,12,0.03))' }}>
+                    <span className="text-[48px]">🔥</span>
+                  </div>
+                )}
+
+                {/* Exercise info */}
+                <div className="px-4 pt-4 pb-3">
+                  <h3 className="text-[18px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                    {wuName}
+                  </h3>
+                  <p className="text-[12px] mt-1 leading-relaxed" style={{ color: 'var(--color-text-subtle)' }}>
+                    {localWu?.instructions || `${wu.durationSec} seconds`}
+                  </p>
+                </div>
+
+                {/* Timer — same card style as rest timer */}
+                <div className="px-4 pb-4">
+                  <WarmUpTimer
+                    key={wu.id}
+                    durationSec={wu.durationSec}
+                    onComplete={() => {
+                      const isLast = warmUpIndex === warmUpExercises.length - 1;
+                      if (isLast) {
+                        setWarmUpPhase('done');
+                      } else {
+                        setWarmUpIndex(i => i + 1);
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
-              {/* Video demo button — if exercise has a video */}
-              {localWu?.videoUrl && (
-                <button
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12px] font-semibold mb-4 transition-colors"
-                  style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
-                >
-                  <Play size={14} /> {t('activeSession.watchDemo', 'Watch Demo')}
-                </button>
-              )}
-
-              {/* Timer card — auto-starts, same card style as exercise sets */}
-              <WarmUpTimer
-                key={wu.id}
-                durationSec={wu.durationSec}
-                onComplete={() => {
-                  if (isLast) {
-                    setWarmUpPhase('done');
-                  } else {
-                    setWarmUpIndex(i => i + 1);
-                  }
-                }}
-              />
-
-              {/* Next / Begin Workout button — same position as "Complete Set" */}
-              <button
-                onClick={() => {
-                  if (isLast) {
-                    setWarmUpPhase('done');
-                  } else {
-                    setWarmUpIndex(i => i + 1);
-                  }
-                }}
-                className="w-full mt-4 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
-                style={isLast
-                  ? { backgroundColor: '#10B981', color: '#FFFFFF' }
-                  : { backgroundColor: 'var(--color-accent)', color: '#000000' }
-                }
-              >
-                {isLast
-                  ? t('activeSession.beginWorkout', 'Begin Workout')
-                  : t('activeSession.nextWarmUp', 'Next')
-                }
-              </button>
-
-              {/* Skip to workout */}
+              {/* Skip link */}
               <button
                 onClick={() => setWarmUpPhase('done')}
-                className="w-full mt-3 py-2 text-[12px] font-medium"
+                className="w-full mt-4 py-2 text-[12px] font-medium"
                 style={{ color: 'var(--color-text-muted)' }}
               >
                 {t('activeSession.skipWarmUp', 'Skip to workout')}
@@ -2291,7 +2276,28 @@ const ActiveSession = () => {
 
       {/* ── Sticky Bottom — Single primary action ──────────────── */}
       <div className="flex-shrink-0 px-4 pb-6 pt-4" style={{ backgroundColor: 'var(--color-bg-primary)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        {exercises.length === 0 && isEmptyMode ? (
+        {isInWarmUp ? (
+          /* Warm-up mode — same button style as Complete Set, advances warm-up */
+          <button
+            onClick={() => {
+              const isLast = warmUpIndex === warmUpExercises.length - 1;
+              if (isLast) {
+                setWarmUpPhase('done');
+              } else {
+                setWarmUpIndex(i => i + 1);
+              }
+            }}
+            className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-[0_4px_24px_rgba(212,175,55,0.3)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            style={{
+              backgroundColor: warmUpIndex === warmUpExercises.length - 1 ? '#10B981' : '#D4AF37',
+              color: warmUpIndex === warmUpExercises.length - 1 ? '#FFFFFF' : '#000000',
+            }}
+          >
+            {warmUpIndex === warmUpExercises.length - 1
+              ? t('activeSession.beginWorkout', 'Begin Workout')
+              : t('activeSession.nextWarmUp', 'Next')}
+          </button>
+        ) : exercises.length === 0 && isEmptyMode ? (
           /* Empty mode with no exercises — no bottom button needed, CTA is in the center */
           null
         ) : isEmptyMode ? (
