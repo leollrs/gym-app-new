@@ -472,7 +472,7 @@ const Workouts = () => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
       const [{ data: allGp }, { data: ob }, { data: latestWeight }] = await Promise.all([
-        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
         supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
@@ -552,7 +552,9 @@ const Workouts = () => {
   const today = new Date();
   const programActive  = generatedProgram && new Date(generatedProgram.expires_at) > today;
   const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
-  const currentWeekNum = programActive ? Math.floor((today - new Date(generatedProgram.program_start)) / (7 * 86400000)) + 1 : 0;
+  const totalProgramWeeks = generatedProgram?.duration_weeks || 6;
+  const rawWeekNum = programActive ? Math.floor((today - new Date(generatedProgram.program_start)) / (7 * 86400000)) + 1 : 0;
+  const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
 
   // Start DOW of the program (e.g. Friday=5 if started on Friday)
@@ -714,8 +716,20 @@ const Workouts = () => {
 
       // 3. Create a generated_programs entry for the template
       const startDate = new Date();
+      const startDow = startDate.getDay();
+
+      // Calculate if starting mid-week pushes workouts into an extra week.
+      // E.g. 5-day program [Mon-Fri] starting on Wednesday: Wed,Thu,Fri this week
+      // then Mon,Tue next week = wraps, so add 1 extra week.
+      const sortedSched = [...scheduleDays].sort((a, b) => a - b);
+      const daysFromStart = sortedSched.filter(d => d >= startDow);
+      const daysWrapped = sortedSched.filter(d => d < startDow);
+      const needsExtraWeek = daysWrapped.length > 0; // some workouts wrap to next week
+      const baseDuration = selectedTemplate.durationWeeks || 6;
+      const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
+
       const expiresAt = new Date(startDate);
-      expiresAt.setDate(expiresAt.getDate() + selectedTemplate.durationWeeks * 7);
+      expiresAt.setDate(expiresAt.getDate() + totalDurationWeeks * 7);
 
       const insertData = {
         profile_id: user.id,
@@ -724,6 +738,7 @@ const Workouts = () => {
         program_start: startDate.toISOString(),
         expires_at: expiresAt.toISOString(),
         routines_a_count: selectedTemplate.daysPerWeek,
+        duration_weeks: totalDurationWeeks,
       };
 
       // Try with template columns first, fall back without them
@@ -876,7 +891,7 @@ const Workouts = () => {
 
       // 4. Refresh state
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
       setGeneratedProgram(programs[0] || null);
@@ -997,13 +1012,13 @@ const Workouts = () => {
                 <button onClick={() => setProgramViewWeek(w => Math.max(1, (w || currentWeekNum) - 1))} disabled={viewWeek <= 1} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Previous week"><ChevronLeft size={16} /></button>
                 <div>
                   <h2 className="text-[20px] font-semibold tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-                    {t('workouts.weekXOfY', { current: Math.min(viewWeek, 6), total: 6 })}
+                    {t('workouts.weekXOfY', { current: Math.min(viewWeek, totalProgramWeeks), total: totalProgramWeeks })}
                   </h2>
                   <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
                     {isViewingCurrentWeek ? t('workouts.currentWeekRoutine', { variant: isWeekA ? 'A' : 'B' }) : ''}
                   </p>
                 </div>
-                <button onClick={() => setProgramViewWeek(w => Math.min(6, (w || currentWeekNum) + 1))} disabled={viewWeek >= 6} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Next week"><ChevronRight size={16} /></button>
+                <button onClick={() => setProgramViewWeek(w => Math.min(totalProgramWeeks, (w || currentWeekNum) + 1))} disabled={viewWeek >= totalProgramWeeks} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }} aria-label="Next week"><ChevronRight size={16} /></button>
               </div>
               <div className="w-11 h-11 rounded-2xl bg-[#10B981]/10 flex items-center justify-center">
                 <Zap size={18} className="text-[#10B981]" />
@@ -1015,7 +1030,7 @@ const Workouts = () => {
               <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
                 <div
                   className="h-full rounded-full bg-[#10B981] transition-all"
-                  style={{ width: `${Math.min((currentWeekNum / 6) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((currentWeekNum / totalProgramWeeks) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -1318,10 +1333,12 @@ const Workouts = () => {
           <div className="space-y-2">
             {(showAllMyPrograms ? allPrograms : allPrograms.slice(0, 3)).map(prog => {
               const isActive = new Date(prog.expires_at) > new Date();
+              const progTotalWeeks = prog.duration_weeks || 6;
               const weekNum = isActive
-                ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6) : 6;
-              const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), 42);
-              const progress = Math.round((daysElapsed / 42) * 100);
+                ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, progTotalWeeks) : progTotalWeeks;
+              const totalDays = progTotalWeeks * 7;
+              const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
+              const progress = Math.round((daysElapsed / totalDays) * 100);
 
               return (
                 <div key={prog.id} className="relative rounded-2xl transition-colors duration-200 group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
@@ -1363,7 +1380,7 @@ const Workouts = () => {
                       } else {
                         await supabase.from('generated_programs').delete().eq('id', prog.id);
                       }
-                      const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+                      const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
                       const programs = allGp || [];
                       setAllPrograms(programs);
                       setGeneratedProgram(programs[0] || null);
@@ -1510,9 +1527,11 @@ const Workouts = () => {
     {selectedMyProgram && (() => {
       const prog = selectedMyProgram;
       const isActive = new Date(prog.expires_at) > new Date();
-      const weekNum = isActive ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, 6) : 6;
-      const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), 42);
-      const progress = Math.round((daysElapsed / 42) * 100);
+      const progTotalWeeks = prog.duration_weeks || 6;
+      const weekNum = isActive ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, progTotalWeeks) : progTotalWeeks;
+      const totalDays = progTotalWeeks * 7;
+      const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
+      const progress = Math.round((daysElapsed / totalDays) * 100);
       const tmplWeeks = prog.template_weeks || null;
       const tmpl = prog.template_id ? programTemplates.find(t => t.id === prog.template_id) : null;
       const weekKeys = tmplWeeks ? Object.keys(tmplWeeks).sort((a, b) => Number(a) - Number(b)) : [];
@@ -1654,7 +1673,7 @@ const Workouts = () => {
                     await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', prog.id);
                     setSelectedMyProgram(null);
                     // Refresh programs
-                    const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+                    const { data: allGp } = await supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
                     const programs = allGp || [];
                     setAllPrograms(programs);
                     setGeneratedProgram(programs[0] || null);
@@ -1870,7 +1889,7 @@ const Workouts = () => {
         onClose={() => setShowGenerator(false)}
         onGenerated={() => {
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);
