@@ -557,23 +557,51 @@ const Workouts = () => {
   const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
 
-  // Start DOW of the program (e.g. Friday=5 if started on Friday)
+  // Start DOW of the program (e.g. Thursday=4 if started on Thursday)
   const programStartDow = programActive ? new Date(generatedProgram.program_start).getDay() : 0;
+  // Whether the program wraps (mid-week start pushed days into an extra week)
+  const programWraps = programActive && totalProgramWeeks > (generatedProgram?.duration_weeks ? totalProgramWeeks - 1 : 5);
 
-  const thisWeekRoutines = programActive
-    ? routines.filter(r => {
-        if (!r.name.startsWith('Auto:')) return false;
-        if (isWeekA) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
-        return r.name.endsWith(' B');
-      }).sort((a, b) => {
-        // Sort relative to program start day so e.g. Fri-started programs show Fri first
-        const dayA = workoutScheduleMap[a.id] ?? 99;
-        const dayB = workoutScheduleMap[b.id] ?? 99;
-        const relA = (dayA - programStartDow + 7) % 7;
-        const relB = (dayB - programStartDow + 7) % 7;
-        return relA - relB;
-      })
-    : [];
+  // Filter routines for a given week number, accounting for partial first/last weeks
+  const getRoutinesForWeek = (weekNum) => {
+    if (!programActive) return [];
+    const weekVariant = weekNum % 2 === 1;
+    let filtered = routines.filter(r => {
+      if (!r.name.startsWith('Auto:')) return false;
+      if (weekVariant) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
+      return r.name.endsWith(' B');
+    });
+
+    // If program started mid-week, filter by which DOWs belong to this week
+    if (programStartDow !== 1) { // not Monday = mid-week start
+      filtered = filtered.filter(r => {
+        const dow = workoutScheduleMap[r.id];
+        if (dow === undefined) return true;
+        if (weekNum === 1) {
+          // First week: only days from start day onward (Thu, Fri)
+          return dow >= programStartDow;
+        } else if (weekNum === totalProgramWeeks && programStartDow > 1) {
+          // Last week (extension): only wrapped days before start day (Mon, Tue, Wed)
+          return dow < programStartDow;
+        }
+        // Middle weeks: all days
+        return true;
+      });
+    }
+
+    return filtered.sort((a, b) => {
+      const dayA = workoutScheduleMap[a.id] ?? 99;
+      const dayB = workoutScheduleMap[b.id] ?? 99;
+      // Week 1: sort naturally from start day; last week: sort from Monday
+      if (weekNum === 1) {
+        return dayA - dayB; // Thu(4) before Fri(5)
+      }
+      // Other weeks: Mon-Fri natural order
+      return dayA - dayB;
+    });
+  };
+
+  const thisWeekRoutines = getRoutinesForWeek(currentWeekNum);
 
   // Handlers
   const handleEnroll = async (programId) => {
@@ -1031,13 +1059,54 @@ const Workouts = () => {
               </div>
             </div>
 
-            {/* Week content */}
-            {isViewingCurrentWeek ? (
-              <>
-                {/* This week's routines (expandable) */}
-                {thisWeekRoutines.length > 0 && (
+            {/* Week content — use getRoutinesForWeek for all weeks so partial first/last weeks are respected */}
+            {(() => {
+              const weekRoutines = isViewingCurrentWeek ? thisWeekRoutines : getRoutinesForWeek(viewWeek);
+              if (weekRoutines.length === 0) {
+                return viewWeekDays && viewWeekDays.length > 0 ? (
                   <div className="space-y-2">
-                    {thisWeekRoutines.map(routine => {
+                    {viewWeekDays.map((day, di) => {
+                      const dayExpanded = expandedProgramRoutineId === `week-${viewWeek}-${di}`;
+                      return (
+                        <div key={di}>
+                          <button type="button" onClick={() => setExpandedProgramRoutineId(dayExpanded ? null : `week-${viewWeek}-${di}`)} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                            <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} /></div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{dayName(day) || t('workouts.dayN', { n: di + 1 })}</p>
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{(day.exercises || []).length} {t('workouts.exercises')}</p>
+                            </div>
+                            <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${dayExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
+                          </button>
+                          {dayExpanded && (
+                            <div className="mx-4 mb-2 px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--color-surface-hover)', borderColor: 'var(--color-border-subtle)' }}>
+                              <div className="space-y-1.5">
+                                {(day.exercises || []).map((ex, i) => {
+                                  const exId = typeof ex === 'string' ? ex : ex?.id;
+                                  return (
+                                    <div key={i} className="flex items-center justify-between">
+                                      <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}><span className="mr-1.5" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}.</span>{exName(exerciseNameMap[exId]) ?? exId}</p>
+                                      {ex.sets && <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{ex.sets} {t('workouts.sets')}</p>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noPreviewAvailable')}</p>
+                  </div>
+                );
+              }
+              return (
+              <>
+                {weekRoutines.length > 0 && (
+                  <div className="space-y-2">
+                    {weekRoutines.map(routine => {
                       const isExpanded = expandedProgramRoutineId === routine.id;
                       const scheduledDow = workoutScheduleMap[routine.id];
                       const DOW_LABELS = [
@@ -1091,57 +1160,8 @@ const Workouts = () => {
                 )}
 
               </>
-            ) : (
-              /* Non-current week: show template exercises */
-              viewWeekDays && viewWeekDays.length > 0 ? (
-                <div className="space-y-2">
-                  {viewWeekDays.map((day, di) => {
-                    const dayExpanded = expandedProgramRoutineId === `week-${viewWeek}-${di}`;
-                    return (
-                      <div key={di}>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedProgramRoutineId(dayExpanded ? null : `week-${viewWeek}-${di}`)}
-                          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left"
-                          style={{ backgroundColor: 'var(--color-surface-hover)' }}
-                        >
-                          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                            <Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{dayName(day) || t('workouts.dayN', { n: di + 1 })}</p>
-                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{(day.exercises || []).length} {t('workouts.exercises')}</p>
-                          </div>
-                          <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${dayExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
-                        </button>
-                        {dayExpanded && (
-                          <div className="mx-4 mb-2 px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--color-surface-hover)', borderColor: 'var(--color-border-subtle)' }}>
-                            <div className="space-y-1.5">
-                              {(day.exercises || []).map((ex, i) => {
-                                const exId = typeof ex === 'string' ? ex : ex?.id;
-                                return (
-                                  <div key={i} className="flex items-center justify-between">
-                                    <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                                      <span className="mr-1.5" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}.</span>
-                                      {exName(exerciseNameMap[exId]) ?? exId}
-                                    </p>
-                                    {ex.sets && <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{ex.sets} {t('workouts.sets')}</p>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noPreviewAvailable')}</p>
-                </div>
-              )
-            )}
+              );
+            })()}
           </div>
         </section>
         );
