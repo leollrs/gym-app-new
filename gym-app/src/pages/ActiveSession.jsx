@@ -22,6 +22,7 @@ import ExerciseCard from './active-session/ExerciseCard';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
 import { selectWarmUps } from '../lib/warmUpSelector';
+import { selectCoolDownStretches } from '../lib/cooldownSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
@@ -487,6 +488,8 @@ const ActiveSession = () => {
 
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [workoutComplete, setWorkoutComplete] = useState(false);
+  const [cooldownPhase, setCooldownPhase] = useState('none'); // none → active → done
+  const [cooldownIndex, setCooldownIndex] = useState(0);
   const [saving, setSaving]                   = useState(false);
   const [saveError, setSaveError]             = useState('');
 
@@ -2086,18 +2089,68 @@ const ActiveSession = () => {
             </button>
           </div>
         ) : workoutComplete ? (
-          /* ── Workout complete — all exercises done ── */
-          <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center mb-4">
-              <Trophy size={28} className="text-[#10B981]" />
+          cooldownPhase === 'active' ? (
+            /* ── Cooldown active — per-stretch with timer, same as warm-up ── */
+            (() => {
+              const muscleGroups = [...new Set(exercises.map(e => e.muscle).filter(Boolean))];
+              const stretches = selectCoolDownStretches(muscleGroups);
+              const stretch = stretches[cooldownIndex];
+              if (!stretch) { setCooldownPhase('done'); return null; }
+              const stretchName = i18n.language === 'es' && stretch.name_es ? stretch.name_es : stretch.name;
+              const isLast = cooldownIndex === stretches.length - 1;
+
+              return (
+                <div className="flex-1 overflow-y-auto">
+                  <div className="px-4 pt-3 pb-6">
+                    <div className="mb-4">
+                      <h2 className="text-[20px] font-black tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                        {stretchName}
+                      </h2>
+                      <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                        {stretch.durationSec}s · {t('activeSession.cooldownPhase', 'Cool Down')} {cooldownIndex + 1}/{stretches.length}
+                      </p>
+                    </div>
+                    <WarmUpTimer
+                      key={stretch.id}
+                      durationSec={stretch.durationSec}
+                      onComplete={() => {
+                        if (isLast) {
+                          setCooldownPhase('done');
+                        } else {
+                          setCooldownIndex(i => i + 1);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            /* ── Workout complete gate — cooldown option ── */
+            <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center mb-4">
+                <Trophy size={28} className="text-[#10B981]" />
+              </div>
+              <p className="text-[18px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                {t('activeSession.workoutCompleteTitle', 'Workout Complete!')}
+              </p>
+              <p className="text-[13px] mb-6" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('activeSession.workoutCompleteSubtitle', 'Add more exercises or finish your workout')}
+              </p>
+              {cooldownPhase === 'none' && (
+                <button
+                  onClick={() => { setCooldownPhase('active'); setCooldownIndex(0); }}
+                  className="flex items-center gap-2 px-5 py-3 rounded-2xl text-[13px] font-semibold mb-3 transition-colors active:scale-[0.97]"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60A5FA' }}
+                >
+                  🧘 {t('activeSession.startCooldown', 'Cool Down Stretches')}
+                </button>
+              )}
+              {cooldownPhase === 'done' && (
+                <p className="text-[12px] font-semibold text-[#10B981] mb-3">✓ {t('activeSession.cooldownDone', 'Cool down complete')}</p>
+              )}
             </div>
-            <p className="text-[18px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
-              {t('activeSession.workoutCompleteTitle', 'Workout Complete!')}
-            </p>
-            <p className="text-[13px]" style={{ color: 'var(--color-text-subtle)' }}>
-              {t('activeSession.workoutCompleteSubtitle', 'Add more exercises or finish your workout')}
-            </p>
-          </div>
+          )
         ) : currentExercise ? (() => {
           // ── Superset/Circuit context ──
           const groupId = currentExercise.groupId;
@@ -2560,8 +2613,35 @@ const ActiveSession = () => {
               )}
             </div>
           </div>
+        ) : workoutComplete && cooldownPhase === 'active' ? (
+          /* Cooldown active — Next/Skip buttons */
+          (() => {
+            const muscleGroups = [...new Set(exercises.map(e => e.muscle).filter(Boolean))];
+            const stretches = selectCoolDownStretches(muscleGroups);
+            const isLast = cooldownIndex >= stretches.length - 1;
+            return (
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    if (isLast) { setCooldownPhase('done'); } else { setCooldownIndex(i => i + 1); }
+                  }}
+                  className="w-full font-bold text-[14px] py-4.5 rounded-2xl transition-all duration-200 active:scale-[0.98] focus:outline-none"
+                  style={isLast ? { backgroundColor: '#10B981', color: '#fff' } : { backgroundColor: 'var(--color-accent)', color: '#000' }}
+                >
+                  {isLast ? t('activeSession.finishCooldown', 'Finish Cool Down') : t('activeSession.nextWarmUp', 'Next')}
+                </button>
+                <button
+                  onClick={() => setCooldownPhase('done')}
+                  className="w-full text-[12px] font-medium py-2"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t('activeSession.skipWarmUp', 'Skip')}
+                </button>
+              </div>
+            );
+          })()
         ) : workoutComplete ? (
-          /* Workout complete — user chooses to add more or finish */
+          /* Workout complete — user chooses to add more, cooldown, or finish */
           <div className="flex gap-2.5">
             <button
               onClick={() => setShowAddExercise(true)}

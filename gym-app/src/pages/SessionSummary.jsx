@@ -376,17 +376,7 @@ const SessionSummary = () => {
           </div>
         )}
 
-        {/* ── Cool Down Stretches ────────────────────────────────── */}
-        {completedSets > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.3, ease: 'easeOut' }}
-            className="w-full max-w-sm md:max-w-lg mb-6 flex justify-center"
-          >
-            <CoolDown muscleGroups={workedMuscleGroups} />
-          </motion.div>
-        )}
+        {/* Cool down moved to ActiveSession workout-complete gate */}
 
         {/* ── Actions ────────────────────────────────────────────── */}
         <div className="w-full max-w-sm md:max-w-lg flex flex-col gap-3 mt-auto pt-4">
