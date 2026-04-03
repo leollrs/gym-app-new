@@ -15,8 +15,8 @@ export default function AdminCard({
   const overflowClass = clipContent ? 'overflow-hidden' : 'overflow-visible';
   return (
     <div
-      className={`bg-[#0F172A] border border-white/6 rounded-[14px] ${overflowClass} ${padding} ${
-        hover ? 'hover:border-white/10 hover:bg-[#111827] transition-all duration-300' : ''
+      className={`admin-card ${overflowClass} ${padding} ${
+        hover ? 'admin-card-hover' : ''
       } ${onClick ? 'cursor-pointer' : ''} ${className}`}
       style={borderLeft ? { borderLeftWidth: 2, borderLeftColor: borderLeft } : undefined}
       onClick={onClick}

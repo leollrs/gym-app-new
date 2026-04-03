@@ -1988,8 +1988,8 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
       setError('All fields are required');
       return;
     }
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) {
+      setError('Password must be 8+ characters with uppercase, lowercase, and a number');
       return;
     }
 

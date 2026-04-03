@@ -172,11 +172,24 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
 
     // Upload new video if selected
     if (newVideoFile) {
-      const ext = newVideoFile.name.split('.').pop();
+      const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+      const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+      if (newVideoFile.size > MAX_VIDEO_SIZE) {
+        alert('Video must be under 100MB');
+        setSaving(false);
+        return;
+      }
+      if (!ALLOWED_VIDEO_TYPES.includes(newVideoFile.type)) {
+        alert('Only MP4, WebM, and MOV videos are allowed');
+        setSaving(false);
+        return;
+      }
+      const extMap = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
+      const ext = extMap[newVideoFile.type] || 'mp4';
       const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
-        .upload(path, newVideoFile, { contentType: newVideoFile.type || 'video/mp4' });
+        .upload(path, newVideoFile, { contentType: newVideoFile.type });
       if (!uploadError) {
         // Delete old video if replacing
         if (ex.video_url) {
@@ -1230,11 +1243,24 @@ function ExerciseModal({ onClose, onSaved }) {
 
     let videoPath = null;
     if (videoFile) {
-      const ext = videoFile.name.split('.').pop();
+      const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+      const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+      if (videoFile.size > MAX_VIDEO_SIZE) {
+        setError('Video must be under 100MB');
+        setSaving(false);
+        return;
+      }
+      if (!ALLOWED_VIDEO_TYPES.includes(videoFile.type)) {
+        setError('Only MP4, WebM, and MOV videos are allowed');
+        setSaving(false);
+        return;
+      }
+      const extMap = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
+      const ext = extMap[videoFile.type] || 'mp4';
       const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
-        .upload(path, videoFile, { contentType: videoFile.type || 'video/mp4' });
+        .upload(path, videoFile, { contentType: videoFile.type });
       if (!uploadError) videoPath = path;
     }
 

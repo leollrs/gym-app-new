@@ -8,7 +8,7 @@ import { format, isPast, isFuture } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel } from '../../components/admin';
+import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs } from '../../components/admin';
 import ChallengeModal from './components/ChallengeModal';
 
 // ── Participant list panel ─────────────────────────────────
@@ -256,21 +256,7 @@ export default function AdminChallenges() {
         const filtered = tab === 'active' ? activeChallenges : tab === 'upcoming' ? upcomingChallenges : pastChallenges;
 
         return <>
-          <div className="flex gap-1 border-b border-white/6 mb-5">
-            {tabs.map(tb => (
-              <button key={tb.key} onClick={() => setTab(tb.key)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-semibold transition-colors border-b-2 -mb-px ${
-                  tab === tb.key
-                    ? 'text-[#D4AF37] border-[#D4AF37]'
-                    : 'text-[#6B7280] border-transparent hover:text-[#E5E7EB]'
-                }`}>
-                {tb.label}
-                {tb.count > 0 && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === tb.key ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/8 text-[#6B7280]'}`}>{tb.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
+          <AdminTabs tabs={tabs} active={tab} onChange={setTab} className="mb-5" />
 
       {isLoading ? (
         <div className="space-y-3">

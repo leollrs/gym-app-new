@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
@@ -84,10 +84,18 @@ export default function ChallengeStats({ gymId }) {
     past:   t('admin.analytics.filterPast', 'Past'),
   };
 
+  // Headline: average participation rate
+  const avgPct = challengeData.length > 0
+    ? Math.round(challengeData.reduce((sum, d) => sum + d.pct, 0) / challengeData.length)
+    : 0;
+  const totalParticipants = challengeData.reduce((sum, d) => sum + d.count, 0);
+
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300 min-h-[320px] flex flex-col">
-      <div className="flex items-center justify-between gap-2 mb-4 shrink-0">
-        <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{t('admin.analytics.challengeTitle', 'Challenge Participation')}</p>
+      <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
+        <div className="min-w-0">
+          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.challengeTitle', 'Challenge Participation')}</p>
+        </div>
         <div className="flex gap-1 shrink-0">
           {FILTERS.map(f => (
             <button
@@ -104,6 +112,13 @@ export default function ChallengeStats({ gymId }) {
           ))}
         </div>
       </div>
+
+      {/* Headline metric */}
+      <div className="flex items-baseline gap-3 mb-4 shrink-0">
+        <span className="text-[28px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{avgPct}%</span>
+        <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.challengeAvg', { count: totalParticipants, defaultValue: 'avg participation — {{count}} total joins' })}</span>
+      </div>
+
       {challengeData.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 text-center">
           <p className="text-[13px] text-[var(--color-text-muted)]">{t('admin.analytics.challengeEmpty', 'No challenges in the last 6 months')}</p>
@@ -113,38 +128,53 @@ export default function ChallengeStats({ gymId }) {
         <>
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={challengeData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+              <BarChart data={challengeData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }} layout="horizontal">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, rgba(255,255,255,0.04))" vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
+                  tick={{ fontSize: 9, fill: 'var(--color-text-muted)', fontWeight: 500 }}
                   tickLine={false}
                   axisLine={false}
+                  dy={6}
+                  interval={0}
+                  angle={-20}
+                  textAnchor="end"
+                  height={40}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
+                  tick={{ fontSize: 10, fill: 'var(--color-text-muted)', fontWeight: 500 }}
                   tickLine={false}
                   axisLine={false}
                   domain={[0, 100]}
                   tickFormatter={v => `${v}%`}
+                  width={36}
                 />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-[var(--color-bg-card)] border border-white/10 rounded-xl px-3 py-2 shadow-xl shadow-black/40 text-[12px]">
-                        <p className="text-[var(--color-text-muted)] text-[11px] mb-1">{d.fullName}</p>
-                        <p className="font-semibold text-[#D4AF37]">{d.pct}% ({t('admin.analytics.challengeTooltipMembers', { count: d.count, defaultValue: '{{count}} members' })})</p>
+                      <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-2xl px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur-sm text-[12px]">
+                        <p className="text-[var(--color-text-muted)] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{d.fullName}</p>
+                        <p className="font-semibold text-[var(--color-accent)]">{d.pct}% ({t('admin.analytics.challengeTooltipMembers', { count: d.count, defaultValue: '{{count}} members' })})</p>
                       </div>
                     );
                   }}
-                  cursor={{ fill: 'var(--color-accent-glow)' }}
+                  cursor={{ fill: 'var(--color-accent-glow)', radius: 4 }}
                 />
-                <Bar dataKey="pct" fill="var(--color-accent)" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1000} animationEasing="ease-out" />
+                <Bar
+                  dataKey="pct"
+                  fill="var(--color-accent)"
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={32}
+                  animationDuration={1000}
+                  animationEasing="ease-out"
+                  fillOpacity={0.85}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-[10px] text-[var(--color-text-subtle)] mt-2 shrink-0">{t('admin.analytics.challengeFooter', '% of total members who joined each challenge')}</p>
+          <p className="text-[10px] text-[var(--color-text-subtle)] mt-3 shrink-0">{t('admin.analytics.challengeFooter', '% of total members who joined each challenge')}</p>
         </>
       )}
     </AdminCard>

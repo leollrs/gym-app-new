@@ -1,0 +1,371 @@
+Açaí Bowl|acai_bowl
+Açaí Bowl (Brazilian)|acai_bowl_brazilian
+Acorn Squash (roasted)|acorn_squash_roasted
+Ají de Gallina|aji_de_gallina
+Ajiaco Colombiano|ajiaco_colombiano
+Anticuchos (Beef Heart Skewers)|anticuchos
+Arepa Colombiana|arepa_colombiana
+Arugula (raw)|arugula_raw
+Ashwagandha supplement capsule|ashwagandha
+Atlantic Mackerel (baked)|atlantic_mackerel_baked
+Babybel Mini Cheese|babybel_cheese
+Bacon Cheeseburger|bacon
+Bagel with Lox and Cream Cheese|bagel_lox_cream_cheese
+Baklava pastry|baklava
+Bandeja Paisa|bandeja_paisa
+Bánh Mì Sandwich|banh_mi_sandwich
+Barebells Chocolate Dough protein bar|barebells_chocolate_dough
+Black Beans in a bowl|beans
+Fresh Beet Juice in a glass|beet_juice
+Beignets powdered sugar|beignets
+Blueberry Muffin|berries
+Birria Tacos with consomme|birria_tacos
+Biscuits and Gravy|biscuits_and_gravy
+Blood Orange cut in half|blood_orange
+BLT Sandwich|blt_sandwich
+Blue Cheese crumbled|blue_cheese
+Bok Choy cooked|bok_choy_cooked
+Buttermilk Biscuit|bread
+Breakfast Quesadilla|breakfast_quesadilla
+Brie Cheese wheel|brie_cheese
+Brigadeiro Brazilian chocolate truffle|brigadeiro
+BSN Syntha-6 Protein Shake bottle|bsn_syntha6
+Built Bar Chocolate protein bar|built_bar_chocolate
+Bún Bò Huế Vietnamese spicy beef noodle soup|bun_bo_hue
+Bún Chả Vietnamese grilled pork with noodles|bun_cha
+Classic Burger with lettuce tomato|burger
+Chicken Burrito wrapped in tortilla|burrito
+Butternut Squash roasted|butternut_squash_roasted
+Cachapas Venezuelan corn pancake with cheese|cachapas
+Raising Canes 3 Finger Combo|canes_3_finger_combo
+Raising Canes Box Combo|canes_box_combo
+Raising Canes Caniac Combo|canes_caniac_combo
+Raising Canes Crinkle Fries|canes_crinkle_fries
+Raising Canes Texas Toast|canes_texas_toast
+Cap'n Crunch cereal in a bowl|cap_n_crunch
+Caraotas Negras Venezuelan black beans|caraotas_negras
+Carne Asada Plate with rice and beans|carne_asada_plate
+Causa Limeña Peruvian layered potato dish|causa_limena
+Fresh Celery Juice in a glass|celery_juice
+Crunchy Peanut Butter granola bar|cereal
+Ceviche Peruano with fish and lime|ceviche_peruano
+Chana Masala Indian chickpea curry|chana_masala
+Changua Colombian Milk Soup with egg|changua
+Chè Ba Màu Vietnamese three color dessert|che_ba_mau
+Checkers Big Buford Double Cheeseburger|checkers_big_buford
+Checkers Seasoned Fries|checkers_seasoned_fries
+Mac and Cheese in a bowl|cheese
+Chicken Adobo Filipino style|chicken_adobo_filipino
+Chicken Biryani Indian rice dish|chicken_biryani
+Chicken Nuggets 8 piece|chicken_nuggets
+Chilaquiles Rojos Mexican breakfast|chilaquiles_rojos
+Chimichurri Sauce green herb sauce|chimichurri_sauce
+Chocolate Milk in a glass|chocolate_milk
+Churrasco Picanha Brazilian grilled steak|churrasco_picanha
+Churros with cinnamon sugar|churros
+New England Clam Chowder in bread bowl|clam_chowder_bowl
+Club Sandwich triple decker|club_sandwich
+Cocoa Puffs cereal in a bowl|cocoa_puffs
+Coconut Water Vita Coco bottle|coconut_water_vitacoco
+Iced Coffee in a tall glass|coffee
+Collagen Peptides supplement powder|collagen_peptides
+Cơm Tấm Vietnamese broken rice with grilled pork|com_tam
+Cook Out Double Cheeseburger|cook_out_double_cheeseburger
+Chocolate Chip Cookie|cookie
+Core Power Elite Chocolate protein shake bottle|core_power_chocolate
+Majarete corn pudding dessert|corn
+Cornbread slice|cornbread_slice
+Corona Beer bottle|corona_bottle
+Coxinha Brazilian fried chicken croquette|coxinha
+Cracker Barrel Buttermilk Biscuit|cracker_barrel_biscuit
+Cracker Barrel Chicken Fried Chicken|cracker_barrel_chicken_fried_chicken
+Cream of Rice porridge in a bowl|cream_of_rice
+Crepes plain folded|crepes_plain
+Butter Croissant|croissant
+Culvers ButterBurger|culvers_butterburger
+Culvers Wisconsin Cheese Curds fried|culvers_cheese_curds
+Culvers Double ButterBurger with Cheese|culvers_double_butterburger
+Culvers Fish Sandwich|culvers_fish_sandwich
+Culvers Vanilla Frozen Custard|culvers_frozen_custard
+Dal Makhani Indian lentil dish|dal_makhani
+Dennys Avocado Toast|dennys_avocado_toast
+Dennys Country Fried Steak|dennys_country_fried_steak
+Dennys Grand Slam breakfast|dennys_grand_slam
+Dennys Moons Over My Hammy sandwich|dennys_moons_over_hammy
+Dennys Pancakes stack of 4|dennys_pancakes
+Dennys Scrambler breakfast|dennys_scrambler
+Doenjang Jjigae Korean soybean paste stew|doenjang_jjigae
+Döner Kebab in pita|doner_kebab
+Birthday Cake protein bar|donut
+Doro Wat Ethiopian chicken stew|doro_wat
+Dairy Queen Chicken Strip Basket|dq_chicken_strip_basket
+Dairy Queen Dilly Bar ice cream|dq_dilly_bar
+Dairy Queen Double Cheeseburger|dq_double_cheeseburger
+Dairy Queen Oreo Blizzard|dq_oreo_blizzard
+Dairy Queen Peanut Butter Cookie Dough Blizzard|dq_pb_cookie_dough_blizzard
+Dairy Queen Soft Serve Cone|dq_soft_serve_cone
+Dragon Fruit cut in half|dragon_fruit
+Duck Breast roasted sliced|duck_breast_roasted
+Egg Noodles cooked in a bowl|egg_noodles_cooked
+Eggs Benedict with hollandaise|eggs_benedict
+Electrolyte Powder packet|electrolyte_powder
+Elote Mexican Street Corn on the cob|elote_street_corn
+Pastelitos Dominicanos chicken empanada|empanada
+Enchiladas Rojas with red sauce|enchiladas_rojas
+Body Armor sports drink bottle|energy_drink
+Ethiopian Combination Platter on injera|ethiopian_combo_platter
+Ethiopian Tibs sauteed meat|ethiopian_tibs
+Farofa Brazilian toasted cassava flour|farofa
+Feijoada Brazilian black bean stew|feijoada
+Fennel bulb raw|fennel_raw
+Feta Cheese crumbled in a bowl|feta_crumbled
+Fish Oil Softgel capsule|fish_oil_softgel
+Fish Sauce bottle|fish_sauce_bottle
+Focaccia bread slice|focaccia_slice
+French Dip Sandwich with au jus|french_dip_sandwich
+French Onion Soup with melted cheese|french_onion_soup_bowl
+Fried Rice with vegetables|fried_rice
+Large French Fries|fries
+Funnel Cake with powdered sugar|funnel_cake
+Garlic Naan bread|garlic_naan
+Gelato one scoop in a cup|gelato_scoop
+Ghost Protein Bar|ghost_protein_bar
+L-Glutamine Powder supplement|glutamine_powder
+Goat Meat stewed in curry|goat_meat_stewed
+Gochujang Korean Chili Paste in a jar|gochujang_paste
+Golden Milk Turmeric Latte|golden_milk_turmeric_latte
+Gouda Cheese wedge|gouda_cheese
+Granola Bowl with Milk|granola_bowl_milk
+Granola plain in a bowl|granola_plain
+Grape Nuts Cereal in a bowl|grape_nuts_cereal
+Grenade Carb Killa protein bar|grenade_carb_killa
+Grilled Cheese Sandwich golden brown|grilled_cheese_sandwich
+Grilled Veggie Wrap|grilled_veggie_wrap
+Grits cooked in a bowl|grits_cooked
+Guava fresh cut in half|guava_fresh
+Gummy Bears candy|gummy_bears
+Half and Half cream in small pitcher|half_and_half
+Hallacas Venezuelan tamales|hallacas_venezuelan
+Halo-Halo Filipino shaved ice dessert|halo_halo
+Haribo Gold-Bears gummy candy|haribo_goldbears
+Heavy Whipping Cream in small pitcher|heavy_cream
+Heineken Beer bottle|heineken_bottle
+Hi-Chew Strawberry candy|hi_chew_strawberry
+Hoisin Sauce in a small bowl|hoisin_sauce
+Hot Dog with mustard|hot_dog
+Limber de Parcha passion fruit ice pop|ice_cream
+IHOP Bacon Omelette|ihop_bacon_omelette
+IHOP Belgian Waffle|ihop_belgian_waffle
+IHOP Big Steak Omelette|ihop_big_steak_omelette
+IHOP Original Buttermilk Pancakes stack of 3|ihop_buttermilk_pancakes
+IHOP New York Cheesecake Pancakes|ihop_cheesecake_pancakes
+IHOP Chicken and Waffles|ihop_chicken_waffles
+IHOP Harvest Grain N Nut Pancakes|ihop_harvest_grain_pancakes
+IHOP Stuffed French Toast|ihop_stuffed_french_toast
+Injera Ethiopian flatbread|injera_ethiopian
+Jackfruit fresh cut|jackfruit_fresh
+Japchae Korean glass noodles|japchae
+Jack in the Box Egg Rolls|jbox_egg_rolls
+Jack in the Box Jumbo Jack burger|jbox_jumbo_jack
+Jack in the Box Loaded Curly Fries|jbox_loaded_curly_fries
+Jack in the Box Sourdough Jack burger|jbox_sourdough_jack
+Jack in the Box Spicy Crispy Chicken Sandwich|jbox_spicy_crispy_chicken
+Jack in the Box Tacos 2 piece|jbox_tacos
+Jack in the Box Ultimate Cheeseburger|jbox_ultimate_cheeseburger
+Jersey Mikes BLT Sub|jersey_mikes_blt
+Jersey Mikes Club Sub|jersey_mikes_club_sub
+Jersey Mikes Original Italian Sub|jersey_mikes_original_italian
+Jersey Mikes Philly Cheesesteak Sub|jersey_mikes_philly
+Jersey Mikes Turkey and Provolone Sub|jersey_mikes_turkey_provolone
+Jicama raw sliced|jicama_raw
+Jimmy Johns Beach Club sandwich|jj_beach_club
+Jimmy Johns The Pepe sandwich|jj_pepe
+Jimmy Johns Slim Tuna Salad sandwich|jj_slim_tuna
+Jimmy Johns Turkey Tom sandwich|jj_turkey_tom
+Jimmy Johns The Vito sandwich|jj_vito
+Kare-Kare Filipino oxtail stew|kare_kare
+Kashi GO Cereal in a bowl|kashi_go_cereal
+Kefir plain in a glass|kefir_plain
+KFC Biscuit|kfc_biscuit
+KFC Chicken Pot Pie|kfc_chicken_pot_pie
+KFC Coleslaw|kfc_coleslaw
+KFC Extra Crispy Chicken Breast|kfc_extra_crispy_breast
+KFC Famous Bowl|kfc_famous_bowl
+KFC Mac and Cheese|kfc_mac_cheese
+KFC Mashed Potatoes with Gravy|kfc_mashed_potatoes_gravy
+KFC Original Recipe Chicken Breast|kfc_original_chicken_breast
+KFC Popcorn Nuggets|kfc_popcorn_nuggets
+KFC Spicy Chicken Sandwich|kfc_spicy_chicken_sandwich
+Khao Man Gai Thai chicken rice|khao_man_gai
+Kimchi in a bowl|kimchi_bowl
+Ginger Lemon Kombucha bottle|kombucha_ginger_lemon
+Korean Bibim Cold Noodles|korean_bibim_noodles
+Korean Beef Bulgogi|korean_bulgogi
+Korean Fried Chicken 4 pieces|korean_fried_chicken
+Korean Galbi Short Ribs|korean_galbi
+Korean Samgyeopsal Pork Belly grilled|korean_samgyeopsal
+Kumquat fruit|kumquat
+Lahmacun Turkish flatbread|lahmacun
+Hot Latte in a mug|latte
+Lays Classic Chips|lays_classic_chips
+Lechon Kawali Crispy Pork Belly|lechon_kawali
+Leek cooked|leek_cooked
+Lentil Soup in a bowl|lentil_soup_bowl
+Little Caesars Cheese Pizza Slice|little_caesars_cheese_slice
+Little Caesars Crazy Bread|little_caesars_crazy_bread
+Little Caesars Deep Dish Pepperoni Pizza Slice|little_caesars_deep_dish
+Little Caesars Pepperoni Pizza Slice|little_caesars_pepperoni_slice
+Lomo Saltado Peruvian stir fry|lomo_saltado
+Longan fresh fruit|longan_fresh
+Lumpia Shanghai Filipino spring rolls|lumpia_shanghai
+Lychee fresh fruit|lychee_fresh
+Magnesium Glycinate supplement capsule|magnesium_glycinate
+Mango Sticky Rice Thai dessert|mango_sticky_rice
+Mascarpone Cheese in a bowl|mascarpone_cheese
+Massaman Curry Thai|massaman_curry
+Menemen Turkish egg dish in a pan|menemen_turkish
+Menudo Mexican tripe soup|menudo_bowl
+Peanut Butter Chocolate protein bar|milk
+Millet cooked grain in a bowl|millet_cooked
+Minestrone Soup in a bowl|minestrone_soup_bowl
+Misir Ethiopian Red Lentil Stew|misir_red_lentils
+Miso Paste white in a bowl|miso_paste
+Mochi Ice Cream 3 pieces|mochi_ice_cream
+Moussaka Greek layered eggplant dish|moussaka_greek
+Steamed Mussels in garlic sauce|mussels_steamed
+Nachos with cheese and jalapenos|nachos
+Nature Valley Crunchy granola bar|nature_valley_crunchy
+Nopales grilled cactus paddles|nopales_grilled
+Nutri-Grain Strawberry Bar|nutri_grain_bar
+Olive Garden Tiramisu|olive_garden_tiramisu
+Olive Garden Zuppa Toscana Soup|olive_garden_zuppa_toscana
+Omega-3 Fish Oil supplement capsule|omega3_supplement
+Orgain Plant Protein Shake bottle|orgain_plant_protein_shake
+Outback 6oz Sirloin Steak|outback_6oz_sirloin
+Outback Bloomin Onion fried appetizer|outback_blooming_onion
+Outback Grilled Salmon|outback_grilled_salmon
+Outback Victorias Filet 6oz|outback_victorias_filet
+Oyakodon Japanese chicken and egg rice bowl|oyakodon
+Oyster Sauce bottle|oyster_sauce
+Pabellón Criollo Venezuelan national dish|pabellon_criollo
+Palak Paneer Indian spinach curry|palak_paneer
+Pan-Seared Scallops|pan_seared_scallops
+Pancakes stack with syrup|pancakes
+Pancit Bihon Filipino noodles|pancit_bihon
+Panera Bacon Egg and Cheese on Brioche|panera_bacon_egg_cheese
+Panera Broccoli Cheddar Soup in Bread Bowl|panera_broccoli_cheddar_bread_bowl
+Panera Broccoli Cheddar Soup cup|panera_broccoli_cheddar_cup
+Panera Chicken Caesar Salad|panera_chicken_caesar_salad
+Panera Chicken Noodle Soup|panera_chicken_noodle_soup
+Panera Chocolate Chip Cookie|panera_chocolate_chip_cookie
+Panera Cinnamon Crunch Bagel|panera_cinnamon_crunch_bagel
+Panera Greek Salad|panera_greek_salad
+Panera Turkey Sandwich on Sourdough|panera_turkey_sourdough
+Pão de Queijo Brazilian cheese bread balls|pao_de_queijo
+Papaya fresh sliced|papaya_fresh
+Parsnip roasted|parsnip_roasted
+Passion Fruit cut in half|passion_fruit_halved
+Chicken Alfredo pasta|pasta
+Persimmon fresh fruit|persimmon_fresh
+Philly Cheesesteak Sandwich|philly_cheesesteak_sandwich
+Pirates Booty White Cheddar puffs|pirates_booty
+Supreme Pizza slice|pizza
+Sweet Plantains fried maduros|plantain
+Polenta cooked in a bowl|polenta_cooked
+PopCorners White Cheddar chips|popcorners_white_cheddar
+Pork Sinigang Filipino sour soup|pork_sinigang
+Hash Brown crispy|potato
+Pozole Rojo Mexican hominy soup|pozole_rojo
+Pre-Workout Powder supplement scoop|pre_workout_powder
+Prime Hydration Drink bottle|prime_hydration
+Pringles Original chips can|pringles_original
+Chocolate Protein Shake in a shaker bottle|protein_shake
+Steak Quesadilla|quesadilla
+Quest Protein Chips Ranch flavor bag|quest_protein_chips
+Quiche Lorraine slice|quiche_lorraine_slice
+Rabbit roasted|rabbit_roasted
+Rainbow Trout baked|rainbow_trout_baked
+Raw Oysters 6 on ice|raw_oysters_6
+Red Curry Paste in a jar|red_curry_paste
+Red Lobster Admirals Feast seafood platter|red_lobster_admiral_feast
+Red Lobster Cheddar Bay Biscuit|red_lobster_cheddar_bay_biscuit
+Red Lobster New England Clam Chowder|red_lobster_clam_chowder
+Red Lobster Lobster Tail|red_lobster_lobster_tail
+Red Lobster Shrimp Scampi|red_lobster_shrimp_scampi
+Red Robin Gourmet Cheeseburger|red_robin_gourmet_cheeseburger
+Red Robin Steak Fries|red_robin_steak_fries
+Red Wine glass|red_wine_glass
+Steamed White Rice in a bowl|rice
+Rum and Coke cocktail|rum_and_coke
+Side Salad with mixed greens|salad
+Samosa Chaat Indian street food|samosa_chaat
+Sancocho Colombiano soup|sancocho_colombiano
+Crispy Chicken Sandwich|sandwich
+Shake Shack Cheese Fries|shake_shack_cheese_fries
+Shake Shack Chick n Shack sandwich|shake_shack_chick_n_shack
+Shake Shack Crinkle Cut Fries|shake_shack_crinkle_fries
+Shake Shack Frozen Custard vanilla|shake_shack_frozen_custard
+Shake Shack Shack Stack burger|shake_shack_shack_stack
+Shake Shack ShackBurger|shake_shack_shackburger
+Shake Shack SmokeShack burger|shake_shack_smokestack
+Shakshuka eggs in tomato sauce|shakshuka
+Sinangag Filipino Garlic Fried Rice|sinangag_garlic_rice
+Chocolate Milkshake in a tall glass|smoothie
+Berry Smoothie Bowl with toppings|smoothie_bowl_berry
+Sobrebarriga Colombian flank steak|sobrebarriga
+Large Soft Pretzel|soft_pretzel_large
+Som Tam Green Papaya Salad Thai|som_tam
+Sonic Cheeseburger|sonic_cheeseburger
+Sonic Cherry Limeade drink|sonic_cherry_limeade
+Sonic Corn Dog|sonic_corn_dog
+Sonic Footlong Chili Cheese Coney|sonic_footlong_coney
+Sonic Tater Tots|sonic_tots
+Sopa de Salchichón Dominican sausage soup|soup
+Spanakopita Greek spinach pie|spanakopita
+Sprite can|sprite_can
+Steak Burrito wrapped|steak
+Steamed Clams in broth|steamed_clams
+Sundubu Jjigae Korean soft tofu stew|sundubu_jjigae
+Sweet Iced Tea in a glass|sweet_tea
+Swordfish Steak grilled|swordfish_steak_grilled
+Chicken Tacos 3 pieces|taco
+Takoyaki Japanese octopus balls|takoyaki
+Tamale Pork Red Chile|tamale_pork_red
+Tequeños Venezuelan cheese sticks|tequenos
+Tequila Shot glass|tequila_shot
+Tom Kha Gai Thai coconut chicken soup|tom_kha_gai
+Tonkatsu Japanese breaded pork cutlet|tonkatsu
+Besitos de Coco coconut kisses|tres_leches
+Tteokbokki Korean spicy rice cakes|tteokbokki
+Texas Roadhouse Fresh Seasoned Green Beans|txrh_green_beans
+Texas Roadhouse Grilled Salmon|txrh_grilled_salmon
+Texas Roadhouse Loaded Sweet Potato|txrh_loaded_sweet_potato
+Texas Roadhouse Baby Back Ribs Half Rack|txrh_ribs_half_rack
+Texas Roadhouse Fresh Baked Dinner Rolls|txrh_rolls
+Texas Roadhouse 6oz Sirloin Steak|txrh_sirloin_6oz
+Unsweetened Iced Tea in a glass|unsweetened_iced_tea
+Vitamin D3 supplement capsule|vitamin_d3_supplement
+Vodka Shot glass|vodka_shot
+Waffle House Classic Waffle|waffle_house_waffle
+Whataburger Apple Pie|whataburger_apple_pie
+Whataburger Chocolate Shake|whataburger_chocolate_shake
+Whataburger Double Meat|whataburger_double
+Whataburger Onion Rings|whataburger_onion_rings
+Whataburger Original burger|whataburger_original
+Whataburger Spicy Chicken Sandwich|whataburger_spicy_chicken
+White Claw Hard Seltzer can|white_claw_hard_seltzer
+White Wine glass|white_wine_glass
+Boneless Wings 8 pieces with sauce|wings
+Wingstop Bone-In Wings 6 pieces|wingstop_bone_in_wings
+Wingstop Boneless Wings 6 pieces|wingstop_boneless_wings
+Wingstop Garlic Parmesan Wings 6 pieces|wingstop_garlic_parmesan_wings
+Wingstop Lemon Pepper Wings 6 pieces|wingstop_lemon_pepper_wings
+Wingstop Mango Habanero Wings 6 pieces|wingstop_mango_habanero_wings
+Wingstop Seasoned Fries|wingstop_seasoned_fries
+Vanilla Greek Yogurt in a bowl|yogurt_bowl
+Zaxbys Crinkle Fries|zaxbys_crinkle_fries
+Zaxbys Chicken Fingerz Plate|zaxbys_fingerz_plate
+Zaxbys Signature Sandwich|zaxbys_signature_sandwich
+Zaxbys Wings and Things|zaxbys_wings_and_things
+Zaxbys House Zalad with Grilled Chicken|zaxbys_zalads_house
+ZMA Supplement capsules|zma_supplement

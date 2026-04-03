@@ -27,6 +27,14 @@ const clearPersistedUserData = () => {
       'coachmark_',
       'watchPendingNav',
       'sb-',
+      '_bodyScan',
+      '_pending',
+      'offline_',
+      'meal_plan_',
+      'program_adaptations',
+      'archived_conversations',
+      'platform_gym_defaults',
+      'admin_export_history',
     ];
     const exactKeys = ['offline_profile', 'offline_gym', 'tugympr-query-cache'];
     const keysToRemove = [];

@@ -102,13 +102,24 @@ function KPITargets({ gymId }) {
   };
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
-        <Target className="w-5 h-5 text-[color:var(--color-accent)]" />
-        <h3 className="text-white font-semibold text-lg">{t('admin.analytics.kpiTargets', 'KPI Targets')}</h3>
-        <span className="text-white/40 text-sm ml-auto">{format(new Date(), 'MMMM yyyy', dateFnsLocale)}</span>
+    <div className="mb-8">
+      {/* Section header */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-8 h-8 rounded-xl bg-[color:var(--color-accent)]/10 flex items-center justify-center">
+          <Target className="w-4 h-4 text-[color:var(--color-accent)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-semibold text-[16px] tracking-tight">
+            {t('admin.analytics.kpiTargets', 'KPI Targets')}
+          </h3>
+        </div>
+        <span className="text-white/30 text-[12px] tabular-nums">
+          {format(new Date(), 'MMMM yyyy', dateFnsLocale)}
+        </span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+
+      {/* KPI Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {KPI_METRICS.map((m) => {
           const row = targets[m.key];
           const current = row?.current_value;
@@ -117,56 +128,94 @@ function KPITargets({ gymId }) {
           const isEditing = editing === m.key;
 
           return (
-            <div key={m.key} className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{m.icon}</span>
-                <span className="text-white/70 text-xs font-medium leading-tight">{t(m.labelKey)}</span>
+            <div
+              key={m.key}
+              className="bg-[#111827]/60 border border-white/[0.04] rounded-2xl p-5
+                hover:border-white/[0.08] hover:bg-[#111827]/80
+                transition-all duration-200 group"
+            >
+              {/* Label row */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base leading-none">{m.icon}</span>
+                <span className="text-white/60 text-[11.5px] font-medium leading-tight tracking-wide uppercase">
+                  {t(m.labelKey)}
+                </span>
               </div>
 
-              <div className="flex items-baseline gap-1">
-                <span className={`text-2xl font-bold ${getTextColor(current, target, m.invertColor)}`}>
-                  {current != null ? `${current}${m.unit}` : '—'}
+              {/* Current value -- large and prominent */}
+              <div className="flex items-baseline gap-1 mb-3">
+                <span className={`text-[28px] font-bold leading-none tabular-nums tracking-tight ${getTextColor(current, target, m.invertColor)}`}>
+                  {current != null ? `${current}${m.unit}` : '--'}
                 </span>
               </div>
 
               {/* Progress bar */}
-              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden mb-3">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${getStatusColor(current, target, m.invertColor)}`}
+                  className={`h-full rounded-full transition-all duration-700 ease-out ${getStatusColor(current, target, m.invertColor)}`}
                   style={{ width: `${Math.min(pct, 100)}%` }}
                 />
               </div>
 
               {/* Target row */}
               {isEditing ? (
-                <div className="flex items-center gap-1.5 mt-1">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="number"
-                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm text-white outline-none focus:border-[color:var(--color-accent)]"
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5
+                      text-sm text-white outline-none
+                      focus:border-[color:var(--color-accent)] focus:ring-1 focus:ring-[color:var(--color-accent)]/20
+                      transition-all duration-200"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && save(m.key)}
                     autoFocus
                   />
-                  <button onClick={() => save(m.key)} className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                  <button
+                    onClick={() => save(m.key)}
+                    className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400
+                      hover:bg-emerald-500/30 active:scale-95 transition-all duration-150"
+                  >
                     <Check className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => setEditing(null)} className="p-1 rounded-lg bg-white/[0.06] text-white/40 hover:bg-white/10">
+                  <button
+                    onClick={() => setEditing(null)}
+                    className="p-1.5 rounded-lg bg-white/[0.06] text-white/40
+                      hover:bg-white/10 active:scale-95 transition-all duration-150"
+                  >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={() => { setEditing(m.key); setDraft(target ?? ''); }}
-                  className="text-xs text-white/40 hover:text-[color:var(--color-accent)] transition-colors text-left mt-1"
+                  className="text-[11.5px] text-white/35 hover:text-[color:var(--color-accent)]
+                    transition-colors duration-200 text-left"
                 >
-                  {target != null ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' }) : t('admin.analytics.setTarget', '+ Set Target')}
+                  {target != null
+                    ? t('admin.analytics.targetLabel', { value: target, unit: m.unit, defaultValue: 'Target: {{value}}{{unit}}' })
+                    : t('admin.analytics.setTarget', '+ Set Target')}
                 </button>
               )}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Section Divider ──────────────────────────────────────
+function SectionDivider({ label }) {
+  return (
+    <div className="flex items-center gap-3 mb-5 mt-2">
+      <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
+      {label && (
+        <span className="text-[10.5px] font-semibold text-[#D4AF37]/60 uppercase tracking-[0.12em] flex-shrink-0">
+          {label}
+        </span>
+      )}
+      <div className="h-px flex-1 bg-gradient-to-l from-white/[0.08] to-transparent" />
     </div>
   );
 }
@@ -182,7 +231,9 @@ export default function AdminAnalytics() {
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied</p>
+        <p className="text-[#EF4444] text-[14px] font-semibold">
+          {t('admin.overview.accessDenied')}
+        </p>
       </div>
     );
   }
@@ -190,66 +241,83 @@ export default function AdminAnalytics() {
   return (
     <AdminPageShell>
 
-      {/* Page header */}
+      {/* ── 1. Header ── */}
       <FadeIn>
         <PageHeader
           title={t('admin.analytics.title', 'Analytics')}
           subtitle={t('admin.analytics.subtitle', 'Retention, growth, and engagement metrics')}
-          className="mb-6"
+          className="mb-10"
         />
       </FadeIn>
 
-      {/* KPI Targets */}
+      {/* ── 2. KPI Target Cards ── */}
       <FadeIn delay={30}>
         <KPITargets gymId={gymId} />
       </FadeIn>
 
-      <div className="grid xl:grid-cols-12 gap-4">
-        {/* Member Lifecycle Funnel */}
-        <FadeIn delay={60} className="xl:col-span-7">
-          <LifecycleStages gymId={gymId} />
-        </FadeIn>
+      {/* ── Visual separator: Operational metrics ── */}
+      <FadeIn delay={50}>
+        <SectionDivider label="Engagement" />
+      </FadeIn>
 
-        {/* Monthly Summary */}
-        <FadeIn delay={90} className="xl:col-span-5">
-          <MonthlySummary gymId={gymId} />
-        </FadeIn>
+      {/* ── 3. Onboarding + Challenge: 50/50 ── */}
+      <FadeIn delay={60}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+          <OnboardingFunnel gymId={gymId} />
+          <ChallengeStats gymId={gymId} />
+        </div>
+      </FadeIn>
 
-        {/* Row 1: Member Growth + Retention Rate */}
-        <FadeIn delay={120} className="xl:col-span-8">
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <GrowthChart gymId={gymId} />
-            <RetentionChart gymId={gymId} />
-          </div>
-        </FadeIn>
+      {/* ── Visual separator: Growth analytics ── */}
+      <FadeIn delay={80}>
+        <SectionDivider label="Growth" />
+      </FadeIn>
 
-        {/* Row 1b: Engagement */}
-        <FadeIn delay={180} className="xl:col-span-4">
-          <div className="mb-4 h-full">
-            <ActivityChart gymId={gymId} />
-          </div>
-        </FadeIn>
+      {/* ── 4. Broad metrics: Growth + Retention side-by-side ── */}
+      <FadeIn delay={90}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+          <GrowthChart gymId={gymId} />
+          <RetentionChart gymId={gymId} />
+        </div>
+      </FadeIn>
 
-        {/* Row 2: Cohort Retention */}
-        <FadeIn delay={240} className="xl:col-span-12">
-          <div className="mb-4">
-            <CohortTable gymId={gymId} />
-          </div>
-        </FadeIn>
+      {/* ── Visual separator: Activity deep-dive ── */}
+      <FadeIn delay={110}>
+        <SectionDivider label="Activity" />
+      </FadeIn>
 
-        {/* Trainer Performance */}
-        <FadeIn delay={300} className="xl:col-span-12">
+      {/* ── 5. Engagement 60% + Lifecycle 40% ── */}
+      <FadeIn delay={120}>
+        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-5 mb-8 items-stretch">
+          <div className="min-h-0"><ActivityChart gymId={gymId} /></div>
+          <div className="min-h-0"><LifecycleStages gymId={gymId} /></div>
+        </div>
+      </FadeIn>
+
+      {/* ── Visual separator: Deep analysis ── */}
+      <FadeIn delay={140}>
+        <SectionDivider label="Analysis" />
+      </FadeIn>
+
+      {/* ── 6. Cohort Retention -- full width ── */}
+      <FadeIn delay={150}>
+        <div className="mb-8">
+          <CohortTable gymId={gymId} />
+        </div>
+      </FadeIn>
+
+      {/* ── 7. Trainer Performance -- full width ── */}
+      <FadeIn delay={180}>
+        <div className="mb-8">
           <TrainerPerformance gymId={gymId} />
-        </FadeIn>
+        </div>
+      </FadeIn>
 
-        {/* Row 4: Challenge Participation (60%) + Onboarding Completion (40%) — full width */}
-        <FadeIn delay={360} className="xl:col-span-12">
-          <div className="grid md:grid-cols-[3fr_2fr] gap-4">
-            <ChallengeStats gymId={gymId} />
-            <OnboardingFunnel gymId={gymId} />
-          </div>
-        </FadeIn>
-      </div>
+      {/* ── 8. Monthly Summary -- full width ── */}
+      <FadeIn delay={210}>
+        <MonthlySummary gymId={gymId} />
+      </FadeIn>
+
     </AdminPageShell>
   );
 }

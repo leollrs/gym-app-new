@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users, ChevronDown, UserPlus, X, Search, Plus, Download,
+  ClipboardList, BarChart3, ArrowRightLeft,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +11,7 @@ import { format, subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, Avatar, SectionLabel, ErrorCard, Skeleton } from '../../components/admin';
+import { PageHeader, AdminCard, Avatar, SectionLabel, ErrorCard, Skeleton, AdminTabs } from '../../components/admin';
 import AddTrainerModal from './components/AddTrainerModal';
 import ConfirmDemoteModal from './components/ConfirmDemoteModal';
 
@@ -116,6 +117,7 @@ export default function AdminTrainers() {
 
   useEffect(() => { document.title = t('admin.trainers.pageTitle', 'Admin - Trainers | TuGymPR'); }, [t]);
 
+  const [trainersTab, setTrainersTab]   = useState('roster');
   const [expanded, setExpanded]         = useState(null);
   const [showAssign, setShowAssign]     = useState(null);
   const [search, setSearch]             = useState('');
@@ -273,6 +275,36 @@ export default function AdminTrainers() {
         }
       />
 
+      {/* Top metrics row */}
+      {!isLoading && !error && trainers.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[
+            { label: t('admin.trainers.totalTrainers', 'Total Trainers'), value: trainers.length, color: '#D4AF37' },
+            { label: t('admin.trainers.totalClients', 'Assigned Clients'), value: trainers.reduce((s, tr) => s + tr.clientCount, 0), color: '#3B82F6' },
+            { label: t('admin.trainers.avgClientsPerTrainer', 'Avg Clients / Trainer'), value: trainers.length > 0 ? (trainers.reduce((s, tr) => s + tr.clientCount, 0) / trainers.length).toFixed(1) : '0', color: '#10B981' },
+          ].map((s, i) => (
+            <AdminCard key={i} hover borderLeft={s.color}>
+              <p className="text-[22px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{s.value}</p>
+              <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{s.label}</p>
+            </AdminCard>
+          ))}
+        </div>
+      )}
+
+      {/* Tab bar */}
+      {!isLoading && !error && trainers.length > 0 && (
+        <AdminTabs
+          tabs={[
+            { key: 'roster', label: t('admin.trainers.tabRoster', 'Roster'), icon: ClipboardList },
+            { key: 'assignments', label: t('admin.trainers.tabAssignments', 'Assignments'), icon: ArrowRightLeft },
+            { key: 'performance', label: t('admin.trainers.tabPerformance', 'Performance'), icon: BarChart3 },
+          ]}
+          active={trainersTab}
+          onChange={setTrainersTab}
+          className="mb-4"
+        />
+      )}
+
       {isLoading ? (
         <div className="flex justify-center py-24">
           <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
@@ -294,176 +326,305 @@ export default function AdminTrainers() {
         </AdminCard>
       ) : (
         <>
-          {/* Summary stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            {[
-              { label: t('admin.trainers.totalTrainers'), value: trainers.length, color: '#D4AF37' },
-              { label: t('admin.trainers.totalClients'), value: trainers.reduce((s, tr) => s + tr.clientCount, 0), color: '#3B82F6' },
-              { label: t('admin.trainers.avgRetention'), value: `${trainers.length > 0 ? Math.round(trainers.reduce((s, tr) => s + tr.retention, 0) / trainers.length) : 0}%`, color: '#10B981' },
-              { label: t('admin.trainers.clientSessions30d'), value: trainers.reduce((s, tr) => s + tr.totalSessions, 0), color: '#8B5CF6' },
-            ].map((s, i) => (
-              <AdminCard key={i} hover borderLeft={s.color}>
-                <p className="text-[22px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{s.value}</p>
-                <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{s.label}</p>
-              </AdminCard>
-            ))}
-          </div>
-
-          {/* Trainer cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {trainers.map(tr => {
-              const isExpanded = expanded === tr.id;
-              const clients = clientMap[tr.id] || [];
-              return (
-                <AdminCard key={tr.id} hover padding="p-0" className="overflow-hidden">
-                  {/* Trainer header */}
-                  <div
-                    className="flex items-center gap-3 px-4 py-3.5 cursor-pointer"
-                    onClick={() => setExpanded(isExpanded ? null : tr.id)}
-                  >
-                    <Avatar name={tr.name} size="md" variant="accent" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{tr.name}</p>
-                      {tr.username && <p className="text-[11px] text-[#6B7280] truncate">@{tr.username}</p>}
-                    </div>
-                    <div className="flex items-center gap-4 mr-2">
-                      <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.clientCount}</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.clients')}</p>
+          {/* ═══ ROSTER TAB ═══ */}
+          {trainersTab === 'roster' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {trainers.map(tr => {
+                const isExpanded = expanded === tr.id;
+                const clients = clientMap[tr.id] || [];
+                return (
+                  <AdminCard key={tr.id} hover padding="p-0" className="overflow-hidden">
+                    {/* Trainer header */}
+                    <div
+                      className="flex items-center gap-3 px-4 py-3.5 cursor-pointer"
+                      onClick={() => setExpanded(isExpanded ? null : tr.id)}
+                    >
+                      <Avatar name={tr.name} size="md" variant="accent" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{tr.name}</p>
+                        {tr.username && <p className="text-[11px] text-[#6B7280] truncate">@{tr.username}</p>}
                       </div>
-                      <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#10B981] leading-none tabular-nums">{tr.retention}%</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.retention')}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.avgWorkouts}</p>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.wkPerClient')}</p>
-                      </div>
-                    </div>
-                    <ChevronDown size={16} className={`text-[#6B7280] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                  </div>
-
-                  {/* Expanded: client list */}
-                  <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                    <div className="overflow-hidden">
-                      <div className="px-4 pb-4 border-t border-white/6">
-                        <div className="flex items-center justify-between mt-3 mb-2">
-                          <SectionLabel>{t('admin.trainers.clientsCount', { count: clients.length })}</SectionLabel>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setConfirmDemote(tr.id); }}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#EF4444]/70 hover:bg-[#EF4444]/10 hover:text-[#EF4444] transition-colors whitespace-nowrap"
-                            >
-                              <X size={12} />
-                              {t('admin.trainers.removeTrainer')}
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === tr.id ? null : tr.id); setSearch(''); }}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap"
-                            >
-                              <UserPlus size={12} />
-                              {t('admin.trainers.assignClient')}
-                            </button>
-                          </div>
+                      <div className="flex items-center gap-4 mr-2">
+                        <div className="text-center">
+                          <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.clientCount}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.clients')}</p>
                         </div>
+                        <div className="text-center">
+                          <p className="text-[16px] font-bold text-[#10B981] leading-none tabular-nums">{tr.retention}%</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.retention')}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.avgWorkouts}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.wkPerClient')}</p>
+                        </div>
+                      </div>
+                      <ChevronDown size={16} className={`text-[#6B7280] transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
 
-                        {/* Assign client dropdown */}
-                        {showAssign === tr.id && (
-                          <div className="mb-3 bg-[#111827] border border-white/8 rounded-lg p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Search size={13} className="text-[#6B7280]" />
-                              <input
-                                type="text"
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder={t('admin.trainers.searchMembers')}
-                                aria-label={t('admin.trainers.searchMembers')}
-                                className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
-                                autoFocus
-                              />
-                              <button onClick={() => setShowAssign(null)} aria-label={t('admin.trainers.closeMemberSearch')} className="text-[#6B7280] hover:text-[#9CA3AF] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                                <X size={14} />
+                    {/* Expanded: client list */}
+                    <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                      <div className="overflow-hidden">
+                        <div className="px-4 pb-4 border-t border-white/6">
+                          <div className="flex items-center justify-between mt-3 mb-2">
+                            <SectionLabel>{t('admin.trainers.clientsCount', { count: clients.length })}</SectionLabel>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setConfirmDemote(tr.id); }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#EF4444]/70 hover:bg-[#EF4444]/10 hover:text-[#EF4444] transition-colors whitespace-nowrap"
+                              >
+                                <X size={12} />
+                                {t('admin.trainers.removeTrainer')}
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setShowAssign(showAssign === tr.id ? null : tr.id); setSearch(''); }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap"
+                              >
+                                <UserPlus size={12} />
+                                {t('admin.trainers.assignClient')}
                               </button>
                             </div>
-                            <div className="max-h-40 overflow-y-auto space-y-0.5">
-                              {unassignedMembers(tr.id).slice(0, 20).map(m => (
-                                <button
-                                  key={m.id}
-                                  disabled={assigning}
-                                  onClick={() => assignClient(tr.id, m.id)}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left hover:bg-white/5 transition-colors disabled:opacity-50"
-                                >
-                                  <Avatar name={m.full_name} size="sm" variant="neutral" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[12px] text-[#E5E7EB] truncate">{m.full_name}</p>
-                                    {m.username && <p className="text-[10px] text-[#6B7280] truncate">@{m.username}</p>}
-                                  </div>
-                                  <UserPlus size={12} className="text-[#6B7280] flex-shrink-0" />
-                                </button>
-                              ))}
-                              {unassignedMembers(tr.id).length === 0 && (
-                                <p className="text-[11px] text-[#6B7280] text-center py-2">
-                                  {search ? t('admin.trainers.noMatchingMembers') : t('admin.trainers.allMembersAssigned')}
-                                </p>
-                              )}
-                            </div>
                           </div>
-                        )}
 
-                        {/* Client rows */}
-                        {clients.length === 0 ? (
-                          <p className="text-[12px] text-[#6B7280] text-center py-4">{t('admin.trainers.noClientsAssigned')}</p>
-                        ) : (
-                          <div className="space-y-1">
-                            {clients.map(c => {
-                              const tier = c.churnTier ? tierColor(c.churnTier) : null;
-                              return (
-                                <div key={c.id} className="flex items-center gap-2.5 py-2 px-2 rounded-lg hover:bg-white/[0.02] transition-colors group">
+                          {/* Assign client dropdown */}
+                          {showAssign === tr.id && (
+                            <div className="mb-3 bg-[#111827] border border-white/8 rounded-lg p-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Search size={13} className="text-[#6B7280]" />
+                                <input
+                                  type="text"
+                                  value={search}
+                                  onChange={e => setSearch(e.target.value)}
+                                  placeholder={t('admin.trainers.searchMembers')}
+                                  aria-label={t('admin.trainers.searchMembers')}
+                                  className="flex-1 bg-transparent text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none"
+                                  autoFocus
+                                />
+                                <button onClick={() => setShowAssign(null)} aria-label={t('admin.trainers.closeMemberSearch')} className="text-[#6B7280] hover:text-[#9CA3AF] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                                {unassignedMembers(tr.id).slice(0, 20).map(m => (
+                                  <button
+                                    key={m.id}
+                                    disabled={assigning}
+                                    onClick={() => assignClient(tr.id, m.id)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left hover:bg-white/5 transition-colors disabled:opacity-50"
+                                  >
+                                    <Avatar name={m.full_name} size="sm" variant="neutral" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[12px] text-[#E5E7EB] truncate">{m.full_name}</p>
+                                      {m.username && <p className="text-[10px] text-[#6B7280] truncate">@{m.username}</p>}
+                                    </div>
+                                    <UserPlus size={12} className="text-[#6B7280] flex-shrink-0" />
+                                  </button>
+                                ))}
+                                {unassignedMembers(tr.id).length === 0 && (
+                                  <p className="text-[11px] text-[#6B7280] text-center py-2">
+                                    {search ? t('admin.trainers.noMatchingMembers') : t('admin.trainers.allMembersAssigned')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Client rows */}
+                          {clients.length === 0 ? (
+                            <p className="text-[12px] text-[#6B7280] text-center py-4">{t('admin.trainers.noClientsAssigned')}</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {clients.map(c => {
+                                const tier = c.churnTier ? tierColor(c.churnTier) : null;
+                                return (
+                                  <div key={c.id} className="flex items-center gap-2.5 py-2 px-2 rounded-lg hover:bg-white/[0.02] transition-colors group">
+                                    <Avatar name={c.name} size="sm" variant="neutral" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{c.name}</p>
+                                      {c.username && <p className="text-[10px] text-[#6B7280] truncate">@{c.username}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-right hidden md:block">
+                                        <p className="text-[11px] text-[#6B7280]">{c.assignedAt ? format(new Date(c.assignedAt), 'MMM d, yyyy') : '—'}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-[12px] font-semibold text-[#E5E7EB] tabular-nums">{c.sessions30d}</p>
+                                        <p className="text-[9px] text-[#6B7280]">{t('admin.trainers.sessions')}</p>
+                                      </div>
+                                      {tier && c.churnScore !== null && (
+                                        <span
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tier.bg}`}
+                                          style={{ color: tier.text }}
+                                        >
+                                          {c.churnScore}%
+                                        </span>
+                                      )}
+                                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.isActive ? 'bg-emerald-400' : 'bg-[#4B5563]'}`}
+                                        title={c.isActive ? t('admin.trainers.active30d') : t('admin.trainers.inactive')}
+                                      />
+                                      <button
+                                        onClick={() => unassignClient(tr.id, c.id)}
+                                        className="opacity-0 group-hover:opacity-100 text-[#6B7280] hover:text-[#EF4444] transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                                        title={t('admin.trainers.unassignClient')}
+                                        aria-label={t('admin.trainers.unassignClient')}
+                                      >
+                                        <X size={13} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </AdminCard>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ═══ ASSIGNMENTS TAB ═══ */}
+          {trainersTab === 'assignments' && (() => {
+            const allAssignments = trainers.flatMap(tr =>
+              (clientMap[tr.id] || []).map(c => ({ ...c, trainerName: tr.name, trainerId: tr.id }))
+            );
+            return (
+              <AdminCard padding="p-0" className="overflow-hidden">
+                {allAssignments.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <ArrowRightLeft size={28} className="text-[#6B7280] mx-auto mb-3" />
+                    <p className="text-[14px] text-[#9CA3AF] font-medium">{t('admin.trainers.noAssignments', 'No trainer-client assignments yet')}</p>
+                    <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.trainers.noAssignmentsDesc', 'Assign clients to trainers from the Roster tab.')}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-white/6">
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider">{t('admin.trainers.csvTrainer', 'Trainer')}</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider">{t('admin.trainers.csvClient', 'Client')}</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider text-right">{t('admin.trainers.sessions', 'Sessions')}</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider text-center">{t('admin.trainers.churnRisk', 'Churn Risk')}</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider text-right hidden md:table-cell">{t('admin.trainers.assignedDate', 'Assigned')}</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wider text-center">{t('admin.trainers.status', 'Status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allAssignments.map(c => {
+                          const tier = c.churnTier ? tierColor(c.churnTier) : null;
+                          return (
+                            <tr key={`${c.trainerId}-${c.id}`} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                              <td className="px-4 py-2.5">
+                                <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{c.trainerName}</p>
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-2">
                                   <Avatar name={c.name} size="sm" variant="neutral" />
-                                  <div className="flex-1 min-w-0">
+                                  <div className="min-w-0">
                                     <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{c.name}</p>
                                     {c.username && <p className="text-[10px] text-[#6B7280] truncate">@{c.username}</p>}
                                   </div>
-                                  <div className="flex items-center gap-3">
-                                    <div className="text-right hidden md:block">
-                                      <p className="text-[11px] text-[#6B7280]">{c.assignedAt ? format(new Date(c.assignedAt), 'MMM d, yyyy') : '—'}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[12px] font-semibold text-[#E5E7EB] tabular-nums">{c.sessions30d}</p>
-                                      <p className="text-[9px] text-[#6B7280]">{t('admin.trainers.sessions')}</p>
-                                    </div>
-                                    {tier && c.churnScore !== null && (
-                                      <span
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tier.bg}`}
-                                        style={{ color: tier.text }}
-                                      >
-                                        {c.churnScore}%
-                                      </span>
-                                    )}
-                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.isActive ? 'bg-emerald-400' : 'bg-[#4B5563]'}`}
-                                      title={c.isActive ? t('admin.trainers.active30d') : t('admin.trainers.inactive')}
-                                    />
-                                    <button
-                                      onClick={() => unassignClient(tr.id, c.id)}
-                                      className="opacity-0 group-hover:opacity-100 text-[#6B7280] hover:text-[#EF4444] transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                                      title={t('admin.trainers.unassignClient')}
-                                      aria-label={t('admin.trainers.unassignClient')}
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                  </div>
                                 </div>
-                              );
-                            })}
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                <span className="text-[12px] font-semibold text-[#E5E7EB] tabular-nums">{c.sessions30d}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                {tier && c.churnScore !== null ? (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tier.bg}`} style={{ color: tier.text }}>
+                                    {c.churnTier} {c.churnScore}%
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-[#6B7280]">--</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 text-right hidden md:table-cell">
+                                <span className="text-[11px] text-[#6B7280]">{c.assignedAt ? format(new Date(c.assignedAt), 'MMM d, yyyy') : '--'}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <span className={`inline-block w-2 h-2 rounded-full ${c.isActive ? 'bg-emerald-400' : 'bg-[#4B5563]'}`}
+                                  title={c.isActive ? t('admin.trainers.active30d') : t('admin.trainers.inactive')}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </AdminCard>
+            );
+          })()}
+
+          {/* ═══ PERFORMANCE TAB ═══ */}
+          {trainersTab === 'performance' && (
+            <div className="space-y-3">
+              {trainers.map(tr => {
+                const clients = clientMap[tr.id] || [];
+                const activeClients = clients.filter(c => c.isActive).length;
+                const atRisk = clients.filter(c => c.churnTier === 'critical' || c.churnTier === 'high').length;
+                return (
+                  <AdminCard key={tr.id} hover padding="p-0" className="overflow-hidden">
+                    <div className="flex items-center gap-4 px-4 py-3.5">
+                      <Avatar name={tr.name} size="md" variant="accent" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{tr.name}</p>
+                        {tr.username && <p className="text-[11px] text-[#6B7280] truncate">@{tr.username}</p>}
+                      </div>
+                      <div className="flex items-center gap-5 flex-wrap">
+                        <div className="text-center min-w-[48px]">
+                          <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.clientCount}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.clients', 'Clients')}</p>
+                        </div>
+                        <div className="text-center min-w-[48px]">
+                          <p className="text-[16px] font-bold text-[#3B82F6] leading-none tabular-nums">{activeClients}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.activeClients', 'Active')}</p>
+                        </div>
+                        <div className="text-center min-w-[48px]">
+                          <p className="text-[16px] font-bold text-[#8B5CF6] leading-none tabular-nums">{tr.totalSessions}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.sessions', 'Sessions')}</p>
+                        </div>
+                        <div className="text-center min-w-[48px]">
+                          <p className="text-[16px] font-bold text-[#10B981] leading-none tabular-nums">{tr.retention}%</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.retention', 'Retention')}</p>
+                        </div>
+                        <div className="text-center min-w-[48px]">
+                          <p className="text-[16px] font-bold text-[#E5E7EB] leading-none tabular-nums">{tr.avgWorkouts}</p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.wkPerClient', 'Wk/Client')}</p>
+                        </div>
+                        {atRisk > 0 && (
+                          <div className="text-center min-w-[48px]">
+                            <p className="text-[16px] font-bold text-[#EF4444] leading-none tabular-nums">{atRisk}</p>
+                            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.trainers.atRisk', 'At Risk')}</p>
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                </AdminCard>
-              );
-            })}
-          </div>
+                    {/* Compact client activity bar */}
+                    {clients.length > 0 && (
+                      <div className="px-4 pb-3 flex items-center gap-1">
+                        {clients.map(c => (
+                          <div
+                            key={c.id}
+                            className={`h-1.5 rounded-full flex-1 max-w-[24px] ${
+                              c.churnTier === 'critical' || c.churnTier === 'high'
+                                ? 'bg-red-500/60'
+                                : c.isActive
+                                  ? 'bg-emerald-400/60'
+                                  : 'bg-[#4B5563]/40'
+                            }`}
+                            title={`${c.name}: ${c.sessions30d} ${t('admin.trainers.sessions', 'sessions')}${c.churnTier ? ` (${c.churnTier})` : ''}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </AdminCard>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

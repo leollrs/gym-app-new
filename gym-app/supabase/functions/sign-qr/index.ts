@@ -2,6 +2,8 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+// TODO: Ideally use a dedicated QR_SIGNING_SECRET instead of SERVICE_ROLE_KEY
+// to limit blast radius if the signing secret is ever compromised.
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 
@@ -54,8 +56,10 @@ serve(async (req) => {
       return jsonResp({ error: 'payload is required' }, 400);
     }
 
-    const signature = await hmacSign(payload);
-    return jsonResp({ signature });
+    // Append a timestamp so the QR code can expire
+    const timestampedPayload = payload + ':' + Date.now();
+    const signature = await hmacSign(timestampedPayload);
+    return jsonResp({ signature, payload: timestampedPayload });
   } catch (err) {
     console.error('sign-qr error:', err);
     return jsonResp({ error: err.message || 'Internal error' }, 500);

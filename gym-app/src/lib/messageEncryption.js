@@ -6,7 +6,10 @@
  * For true E2E, you'd need per-user key pairs with key exchange.
  */
 
-const APP_SECRET = 'tugympr-msg-v1'; // Static app-level secret component
+// SECURITY WARNING: This secret is embedded in the client bundle and provides
+// only obfuscation, not true encryption. For actual message security, move
+// key derivation to a server-side Edge Function with a proper secret.
+const APP_SECRET = 'tugympr-msg-v1';
 
 async function deriveKey(conversationId) {
   const material = await crypto.subtle.importKey(
@@ -17,7 +20,7 @@ async function deriveKey(conversationId) {
     ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: new TextEncoder().encode(conversationId), iterations: 10000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: new TextEncoder().encode(conversationId), iterations: 600000, hash: 'SHA-256' },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -39,9 +42,10 @@ export async function encryptMessage(text, conversationId) {
     combined.set(iv);
     combined.set(new Uint8Array(encrypted), iv.length);
     return 'enc:' + btoa(String.fromCharCode(...combined));
-  } catch {
-    // Fallback: return plaintext if encryption fails (older browsers)
-    return text;
+  } catch (e) {
+    // Do NOT silently fall back to plaintext - this hides encryption failures
+    console.error('Message encryption failed:', e?.message);
+    throw new Error('Message encryption unavailable');
   }
 }
 
@@ -59,6 +63,8 @@ export async function decryptMessage(ciphertext, conversationId) {
     );
     return new TextDecoder().decode(decrypted);
   } catch {
+    // Return fallback text if decryption fails (may be a pre-encryption message)
+    // Mark it so the UI can indicate this
     return '[Unable to decrypt]';
   }
 }

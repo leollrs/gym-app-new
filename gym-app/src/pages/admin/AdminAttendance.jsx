@@ -152,28 +152,24 @@ export default function AdminAttendance() {
       <PageHeader
         title={t('admin.attendance.title', 'Attendance')}
         subtitle={t('admin.attendance.subtitle', 'Check-ins and workout activity')}
-        actions={
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px]"
-              aria-label={t('admin.attendance.export', 'Export CSV')}
-            >
-              <Download size={13} />
-              {t('admin.attendance.export', 'Export')}
-            </button>
-          </div>
-        }
       />
 
-      {/* Period filter */}
+      {/* Period filter + Export */}
       <FadeIn>
-        <div className="mt-5 mb-5">
+        <div className="mt-5 mb-5 flex items-center gap-1.5 flex-wrap">
           <FilterBar
             options={PERIOD_OPTIONS}
             active={period}
             onChange={setPeriod}
           />
+          <button
+            onClick={handleExport}
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px]"
+            aria-label={t('admin.attendance.export', 'Export CSV')}
+          >
+            <Download size={13} />
+            {t('admin.attendance.export', 'Export')}
+          </button>
         </div>
       </FadeIn>
 

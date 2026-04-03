@@ -91,7 +91,8 @@ export default function MemberLookup() {
     setSearching(true);
     setHasSearched(true);
 
-    const pattern = `%${term}%`;
+    const safeTerm = term.replace(/[%_\\,()."']/g, '');
+    const pattern = `%${safeTerm}%`;
     const { data, error } = await supabase
       .from('profiles')
       .select('id, gym_id, full_name, username, role, created_at, last_active_at, membership_status, is_onboarded, gyms(id, name, slug)')

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -36,6 +36,8 @@ export default function AdminPrograms() {
   const [expandedEnroll, setExpandedEnroll] = useState(null);
   const [enrolledMembers, setEnrolledMembers] = useState({});
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [programSearch, setProgramSearch] = useState('');
+  const [durationFilter, setDurationFilter] = useState('all');
 
   useEffect(() => { document.title = t('admin.programs.pageTitle', 'Admin - Programs | TuGymPR'); }, [t]);
 
@@ -174,6 +176,28 @@ export default function AdminPrograms() {
     }
   };
 
+  // ── Filtered programs ────────────────────────────────────
+
+  const filteredPrograms = useMemo(() => {
+    let result = programs;
+    if (programSearch.trim()) {
+      const q = programSearch.toLowerCase();
+      result = result.filter(p =>
+        p.name?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q)
+      );
+    }
+    if (durationFilter !== 'all') {
+      const weeks = parseInt(durationFilter);
+      if (durationFilter === '12+') {
+        result = result.filter(p => (p.duration_weeks || 0) >= 12);
+      } else {
+        result = result.filter(p => (p.duration_weeks || 0) <= weeks);
+      }
+    }
+    return result;
+  }, [programs, programSearch, durationFilter]);
+
   // ── Render ───────────────────────────────────────────────
 
   const loading = loadingPrograms;
@@ -209,6 +233,46 @@ export default function AdminPrograms() {
         </FadeIn>
       )}
 
+      {/* Search and filters */}
+      {!loading && programs.length > 0 && (
+        <FadeIn delay={0.05}>
+          <div className="flex flex-wrap items-center gap-3 mb-5">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+              <input
+                type="text"
+                placeholder={t('admin.programs.searchPlaceholder', 'Search programs...')}
+                value={programSearch}
+                onChange={e => setProgramSearch(e.target.value)}
+                className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/30"
+              />
+            </div>
+            {/* Duration filter pills */}
+            <div className="flex gap-2">
+              {[
+                { key: 'all', label: t('admin.programs.durationAll', 'All') },
+                { key: '4', label: t('admin.programs.durationShort', '1-4w') },
+                { key: '8', label: t('admin.programs.durationMed', '5-8w') },
+                { key: '12+', label: t('admin.programs.durationLong', '12w+') },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setDurationFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${
+                    durationFilter === f.key
+                      ? 'bg-[#D4AF37] text-black'
+                      : 'bg-[#0F172A] text-[#6B7280] border border-white/6 hover:text-[#9CA3AF]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </FadeIn>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           <CardSkeleton h="h-[80px]" />
@@ -225,8 +289,14 @@ export default function AdminPrograms() {
         </FadeIn>
       ) : (
         <FadeIn>
+          {filteredPrograms.length === 0 ? (
+            <div className="text-center py-12">
+              <Search size={24} className="text-[#6B7280] mx-auto mb-2" />
+              <p className="text-[13px] text-[#6B7280]">{t('admin.programs.noMatchingPrograms', 'No programs match your search')}</p>
+            </div>
+          ) : (
           <div className="space-y-3">
-            {programs.map(p => {
+            {filteredPrograms.map(p => {
               const wks = normalizeWeeks(p.weeks);
               const allDays = Object.values(wks).flat();
               const totalDays = allDays.length;
@@ -323,6 +393,7 @@ export default function AdminPrograms() {
               );
             })}
           </div>
+          )}
         </FadeIn>
       )}
 

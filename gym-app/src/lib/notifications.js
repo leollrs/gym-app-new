@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import i18n from 'i18next';
+import logger from './logger';
 
 // ── NOTIFICATION TYPE CONSTANTS ────────────────────────────
 // Valid DB enum values: workout_reminder, streak_warning, challenge_update,
@@ -47,7 +48,7 @@ export async function sendOnce({ profileId, gymId, type, title, body, data, dedu
   });
   // Silently ignore duplicate key violations
   if (error && error.code === '23505') return;
-  if (error) console.error('Notification error:', error);
+  if (error) logger.error('Notification error:', error);
 }
 
 /**
@@ -68,7 +69,7 @@ export async function createNotification({ profileId, gymId, type, title, body =
   const { error } = await supabase.from('notifications').insert(row);
   // Silently ignore duplicate key violations when dedupKey is provided
   if (error && error.code === '23505') return;
-  if (error) console.error('createNotification error:', error);
+  if (error) logger.error('createNotification error:', error);
 }
 
 /**
@@ -93,7 +94,7 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
   const { error } = await supabase.from('notifications').insert(rows);
   // Silently ignore duplicate key violations when dedupKey is provided
   if (error && error.code === '23505') return;
-  if (error) console.error('broadcastNotification error:', error);
+  if (error) logger.error('broadcastNotification error:', error);
 
   // Fire native push notifications via edge function (fire-and-forget)
   // Skip push delivery during quiet hours (10pm–7am) — the in-app notification is already inserted above
@@ -101,9 +102,9 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
     supabase.functions.invoke('send-push', {
       body: { gym_id: gymId, title, body: body || '', data: { route: '/notifications', type } },
     }).then(({ data: res, error }) => {
-      if (error) console.warn('[Push] send-push error:', error.message);
-      else console.info('[Push] send-push result:', res);
-    }).catch(err => console.warn('[Push] send-push failed:', err));
+      if (error) logger.warn('[Push] send-push error:', error.message);
+      else logger.info('[Push] send-push result:', res);
+    }).catch(err => logger.warn('[Push] send-push failed:', err));
   }
 }
 
@@ -146,11 +147,11 @@ async function sendPushToUser({ userId, gymId, title, body, data = {} }) {
     supabase.functions.invoke('send-push-user', {
       body: { profile_id: userId, gym_id: gymId, title, body, data },
     }).then(({ data: res, error: pushErr }) => {
-      if (pushErr) console.warn('[Push] send-push-user error:', pushErr.message);
-      else console.info('[Push] send-push-user result:', res);
-    }).catch(err => console.warn('[Push] send-push-user failed:', err));
+      if (pushErr) logger.warn('[Push] send-push-user error:', pushErr.message);
+      else logger.info('[Push] send-push-user result:', res);
+    }).catch(err => logger.warn('[Push] send-push-user failed:', err));
   } catch (e) {
-    console.warn('[Push] sendPushToUser failed:', e?.message || e);
+    logger.warn('[Push] sendPushToUser failed:', e?.message || e);
   }
 }
 

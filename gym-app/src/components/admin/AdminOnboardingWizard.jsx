@@ -484,7 +484,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validation = validateImageFile(file);
+    const validation = await validateImageFile(file);
     if (!validation.valid) {
       showToast(validation.error, 'error');
       return;

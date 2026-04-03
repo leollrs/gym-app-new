@@ -118,4 +118,6 @@ export const adminKeys = {
   },
 
   emailTemplates: (gymId) => ['admin', 'email-templates', gymId],
+
+  profile: (gymId, profileId) => ['admin', 'profile', gymId, profileId],
 };

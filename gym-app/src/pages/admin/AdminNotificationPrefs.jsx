@@ -63,38 +63,64 @@ function Toggle({ checked, onChange, label }) {
 }
 
 // ── Single event row ──
-function EventRow({ pref, onToggle, onChannelChange, t }) {
+function EventRow({ pref, onToggle, onChannelsChange, t }) {
   const eventKey = pref.event_type;
+  const name = t(`admin.notificationPrefs.events.${eventKey}`);
+  const desc = t(`admin.notificationPrefs.events.${eventKey}_desc`);
+  const [expanded, setExpanded] = useState(false);
+
+  // channel is TEXT[] after migration, but could be a string for unmigrated rows
+  const rawCh = pref.channel;
+  const channels = Array.isArray(rawCh) ? rawCh : (typeof rawCh === 'string' && rawCh ? [rawCh] : ['in_app']);
+
+  const toggleChannel = (ch) => {
+    const next = channels.includes(ch)
+      ? channels.filter(c => c !== ch)
+      : [...channels, ch];
+    if (next.length === 0) return;
+    onChannelsChange(pref.id, next);
+  };
+
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-white/6 last:border-b-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-medium text-[#E5E7EB] truncate">
-          {t(`admin.notificationPrefs.events.${eventKey}.name`)}
-        </p>
-        <p className="text-[11px] text-[#6B7280] leading-snug mt-0.5">
-          {t(`admin.notificationPrefs.events.${eventKey}.desc`)}
-        </p>
+    <div className="py-3 border-b border-white/6 last:border-b-0">
+      {/* Title row — name + channel pills + toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex-1 min-w-0 text-left md:pointer-events-none"
+        >
+          <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{name}</p>
+        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {CHANNELS.map(ch => {
+            const Icon = ch.icon;
+            const isOn = channels.includes(ch.key);
+            return (
+              <button
+                key={ch.key}
+                onClick={(e) => { e.stopPropagation(); toggleChannel(ch.key); }}
+                disabled={!pref.enabled}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all border min-h-[28px] ${
+                  isOn
+                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/40'
+                    : 'bg-[#111827] text-[#4B5563] border-white/8'
+                } ${!pref.enabled ? 'opacity-30 pointer-events-none' : 'active:scale-95'}`}
+                aria-label={t(`admin.notificationPrefs.channels.${ch.key}`)}
+                aria-pressed={isOn}
+              >
+                <Icon size={11} />
+                <span className="hidden sm:inline">{t(`admin.notificationPrefs.channels.${ch.key}`)}</span>
+              </button>
+            );
+          })}
+        </div>
+        <Toggle checked={pref.enabled} onChange={(val) => onToggle(pref.id, val)} label={name} />
       </div>
 
-      {/* Channel selector */}
-      <select
-        value={pref.channel}
-        onChange={(e) => onChannelChange(pref.id, e.target.value)}
-        disabled={!pref.enabled}
-        className="bg-[#111827] border border-white/6 rounded-lg px-2 py-1 text-[11px] text-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 disabled:opacity-40 appearance-none min-w-[72px]"
-      >
-        {CHANNELS.map(ch => (
-          <option key={ch.key} value={ch.key}>
-            {t(`admin.notificationPrefs.channels.${ch.key}`)}
-          </option>
-        ))}
-      </select>
-
-      <Toggle
-        checked={pref.enabled}
-        onChange={(val) => onToggle(pref.id, val)}
-        label={t(`admin.notificationPrefs.events.${eventKey}.name`)}
-      />
+      {/* Description — always visible on desktop, expandable on mobile */}
+      <p className={`text-[11px] text-[#6B7280] leading-snug mt-1 ${expanded ? '' : 'hidden md:block'}`}>
+        {desc}
+      </p>
     </div>
   );
 }
@@ -158,21 +184,21 @@ export default function AdminNotificationPrefs() {
     },
   });
 
-  // ── Channel change mutation ──
+  // ── Channels change mutation (multi-select, TEXT[] column) ──
   const channelMutation = useMutation({
-    mutationFn: async ({ id, channel }) => {
+    mutationFn: async ({ id, channels }) => {
       const { error } = await supabase
         .from('admin_notification_prefs')
-        .update({ channel, updated_at: new Date().toISOString() })
+        .update({ channel: channels, updated_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;
     },
-    onMutate: async ({ id, channel }) => {
+    onMutate: async ({ id, channels }) => {
       const qk = adminKeys.notificationPrefs(gymId);
       await queryClient.cancelQueries({ queryKey: qk });
       const previous = queryClient.getQueryData(qk);
       queryClient.setQueryData(qk, (old) =>
-        old?.map(p => p.id === id ? { ...p, channel } : p)
+        old?.map(p => p.id === id ? { ...p, channel: channels } : p)
       );
       return { previous };
     },
@@ -203,8 +229,8 @@ export default function AdminNotificationPrefs() {
     toggleMutation.mutate({ id, enabled });
   };
 
-  const handleChannelChange = (id, channel) => {
-    channelMutation.mutate({ id, channel });
+  const handleChannelsChange = (id, channels) => {
+    channelMutation.mutate({ id, channels });
   };
 
   // Build lookup map
@@ -222,12 +248,8 @@ export default function AdminNotificationPrefs() {
 
   return (
     <div className="space-y-4">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Bell size={16} className="text-[#D4AF37]" />
-          <SectionLabel>{t('admin.notificationPrefs.sectionTitle')}</SectionLabel>
-        </div>
+      {/* Reset button — title is already in the parent collapsible header */}
+      <div className="flex justify-end">
         <button
           onClick={() => setShowResetConfirm(true)}
           disabled={resetMutation.isPending}
@@ -237,10 +259,6 @@ export default function AdminNotificationPrefs() {
           {t('admin.notificationPrefs.resetDefaults')}
         </button>
       </div>
-
-      <p className="text-[12px] text-[#6B7280] -mt-2">
-        {t('admin.notificationPrefs.description')}
-      </p>
 
       {EVENT_CATEGORIES.map((cat, idx) => {
         const Icon = cat.icon;
@@ -264,7 +282,7 @@ export default function AdminNotificationPrefs() {
                     {t(`admin.notificationPrefs.categories.${cat.key}`)}
                   </p>
                   <p className="text-[11px] text-[#6B7280]">
-                    {enabledCount}/{catPrefs.length} {t('admin.notificationPrefs.active')}
+                    {t('admin.notificationPrefs.activeCount', { enabled: enabledCount, total: catPrefs.length, defaultValue: '{{enabled}}/{{total}} active' })}
                   </p>
                 </div>
                 {isExpanded
@@ -281,7 +299,7 @@ export default function AdminNotificationPrefs() {
                       key={pref.id}
                       pref={pref}
                       onToggle={handleToggle}
-                      onChannelChange={handleChannelChange}
+                      onChannelsChange={handleChannelsChange}
                       t={t}
                     />
                   ))}

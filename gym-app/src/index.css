@@ -47,57 +47,64 @@ input, textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Backgrounds ─────────────────────────── */
-  --color-bg-primary:    #FAFAF8;
-  --color-bg-secondary:  #F5F5F2;
+  /* ── Backgrounds (warm off-white executive palette) ── */
+  --color-bg-primary:    #F8F7F4;
+  --color-bg-secondary:  #F0EFE9;
   --color-bg-card:       #FFFFFF;
-  --color-bg-input:      #F5F5F2;
-  --color-bg-elevated:   #F0F0F2;
-  --color-bg-inset:      #E5E5EA;
-  --color-bg-deep:       #FAFAF8;
+  --color-bg-input:      #EFEDE6;
+  --color-bg-elevated:   #E8E6DF;
+  --color-bg-inset:      #E0DED6;
+  --color-bg-deep:       #F4F3EF;
 
   /* Translucent surfaces (nav bars, sticky headers, overlays) */
-  --color-bg-nav:        rgba(255, 255, 255, 0.92);
-  --color-bg-overlay:    rgba(255, 255, 255, 0.95);
-  --color-bg-hover:      rgba(0, 0, 0, 0.04);
-  --color-bg-active:     rgba(0, 0, 0, 0.06);
-  --color-bg-subtle:     rgba(0, 0, 0, 0.03);
+  --color-bg-nav:        rgba(248, 247, 244, 0.92);
+  --color-bg-overlay:    rgba(248, 247, 244, 0.95);
+  --color-bg-hover:      rgba(0, 0, 0, 0.035);
+  --color-bg-active:     rgba(0, 0, 0, 0.055);
+  --color-bg-subtle:     rgba(0, 0, 0, 0.025);
 
-  /* ── Amber accent (light-mode optimized — darker for contrast) ── */
-  --color-accent:        #C88400;
-  --color-accent-soft:   #F0A500;
-  --color-accent-dark:   #9A6700;
-  --color-accent-glow:   rgba(200, 132, 0, 0.15);
+  /* ── Admin shell surfaces (light) ───────── */
+  --color-admin-shell:   #EDECEA;
+  --color-admin-sidebar: #E6E4E0;
+  --color-admin-panel:   #F5F4F1;
+
+  /* ── Bronze/gold accent (editorial, warm) ── */
+  --color-accent:        #A67B3D;
+  --color-accent-soft:   #C8973F;
+  --color-accent-dark:   #8B6530;
+  --color-accent-glow:   rgba(166, 123, 61, 0.12);
 
   /* ── Blue (charts / secondary) ───────────── */
   --color-blue:          #3B82F6;
   --color-blue-soft:     #60A5FA;
 
-  /* ── Text ────────────────────────────────── */
-  --color-text-primary:   #1D1D1F;
-  --color-text-secondary: #3A3A3C;
-  --color-text-muted:     #6E6E73;
-  --color-text-subtle:    #86868B;
-  --color-text-faint:     #AEAEB2;
+  /* ── Text (warm slate, not harsh black) ──── */
+  --color-text-primary:   #1C1917;
+  --color-text-secondary: #3D3833;
+  --color-text-muted:     #6B6560;
+  --color-text-subtle:    #8A847E;
+  --color-text-faint:     #ADA8A1;
 
   /* ── Text on accent ────────────────────────── */
-  --color-text-on-accent: #1D1D1F;
+  --color-text-on-accent: #FFFFFF;
 
-  /* ── Borders ─────────────────────────────── */
-  --color-border-subtle:  rgba(0, 0, 0, 0.06);
-  --color-border-default: rgba(0, 0, 0, 0.10);
-  --color-border-strong:  rgba(0, 0, 0, 0.16);
+  /* ── Borders (warm) ──────────────────────── */
+  --color-border-subtle:  rgba(0, 0, 0, 0.055);
+  --color-border-default: rgba(0, 0, 0, 0.09);
+  --color-border-strong:  rgba(0, 0, 0, 0.14);
 
-  /* ── Status ──────────────────────────────── */
-  --color-success: #0FA88A;
-  --color-warning: #F59E0B;
-  --color-danger:  #EF4444;
+  /* ── Status (premium, slightly desaturated) ── */
+  --color-success: #2A9D7E;
+  --color-warning: #D4910A;
+  --color-danger:  #D94848;
 
-  /* ── Shadows ─────────────────────────────── */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.1);
-  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.12);
+  /* ── Shadows (warm tint) ─────────────────── */
+  --shadow-sm:   0 1px 2px rgba(28, 25, 23, 0.06), 0 1px 3px rgba(28, 25, 23, 0.04);
+  --shadow-md:   0 2px 8px rgba(28, 25, 23, 0.06), 0 4px 16px rgba(28, 25, 23, 0.05);
+  --shadow-lg:   0 4px 12px rgba(28, 25, 23, 0.06), 0 10px 32px rgba(28, 25, 23, 0.08);
   --shadow-glow: 0 0 16px var(--color-accent-glow);
+  --shadow-card: 0 1px 3px rgba(28, 25, 23, 0.04), 0 4px 12px rgba(28, 25, 23, 0.03);
+  --shadow-card-hover: 0 2px 8px rgba(28, 25, 23, 0.06), 0 8px 24px rgba(28, 25, 23, 0.06);
 
   /* ── Radius ──────────────────────────────── */
   --radius-sm:  0.5rem;
@@ -133,57 +140,67 @@ input, textarea, select {
   --text-subtle:      var(--color-text-subtle);
   --text-faint:       var(--color-text-faint);
   --color-info:       #3B82F6;
-  --glass-bg:         rgba(255, 255, 255, 0.9);
+  --glass-bg:         rgba(248, 247, 244, 0.9);
   --success:          var(--color-success);
   --warning:          var(--color-warning);
   --danger:           var(--color-danger);
 }
 
-/* ── Dark theme (Obsidian & Amber) ──────────────────────────────────────── */
+/* ── Dark theme (Matte Obsidian & Amber — luxury control room) ─────────── */
 html.dark {
-  --color-bg-primary:    #0B0F1A;
-  --color-bg-secondary:  #0E1322;
-  --color-bg-card:       #141B2E;
-  --color-bg-input:      #1C2540;
-  --color-bg-elevated:   #101828;
-  --color-bg-inset:      #1C2540;
-  --color-bg-deep:       #111827;
+  /* Shell: near-black base, visible step darker than cards */
+  --color-bg-primary:    #08080D;
+  --color-bg-secondary:  #0C0C14;
+  --color-bg-card:       #14141F;
+  --color-bg-input:      #1A1A28;
+  --color-bg-elevated:   #101018;
+  --color-bg-inset:      #1A1A28;
+  --color-bg-deep:       #111119;
 
-  --color-bg-nav:        rgba(11, 15, 26, 0.92);
-  --color-bg-overlay:    rgba(11, 15, 26, 0.95);
-  --color-bg-hover:      rgba(255, 255, 255, 0.04);
-  --color-bg-active:     rgba(255, 255, 255, 0.06);
-  --color-bg-subtle:     rgba(255, 255, 255, 0.03);
+  --color-bg-nav:        rgba(8, 8, 13, 0.94);
+  --color-bg-overlay:    rgba(8, 8, 13, 0.96);
+  --color-bg-hover:      rgba(255, 255, 255, 0.035);
+  --color-bg-active:     rgba(255, 255, 255, 0.055);
+  --color-bg-subtle:     rgba(255, 255, 255, 0.025);
 
-  /* Amber accent */
-  --color-accent:        #F0A500;
-  --color-accent-soft:   #FFB833;
-  --color-accent-dark:   #C88400;
-  --color-accent-glow:   rgba(240, 165, 0, 0.15);
+  /* Admin shell surfaces (dark) */
+  --color-admin-shell:   #08080D;
+  --color-admin-sidebar: #0C0C14;
+  --color-admin-panel:   #101018;
 
-  /* Text on accent — dark text on bright amber */
-  --color-text-on-accent: #1D1D1F;
+  /* Amber accent — warm gold on obsidian */
+  --color-accent:        #D4A030;
+  --color-accent-soft:   #E8B84A;
+  --color-accent-dark:   #B8882A;
+  --color-accent-glow:   rgba(212, 160, 48, 0.12);
 
-  /* Brighter mint success */
-  --color-success: #22D3A7;
+  /* Text on accent — dark text on warm gold */
+  --color-text-on-accent: #0C0C14;
 
-  --color-text-primary:   #E5E7EB;
-  --color-text-secondary: #CBD5E1;
-  --color-text-muted:     #9CA3AF;
-  --color-text-subtle:    #6B7280;
-  --color-text-faint:     #4B5563;
+  /* Status: premium, slightly desaturated */
+  --color-success: #3DD9A4;
+  --color-warning: #E8A830;
+  --color-danger:  #E85858;
 
-  --color-border-subtle:  rgba(255, 255, 255, 0.06);
-  --color-border-default: rgba(255, 255, 255, 0.08);
-  --color-border-strong:  rgba(255, 255, 255, 0.14);
+  --color-text-primary:   #E8E6E1;
+  --color-text-secondary: #C8C4BC;
+  --color-text-muted:     #908C84;
+  --color-text-subtle:    #605C56;
+  --color-text-faint:     #403C38;
 
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg:   0 10px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(240, 165, 0, 0.20);
+  --color-border-subtle:  rgba(255, 255, 255, 0.05);
+  --color-border-default: rgba(255, 255, 255, 0.07);
+  --color-border-strong:  rgba(255, 255, 255, 0.12);
+
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2);
+  --shadow-md:   0 2px 8px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg:   0 4px 12px rgba(0, 0, 0, 0.4), 0 12px 36px rgba(0, 0, 0, 0.35);
+  --shadow-glow: 0 0 20px rgba(212, 160, 48, 0.14);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 2px 8px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.3);
 
   /* Legacy */
-  --glass-bg: rgba(30, 41, 59, 0.95);
+  --glass-bg: rgba(20, 20, 31, 0.96);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -261,13 +278,33 @@ html.dark {
 .bg-white\/\[0\.02\]   { background-color: var(--color-bg-subtle) !important; }
 .bg-white\/\[0\.03\]   { background-color: var(--color-bg-subtle) !important; }
 .bg-white\/\[0\.04\]   { background-color: var(--color-bg-hover)  !important; }
+.bg-white\/\[0\.05\]   { background-color: var(--color-bg-hover)  !important; }
+.bg-white\/\[0\.06\]   { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.07\]   { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.08\]   { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.10\]   { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.1\]    { background-color: var(--color-bg-active) !important; }
+.bg-white\/\[0\.12\]   { background-color: var(--color-bg-elevated) !important; }
+.bg-white\/\[0\.15\]   { background-color: var(--color-bg-elevated) !important; }
+.bg-white\/\[0\.015\]  { background-color: var(--color-bg-subtle) !important; }
 
 /* Hover white/N alpha background variants */
+.hover\:bg-white\/\[0\.015\]:hover { background-color: var(--color-bg-subtle) !important; }
 .hover\:bg-white\/\[0\.02\]:hover { background-color: var(--color-bg-subtle) !important; }
 .hover\:bg-white\/\[0\.03\]:hover { background-color: var(--color-bg-subtle) !important; }
 .hover\:bg-white\/\[0\.04\]:hover { background-color: var(--color-bg-hover)  !important; }
+.hover\:bg-white\/\[0\.05\]:hover { background-color: var(--color-bg-hover)  !important; }
+.hover\:bg-white\/\[0\.06\]:hover { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/\[0\.07\]:hover { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/\[0\.08\]:hover { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/\[0\.10\]:hover { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/\[0\.1\]:hover  { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/\[0\.12\]:hover { background-color: var(--color-bg-elevated) !important; }
 .hover\:bg-white\/4:hover         { background-color: var(--color-bg-hover)  !important; }
 .hover\:bg-white\/5:hover         { background-color: var(--color-bg-hover)  !important; }
+.hover\:bg-white\/6:hover         { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/8:hover         { background-color: var(--color-bg-active) !important; }
+.hover\:bg-white\/10:hover        { background-color: var(--color-bg-active) !important; }
 
 /* ── Text remapping ────────────────────────────────────────────────────── */
 .text-\[\#E5E7EB\]    { color: var(--color-text-primary)   !important; }
@@ -301,7 +338,15 @@ html.dark {
 .border-white\/12        { border-color: var(--color-border-strong)  !important; }
 .border-white\/20        { border-color: var(--color-border-strong)  !important; }
 .border-white\/25        { border-color: var(--color-border-strong)  !important; }
+.border-white\/\[0\.03\] { border-color: var(--color-border-subtle)  !important; }
+.border-white\/\[0\.04\] { border-color: var(--color-border-subtle)  !important; }
+.border-white\/\[0\.05\] { border-color: var(--color-border-subtle)  !important; }
 .border-white\/\[0\.06\] { border-color: var(--color-border-subtle)  !important; }
+.border-white\/\[0\.08\] { border-color: var(--color-border-default) !important; }
+.border-white\/\[0\.1\]  { border-color: var(--color-border-default) !important; }
+.border-white\/\[0\.12\] { border-color: var(--color-border-strong)  !important; }
+.border-white\/\[0\.15\] { border-color: var(--color-border-strong)  !important; }
+.border-white\/\[0\.3\]  { border-color: var(--color-border-strong)  !important; }
 
 /* Hardcoded hex border colors that should match bg (old + new hex values) */
 .border-\[\#0F172A\], .border-\[\#141B2E\] { border-color: var(--color-bg-card)    !important; }
@@ -314,16 +359,26 @@ html.dark {
 .border-black\/20 { border-color: var(--color-border-strong)  !important; }
 
 /* Hover / focus border variant remapping */
+.hover\:border-white\/6:hover   { border-color: var(--color-border-subtle)  !important; }
+.hover\:border-white\/8:hover   { border-color: var(--color-border-default) !important; }
 .hover\:border-white\/10:hover  { border-color: var(--color-border-default) !important; }
 .hover\:border-white\/12:hover  { border-color: var(--color-border-strong)  !important; }
 .hover\:border-white\/15:hover  { border-color: var(--color-border-strong)  !important; }
 .hover\:border-white\/20:hover  { border-color: var(--color-border-strong)  !important; }
+.hover\:border-white\/\[0\.06\]:hover { border-color: var(--color-border-subtle)  !important; }
+.hover\:border-white\/\[0\.08\]:hover { border-color: var(--color-border-default) !important; }
+.hover\:border-white\/\[0\.1\]:hover  { border-color: var(--color-border-default) !important; }
+.hover\:border-white\/\[0\.12\]:hover { border-color: var(--color-border-strong)  !important; }
+.hover\:border-white\/\[0\.15\]:hover { border-color: var(--color-border-strong)  !important; }
 .focus\:border-white\/12:focus  { border-color: var(--color-border-strong)  !important; }
+.focus\:border-white\/\[0\.12\]:focus { border-color: var(--color-border-strong)  !important; }
 
 /* ── Divide remapping ──────────────────────────────────────────────────── */
-.divide-white\/4 > :not(:first-child)  { border-color: var(--color-border-subtle)  !important; }
-.divide-white\/6 > :not(:first-child)  { border-color: var(--color-border-subtle)  !important; }
-.divide-white\/8 > :not(:first-child)  { border-color: var(--color-border-default) !important; }
+.divide-white\/4 > :not(:first-child)       { border-color: var(--color-border-subtle)  !important; }
+.divide-white\/6 > :not(:first-child)       { border-color: var(--color-border-subtle)  !important; }
+.divide-white\/8 > :not(:first-child)       { border-color: var(--color-border-default) !important; }
+.divide-white\/\[0\.04\] > :not(:first-child) { border-color: var(--color-border-subtle)  !important; }
+.divide-white\/\[0\.06\] > :not(:first-child) { border-color: var(--color-border-subtle)  !important; }
 
 /* ── Ring remapping ────────────────────────────────────────────────────── */
 .ring-white\/10 { --tw-ring-color: var(--color-border-default) !important; }
@@ -484,9 +539,33 @@ html:not(.dark) .border-purple-500\/20 { border-color: rgba(139, 92, 246, 0.15) 
 html:not(.dark) .border-indigo-500\/20 { border-color: rgba(99, 102, 241, 0.15) !important; }
 html:not(.dark) .border-blue-500\/20 { border-color: rgba(59, 130, 246, 0.15) !important; }
 
-/* ── bg-black overlay adjustments for light mode ─────────────────────── */
+/* ── text-white/NN opacity variants → theme-aware muted text ─────────── */
+/* These are used for secondary/muted text on dark backgrounds.
+   In light mode they become invisible (white-on-white), so remap to vars. */
+.text-white\/15 { color: var(--color-text-faint)     !important; }
+.text-white\/20 { color: var(--color-text-faint)     !important; }
+.text-white\/30 { color: var(--color-text-subtle)    !important; }
+.text-white\/35 { color: var(--color-text-subtle)    !important; }
+.text-white\/40 { color: var(--color-text-subtle)    !important; }
+.text-white\/50 { color: var(--color-text-muted)     !important; }
+.text-white\/60 { color: var(--color-text-muted)     !important; }
+.text-white\/70 { color: var(--color-text-secondary) !important; }
+.text-white\/80 { color: var(--color-text-secondary) !important; }
+.text-white\/90 { color: var(--color-text-primary)   !important; }
+
+/* ── bg-black overlay adjustments → theme-aware overlays ─────────────── */
+/* bg-black/XX is used for modal backdrops & overlays. In light mode the
+   opacity can be reduced slightly for a more natural look. */
+.bg-black\/10 { background-color: rgba(0, 0, 0, 0.06)  !important; }
+.bg-black\/20 { background-color: rgba(0, 0, 0, 0.12)  !important; }
+.bg-black\/30 { background-color: rgba(0, 0, 0, 0.18)  !important; }
 html:not(.dark) .bg-black\/40 { background-color: rgba(0, 0, 0, 0.2) !important; }
 html:not(.dark) .bg-black\/50 { background-color: rgba(0, 0, 0, 0.3) !important; }
+html:not(.dark) .bg-black\/60 { background-color: rgba(0, 0, 0, 0.4) !important; }
+html:not(.dark) .bg-black\/70 { background-color: rgba(0, 0, 0, 0.5) !important; }
+html:not(.dark) .bg-black\/80 { background-color: rgba(0, 0, 0, 0.6) !important; }
+html:not(.dark) .bg-black\/90 { background-color: rgba(0, 0, 0, 0.7) !important; }
+html:not(.dark) .bg-black\/95 { background-color: rgba(0, 0, 0, 0.8) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BASE STYLES
@@ -800,6 +879,122 @@ button {
 /* ── Scrollbar ────────────────────────────────────────────────────── */
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ADMIN DASHBOARD — Premium surface & typography system
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Admin card — refined depth & tonal separation */
+.admin-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.admin-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Admin card with hover intent (clickable) */
+.admin-card-hover:hover {
+  border-color: var(--color-border-default);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Admin stat card — inset accent edge, bold KPI typography */
+.admin-stat-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.35s ease, border-color 0.35s ease, background-color 0.35s ease, transform 0.35s ease;
+}
+
+.admin-stat-card:hover {
+  border-color: var(--color-border-default);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+/* Admin sidebar — lifted panel, intentional surface */
+.admin-sidebar {
+  background: var(--color-admin-sidebar);
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+/* Admin sidebar nav link — soft state transitions */
+.admin-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-subtle);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.admin-nav-link:hover {
+  color: var(--color-text-muted);
+  background: var(--color-bg-hover);
+}
+
+.admin-nav-link-active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.admin-nav-link-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-accent);
+}
+
+/* Admin page header — strong heading hierarchy */
+.admin-page-title {
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--color-text-primary);
+}
+
+/* Admin KPI numeral — bold, large, tabular */
+.admin-kpi {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+/* Admin shell background */
+.admin-shell {
+  background-color: var(--color-admin-shell);
+}
+
+/* Nested inset panel surface */
+.admin-inset {
+  background: var(--color-bg-input);
+  border-radius: 10px;
+}
+
+/* Admin section divider — tonal, not harsh line */
+.admin-divider {
+  height: 1px;
+  background: var(--color-border-subtle);
+  border: none;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NATIVE APP (iOS / Android) SAFE AREA & PLATFORM STYLES

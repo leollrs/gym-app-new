@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff, Download, Loader2, Trophy, Moon,
+  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff, Download, Loader2, Trophy,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation, Trans } from 'react-i18next';
@@ -24,21 +24,6 @@ export default function MemberSettings() {
   const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
   const { showToast } = useToast();
   const [exporting, setExporting] = useState({ workouts: false, prs: false, body: false });
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : true;
-  });
-
-  const toggleDarkMode = () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    localStorage.setItem('theme', next ? 'dark' : 'light');
-    if (next) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
 
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
@@ -106,26 +91,6 @@ export default function MemberSettings() {
                 )}
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* Appearance */}
-        <div>
-          <h3 className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: 'var(--color-text-subtle)' }}>{t('settings.appearance')}</h3>
-          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
-            >
-              <div className="flex items-center gap-3">
-                <Moon size={16} style={{ color: 'var(--color-text-subtle)' }} />
-                <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('settings.darkMode')}</span>
-              </div>
-              <div className={`w-10 h-6 rounded-full transition-colors relative ${darkMode ? 'bg-[#10B981]' : 'bg-[#374151]'}`}>
-                <div className={`w-4.5 h-4.5 rounded-full bg-white absolute top-[3px] transition-transform ${darkMode ? 'translate-x-[19px]' : 'translate-x-[3px]'}`} />
-              </div>
-            </button>
           </div>
         </div>
 

@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { signQRPayload } from '../lib/qrSecurity';
 
 /**
  * Modal showing a per-product QR code for a member.
@@ -7,9 +9,17 @@ import { QRCodeSVG } from 'qrcode.react';
  * When scanned by admin, it auto-fills member + product in AdminStore.
  */
 export default function ProductQRModal({ memberId, memberName, gymId, product, onClose }) {
-  if (!product || !memberId) return null;
+  const [signedPayload, setSignedPayload] = useState(null);
 
-  const payload = `gym-purchase:${gymId}:${memberId}:${product.id}`;
+  const payload = `gym-purchase:${gymId}:${memberId}:${product?.id}`;
+
+  useEffect(() => {
+    if (product && memberId) {
+      signQRPayload(payload).then(setSignedPayload);
+    }
+  }, [payload, product, memberId]);
+
+  if (!product || !memberId) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={onClose}>
@@ -30,7 +40,7 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
         {/* QR — white bg for scanability */}
         <div className="bg-white flex flex-col items-center p-8 pt-10">
           <QRCodeSVG
-            value={payload}
+            value={signedPayload || payload}
             size={220}
             level="H"
             includeMargin={false}

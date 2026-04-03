@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(grep -n \"streak_cache\\\\|CREATE TABLE.*streak\" /c/Users/leoll/gyn-app-new/gym-app-new/gym-app/supabase/migrations/*.sql)",
+      "Bash(grep -c \"export const MEALS\" /c/Users/leoll/gyn-app-new/gym-app-new/gym-app/src/data/meals_*.js)"
+    ]
+  }
+}

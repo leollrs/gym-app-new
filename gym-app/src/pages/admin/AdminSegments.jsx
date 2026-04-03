@@ -371,7 +371,7 @@ export default function AdminSegments() {
       </FadeIn>
 
       {/* ── Stats row ────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
+      <div className="grid grid-cols-3 gap-3 mt-5">
         <StatCard label={t('admin.segments.totalSegments', 'Segments')} value={segments.length} icon={Filter} borderColor="#D4AF37" delay={0} />
         <StatCard label={t('admin.segments.pinned', 'Pinned')} value={pinnedCount} icon={Pin} borderColor="#3B82F6" delay={50} />
         <StatCard label={t('admin.segments.totalTracked', 'Members Tracked')} value={totalMembers} icon={Users} borderColor="#22C55E" delay={100} />

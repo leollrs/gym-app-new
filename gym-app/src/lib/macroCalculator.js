@@ -30,6 +30,11 @@ export function calculateMacros({
   trainingDays = 4,
   goal = 'muscle_gain',
 }) {
+  // Validate inputs
+  if (!weightLbs || weightLbs <= 0 || !isFinite(weightLbs)) return null;
+  if (!heightInches || heightInches <= 0 || !isFinite(heightInches)) return null;
+  if (!age || age <= 0 || age > 120 || !isFinite(age)) return null;
+
   const weightKg = weightLbs * LBS_TO_KG;
   const heightCm = heightInches * INCHES_TO_CM;
 

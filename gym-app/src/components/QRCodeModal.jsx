@@ -122,6 +122,9 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
         await WalletPass.addPass({ pkpassBase64: data.pkpass });
       } else {
         // Edge function returns a Google Wallet save URL
+        if (typeof data.saveUrl !== 'string' || !data.saveUrl.startsWith('https://')) {
+          throw new Error(t('qrCode.walletFailed'));
+        }
         window.open(data.saveUrl, '_blank');
       }
     } catch (err) {
@@ -161,7 +164,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
           <div ref={codeRef}>
             {isBarcode ? (
               <Barcode
-                value={payload}
+                value={signedPayload || payload}
                 format={barcodeFormat}
                 width={2}
                 height={100}
@@ -171,7 +174,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
               />
             ) : (
               <QRCodeSVG
-                value={payload}
+                value={signedPayload || payload}
                 size={240}
                 level="H"
                 includeMargin={false}

@@ -59,6 +59,17 @@ async function fetchSummaryData(gymId, summaryMonth) {
   };
 }
 
+// Muted, cohesive stat colors
+const STAT_COLORS = {
+  gold:    '#C9A84C',
+  emerald: '#34D399',
+  blue:    '#7B9EFF',
+  amber:   '#F0C050',
+  violet:  '#9B8AFB',
+  rose:    '#F87171',
+  teal:    '#5EEAD4',
+};
+
 export default function MonthlySummary({ gymId }) {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
@@ -79,7 +90,7 @@ export default function MonthlySummary({ gymId }) {
     const fmtTime = s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)}h ${s.totalDuration % 60}min` : `${s.totalDuration} min`;
     const generated = format(new Date(), isEs ? 'd MMMM yyyy' : 'MMMM d, yyyy', dateFnsLocale);
 
-    const esc = (v) => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const esc = (v) => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
     const L = {
       title: isEs ? 'Reporte de Rendimiento Mensual' : 'Monthly Performance Report',
@@ -203,24 +214,24 @@ table tr:nth-child(even){background:#f8fafc}
   return (
     <>
       <AdminCard hover className="mb-6 hover:border-white/10 transition-colors duration-300">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{t('admin.analytics.summaryTitle', 'Monthly Summary')}</p>
-            <p className="text-[11px] text-[#6B7280] truncate">{t('admin.analytics.summarySubtitle', 'Key metrics at a glance')}</p>
+            <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.summaryTitle', 'Monthly Summary')}</p>
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed truncate">{t('admin.analytics.summarySubtitle', 'Key metrics at a glance')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => setSummaryMonth(m => m + 1)}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
-              <ChevronLeft size={14} className="text-[#9CA3AF]" />
+              <ChevronLeft size={14} className="text-[var(--color-text-muted)]" />
             </button>
-            <span className="text-[13px] font-medium text-[#E5E7EB] min-w-[120px] text-center">{s.label}</span>
+            <span className="text-[13px] font-medium text-[var(--color-text-primary)] min-w-[120px] text-center">{s.label}</span>
             <button onClick={() => setSummaryMonth(m => Math.max(0, m - 1))} disabled={summaryMonth === 0}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-30">
-              <ChevronRight size={14} className="text-[#9CA3AF]" />
+              <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
             </button>
             <button
               onClick={() => setShowReport(true)}
-              className="ml-2 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25 transition-colors whitespace-nowrap"
+              className="ml-2 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium bg-[var(--color-accent)]/12 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20 transition-colors whitespace-nowrap"
             >
               <FileText size={13} />
               {t('admin.analytics.generateReport', 'Generate Report')}
@@ -228,24 +239,30 @@ table tr:nth-child(even){background:#f8fafc}
           </div>
         </div>
 
+        {/* Headline metric row */}
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="text-[28px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{s.activeRate}%</span>
+          <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.summaryActiveRate', { active: s.uniqueActive, total: s.totalMembers, defaultValue: 'active rate — {{active}} of {{total}} members' })}</span>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { icon: Dumbbell, label: t('admin.analytics.summaryWorkouts', 'Workouts'), value: s.totalWorkouts.toLocaleString(), sub: t('admin.analytics.summaryPerActiveMember', { value: s.avgWorkoutsPerActive, defaultValue: '{{value}}/active member' }), color: '#D4AF37' },
-            { icon: Users, label: t('admin.analytics.summaryActiveMembers', 'Active Members'), value: s.uniqueActive, sub: t('admin.analytics.summaryOfTotal', { pct: s.activeRate, total: s.totalMembers, defaultValue: '{{pct}}% of {{total}}' }), color: '#10B981' },
-            { icon: TrendingUp, label: t('admin.analytics.summaryNewMembers', 'New Members'), value: s.newMembers, sub: t('admin.analytics.summaryJoinedThisMonth', 'joined this month'), color: '#60A5FA' },
-            { icon: Zap, label: t('admin.analytics.summaryTotalVolume', 'Total Volume'), value: s.totalVolume >= 1000000 ? `${(s.totalVolume / 1000000).toFixed(1)}M` : s.totalVolume >= 1000 ? `${(s.totalVolume / 1000).toFixed(1)}K` : s.totalVolume.toLocaleString(), sub: t('admin.analytics.summaryLbsLifted', 'lbs lifted'), color: '#F59E0B' },
-            { icon: CalendarCheck, label: t('admin.analytics.summaryCheckins', 'Check-ins'), value: s.checkIns.toLocaleString(), sub: t('admin.analytics.summaryGymVisits', 'gym visits'), color: '#8B5CF6' },
-            { icon: TrophyIcon, label: t('admin.analytics.summaryPRsHit', 'PRs Hit'), value: s.prs, sub: t('admin.analytics.summaryPersonalRecords', 'personal records'), color: '#EF4444' },
-            { icon: TrophyIcon, label: t('admin.analytics.summaryChallengeJoins', 'Challenge Joins'), value: s.challengeJoins, sub: t('admin.analytics.summaryNewParticipants', 'new participants'), color: '#D4AF37' },
-            { icon: Dumbbell, label: t('admin.analytics.summaryTotalTime', 'Total Time'), value: s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)}h` : `${s.totalDuration}m`, sub: t('admin.analytics.summaryTrainingTime', 'training time'), color: '#14B8A6' },
+            { icon: Dumbbell, label: t('admin.analytics.summaryWorkouts', 'Workouts'), value: s.totalWorkouts.toLocaleString(), sub: t('admin.analytics.summaryPerActiveMember', { value: s.avgWorkoutsPerActive, defaultValue: '{{value}}/active member' }), color: STAT_COLORS.gold },
+            { icon: Users, label: t('admin.analytics.summaryActiveMembers', 'Active Members'), value: s.uniqueActive, sub: t('admin.analytics.summaryOfTotal', { pct: s.activeRate, total: s.totalMembers, defaultValue: '{{pct}}% of {{total}}' }), color: STAT_COLORS.emerald },
+            { icon: TrendingUp, label: t('admin.analytics.summaryNewMembers', 'New Members'), value: s.newMembers, sub: t('admin.analytics.summaryJoinedThisMonth', 'joined this month'), color: STAT_COLORS.blue },
+            { icon: Zap, label: t('admin.analytics.summaryTotalVolume', 'Total Volume'), value: s.totalVolume >= 1000000 ? `${(s.totalVolume / 1000000).toFixed(1)}M` : s.totalVolume >= 1000 ? `${(s.totalVolume / 1000).toFixed(1)}K` : s.totalVolume.toLocaleString(), sub: t('admin.analytics.summaryLbsLifted', 'lbs lifted'), color: STAT_COLORS.amber },
+            { icon: CalendarCheck, label: t('admin.analytics.summaryCheckins', 'Check-ins'), value: s.checkIns.toLocaleString(), sub: t('admin.analytics.summaryGymVisits', 'gym visits'), color: STAT_COLORS.violet },
+            { icon: TrophyIcon, label: t('admin.analytics.summaryPRsHit', 'PRs Hit'), value: s.prs, sub: t('admin.analytics.summaryPersonalRecords', 'personal records'), color: STAT_COLORS.rose },
+            { icon: TrophyIcon, label: t('admin.analytics.summaryChallengeJoins', 'Challenge Joins'), value: s.challengeJoins, sub: t('admin.analytics.summaryNewParticipants', 'new participants'), color: STAT_COLORS.gold },
+            { icon: Dumbbell, label: t('admin.analytics.summaryTotalTime', 'Total Time'), value: s.totalDuration >= 60 ? `${(s.totalDuration / 60).toFixed(0)}h` : `${s.totalDuration}m`, sub: t('admin.analytics.summaryTrainingTime', 'training time'), color: STAT_COLORS.teal },
           ].map((stat, i) => (
-            <div key={i} className="bg-[#111827] rounded-xl p-3 border border-white/4 overflow-hidden">
-              <div className="flex items-center gap-2 mb-2">
-                <stat.icon size={13} style={{ color: stat.color }} className="flex-shrink-0" />
-                <span className="text-[11px] text-[#6B7280] font-medium truncate">{stat.label}</span>
+            <div key={i} className="bg-[var(--color-bg-elevated,var(--color-bg-card))] rounded-xl p-3.5 border border-white/[0.04] overflow-hidden transition-colors hover:border-white/[0.08]">
+              <div className="flex items-center gap-2 mb-2.5">
+                <stat.icon size={13} style={{ color: stat.color }} className="flex-shrink-0 opacity-80" />
+                <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase tracking-wider truncate">{stat.label}</span>
               </div>
-              <p className="text-[20px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{stat.value}</p>
-              <p className="text-[10px] text-[#4B5563] mt-1 truncate">{stat.sub}</p>
+              <p className="text-[20px] font-bold text-[var(--color-text-primary)] leading-none tabular-nums truncate">{stat.value}</p>
+              <p className="text-[10px] text-[var(--color-text-subtle)] mt-1.5 truncate">{stat.sub}</p>
             </div>
           ))}
         </div>
@@ -259,7 +276,7 @@ table tr:nth-child(even){background:#f8fafc}
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowReport(false)}>
           <div className="w-full max-w-2xl md:max-w-3xl my-4 md:my-10" onClick={e => e.stopPropagation()}>
 
-            <div className="bg-[#fafbfc] rounded-xl overflow-hidden shadow-2xl">
+            <div className="bg-[#fafbfc] rounded-2xl overflow-hidden shadow-2xl">
 
               {/* Report header */}
               <div className="bg-gradient-to-r from-[#D4AF37] to-[#B8941F] px-6 py-5 flex items-start justify-between">

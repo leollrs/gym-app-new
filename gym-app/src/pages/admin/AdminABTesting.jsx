@@ -13,7 +13,7 @@ import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import {
-  AdminCard, PageHeader, AdminPageShell, FadeIn, StatCard, FilterBar,
+  AdminCard, PageHeader, AdminPageShell, FadeIn, StatCard, AdminTabs,
 } from '../../components/admin';
 import CreateCampaignModal from './components/CreateCampaignModal';
 
@@ -476,7 +476,7 @@ export default function AdminABTesting() {
         title={t('admin.abTesting.title', 'A/B Testing')}
         subtitle={t('admin.abTesting.subtitle', 'Create and manage experiments to optimize engagement')}
         icon={FlaskConical}
-        action={
+        actions={
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
@@ -518,7 +518,7 @@ export default function AdminABTesting() {
       {/* Tabs */}
       <FadeIn delay={0.03}>
         <div className="mb-4">
-          <FilterBar options={tabOptions} active={activeTab} onChange={setActiveTab} />
+          <AdminTabs tabs={tabOptions} active={activeTab} onChange={setActiveTab} />
         </div>
       </FadeIn>
 

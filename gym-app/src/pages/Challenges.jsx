@@ -350,9 +350,24 @@ const DailyChallenge = ({ userId, gymId, t }) => {
         setProgress(value);
 
         if (value >= challenge.target && !completed) {
-          localStorage.setItem(storageKey, 'true');
           setCompleted(true);
-          addPoints(userId, gymId, 'workout_completed', 25, 'Daily challenge completed').catch(() => {});
+          // Check server-side first to prevent double-claiming
+          const { data: existing } = await supabase
+            .from('daily_challenge_completions')
+            .select('id')
+            .eq('profile_id', userId)
+            .eq('challenge_date', new Date().toISOString().split('T')[0])
+            .maybeSingle();
+
+          if (!existing) {
+            await supabase.from('daily_challenge_completions').insert({
+              profile_id: userId,
+              challenge_date: new Date().toISOString().split('T')[0],
+              points_awarded: 25,
+            });
+            addPoints(userId, gymId, 'daily_challenge', 25, 'Daily challenge completed').catch(() => {});
+          }
+          localStorage.setItem(storageKey, 'true');
         }
       } catch (_) {
         // silently fail
@@ -837,6 +852,7 @@ export default function Challenges({ embedded = false }) {
       .single();
     if (!error && data) {
       setParticipants(prev => [...prev, data]);
+      // Note: 'challenge_joined' must be added to the server-side add_reward_points whitelist
       addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
     }
   };

@@ -7,7 +7,7 @@ import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, FilterBar } from '../../components/admin';
+import { PageHeader, AdminCard, FadeIn, FilterBar, AdminTabs } from '../../components/admin';
 
 const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
 const PERIOD_KEYS = ['7', '30', 'all'];
@@ -127,23 +127,37 @@ export default function AdminLeaderboard() {
         className="mb-6"
       />
 
-      {/* Controls */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <FilterBar
-          options={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
-          active={metric}
-          onChange={setMetric}
-        />
-        <FilterBar
-          options={PERIOD_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.periods.${k}`, k) }))}
-          active={effectivePeriod}
-          onChange={setPeriod}
-        />
-        <FilterBar
-          options={TIER_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.tiers.${k}`, k) }))}
-          active={tier}
-          onChange={setTier}
-        />
+      {/* Primary selector — metric category */}
+      <AdminTabs
+        tabs={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
+        active={metric}
+        onChange={setMetric}
+        className="mb-5"
+      />
+
+      {/* Secondary filters — period & tier */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shrink-0">
+            {t('admin.leaderboard.periodLabel', 'Period')}
+          </span>
+          <FilterBar
+            options={PERIOD_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.periods.${k}`, k) }))}
+            active={effectivePeriod}
+            onChange={setPeriod}
+          />
+        </div>
+        <div className="hidden md:block w-px h-5 bg-white/[0.08]" />
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shrink-0">
+            {t('admin.leaderboard.tierLabel', 'Tier')}
+          </span>
+          <FilterBar
+            options={TIER_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.tiers.${k}`, k) }))}
+            active={tier}
+            onChange={setTier}
+          />
+        </div>
       </div>
 
       {/* Table */}

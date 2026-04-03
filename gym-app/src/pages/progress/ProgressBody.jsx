@@ -461,7 +461,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                   reader.onload = ev => r(ev.target.result);
                   reader.readAsDataURL(thumbBlob);
                 });
-                try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview: sidePreview, base64: sideBase64 })); } catch {}
+                try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview: sidePreview, base64: sideBase64, timestamp: Date.now() })); } catch {}
                 setSidePhoto({ preview: sidePreview, base64: sideBase64 });
                 runAnalysis(front.base64, sideBase64);
               }
@@ -488,12 +488,12 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 
       if (scanStep === 0) {
         // Persist to localStorage — survives Samsung WebView kill
-        try { localStorage.setItem('_bodyScanFront', JSON.stringify({ preview, base64 })); } catch {}
+        try { localStorage.setItem('_bodyScanFront', JSON.stringify({ preview, base64, timestamp: Date.now() })); } catch {}
         setFrontPhoto({ preview, base64 });
         setScanStep(1);
       } else {
         // Persist side photo before analysis
-        try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview, base64 })); } catch {}
+        try { localStorage.setItem('_bodyScanSide', JSON.stringify({ preview, base64, timestamp: Date.now() })); } catch {}
         setSidePhoto({ preview, base64 });
         // Both photos captured — run analysis
         await runAnalysis(frontPhoto.base64, base64);
@@ -515,7 +515,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 
     // Save to localStorage before API call — survives Android WebView restart
     try {
-      localStorage.setItem('_pendingBodyScan', JSON.stringify({ frontBase64, sideBase64 }));
+      localStorage.setItem('_pendingBodyScan', JSON.stringify({ frontBase64, sideBase64, timestamp: Date.now() }));
       // Clear individual photo cache — they're now in _pendingBodyScan
       localStorage.removeItem('_bodyScanFront');
       localStorage.removeItem('_bodyScanSide');
@@ -869,6 +869,24 @@ export default function ProgressBody() {
   const [progressPhotos, setProgressPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [primaryGoal, setPrimaryGoal] = useState('general_fitness');
+
+  // Auto-cleanup stale body scan data (older than 10 minutes)
+  useEffect(() => {
+    const STALE_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+    ['_bodyScanFront', '_bodyScanSide', '_pendingBodyScan'].forEach(key => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (data.timestamp && Date.now() - data.timestamp > STALE_THRESHOLD) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch {
+        localStorage.removeItem(key);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;

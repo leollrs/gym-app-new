@@ -66,70 +66,81 @@ export default function OnboardingFunnel({ gymId }) {
 
   return (
     <AdminCard hover className="hover:border-white/10 transition-colors duration-300">
-      <p className="text-[13px] font-semibold text-[#E5E7EB] mb-4">
-        {t('adminAnalytics.onboardingCompletion', { defaultValue: 'Onboarding Completion' })}
-      </p>
-      <div className="flex items-center gap-6">
+      <div className="flex items-center justify-between mb-1">
+        <div>
+          <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight">
+            {t('adminAnalytics.onboardingCompletion', { defaultValue: 'Onboarding Completion' })}
+          </p>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-relaxed">
+            {t('admin.analytics.onboardingIndustryAvg', { value: BENCHMARKS.onboardingCompletion, defaultValue: 'Industry avg: {{value}}% onboarding completion' })}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-8 mt-4">
 
         {/* Donut chart */}
-        <div className="flex-shrink-0">
-          <ResponsiveContainer width={120} height={120}>
+        <div className="flex-shrink-0 relative">
+          <ResponsiveContainer width={130} height={130}>
             <PieChart>
               <Pie
                 data={donutData}
                 cx="50%"
                 cy="50%"
-                innerRadius={36}
-                outerRadius={54}
+                innerRadius={40}
+                outerRadius={58}
                 startAngle={90}
                 endAngle={-270}
                 dataKey="value"
                 strokeWidth={0}
               >
                 <Cell fill="var(--color-accent)" />
-                <Cell fill="rgba(255,255,255,0.06)" />
+                <Cell fill="rgba(255,255,255,0.05)" />
               </Pie>
             </PieChart>
           </ResponsiveContainer>
+          {/* Centered percentage inside donut */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-[20px] font-bold text-[var(--color-accent)] leading-none tracking-tight">{stats.pct}%</span>
+          </div>
         </div>
 
         {/* Stats */}
         <div className="flex-1 min-w-0">
-          <p className="text-[24px] font-bold text-[#D4AF37] leading-none truncate">{stats.pct}%</p>
-          <p className="text-[13px] text-[#9CA3AF] mt-1">{t('admin.analytics.onboardingCompletionRate', 'Completion rate')}</p>
-          <div className="mt-4 space-y-2">
+          <p className="text-[13px] text-[var(--color-text-muted)] mt-1">{t('admin.analytics.onboardingCompletionRate', 'Completion rate')}</p>
+          <div className="mt-4 space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#D4AF37]" />
-                <span className="text-[12px] text-[#9CA3AF]">{t('admin.analytics.onboardingOnboarded', 'Onboarded')}</span>
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+                <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingOnboarded', 'Onboarded')}</span>
               </div>
-              <span className="text-[12px] font-semibold text-[#E5E7EB]">{stats.onboarded}</span>
+              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">{stats.onboarded}</span>
             </div>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                <span className="text-[12px] text-[#9CA3AF]">{t('admin.analytics.onboardingNotCompleted', 'Not completed')}</span>
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-white/8" />
+                <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingNotCompleted', 'Not completed')}</span>
               </div>
-              <span className="text-[12px] font-semibold text-[#E5E7EB]">
+              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">
                 {stats.total - stats.onboarded}
               </span>
             </div>
-            <div className="h-px bg-white/6 my-1" />
+            <div className="h-px bg-white/[0.05] my-1" />
             <div className="flex items-center justify-between">
-              <span className="text-[12px] text-[#6B7280]">{t('admin.analytics.onboardingTotalMembers', 'Total members')}</span>
-              <span className="text-[12px] font-semibold text-[#E5E7EB]">{stats.total}</span>
+              <span className="text-[12px] text-[var(--color-text-muted)]">{t('admin.analytics.onboardingTotalMembers', 'Total members')}</span>
+              <span className="text-[12px] font-semibold text-[var(--color-text-primary)] tabular-nums">{stats.total}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Step-by-step funnel ── */}
+      {/* Step-by-step funnel */}
       {hasStepData && (
-        <div className="mt-5 pt-4 border-t border-white/6">
-          <p className="text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3">
+        <div className="mt-6 pt-5 border-t border-white/[0.05]">
+          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4">
             {t('adminAnalytics.onboardingFunnelLabel', { defaultValue: 'Step-by-Step Funnel' })}
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {stepLabels.map((label, i) => {
               const count = stepCounts[i] || 0;
               const maxCount = stepCounts[0] || 1;
@@ -139,25 +150,25 @@ export default function OnboardingFunnel({ gymId }) {
               const dropPct = prevCount > 0 && dropOff > 0 ? Math.round((dropOff / prevCount) * 100) : 0;
 
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-[#6B7280] w-4 text-right flex-shrink-0">{i}</span>
+                <div key={i} className="flex items-center gap-2.5">
+                  <span className="text-[10px] font-mono text-[var(--color-text-subtle)] w-4 text-right flex-shrink-0 opacity-60">{i}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-[#9CA3AF] truncate">{label}</span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[11px] font-semibold text-[#E5E7EB]">{count}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] text-[var(--color-text-muted)] truncate">{label}</span>
+                      <div className="flex items-center gap-2.5 flex-shrink-0">
+                        <span className="text-[11px] font-semibold text-[var(--color-text-primary)] tabular-nums">{count}</span>
                         {dropPct > 0 && (
-                          <span className="text-[10px] text-red-400">-{dropPct}%</span>
+                          <span className="text-[10px] text-red-400/80 tabular-nums">-{dropPct}%</span>
                         )}
                       </div>
                     </div>
-                    <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div className="h-[5px] rounded-full bg-white/[0.04] overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-500"
+                        className="h-full rounded-full transition-all duration-700 ease-out"
                         style={{
                           width: `${pctOfTotal}%`,
-                          backgroundColor: i === TOTAL_STEPS ? '#10B981' : '#D4AF37',
-                          opacity: 0.4 + (pctOfTotal / 100) * 0.6,
+                          backgroundColor: i === TOTAL_STEPS ? '#34D399' : 'var(--color-accent)',
+                          opacity: 0.35 + (pctOfTotal / 100) * 0.65,
                         }}
                       />
                     </div>
@@ -168,10 +179,6 @@ export default function OnboardingFunnel({ gymId }) {
           </div>
         </div>
       )}
-
-      <p className="text-[11px] text-[#6B7280] mt-3 text-center">
-        {t('admin.analytics.onboardingIndustryAvg', { value: BENCHMARKS.onboardingCompletion, defaultValue: 'Industry avg: {{value}}% onboarding completion' })}
-      </p>
     </AdminCard>
   );
 }

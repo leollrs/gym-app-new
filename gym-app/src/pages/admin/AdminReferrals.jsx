@@ -202,25 +202,8 @@ export default function AdminReferrals() {
       </div>
 
       {/* Filters Row */}
-      <div className="flex flex-wrap items-center gap-3 mt-6">
-        {/* Period filter */}
-        <div className="flex bg-[#111827]/60 border border-white/[0.04] rounded-xl overflow-hidden">
-          {PERIODS.map(p => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                period.key === p.key
-                  ? 'bg-[#D4AF37] text-black'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              {t(`admin.referrals.period.${p.key}`, p.key)}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
+      <div className="flex flex-col md:flex-row gap-3 mt-6">
+        {/* Search — full width on mobile, first row */}
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
           <input
@@ -232,14 +215,33 @@ export default function AdminReferrals() {
           />
         </div>
 
-        {/* Export */}
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-1.5 bg-[#111827]/60 border border-white/[0.04] rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
-        >
-          <Download size={13} />
-          {t('admin.referrals.export', 'Export')}
-        </button>
+        {/* Period filter + Export — second row on mobile */}
+        <div className="flex items-center gap-3">
+          <div className="flex bg-[#111827]/60 border border-white/[0.04] rounded-xl overflow-hidden">
+            {PERIODS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                  period.key === p.key
+                    ? 'bg-[#D4AF37] text-black'
+                    : 'text-[#6B7280] hover:text-[#9CA3AF]'
+                }`}
+              >
+                {t(`admin.referrals.period.${p.key}`, p.key)}
+              </button>
+            ))}
+          </div>
+
+          {/* Export */}
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 bg-[#111827]/60 border border-white/[0.04] rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+          >
+            <Download size={13} />
+            {t('admin.referrals.export', 'Export')}
+          </button>
+        </div>
       </div>
 
       {/* Approval Queue */}

@@ -1,5 +1,6 @@
 import { Health } from '@capgo/capacitor-health';
 import { Capacitor } from '@capacitor/core';
+import logger from './logger';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ export async function requestPermissions() {
     });
     return { granted: true };
   } catch (e) {
-    console.warn('Health requestPermissions failed:', e);
+    logger.warn('Health requestPermissions failed:', e);
     return { granted: false };
   }
 }
@@ -98,7 +99,7 @@ export async function readLatestWeight() {
       date: new Date(sample.startDate).toISOString().split('T')[0],
     };
   } catch (e) {
-    console.warn('readLatestWeight failed:', e);
+    logger.warn('readLatestWeight failed:', e);
     return null;
   }
 }
@@ -121,7 +122,7 @@ export async function readTodaySteps() {
     }
     return 0;
   } catch (e) {
-    console.warn('readTodaySteps failed:', e);
+    logger.warn('readTodaySteps failed:', e);
     return 0;
   }
 }
@@ -147,7 +148,7 @@ export async function readWeightHistory(days = 30) {
       value: Math.round((s.value || 0) * 2.20462 * 10) / 10,
     }));
   } catch (e) {
-    console.warn('readWeightHistory failed:', e);
+    logger.warn('readWeightHistory failed:', e);
     return [];
   }
 }
@@ -168,7 +169,7 @@ export async function writeWeight(lbs) {
     });
     return true;
   } catch (e) {
-    console.warn('writeWeight failed:', e);
+    logger.warn('writeWeight failed:', e);
     return false;
   }
 }
@@ -194,7 +195,7 @@ export async function writeWorkout({ name, startDate, endDate, calories, distanc
     });
     return true;
   } catch (e) {
-    console.warn('writeWorkout failed:', e);
+    logger.warn('writeWorkout failed:', e);
     return false;
   }
 }

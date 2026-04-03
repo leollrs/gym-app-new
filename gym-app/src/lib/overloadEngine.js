@@ -27,7 +27,12 @@ const INCREMENTS = {
 // 1RM estimate — Epley for reps <= 12, Brzycki for reps > 12 (Fix #26)
 export const epley1RM = (weight, reps) => {
   if (!weight || !reps || reps <= 0) return 0;
-  if (reps > 12) return weight / (1.0278 - 0.0278 * reps);
+  // For reps >= 30, always use Epley formula (Brzycki breaks down)
+  if (reps >= 30) return weight * (1 + reps / 30);
+  if (reps > 12) {
+    const result = weight / (1.0278 - 0.0278 * reps);
+    return isFinite(result) && result > 0 ? result : weight * (1 + reps / 30);
+  }
   return weight * (1 + reps / 30);
 };
 
@@ -130,9 +135,15 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
 
   // Hit top of range (or beginner who hit target) → increase weight
   if (avgReps >= config.max || (level === 'beginner' && avgReps >= repTarget)) {
-    const newWeight = roundToPlate(best.weight + incr);
+    const suggestedWeight = roundToPlate(best.weight + incr);
+
+    const MAX_REASONABLE_WEIGHT = 1500; // lbs - beyond any human capability
+    if (suggestedWeight > MAX_REASONABLE_WEIGHT) {
+      return { suggestedWeight: best.weight, note: 'maintain', label: 'Weight appears unusually high — verify your logs' };
+    }
+
     return {
-      suggestedWeight: newWeight,
+      suggestedWeight,
       suggestedReps:   config.min,
       note:  'increase_weight',
       label: `+${incr} lbs — you crushed last session`,

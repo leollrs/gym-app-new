@@ -14,7 +14,7 @@ import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
-  SectionLabel, FilterBar, AdminPageShell, AdminTable,
+  SectionLabel, FilterBar, AdminPageShell, AdminTable, AdminTabs,
 } from '../../components/admin';
 import QRScannerModal from '../../components/admin/QRScannerModal';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
@@ -237,12 +237,21 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
 };
 
 // ── Products Tab ───────────────────────────────────────────
-const ProductsTab = ({ gymId, t }) => {
+const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Open "Add Product" modal when triggered from PageHeader
+  useEffect(() => {
+    if (addProductOpen) {
+      setEditProduct(null);
+      setShowModal(true);
+      onAddProductClose?.();
+    }
+  }, [addProductOpen, onAddProductClose]);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: storeKeys.products(gymId),
@@ -1134,15 +1143,16 @@ export default function AdminStore() {
   const { t, i18n } = useTranslation('pages');
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
-  const [activeTab, setActiveTab] = useState('products');
+  const [storeTab, setStoreTab] = useState('products');
+  const [addProductOpen, setAddProductOpen] = useState(false);
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
 
   useEffect(() => { document.title = 'Admin - Store | TuGymPR'; }, []);
 
   const tabOptions = useMemo(() => [
     { key: 'products', label: t('admin.store.products', 'Products') },
-    { key: 'redemptions', label: t('admin.store.redemptions', 'Redemptions') },
-    { key: 'purchases', label: t('admin.store.memberPurchases', 'Member Purchases') },
+    { key: 'redemptions', label: t('admin.store.ordersRedemptions', 'Orders / Redemptions') },
+    { key: 'purchases', label: t('admin.store.members', 'Members') },
   ], [t]);
 
   return (
@@ -1152,9 +1162,9 @@ export default function AdminStore() {
           title={t('admin.store.title', 'Store')}
           subtitle={t('admin.store.subtitle', 'Product and redemption management')}
           actions={
-            activeTab === 'products' ? (
+            storeTab === 'products' ? (
               <button
-                onClick={() => setActiveTab('products')}
+                onClick={() => setAddProductOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C5A028] transition-colors"
               >
                 <Plus size={15} /> {t('admin.store.addProduct', 'Add Product')}
@@ -1166,19 +1176,13 @@ export default function AdminStore() {
 
       {/* Sub-nav tabs */}
       <FadeIn delay={0.05}>
-        <div className="mt-5 mb-6">
-          <FilterBar
-            options={tabOptions}
-            active={activeTab}
-            onChange={setActiveTab}
-          />
-        </div>
+        <AdminTabs tabs={tabOptions} active={storeTab} onChange={setStoreTab} className="mt-5 mb-6" />
       </FadeIn>
 
       {/* Tab Content */}
-      {activeTab === 'products' && <ProductsTab gymId={gymId} t={t} />}
-      {activeTab === 'redemptions' && <RedemptionsTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
-      {activeTab === 'purchases' && <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
+      {storeTab === 'products' && <ProductsTab gymId={gymId} t={t} addProductOpen={addProductOpen} onAddProductClose={() => setAddProductOpen(false)} />}
+      {storeTab === 'redemptions' && <RedemptionsTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
+      {storeTab === 'purchases' && <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
     </AdminPageShell>
   );
 }

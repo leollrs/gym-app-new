@@ -14,7 +14,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import {
   PageHeader, FilterBar, Avatar, StatCard, AdminCard,
   AdminPageShell, AdminModal, AdminTable, FadeIn, SectionLabel,
-  Skeleton, ErrorCard,
+  Skeleton, ErrorCard, AdminTabs,
 } from '../../components/admin';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -371,6 +371,8 @@ const PostsTab = ({ gymId }) => {
     {
       key: 'preview',
       label: t('admin.moderation.content', { defaultValue: 'Content' }),
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const preview = dataPreview(row.type, row.data, t);
         return preview ? (
@@ -397,6 +399,8 @@ const PostsTab = ({ gymId }) => {
       key: 'created_at',
       label: t('admin.moderation.date', { defaultValue: 'Date' }),
       sortable: true,
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       sortValue: (row) => new Date(row.created_at).getTime(),
       render: (row) => (
         <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
@@ -405,7 +409,8 @@ const PostsTab = ({ gymId }) => {
     {
       key: 'actions',
       label: '',
-      headerClassName: 'w-12',
+      headerClassName: 'w-12 hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const busy = acting === row.id;
         return (
@@ -517,6 +522,8 @@ const CommentsTab = ({ gymId }) => {
     {
       key: 'context',
       label: t('admin.moderation.onPost', { defaultValue: 'On Post' }),
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const feedItem = row.activity_feed_items;
         const badge = postTypeBadge(feedItem?.type, t);
@@ -544,6 +551,8 @@ const CommentsTab = ({ gymId }) => {
       key: 'created_at',
       label: t('admin.moderation.date', { defaultValue: 'Date' }),
       sortable: true,
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       sortValue: (row) => new Date(row.created_at).getTime(),
       render: (row) => (
         <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
@@ -552,7 +561,8 @@ const CommentsTab = ({ gymId }) => {
     {
       key: 'actions',
       label: '',
-      headerClassName: 'w-12',
+      headerClassName: 'w-12 hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const busy = acting === row.id;
         return (
@@ -675,6 +685,8 @@ const ReportsTab = ({ gymId }) => {
     {
       key: 'reported_post',
       label: t('admin.moderation.reportedPost', { defaultValue: 'Reported Post' }),
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const feedItem = row.activity_feed_items;
         const badge = postTypeBadge(feedItem?.type, t);
@@ -705,6 +717,8 @@ const ReportsTab = ({ gymId }) => {
       key: 'created_at',
       label: t('admin.moderation.date', { defaultValue: 'Date' }),
       sortable: true,
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       sortValue: (row) => new Date(row.created_at).getTime(),
       render: (row) => (
         <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
@@ -713,7 +727,8 @@ const ReportsTab = ({ gymId }) => {
     {
       key: 'actions',
       label: '',
-      headerClassName: 'w-28',
+      headerClassName: 'w-28 hidden md:table-cell',
+      className: 'hidden md:table-cell text-[#E5E7EB]',
       render: (row) => {
         const isPending = row.status === 'pending';
         const busy = acting === row.id;
@@ -855,30 +870,7 @@ export default function AdminModeration() {
       </FadeIn>
 
       {/* Tab bar */}
-      <div className="flex border-b border-white/6 mb-5">
-        {tabs.map(tabItem => {
-          const Icon = tabItem.icon;
-          return (
-            <button
-              key={tabItem.key}
-              onClick={() => setTab(tabItem.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors relative ${
-                tab === tabItem.key
-                  ? 'text-[#D4AF37] border-b-2 border-[#D4AF37] -mb-px'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
-            >
-              <Icon size={14} />
-              <span className="hidden sm:inline">{tabItem.label}</span>
-              {tabItem.count > 0 && (
-                <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#F97316]/15 text-[#F97316] min-w-[18px] text-center">
-                  {tabItem.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <AdminTabs tabs={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon, count: t.count }))} active={tab} onChange={setTab} className="mb-5" />
 
       {/* Tab content */}
       {!gymId ? (

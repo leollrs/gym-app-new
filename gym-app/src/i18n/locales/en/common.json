@@ -42,12 +42,15 @@
   },
   "adminNav": {
     "main": "MAIN",
+    "primary": "PRIMARY",
     "overview": "Overview",
     "members": "Members",
     "intelligence": "INTELLIGENCE",
+    "coaching": "COACHING & RETENTION",
     "churnIntel": "Churn Intel",
     "analytics": "Analytics",
     "engage": "ENGAGE",
+    "business": "BUSINESS",
     "attendance": "Attendance",
     "challenges": "Challenges",
     "trainers": "Trainers",
@@ -63,6 +66,7 @@
     "nps": "Feedback",
     "emailTemplates": "Email Templates",
     "system": "SYSTEM",
+    "configuration": "CONFIGURATION",
     "moderation": "Moderation",
     "auditLog": "Audit Log",
     "reports": "Reports",
@@ -75,7 +79,20 @@
     "skipToMain": "Skip to main content",
     "abTesting": "A/B Testing",
     "rewards": "Rewards",
-    "search": "Search pages..."
+    "profile": "My Profile",
+    "search": "Search pages...",
+    "advancedTools": "Advanced Tools",
+    "noResults": "No pages match that search.",
+    "advancedDesc": {
+      "reports": "Export presets and data downloads",
+      "leaderboard": "Monitor leaderboard rankings",
+      "moderation": "Review flagged community content",
+      "auditLog": "Track admin actions and changes",
+      "segments": "Advanced member targeting",
+      "abTesting": "Retention experiments",
+      "digest": "Scheduled digest configuration",
+      "emailTemplates": "Manage branded email templates"
+    }
   },
   "days": {
     "mon": "Mon",
@@ -108,12 +125,15 @@
     "es": "Español"
   },
   "trainerNav": {
-    "dashboard": "Dashboard",
+    "home": "Home",
     "clients": "Clients",
-    "schedule": "Schedule",
+    "calendar": "Calendar",
     "plans": "Plans",
-    "analytics": "Analytics",
-    "programs": "Programs",
+    "messages": "Messages",
+    "social": "Social",
+    "notifications": "Notifications",
+    "profile": "Profile",
+    "signOut": "Sign out",
     "classes": "My Classes"
   },
   "platformNav": {

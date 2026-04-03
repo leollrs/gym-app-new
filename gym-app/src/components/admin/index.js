@@ -11,3 +11,4 @@ export { default as AdminPageShell } from './AdminPageShell';
 export { default as AdminModal } from './AdminModal';
 export { default as AdminTable } from './AdminTable';
 export { default as ErrorCard } from './ErrorCard';
+export { default as AdminTabs } from './AdminTabs';

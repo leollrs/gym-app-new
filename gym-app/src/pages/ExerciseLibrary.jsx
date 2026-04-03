@@ -1015,10 +1015,14 @@ export const ExerciseLibraryPage = () => {
           ? supabase.from('exercises').select('*').eq('gym_id', profile.gym_id).eq('is_active', true)
           : Promise.resolve({ data: [] }),
         supabase.from('user_saved_exercises').select('exercise_id').eq('user_id', user.id),
-        supabase.from('friendships')
-          .select('requester_id, addressee_id, status')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-          .eq('status', 'accepted'),
+        // SECURITY: user.id comes from supabase.auth context, not user input.
+        // Validate UUID format as a defense-in-depth measure before interpolating into .or() filter.
+        (/^[0-9a-f-]{36}$/i.test(user.id)
+          ? supabase.from('friendships')
+              .select('requester_id, addressee_id, status')
+              .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+              .eq('status', 'accepted')
+          : Promise.resolve({ data: [] })),
         supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
       ]);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, CalendarDays } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,7 +38,6 @@ const MEMBER_TABS = [
   { id: 'record', to: '/record', icon: PlayCircle, labelKey: 'nav.start', isPrimary: true },
   { id: 'progress', to: '/progress', icon: BarChart2, labelKey: 'nav.progress' },
   { id: 'community', to: '/community', icon: Users, labelKey: 'nav.community' },
-  { id: 'classes', to: '/classes', icon: CalendarDays, labelKey: 'nav.classes', requiresConfig: 'classesEnabled' },
 ];
 
 const Navigation = () => {
@@ -101,12 +100,16 @@ const Navigation = () => {
     };
     fetchUnread();
 
-    // Realtime subscription for new DMs
+    // Realtime subscription for new DMs (debounced to prevent excessive refetches)
+    let debounceTimer;
     const channel = supabase
       .channel('nav-dm-unread')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => { fetchUnread(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchUnread(), 2000);
+      })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
   }, [user?.id, location.pathname]);
 
   const [streakMonths, setStreakMonths] = useState([]);

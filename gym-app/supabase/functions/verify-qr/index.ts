@@ -2,6 +2,8 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+// TODO: Ideally use a dedicated QR_SIGNING_SECRET instead of SERVICE_ROLE_KEY
+// to limit blast radius if the signing secret is ever compromised.
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 
@@ -72,7 +74,26 @@ serve(async (req) => {
     const expected = await hmacSign(payload);
     const valid = timingSafeEqual(expected, signature);
 
-    return jsonResp({ valid });
+    if (!valid) {
+      return jsonResp({ valid: false });
+    }
+
+    // ── Check expiration (5-minute window) ───────────────────────
+    const QR_EXPIRY_MS = 300_000; // 5 minutes
+    const parts = payload.split(':');
+    const timestamp = parseInt(parts[parts.length - 1]);
+
+    if (isNaN(timestamp)) {
+      // Backward compatibility: accept payloads without a timestamp but warn
+      console.warn('verify-qr: payload has no timestamp — accepting for backward compatibility');
+      return jsonResp({ valid: true });
+    }
+
+    if (Date.now() - timestamp > QR_EXPIRY_MS) {
+      return jsonResp({ valid: false, error: 'QR code expired' });
+    }
+
+    return jsonResp({ valid: true });
   } catch (err) {
     console.error('verify-qr error:', err);
     return jsonResp({ error: err.message || 'Internal error' }, 500);

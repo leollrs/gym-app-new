@@ -2,10 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
-import { subDays, format, startOfWeek, startOfDay, endOfDay, isToday } from 'date-fns';
+import { subDays, format, startOfWeek, startOfDay, endOfDay } from 'date-fns';
 import {
-  Users, Dumbbell, AlertTriangle, Activity, ChevronRight, CalendarDays,
-  MessageSquare, Bell, Phone, X, Check, Trophy, Flame, Clock, Eye,
+  AlertTriangle, Activity, MessageSquare, X, Trophy, Flame, Clock, Eye,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -30,7 +29,7 @@ export default function TrainerDashboard() {
   const [recentPRs, setRecentPRs] = useState([]);
   const [activeStreaks, setActiveStreaks] = useState([]);
 
-  useEffect(() => { document.title = 'Trainer - Dashboard | TuGymPR'; }, []);
+  useEffect(() => { document.title = `${t('trainerDashboard.title')} | TuGymPR`; }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
@@ -198,7 +197,7 @@ export default function TrainerDashboard() {
         profile_id: member.id,
         gym_id: profile.gym_id,
         type: 'trainer_message',
-        title: t('trainerDashboard.reachOut.smsTitle', { name: profile.full_name || 'Your trainer' }),
+        title: t('trainerDashboard.reachOut.smsTitle', { name: profile.full_name || t('trainerDashboard.yourTrainerFallback') }),
         body: t('trainerDashboard.reachOut.smsBody'),
       });
       await logFollowup(member.id, 'sms', 'Sent SMS notification');
@@ -216,7 +215,7 @@ export default function TrainerDashboard() {
         profile_id: member.id,
         gym_id: profile.gym_id,
         type: 'trainer_message',
-        title: t('trainerDashboard.reachOut.pushTitle', { name: profile.full_name || 'Your trainer' }),
+        title: t('trainerDashboard.reachOut.pushTitle', { name: profile.full_name || t('trainerDashboard.yourTrainerFallback') }),
         body: t('trainerDashboard.reachOut.pushBody'),
       });
       await logFollowup(member.id, 'push', 'Sent push notification');
@@ -376,7 +375,7 @@ export default function TrainerDashboard() {
   // Client name map
   const clientMap = {};
   clients.forEach((m) => {
-    clientMap[m.id] = m.full_name || m.username || 'Unknown';
+    clientMap[m.id] = m.full_name || m.username || t('trainerDashboard.unknownFallback');
   });
 
   function getInitial(name) {
@@ -389,9 +388,9 @@ export default function TrainerDashboard() {
   }
 
   function getChurnLevel(score) {
-    if (score >= 80) return { label: 'Critical', color: 'text-red-400', bg: 'bg-red-500/10' };
-    if (score >= 55) return { label: 'High', color: 'text-orange-400', bg: 'bg-orange-500/10' };
-    return { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+    if (score >= 80) return { label: t('trainer.churnCritical'), color: 'text-red-400', bg: 'bg-red-500/10' };
+    if (score >= 55) return { label: t('trainer.churnHigh'), color: 'text-orange-400', bg: 'bg-orange-500/10' };
+    return { label: t('trainer.churnMedium'), color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
   }
 
   function getAttentionColor(type) {
@@ -400,7 +399,7 @@ export default function TrainerDashboard() {
       case 'volume': return { text: 'text-amber-400', bg: 'bg-amber-500/10', icon: Activity };
       case 'inactive': return { text: 'text-orange-400', bg: 'bg-orange-500/10', icon: Clock };
       case 'followup': return { text: 'text-blue-400', bg: 'bg-blue-500/10', icon: MessageSquare };
-      default: return { text: 'text-[#9CA3AF]', bg: 'bg-white/[0.04]', icon: AlertTriangle };
+      default: return { text: 'text-[var(--color-text-secondary)]', bg: 'bg-white/[0.04]', icon: AlertTriangle };
     }
   }
 
@@ -408,14 +407,14 @@ export default function TrainerDashboard() {
     switch (status) {
       case 'confirmed': return { label: t('trainerDashboard.statusConfirmed'), cls: 'bg-emerald-500/10 text-emerald-400' };
       case 'completed': return { label: t('trainerDashboard.statusCompleted'), cls: 'bg-blue-500/10 text-blue-400' };
-      default: return { label: t('trainerDashboard.statusScheduled'), cls: 'bg-[#D4AF37]/10 text-[#D4AF37]' };
+      default: return { label: t('trainerDashboard.statusScheduled'), cls: 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' };
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
       </div>
     );
   }
@@ -430,323 +429,190 @@ export default function TrainerDashboard() {
   const kpis = [
     { label: t('trainerDashboard.kpi.clients'), value: totalClients, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     { label: t('trainerDashboard.kpi.activeWeek'), value: activeThisWeek, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    { label: t('trainerDashboard.kpi.atRisk'), value: atRiskClients.length, color: atRiskClients.length > 0 ? 'text-red-400' : 'text-[#9CA3AF]', bg: atRiskClients.length > 0 ? 'bg-red-500/10' : 'bg-white/[0.04]' },
-    { label: t('trainerDashboard.kpi.sessionsToday'), value: sessionsToday, color: 'text-[#D4AF37]', bg: 'bg-[#D4AF37]/10' },
+    { label: t('trainerDashboard.kpi.atRisk'), value: atRiskClients.length, color: atRiskClients.length > 0 ? 'text-red-400' : 'text-[var(--color-text-secondary)]', bg: atRiskClients.length > 0 ? 'bg-red-500/10' : 'bg-white/[0.04]' },
+    { label: t('trainerDashboard.kpi.sessionsToday'), value: sessionsToday, color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },
     { label: t('trainerDashboard.kpi.sessionsWeek'), value: workoutsThisWeek, color: 'text-purple-400', bg: 'bg-purple-500/10' },
   ];
 
+  // Filter upcoming sessions to next 3 hours only
+  const threeHoursFromNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const nextThreeHours = upcomingSessions.filter(s => new Date(s.scheduled_at) <= threeHoursFromNow);
+
   return (
-    <div className="min-h-screen bg-[#05070B]">
-      <div className="max-w-[480px] mx-auto md:max-w-4xl px-4 py-6 pb-28 md:pb-12">
+    <div className="min-h-screen bg-[var(--color-bg-primary)]">
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 md:pb-12 space-y-8">
 
         {/* ── Header ── */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="min-w-0">
-            <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{t('trainerDashboard.title')}</h1>
-            <p className="text-[13px] text-[#9CA3AF] mt-0.5">{subtitle}</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            <button
-              onClick={() => navigate('/trainer/schedule')}
-              className="h-[36px] px-3 rounded-lg border border-white/[0.08] bg-[#0F172A] text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/[0.15] transition-colors flex items-center gap-1.5"
-            >
-              <CalendarDays size={14} />
-              <span className="hidden sm:inline">{t('trainerDashboard.viewSchedule')}</span>
-            </button>
-            <button
-              onClick={() => navigate('/trainer/clients')}
-              className="h-[36px] px-3 rounded-lg border border-white/[0.08] bg-[#0F172A] text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/[0.15] transition-colors flex items-center gap-1.5"
-            >
-              <Users size={14} />
-              <span className="hidden sm:inline">{t('trainerDashboard.viewClients')}</span>
-            </button>
-          </div>
+        <div>
+          <h1 className="text-[22px] md:text-[28px] font-bold text-[var(--color-text-primary)] truncate">{t('trainerDashboard.title')}</h1>
+          <p className="text-[13px] md:text-[14px] text-[var(--color-text-secondary)] mt-0.5">{subtitle}</p>
         </div>
 
-        {/* ── Section 1: KPI Strip ── */}
-        <div className="flex gap-2 mb-8 overflow-x-auto scrollbar-hide pb-1">
+        {/* ── Section 1: KPI Grid (no horizontal scroll) ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {kpis.map((kpi) => (
             <div
               key={kpi.label}
-              className={`flex items-center gap-2 px-3 py-2 rounded-full border border-white/[0.06] ${kpi.bg} shrink-0`}
+              className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl p-4"
             >
-              <span className={`text-[15px] font-bold ${kpi.color}`}>{kpi.value}</span>
-              <span className="text-[11px] text-[#6B7280] whitespace-nowrap">{kpi.label}</span>
+              <span className={`text-[20px] lg:text-[24px] font-bold ${kpi.color} block`}>{kpi.value}</span>
+              <span className="text-[12px] text-[var(--color-text-muted)] mt-1 block">{kpi.label}</span>
             </div>
           ))}
         </div>
 
-        {/* ── Section 2: Today's Priorities (hero section) ── */}
-        <div className="mb-8 bg-[#0F172A] rounded-2xl border-2 border-[#D4AF37]/30 overflow-hidden">
-          <div className="px-5 pt-5 pb-3 border-b border-white/[0.06]">
-            <h2 className="text-[16px] font-bold text-[#E5E7EB] flex items-center gap-2">
-              <div className="w-7 h-7 bg-[#D4AF37]/10 rounded-full flex items-center justify-center">
-                <AlertTriangle size={14} className="text-[#D4AF37]" />
-              </div>
-              {t('trainerDashboard.todaysPriorities')}
+        {/* ── Schedule + Upcoming: side-by-side on lg desktop ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ── Today's Schedule ── */}
+        {todaySessions.length > 0 && (
+          <div>
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
+              {t('trainerDashboard.todaysSchedule')}
             </h2>
-          </div>
-
-          {/* Needs Attention */}
-          {needsAttentionList.length > 0 ? (
-            <div className="divide-y divide-white/[0.04]">
-              {needsAttentionList.slice(0, 8).map((item) => {
-                const name = item.client.full_name || item.client.username || 'Unknown';
-                const colors = getAttentionColor(item.type);
-                const ItemIcon = colors.icon;
-                const lastContacted = contactedMap[item.client.id];
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
+              {todaySessions.map((session) => {
+                const isCompleted = session.status === 'completed';
                 return (
-                  <div key={item.client.id} className="px-5 py-3.5 hover:bg-white/[0.02] transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${colors.bg}`}>
-                        <span className={`text-[13px] font-semibold ${colors.text}`}>
-                          {getInitial(name)}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] text-[#E5E7EB] font-medium truncate">{name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <ItemIcon size={11} className={colors.text} />
-                          <span className={`text-[11px] ${colors.text}`}>{item.reason}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => handleSMS(item.client)}
-                          disabled={submittingAction === `sms-${item.client.id}`}
-                          title={t('trainerDashboard.reachOut.sms')}
-                          className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center hover:bg-blue-500/20 transition-colors disabled:opacity-50"
-                        >
-                          <MessageSquare size={13} className="text-[#3B82F6]" />
-                        </button>
-                        <button
-                          onClick={() => handlePush(item.client)}
-                          disabled={submittingAction === `push-${item.client.id}`}
-                          title={t('trainerDashboard.reachOut.push')}
-                          className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center hover:bg-purple-500/20 transition-colors disabled:opacity-50"
-                        >
-                          <Bell size={13} className="text-[#A855F7]" />
-                        </button>
-                        <button
-                          onClick={() => handleCallOpen(item.client)}
-                          title={t('trainerDashboard.reachOut.call')}
-                          className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center hover:bg-emerald-500/20 transition-colors"
-                        >
-                          <Phone size={13} className="text-[#10B981]" />
-                        </button>
-                      </div>
+                  <div
+                    key={session.id}
+                    className={`flex items-center gap-3 px-4 py-3 transition-colors${isCompleted ? ' line-through opacity-50' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">
+                        {session.profiles?.full_name || t('trainerDashboard.clientFallback')}
+                      </p>
+                      <p className="text-[12px] text-[var(--color-text-muted)] truncate">{session.title}</p>
                     </div>
-                    {lastContacted && (
-                      <div className="ml-12 mt-1.5 flex items-center gap-1 w-fit px-2 py-0.5 rounded-full bg-emerald-500/10">
-                        <Check size={10} className="text-[#10B981]" />
-                        <span className="text-[10px] font-medium text-[#10B981]">
-                          {t('trainerDashboard.contacted')} {format(new Date(lastContacted), 'MMM d')}
-                        </span>
-                      </div>
-                    )}
+                    <span className="text-[13px] text-[var(--color-text-secondary)] shrink-0">
+                      {format(new Date(session.scheduled_at), 'h:mm a')}
+                    </span>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="px-5 py-8 text-center">
-              <div className="w-10 h-10 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-2">
-                <Check size={20} className="text-[#10B981]" />
-              </div>
-              <p className="text-[14px] text-[#10B981] font-medium">{t('trainerDashboard.allGood')}</p>
-              <p className="text-[12px] text-[#6B7280] mt-1">{t('trainerDashboard.allGoodDesc')}</p>
-            </div>
-          )}
+          </div>
+        )}
 
-          {/* Today's Sessions */}
-          {todaySessions.length > 0 && (
-            <div className="border-t border-white/[0.06]">
-              <div className="px-5 pt-4 pb-2">
-                <h3 className="text-[13px] font-semibold text-[#9CA3AF] uppercase tracking-wide flex items-center gap-1.5">
-                  <CalendarDays size={13} className="text-[#D4AF37]" />
-                  {t('trainerDashboard.todaysSessions')}
-                </h3>
-              </div>
-              <div className="divide-y divide-white/[0.04]">
-                {todaySessions.map((session) => {
-                  const badge = getStatusBadge(session.status);
-                  return (
-                    <div key={session.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors">
-                      <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
-                        <span className="text-[13px] font-semibold text-[#D4AF37]">
-                          {getInitial(session.profiles?.full_name || 'C')}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] text-[#E5E7EB] font-medium truncate">
-                          {session.profiles?.full_name || 'Client'}
-                        </p>
-                        <p className="text-[11px] text-[#6B7280]">{session.title}</p>
-                      </div>
-                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                        <p className="text-[13px] text-[#9CA3AF]">
-                          {format(new Date(session.scheduled_at), 'h:mm a')}
-                        </p>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
-                          {badge.label}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+        {/* ── Upcoming Sessions (next 3 hours only) ── */}
+        <div>
+          <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
+            {t('trainerDashboard.upcomingSessionsShort')}
+          </h2>
+          {nextThreeHours.length > 0 ? (
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
+              {nextThreeHours.map((session) => (
+                <div key={session.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">
+                      {session.profiles?.full_name || t('trainerDashboard.clientFallback')}
+                    </p>
+                    <p className="text-[12px] text-[var(--color-text-muted)] truncate">{session.title}</p>
+                  </div>
+                  <span className="text-[13px] text-[var(--color-text-secondary)] shrink-0">
+                    {format(new Date(session.scheduled_at), 'h:mm a')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl p-5 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+              <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('trainerHome.noUpcoming')}
+              </p>
             </div>
           )}
         </div>
+        </div>
 
-        {/* ── Section 3: Two-column workspace ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-
-          {/* Left: Priority Clients */}
+        {/* ── Priority Clients + Recent Wins: side-by-side on lg desktop ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ── Priority Clients (ONLY if at-risk clients exist) ── */}
+        {priorityClients.length > 0 && (
           <div>
-            <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
-              <Users size={16} className="text-red-400" />
-              {t('trainerDashboard.priorityClients')}
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
+              {t('trainerDashboard.priorityClientsTitle')}
             </h2>
-            {priorityClients.length > 0 ? (
-              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-                {priorityClients.map((item) => {
-                  const name = item.client.full_name || item.client.username || 'Unknown';
-                  const level = item.churn ? getChurnLevel(item.churn.score) : null;
-                  return (
-                    <button
-                      key={item.client.id}
-                      onClick={() => navigate(`/trainer/client/${item.client.id}`)}
-                      className="w-full flex items-center gap-3 p-3.5 hover:bg-white/[0.03] transition-all text-left group"
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${level ? level.bg : 'bg-amber-500/10'}`}>
-                        <span className={`text-[12px] font-semibold ${level ? level.color : 'text-amber-400'}`}>
-                          {getInitial(name)}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] text-[#E5E7EB] font-medium truncate group-hover:text-[#D4AF37] transition-colors">{name}</p>
-                        <p className="text-[10px] text-[#6B7280]">
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
+              {priorityClients.map((item) => {
+                const name = item.client.full_name || item.client.username || t('trainerDashboard.unknownFallback');
+                const level = item.churn ? getChurnLevel(item.churn.score) : null;
+                return (
+                  <div key={item.client.id} className="flex items-center gap-3 px-4 py-3.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${level ? level.bg : 'bg-amber-500/10'}`}>
+                      <span className={`text-[13px] font-semibold ${level ? level.color : 'text-amber-400'}`}>
+                        {getInitial(name)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">{name}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {level && (
+                          <span className={`text-[11px] font-bold ${level.color}`}>
+                            {t('trainerDashboard.riskLabel')}: {Math.round(item.churn.score)}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-[var(--color-text-muted)]">
                           {item.client.last_active_at
                             ? `${t('trainerDashboard.lastActive')} ${format(new Date(item.client.last_active_at), 'MMM d')}`
                             : t('trainerDashboard.noActivityRecorded')}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {level && (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${level.bg} ${level.color}`}>
-                            {Math.round(item.churn.score)}
-                          </span>
-                        )}
-                        <Eye size={14} className="text-[#6B7280] group-hover:text-[#D4AF37] transition-colors" />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
-                <p className="text-[13px] text-[#6B7280]">{t('trainerDashboard.noPriorityClients')}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Upcoming Sessions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
-                <CalendarDays size={16} className="text-[#3B82F6]" />
-                {t('trainerDashboard.upcomingSessions')}
-              </h2>
-              <button
-                onClick={() => navigate('/trainer/schedule')}
-                className="text-[12px] text-[#D4AF37] flex items-center gap-0.5 hover:text-[#E5C94B] transition-colors"
-              >
-                {t('trainerDashboard.viewAll')} <ChevronRight size={14} />
-              </button>
-            </div>
-            {upcomingSessions.length > 0 ? (
-              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-                {upcomingSessions.map((session) => {
-                  const badge = getStatusBadge(session.status);
-                  return (
-                    <div key={session.id} className="flex items-center gap-3 p-3.5 hover:bg-white/[0.03] transition-all">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                        <CalendarDays size={14} className="text-[#3B82F6]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] text-[#E5E7EB] font-medium truncate">
-                          {session.profiles?.full_name || 'Client'}
-                        </p>
-                        <p className="text-[10px] text-[#6B7280]">{session.title}</p>
-                      </div>
-                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                        <p className="text-[12px] text-[#9CA3AF]">
-                          {isToday(new Date(session.scheduled_at))
-                            ? format(new Date(session.scheduled_at), 'h:mm a')
-                            : format(new Date(session.scheduled_at), 'EEE, MMM d')}
-                        </p>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
-                          {badge.label}
                         </span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] p-6 text-center">
-                <p className="text-[13px] text-[#6B7280]">{t('trainerDashboard.noUpcomingSessions')}</p>
-              </div>
-            )}
+                    <button
+                      onClick={() => navigate(`/trainer/clients/${item.client.id}`)}
+                      className="shrink-0 h-8 px-3 rounded-xl bg-[var(--color-accent)]/10 flex items-center gap-1.5 hover:bg-[var(--color-accent)]/20 transition-colors"
+                    >
+                      <Eye size={13} className="text-[var(--color-accent)]" />
+                      <span className="text-[11px] font-medium text-[var(--color-accent)] hidden sm:inline">{t('trainerDashboard.view')}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* ── Section 4: Recent Wins ── */}
+        {/* ── Recent Wins ── */}
         {(recentPRs.length > 0 || activeStreaks.length > 0) && (
-          <div className="mb-8">
-            <h2 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2 mb-3">
-              <Trophy size={16} className="text-[#D4AF37]" />
+          <div>
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
               {t('trainerDashboard.recentWins')}
             </h2>
-            <div className="bg-[#0F172A] rounded-2xl border border-white/[0.06] divide-y divide-white/[0.06] overflow-hidden">
-              {/* PRs */}
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
               {recentPRs.map((pr) => {
-                const name = clientMap[pr.profile_id] || 'Client';
+                const name = clientMap[pr.profile_id] || t('trainerDashboard.clientFallback');
                 return (
-                  <div key={pr.id} className="flex items-center gap-3 p-3.5">
-                    <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center shrink-0">
-                      <Trophy size={14} className="text-[#D4AF37]" />
+                  <div key={pr.id} className="flex items-center gap-3 px-4 py-3.5">
+                    <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
+                      <Trophy size={14} className="text-[var(--color-accent)]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] truncate">
+                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
                         <span className="font-medium">{name}</span>
                         {' '}<span className="text-emerald-400">{t('trainerDashboard.newPR')}</span>
                       </p>
-                      <p className="text-[10px] text-[#6B7280] truncate">
-                        {pr.exercises?.name || 'Exercise'} — {pr.weight_lbs} lbs x {pr.reps}
+                      <p className="text-[10px] text-[var(--color-text-muted)] truncate">
+                        {pr.exercises?.name || t('trainerDashboard.exerciseFallback')} — {pr.weight_lbs} lbs x {pr.reps}
                       </p>
                     </div>
-                    <span className="text-[10px] text-[#6B7280] shrink-0">
+                    <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
                       {format(new Date(pr.recorded_at), 'MMM d')}
                     </span>
                   </div>
                 );
               })}
-
-              {/* Streaks */}
               {activeStreaks.map((s) => {
-                const name = clientMap[s.profile_id] || 'Client';
+                const name = clientMap[s.profile_id] || t('trainerDashboard.clientFallback');
                 return (
-                  <div key={`streak-${s.profile_id}`} className="flex items-center gap-3 p-3.5">
+                  <div key={`streak-${s.profile_id}`} className="flex items-center gap-3 px-4 py-3.5">
                     <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
                       <Flame size={14} className="text-orange-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[#E5E7EB] truncate">
+                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
                         <span className="font-medium">{name}</span>
                       </p>
-                      <p className="text-[10px] text-[#6B7280]">
+                      <p className="text-[10px] text-[var(--color-text-muted)]">
                         {t('trainerDashboard.streakDays', { count: s.current_streak })}
                       </p>
                     </div>
@@ -759,60 +625,61 @@ export default function TrainerDashboard() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Call Note Modal */}
       {callModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="bg-[#0F172A] rounded-2xl border border-white/[0.08] w-full max-w-[400px] p-6">
+          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] w-full max-w-[400px] p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[16px] font-semibold text-[#E5E7EB]">
+              <h3 className="text-[16px] font-semibold text-[var(--color-text-primary)]">
                 {t('trainerDashboard.reachOut.logCall')}
               </h3>
-              <button onClick={() => setCallModal(null)} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+              <button onClick={() => setCallModal(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <p className="text-[13px] text-[#9CA3AF] mb-4">
-              {callModal.full_name || callModal.username || 'Client'}
+            <p className="text-[13px] text-[var(--color-text-secondary)] mb-4">
+              {callModal.full_name || callModal.username || t('trainerDashboard.clientFallback')}
             </p>
 
-            <label className="text-[12px] text-[#6B7280] uppercase tracking-wide mb-1.5 block">
+            <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
               {t('trainerDashboard.reachOut.outcome')}
             </label>
             <select
               value={callOutcome}
               onChange={(e) => setCallOutcome(e.target.value)}
-              className="w-full bg-[#111827] border border-white/8 rounded-lg px-3 py-2.5 text-[14px] text-[#E5E7EB] mb-4 focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[14px] text-[var(--color-text-primary)] mb-4 focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
             >
               {outcomeOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
 
-            <label className="text-[12px] text-[#6B7280] uppercase tracking-wide mb-1.5 block">
+            <label className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 block">
               {t('trainerDashboard.reachOut.noteLabel')}
             </label>
             <textarea
               value={callNote}
               onChange={(e) => setCallNote(e.target.value)}
               placeholder={t('trainerDashboard.reachOut.notePlaceholder')}
-              className="w-full bg-[#111827] border border-white/8 rounded-lg p-3 text-[14px] text-[#E5E7EB] placeholder-[#6B7280] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors mb-4"
+              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-lg p-3 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors mb-4"
               rows={3}
             />
 
             <div className="flex gap-3">
               <button
                 onClick={() => setCallModal(null)}
-                className="flex-1 py-2.5 rounded-lg border border-white/8 text-[13px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-[var(--color-border-subtle)] text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
               >
                 {t('trainerDashboard.reachOut.cancel')}
               </button>
               <button
                 onClick={handleCallSubmit}
                 disabled={submittingAction === `call-${callModal.id}`}
-                className="flex-1 py-2.5 rounded-lg bg-[#D4AF37] hover:bg-[#C4A030] text-[#05070B] text-[13px] font-semibold transition-colors disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-bg-primary)] text-[13px] font-semibold transition-colors disabled:opacity-50"
               >
                 {submittingAction === `call-${callModal.id}` ? t('trainerDashboard.reachOut.saving') : t('trainerDashboard.reachOut.logCallBtn')}
               </button>

@@ -180,30 +180,38 @@ const GymPulse = () => {
     fetchPulse();
 
     // Realtime — listen for workout sessions + check-ins so the feed
-    // refreshes instantly when someone starts/finishes a workout or checks in.
+    // refreshes when someone starts/finishes a workout or checks in.
+    // Debounced because these tables lack a direct gym_id column, so we
+    // cannot filter at the channel level and must refetch selectively.
+    let debounceTimer;
+    const debouncedFetch = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => fetchPulse(), 2000);
+    };
     const channel = supabase
       .channel('gym-pulse-realtime')
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'workout_sessions',
-      }, () => fetchPulse())
+      }, debouncedFetch)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'workout_sessions',
-      }, () => fetchPulse())
+      }, debouncedFetch)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'check_ins',
-      }, () => fetchPulse())
+      }, debouncedFetch)
       .subscribe();
 
     // Fallback polling every 2 minutes in case realtime misses an event
     const interval = setInterval(fetchPulse, 120_000);
 
     return () => {
+      clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
       clearInterval(interval);
     };

@@ -125,7 +125,7 @@ const HeroStat = ({ label, value, sub }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Profile = () => {
   const { t } = useTranslation('pages');
-  const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('achievements');
@@ -197,7 +197,9 @@ const Profile = () => {
         setFriendCode(profile.friend_code);
       } else if (!friendCode) {
         // Only generate once — guard against re-renders
-        const code = Math.random().toString(36).substring(2, 10);
+        const arr = new Uint8Array(5);
+        crypto.getRandomValues(arr);
+        const code = Array.from(arr, b => b.toString(36).padStart(2, '0')).join('').slice(0, 8);
         const { error: fcErr } = await supabase
           .from('profiles')
           .update({ friend_code: code })
@@ -382,7 +384,7 @@ const Profile = () => {
 
         const { error: storageErr } = await supabase.storage
           .from('avatars')
-          .upload(path, file, { upsert: true });
+          .upload(path, file, { upsert: true, contentType: validation.mime || file.type });
         if (storageErr) throw storageErr;
 
         const { data: urlData } = supabase.storage
@@ -670,6 +672,25 @@ const Profile = () => {
         ))}
       </div>
 
+      {/* ── Mis Clases card (only if gym has classes enabled) ────────────── */}
+      {gymConfig?.classesEnabled && (
+        <button
+          type="button"
+          onClick={() => navigate('/classes')}
+          className="w-full flex items-center gap-4 p-4 mb-4 rounded-2xl border border-[#60A5FA]/25 bg-gradient-to-r from-[#60A5FA]/10 to-[#60A5FA]/5 hover:from-[#60A5FA]/15 hover:to-[#60A5FA]/8 transition-all duration-200 active:scale-[0.98]"
+        >
+          <div className="w-11 h-11 rounded-xl bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
+            <CalendarCheck size={20} className="text-[#60A5FA]" />
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-[14px] font-bold text-[#60A5FA]">{t('profile.myClasses')}</p>
+            <p className="text-[12px] text-[var(--color-text-muted)] mt-0.5">
+              {t('profile.myClassesSubtitle')}
+            </p>
+          </div>
+          <ChevronRight size={18} className="text-[#60A5FA]/60 flex-shrink-0" />
+        </button>
+      )}
 
       {/* ── Pill tabs ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 mb-6 bg-[var(--color-bg-deep)] p-1 rounded-xl">

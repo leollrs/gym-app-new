@@ -117,7 +117,8 @@ export default function SupportConsole() {
   const performSearch = async (term) => {
     setSearching(true);
     setHasSearched(true);
-    const pattern = `%${term}%`;
+    const safeTerm = term.replace(/[%_\\,()."']/g, '');
+    const pattern = `%${safeTerm}%`;
 
     const [membersRes, gymsRes, invitesRes] = await Promise.all([
       supabase

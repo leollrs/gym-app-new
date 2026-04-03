@@ -366,6 +366,7 @@ export async function getStreakWithProtections(userId, gymId, sessions, supabase
 // ── Use a streak freeze (database-backed) ────────────────────────────────────
 // Upserts the current month's freeze row, incrementing used_count by 1.
 // Returns true if freeze was applied, false if none remaining.
+// Uses atomic update with .lt() guard to prevent TOCTOU race conditions.
 export async function useStreakFreeze(userId, supabase) {
   const currentMonth = new Date().toISOString().slice(0, 7);
   try {
@@ -377,20 +378,32 @@ export async function useStreakFreeze(userId, supabase) {
       .eq('month', currentMonth)
       .maybeSingle();
 
-    const usedCount = existing?.used_count || 0;
-    const maxAllowed = existing?.max_allowed || 2;
-
-    if (usedCount >= maxAllowed) return false;
-
     if (existing) {
-      await supabase
+      if (existing.used_count >= existing.max_allowed) return false;
+
+      // Atomic update: only increment if used_count < max_allowed at execution time.
+      // The .lt() guard prevents concurrent calls from both passing the check.
+      const { data, error } = await supabase
         .from('streak_freezes')
-        .update({ used_count: usedCount + 1 })
-        .eq('id', existing.id);
+        .update({ used_count: existing.used_count + 1 })
+        .eq('profile_id', userId)
+        .eq('month', currentMonth)
+        .lt('used_count', existing.max_allowed)
+        .select();
+
+      if (error) throw error;
+      if (!data?.length) {
+        return false; // Another call already used the last freeze
+      }
     } else {
-      await supabase
+      // No row yet for this month — insert a fresh one.
+      // INSERT is safe from TOCTOU because a unique constraint on
+      // (profile_id, month) will cause one of two concurrent inserts to fail.
+      const { error } = await supabase
         .from('streak_freezes')
         .insert({ profile_id: userId, month: currentMonth, used_count: 1, max_allowed: 2 });
+
+      if (error) throw error;
     }
     return true;
   } catch (err) {

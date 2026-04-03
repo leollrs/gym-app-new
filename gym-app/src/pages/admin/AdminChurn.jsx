@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared components
-import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell } from '../../components/admin';
+import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs } from '../../components/admin';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
 
 import { translateSignal } from '../../lib/churn/signalI18n';
@@ -224,18 +224,18 @@ async function fetchChurnData(gymId) {
 }
 
 const outcomeConfig = {
-  returned:       { label: 'Returned',       color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
-  no_response:    { label: 'No Response',    color: '#9CA3AF', bg: 'rgba(156,163,175,0.08)' },
-  still_inactive: { label: 'Still Inactive', color: '#F59E0B', bg: 'rgba(245,158,11,0.10)' },
-  pending:        { label: 'Pending',        color: '#6B7280', bg: 'rgba(107,114,128,0.08)' },
+  returned:       { i18nKey: 'admin.churn.outcomeReturned', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+  no_response:    { i18nKey: 'admin.churn.outcomeNoResponse', color: '#9CA3AF', bg: 'rgba(156,163,175,0.08)' },
+  still_inactive: { i18nKey: 'admin.churn.outcomeStillInactive', color: '#F59E0B', bg: 'rgba(245,158,11,0.10)' },
+  pending:        { i18nKey: 'admin.churn.outcomePending', color: '#6B7280', bg: 'rgba(107,114,128,0.08)' },
 };
 
-const METHOD_LABELS = {
-  in_app_message: 'Message',
-  email: 'Email',
-  push: 'Push',
-  win_back: 'Win-Back',
-  manual: 'Manual',
+const METHOD_I18N = {
+  in_app_message: 'admin.churn.methodMessage',
+  email: 'admin.churn.methodEmail',
+  push: 'admin.churn.methodPush',
+  win_back: 'admin.churn.methodWinBack',
+  manual: 'admin.churn.methodManual',
 };
 
 // ── Bulk Message Modal ────────────────────────────────────
@@ -250,7 +250,7 @@ function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
     try {
       const notifications = members.map(m => ({
         profile_id: m.id, gym_id: gymId, type: 'admin_message',
-        title: 'Message from your gym', body: msg, data: { source: 'bulk_churn_intel' },
+        title: t('admin.churn.messageFromGym'), body: msg, data: { source: 'bulk_churn_intel' },
       }));
       await supabase.from('notifications').insert(notifications);
 
@@ -414,7 +414,7 @@ function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts,
                 <details key={log.id} className="group">
                   <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
                     <div className="w-1 h-1 rounded-full bg-[#D4AF37] flex-shrink-0" />
-                    <span className="font-medium text-[#E5E7EB]">{METHOD_LABELS[log.method] || log.method}</span>
+                    <span className="font-medium text-[#E5E7EB]">{METHOD_I18N[log.method] ? t(METHOD_I18N[log.method]) : log.method}</span>
                     {subject && <span className="text-[#6B7280] truncate flex-1 min-w-0">— {subject}</span>}
                     <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(log.created_at), 'MMM d')}</span>
                   </summary>
@@ -433,7 +433,7 @@ function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts,
                   <summary className="flex items-center gap-2 text-[11px] cursor-pointer list-none">
                     <div className="w-1 h-1 rounded-full bg-[#EF4444] flex-shrink-0" />
                     <span className="font-medium text-[#E5E7EB]">{t('admin.churn.winBackAttempt', 'Win-Back')}</span>
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border" style={{ color: outCfg.color, background: outCfg.bg, borderColor: `${outCfg.color}33` }}>{outCfg.label}</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border" style={{ color: outCfg.color, background: outCfg.bg, borderColor: `${outCfg.color}33` }}>{t(outCfg.i18nKey)}</span>
                     <span className="text-[#4B5563] ml-auto flex-shrink-0">{format(new Date(wb.created_at), 'MMM d')}</span>
                   </summary>
                   {wb.message && (
@@ -483,9 +483,9 @@ export default function AdminChurn() {
 
   useEffect(() => { document.title = 'Admin - Churn | TuGymPR'; }, []);
 
-  const [tab, setTab] = useState('at-risk');
+  const [tab, setTab] = useState('task-board');
   const [search, setSearch] = useState('');
-  const [riskFilter, setRiskFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('needs-action');
   const [msgModal, setMsgModal] = useState(null);
   const [winBackModal, setWinBackModal] = useState(null);
   const [contactPanel, setContactPanel] = useState(null);
@@ -582,12 +582,18 @@ export default function AdminChurn() {
 
   const atRiskMembers = useMemo(() => {
     let list = members.filter(m => m.churnScore >= 30);
-    if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
-    if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55);
-    if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 30 && m.churnScore < 55);
+    if (riskFilter === 'needs-action') list = list.filter(m => !contactedIds.has(m.id));
+    else if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
+    else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55);
+    else if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 30 && m.churnScore < 55);
+    else if (riskFilter === 'contacted') list = list.filter(m => contactedIds.has(m.id));
+    else if (riskFilter === 'returned') {
+      const returnedUserIds = new Set(winBackAttempts.filter(a => a.outcome === 'returned').map(a => a.user_id));
+      list = list.filter(m => returnedUserIds.has(m.id));
+    }
     if (search) { const q = search.toLowerCase(); list = list.filter(m => m.full_name.toLowerCase().includes(q)); }
     return list;
-  }, [members, riskFilter, search]);
+  }, [members, riskFilter, search, contactedIds, winBackAttempts]);
 
   const churnedMembers = useMemo(() => {
     const MS_PER_DAY = 86400000;
@@ -603,6 +609,24 @@ export default function AdminChurn() {
   const criticalCount = members.filter(m => m.churnScore >= 80).length;
   const highRiskCount = members.filter(m => m.churnScore >= 55 && m.churnScore < 80).length;
   const medRiskCount = members.filter(m => m.churnScore >= 30 && m.churnScore < 55).length;
+  const contactedCount = contactedIds.size;
+  const returnedCount = winBackAttempts.filter(a => a.outcome === 'returned').length;
+
+  // "Needs Action" = at-risk members who have NOT been contacted
+  const needsActionMembers = useMemo(() => {
+    return members.filter(m => m.churnScore >= 30 && !contactedIds.has(m.id));
+  }, [members, contactedIds]);
+
+  // "Recently Contacted" = at-risk members who HAVE been contacted
+  const recentlyContactedMembers = useMemo(() => {
+    return members.filter(m => m.churnScore >= 30 && contactedIds.has(m.id));
+  }, [members, contactedIds]);
+
+  // "Returned" = members with a returned win-back outcome
+  const returnedMembers = useMemo(() => {
+    const returnedUserIds = new Set(winBackAttempts.filter(a => a.outcome === 'returned').map(a => a.user_id));
+    return members.filter(m => returnedUserIds.has(m.id));
+  }, [members, winBackAttempts]);
 
   // Attribution breakdown for win-back tab
   const attributionStats = useMemo(() => {
@@ -687,7 +711,7 @@ export default function AdminChurn() {
   };
 
   const handleExport = () => {
-    const visibleData = tab === 'at-risk' ? atRiskMembers : tab === 'churned' ? churnedMembers : winBackAttempts;
+    const visibleData = tab === 'task-board' ? atRiskMembers : tab === 'churned' ? churnedMembers : winBackAttempts;
     // Translate signals and velocity labels for the CSV
     const translatedData = visibleData.map(m => ({
       ...m,
@@ -710,10 +734,22 @@ export default function AdminChurn() {
     });
   };
 
-  const TABS = [
-    { key: 'at-risk', label: t('admin.churn.tabAtRisk', 'At Risk'), count: atRiskMembers.length },
+  const PRIMARY_TABS = [
+    { key: 'task-board', label: t('admin.churn.tabTaskBoard', 'Retention Board'), count: needsActionMembers.length },
+  ];
+  const SECONDARY_TABS = [
     { key: 'churned', label: t('admin.churn.tabChurned', 'Churned'), count: churnedMembers.length },
     { key: 'win-back', label: t('admin.churn.tabWinBack', 'Win-Back'), count: winBackAttempts.length },
+    { key: 'campaigns', label: t('admin.churn.tabCampaigns', 'Campaigns'), count: campaigns.length },
+  ];
+  const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
+
+  const QUEUE_FILTERS = [
+    { key: 'needs-action', label: t('admin.churn.filterNeedsAction', 'Needs Action'), count: needsActionMembers.length },
+    { key: 'critical', label: t('admin.churn.filterCritical', 'Critical'), count: criticalCount },
+    { key: 'high', label: t('admin.churn.filterHigh', 'High'), count: highRiskCount },
+    { key: 'contacted', label: t('admin.churn.filterContacted', 'Recently Contacted'), count: recentlyContactedMembers.length },
+    { key: 'returned', label: t('admin.churn.filterReturned', 'Returned'), count: returnedMembers.length },
   ];
 
   const atRiskTableColumns = [
@@ -768,7 +804,7 @@ export default function AdminChurn() {
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied. You are not authorized to view this page.</p>
+        <p className="text-[#EF4444] text-[14px] font-semibold">{t('admin.churn.accessDenied')}</p>
       </div>
     );
   }
@@ -786,136 +822,46 @@ export default function AdminChurn() {
         }
       />
 
+      {/* Summary Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-6">
         {[
-          { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, color: '#DC2626', sub: t('admin.churn.scoreGte80', 'score ≥ 80') },
-          { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, color: '#EF4444', sub: t('admin.churn.score5579', 'score 55–79') },
-          { label: t('admin.churn.mediumRisk', 'Medium Risk'), value: loading ? '—' : medRiskCount, color: '#F59E0B', sub: t('admin.churn.score3054', 'score 30–54') },
-          { label: t('admin.churn.churned', 'Churned'), value: loading ? '—' : churnedMembers.length, color: '#9CA3AF', sub: t('admin.churn.thirtyPlusDays', '30+ days gone') },
+          { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, color: '#DC2626', sub: t('admin.churn.scoreGte80', 'score ≥ 80'), filterKey: 'critical' },
+          { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, color: '#EF4444', sub: t('admin.churn.score5579', 'score 55–79'), filterKey: 'high' },
+          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, color: '#D4AF37', sub: t('admin.churn.contactedSub', 'outreach logged'), filterKey: 'contacted' },
+          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, color: '#10B981', sub: t('admin.churn.returnedSub', 'came back'), filterKey: 'returned' },
         ].map(card => (
-          <div key={card.label} className="bg-[#0F172A] border border-white/8 rounded-[14px] p-4 border-l-2 overflow-hidden" style={{ borderLeftColor: card.color }}>
+          <button key={card.label} onClick={() => { setTab('task-board'); setRiskFilter(card.filterKey); }}
+            className={`text-left bg-[#0F172A] border rounded-[14px] p-4 border-l-2 overflow-hidden transition-colors hover:border-white/15 ${tab === 'task-board' && riskFilter === card.filterKey ? 'border-white/20 ring-1 ring-white/10' : 'border-white/8'}`}
+            style={{ borderLeftColor: card.color }}>
             <p className="text-[24px] font-bold leading-none truncate" style={{ color: card.color }}>{card.value}</p>
             <p className="text-[12px] font-semibold text-[#E5E7EB] mt-1.5 truncate">{card.label}</p>
             <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">{card.sub}</p>
-          </div>
+          </button>
         ))}
       </div>
 
-      {/* A/B CAMPAIGN MANAGER */}
-      {campaigns.length > 0 && (
-        <div className="mb-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FlaskConical size={15} className="text-[#D4AF37]" />
-              <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('admin.churn.ab.title', 'A/B Campaigns')}</p>
-            </div>
-            <button onClick={() => setCreateCampaignModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors">
-              <Plus size={13} /> {t('admin.churn.ab.newCampaign', 'New Campaign')}
-            </button>
-          </div>
-          {campaigns.map(campaign => {
-            const stats = campaignStats[campaign.id] || { a: { sent: 0, responded: 0, returned: 0, responseRate: 0, returnRate: 0 }, b: { sent: 0, responded: 0, returned: 0, responseRate: 0, returnRate: 0 } };
-            const aWins = stats.a.returnRate > stats.b.returnRate;
-            const bWins = stats.b.returnRate > stats.a.returnRate;
-            const tied = stats.a.returnRate === stats.b.returnRate;
-            const totalSent = stats.a.sent + stats.b.sent;
+      {/* Tab Bar */}
+      <AdminTabs tabs={TABS} active={tab} onChange={setTab} className="mb-4" />
 
-            return (
-              <div key={campaign.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/6">
-                  <div className="flex items-center gap-2.5">
-                    <FlaskConical size={14} className="text-[#D4AF37]" />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#E5E7EB]">{campaign.name}</p>
-                      <p className="text-[10px] text-[#6B7280]">
-                        {t(`admin.churn.campaign.tier.${campaign.target_tier}`, campaign.target_tier)} {t('admin.churn.ab.tier', 'tier')}
-                        {' · '}{totalSent} {t('admin.churn.ab.sent', 'sent')}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${campaign.is_active ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/20' : 'bg-white/6 text-[#6B7280] border border-white/8'}`}>
-                      {campaign.is_active ? t('admin.churn.ab.active', 'Active') : t('admin.churn.ab.ended', 'Ended')}
-                    </span>
-                    {campaign.is_active && totalSent >= 2 && (
-                      <button onClick={() => handleEndCampaign(campaign.id, aWins ? 'A' : 'B')}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
-                        <StopCircle size={11} /> {t('admin.churn.ab.endCampaign', 'End')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 p-4">
-                  {[
-                    { key: 'A', label: t('admin.churn.ab.variantA', 'Variant A'), data: campaign.variant_a, stat: stats.a, isWinner: aWins && !tied && totalSent >= 2 },
-                    { key: 'B', label: t('admin.churn.ab.variantB', 'Variant B'), data: campaign.variant_b, stat: stats.b, isWinner: bWins && !tied && totalSent >= 2 },
-                  ].map(v => (
-                    <div key={v.key} className={`rounded-xl p-3.5 border transition-colors ${v.isWinner ? 'bg-[#10B981]/5 border-[#10B981]/25' : 'bg-[#111827] border-white/6'}`}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <p className="text-[12px] font-semibold text-[#E5E7EB]">{v.label}</p>
-                        {v.isWinner && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
-                            <Trophy size={10} /> {t('admin.churn.ab.winner', 'Winner')}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-[#9CA3AF] mb-0.5 truncate">
-                        {v.data.offer_type || t('admin.churn.ab.noOffer', 'No offer')}
-                        {v.data.discount_pct ? ` (${v.data.discount_pct}%)` : ''}
-                        {v.data.free_days ? ` · ${v.data.free_days}d ${t('admin.churn.ab.free', 'free')}` : ''}
-                      </p>
-                      {v.data.message && (
-                        <p className="text-[10px] text-[#6B7280] line-clamp-2 mb-3">{v.data.message}</p>
-                      )}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.numSent', 'Sent')}</span>
-                          <span className="text-[12px] font-semibold text-[#E5E7EB]">{v.stat.sent}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.responseRate', 'Response Rate')}</span>
-                          <span className={`text-[12px] font-semibold ${v.stat.responseRate > 0 ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>{v.stat.responseRate}%</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.returnRate', 'Return Rate')}</span>
-                          <span className={`text-[12px] font-bold ${v.stat.returnRate > 0 ? 'text-[#10B981]' : 'text-[#6B7280]'}`}>{v.stat.returnRate}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-
-      <div className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#05070B]/95 lg:backdrop-blur-xl lg:py-3 mb-4 border-b border-white/6">
-        <div className="flex gap-1">
-          {TABS.map(tb => (
-            <button key={tb.key} onClick={() => setTab(tb.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors ${tab === tb.key ? 'bg-[#D4AF37]/12 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/4'}`}>
-              {tb.label}
-              {tb.count > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === tb.key ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/8 text-[#6B7280]'}`}>{tb.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* AT RISK TAB */}
-      {tab === 'at-risk' && (
+      {/* TASK BOARD TAB */}
+      {tab === 'task-board' && (
         <div>
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          {/* Queue Filters */}
+          <div className="flex flex-col gap-3 mb-4">
+            <div className="flex flex-wrap gap-1.5">
+              {QUEUE_FILTERS.map(f => (
+                <button key={f.key} onClick={() => setRiskFilter(f.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-colors ${riskFilter === f.key ? 'bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25' : 'text-[#6B7280] border border-white/6 hover:text-[#E5E7EB] hover:border-white/12'}`}>
+                  {f.label}
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${riskFilter === f.key ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/8 text-[#4B5563]'}`}>{f.count}</span>
+                </button>
+              ))}
+            </div>
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
               <input type="text" placeholder={t('admin.churn.searchMembers', 'Search members…')} value={search} onChange={e => setSearch(e.target.value)}
                 className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
             </div>
-            <FilterBar options={[{ key: 'all', label: t('admin.churn.filterAll', 'All') }, { key: 'critical', label: t('admin.churn.filterCritical', 'Critical') }, { key: 'high', label: t('admin.churn.filterHigh', 'High') }, { key: 'medium', label: t('admin.churn.filterMedium', 'Medium') }]} active={riskFilter} onChange={setRiskFilter} />
           </div>
 
           {!loading && atRiskMembers.length > 0 && (
@@ -939,23 +885,23 @@ export default function AdminChurn() {
 
           {selectedCount > 0 && (
             <div className="mb-4 px-4 py-3 bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-xl flex items-center gap-3 flex-wrap">
-              <span className="text-[12px] font-semibold text-[#D4AF37]">{selectedCount} selected</span>
+              <span className="text-[12px] font-semibold text-[#D4AF37]">{t('admin.churn.selectedCount', { count: selectedCount, defaultValue: '{{count}} selected' })}</span>
               <div className="h-4 w-px bg-[#D4AF37]/20" />
               <button onClick={() => setBulkMsgModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
-                <MessageSquare size={12} /> Message All ({selectedCount})
+                <MessageSquare size={12} /> {t('admin.churn.messageAll', { count: selectedCount, defaultValue: 'Message All ({{count}})' })}
               </button>
               {challenges.length > 0 && (
                 <select value={bulkChallengeId} onChange={e => { setBulkChallengeId(e.target.value); handleBulkAddToChallenge(e.target.value); }}
                   disabled={bulkActionLoading}
                   className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#1E293B] text-[#9CA3AF] border border-white/8 outline-none focus:border-[#D4AF37]/40 cursor-pointer hover:border-white/12 transition-colors disabled:opacity-50">
-                  <option value="" disabled>Add All to Challenge</option>
+                  <option value="" disabled>{t('admin.churn.addAllToChallenge', 'Add All to Challenge')}</option>
                   {challenges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
               <button onClick={handleBulkMarkContacted}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 hover:bg-[#10B981]/18 transition-colors">
-                <CheckCircle size={12} /> Mark All Contacted
+                <CheckCircle size={12} /> {t('admin.churn.markAllContacted', 'Mark All Contacted')}
               </button>
             </div>
           )}
@@ -1020,7 +966,7 @@ export default function AdminChurn() {
                           <div className="mb-2"><ScoreBar score={m.churnScore} /></div>
                           <div className="mb-1 space-y-0.5">
                             {(m.keySignals || [m.keySignal]).slice(0, 3).map((sig, i) => (
-                              <p key={i} className="text-[12px] text-[#9CA3AF]"><span className="text-[#6B7280]">{i === 0 ? 'Signal: ' : '· '}</span>{sig}</p>
+                              <p key={i} className="text-[12px] text-[#9CA3AF]"><span className="text-[#6B7280]">{i === 0 ? `${t('admin.churn.signal', 'Signal')}: ` : '· '}</span>{translateSignal(t, sig)}</p>
                             ))}
                           </div>
                           <p className="text-[11px] text-[#6B7280]">
@@ -1029,7 +975,7 @@ export default function AdminChurn() {
                                 ? t('admin.churn.activeToday', 'Active today')
                                 : t('admin.churn.lastActivityDaysAgo', { days: Math.round(m.daysSinceLastActivity), defaultValue: `Last activity {{days}}d ago` }))
                               : t('admin.churn.noRecentActivity', 'No workouts or check-ins in tracked window')}
-                            {' · '}{Math.round(m.tenureMonths)}mo tenure
+                            {' · '}{t('admin.churn.tenureMonths', { count: Math.round(m.tenureMonths), defaultValue: '{{count}}mo tenure' })}
                             {m.velocityTrend && m.velocityTrend !== 'stable' && (
                               <span className={m.velocityTrend === 'rising' ? 'text-[#EF4444] ml-1.5' : 'text-[#10B981] ml-1.5'}>
                                 {m.velocityTrend === 'rising' ? '↑' : '↓'} {m.velocityLabel}
@@ -1129,7 +1075,7 @@ export default function AdminChurn() {
                   const rate = stats.sent > 0 ? Math.round((stats.returned / stats.sent) * 100) : 0;
                   return (
                     <span key={method} className="text-[11px] text-[#9CA3AF]">
-                      <span className="font-semibold text-[#E5E7EB]">{METHOD_LABELS[method] || method}:</span>{' '}
+                      <span className="font-semibold text-[#E5E7EB]">{METHOD_I18N[method] ? t(METHOD_I18N[method]) : method}:</span>{' '}
                       {t('admin.churn.sentCount', { count: stats.sent, defaultValue: '{{count}} sent' })},{' '}
                       <span className={stats.returned > 0 ? 'text-[#10B981]' : ''}>{t('admin.churn.returnedCount', { count: stats.returned, defaultValue: '{{count}} returned' })}</span>{' '}
                       ({rate}%)
@@ -1172,7 +1118,7 @@ export default function AdminChurn() {
                           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <p className="text-[13px] font-semibold text-[#E5E7EB]">{memberName}</p>
                             {contactMethod && (
-                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/6 text-[#9CA3AF]">{METHOD_LABELS[contactMethod] || contactMethod}</span>
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/6 text-[#9CA3AF]">{METHOD_I18N[contactMethod] ? t(METHOD_I18N[contactMethod]) : contactMethod}</span>
                             )}
                           </div>
                           <p className="text-[11px] text-[#6B7280] line-clamp-2">{attempt.message}</p>
@@ -1192,7 +1138,7 @@ export default function AdminChurn() {
                         </div>
                         <div className="flex-shrink-0">
                           <span className="text-[11px] font-semibold px-2 py-1 rounded-full border" style={{ color: outcomeCfg.color, background: outcomeCfg.bg, borderColor: `${outcomeCfg.color}33` }}>
-                            {outcomeCfg.label}
+                            {t(outcomeCfg.i18nKey)}
                           </span>
                         </div>
                       </div>
@@ -1221,6 +1167,104 @@ export default function AdminChurn() {
                 })}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* CAMPAIGNS TAB */}
+      {tab === 'campaigns' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <FlaskConical size={15} className="text-[#D4AF37]" />
+              <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('admin.churn.ab.title', 'A/B Campaigns')}</p>
+            </div>
+            <button onClick={() => setCreateCampaignModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors">
+              <Plus size={13} /> {t('admin.churn.ab.newCampaign', 'New Campaign')}
+            </button>
+          </div>
+          {campaigns.length === 0 ? (
+            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-12 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4"><FlaskConical size={22} className="text-[#D4AF37]" /></div>
+              <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">{t('admin.churn.noCampaigns', 'No campaigns yet')}</p>
+              <p className="text-[13px] text-[#6B7280]">{t('admin.churn.createCampaignHint', 'Create an A/B campaign to test different win-back strategies.')}</p>
+            </div>
+          ) : (
+            campaigns.map(campaign => {
+              const stats = campaignStats[campaign.id] || { a: { sent: 0, responded: 0, returned: 0, responseRate: 0, returnRate: 0 }, b: { sent: 0, responded: 0, returned: 0, responseRate: 0, returnRate: 0 } };
+              const aWins = stats.a.returnRate > stats.b.returnRate;
+              const bWins = stats.b.returnRate > stats.a.returnRate;
+              const tied = stats.a.returnRate === stats.b.returnRate;
+              const totalSent = stats.a.sent + stats.b.sent;
+
+              return (
+                <div key={campaign.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/6">
+                    <div className="flex items-center gap-2.5">
+                      <FlaskConical size={14} className="text-[#D4AF37]" />
+                      <div>
+                        <p className="text-[13px] font-semibold text-[#E5E7EB]">{campaign.name}</p>
+                        <p className="text-[10px] text-[#6B7280]">
+                          {t(`admin.churn.campaign.tier.${campaign.target_tier}`, campaign.target_tier)} {t('admin.churn.ab.tier', 'tier')}
+                          {' · '}{totalSent} {t('admin.churn.ab.sent', 'sent')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${campaign.is_active ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/20' : 'bg-white/6 text-[#6B7280] border border-white/8'}`}>
+                        {campaign.is_active ? t('admin.churn.ab.active', 'Active') : t('admin.churn.ab.ended', 'Ended')}
+                      </span>
+                      {campaign.is_active && totalSent >= 2 && (
+                        <button onClick={() => handleEndCampaign(campaign.id, aWins ? 'A' : 'B')}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
+                          <StopCircle size={11} /> {t('admin.churn.ab.endCampaign', 'End')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 p-4">
+                    {[
+                      { key: 'A', label: t('admin.churn.ab.variantA', 'Variant A'), data: campaign.variant_a, stat: stats.a, isWinner: aWins && !tied && totalSent >= 2 },
+                      { key: 'B', label: t('admin.churn.ab.variantB', 'Variant B'), data: campaign.variant_b, stat: stats.b, isWinner: bWins && !tied && totalSent >= 2 },
+                    ].map(v => (
+                      <div key={v.key} className={`rounded-xl p-3.5 border transition-colors ${v.isWinner ? 'bg-[#10B981]/5 border-[#10B981]/25' : 'bg-[#111827] border-white/6'}`}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <p className="text-[12px] font-semibold text-[#E5E7EB]">{v.label}</p>
+                          {v.isWinner && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
+                              <Trophy size={10} /> {t('admin.churn.ab.winner', 'Winner')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-[#9CA3AF] mb-0.5 truncate">
+                          {v.data.offer_type || t('admin.churn.ab.noOffer', 'No offer')}
+                          {v.data.discount_pct ? ` (${v.data.discount_pct}%)` : ''}
+                          {v.data.free_days ? ` · ${v.data.free_days}d ${t('admin.churn.ab.free', 'free')}` : ''}
+                        </p>
+                        {v.data.message && (
+                          <p className="text-[10px] text-[#6B7280] line-clamp-2 mb-3">{v.data.message}</p>
+                        )}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.numSent', 'Sent')}</span>
+                            <span className="text-[12px] font-semibold text-[#E5E7EB]">{v.stat.sent}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.responseRate', 'Response Rate')}</span>
+                            <span className={`text-[12px] font-semibold ${v.stat.responseRate > 0 ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>{v.stat.responseRate}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.returnRate', 'Return Rate')}</span>
+                            <span className={`text-[12px] font-bold ${v.stat.returnRate > 0 ? 'text-[#10B981]' : 'text-[#6B7280]'}`}>{v.stat.returnRate}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}

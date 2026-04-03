@@ -82,6 +82,21 @@ function base64UrlEncode(data: Uint8Array): string {
     .replace(/=+$/, '');
 }
 
+/**
+ * Constant-time comparison to prevent timing attacks.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    result |= bufA[i] ^ bufB[i];
+  }
+  return result === 0;
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -94,8 +109,8 @@ serve(async (req: Request) => {
     const cronSecret = Deno.env.get('CRON_SECRET');
     const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
 
-    const isServiceRole = token === SUPABASE_SERVICE_ROLE_KEY;
-    const isCronAuth = cronSecret && incomingSecret === cronSecret;
+    const isServiceRole = token && timingSafeEqual(token, SUPABASE_SERVICE_ROLE_KEY);
+    const isCronAuth = cronSecret && incomingSecret && timingSafeEqual(incomingSecret, cronSecret);
 
     let profileId: string | undefined;
     let reason = 'punch_card_update';

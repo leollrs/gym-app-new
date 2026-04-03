@@ -121,7 +121,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSaveNote = async () => {
     setNoteSaving(true);
-    await supabase.from('profiles').update({ admin_note: note || null }).eq('id', member.id);
+    await supabase.from('profiles').update({ admin_note: note || null }).eq('id', member.id).eq('gym_id', gymId);
     setNoteSaving(false);
     onNoteSaved(member.id, note);
   };
@@ -132,7 +132,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     await supabase.from('profiles').update({
       qr_external_id: payload,
       qr_code_payload: payload,
-    }).eq('id', member.id);
+    }).eq('id', member.id).eq('gym_id', gymId);
     setExternalIdSaving(false);
   };
 
@@ -171,7 +171,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       membership_status: nextStatus,
       membership_status_updated_at: new Date().toISOString(),
       membership_status_reason: statusReason || null,
-    }).eq('id', member.id);
+    }).eq('id', member.id).eq('gym_id', gymId);
     setMemberStatus(nextStatus);
     setPendingAction(null);
     setShowStatusConfirm(false);

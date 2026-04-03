@@ -13,7 +13,7 @@ import { getAllPalettes, getPalette, DEFAULT_PALETTE } from '../../lib/palettes'
 import { analyzeColorPair, autoHarmonize } from '../../lib/themeGenerator';
 import { validateImageFile } from '../../lib/validateImage';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, FilterBar, AdminModal } from '../../components/admin';
+import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -141,14 +141,15 @@ function RewardConfig({ reward, onChange, labelPrefix, t }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] font-semibold text-[#E5E7EB]">{labelPrefix}</p>
+      <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{labelPrefix}</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.referral.rewardType')}</label>
+          <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.rewardType')}</label>
           <select
             value={reward.type}
             onChange={e => onChange({ ...reward, type: e.target.value })}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none"
+            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none appearance-none transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
           >
             {REWARD_TYPES.map(rt => (
               <option key={rt} value={rt}>{typeLabels[rt]}</option>
@@ -156,24 +157,26 @@ function RewardConfig({ reward, onChange, labelPrefix, t }) {
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.referral.rewardValue')}</label>
+          <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.rewardValue')}</label>
           <input
             type={reward.type === 'custom' ? 'text' : 'number'}
             value={reward.value}
             onChange={e => onChange({ ...reward, value: e.target.value })}
             placeholder={reward.type === 'discount' ? '%' : reward.type === 'points' ? '5000' : ''}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
           />
         </div>
       </div>
       <div>
-        <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.referral.rewardLabel')}</label>
+        <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.referral.rewardLabel')}</label>
         <input
           type="text"
           value={reward.label}
           onChange={e => onChange({ ...reward, label: e.target.value })}
           placeholder={t('admin.referral.rewardLabelPlaceholder')}
-          className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+          className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
         />
       </div>
     </div>
@@ -212,7 +215,7 @@ export default function AdminSettings() {
 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState(TAB_GENERAL);
+  const [settingsTab, setSettingsTab] = useState('general');
 
   // Editable fields
   const [name, setName]           = useState('');
@@ -295,11 +298,12 @@ export default function AdminSettings() {
   const { data: settingsData, isLoading } = useQuery({
     queryKey: adminKeys.settings(gymId),
     queryFn: async () => {
-      const [gymResult, brandingResult, hoursResult, followupResult] = await Promise.all([
+      const [gymResult, brandingResult, hoursResult, followupResult, digestConfigResult] = await Promise.all([
         supabase.from('gyms').select('*').eq('id', gymId).single(),
         supabase.from('gym_branding').select('primary_color, accent_color, welcome_message, logo_url, palette_name').eq('gym_id', gymId).maybeSingle(),
         supabase.from('gym_hours').select('*').eq('gym_id', gymId).order('day_of_week'),
         supabase.from('churn_followup_settings').select('digest_enabled, digest_day').eq('gym_id', gymId).single(),
+        supabase.from('admin_digest_config').select('*').eq('gym_id', gymId).eq('profile_id', profile.id).maybeSingle(),
       ]);
       // Track which sections loaded successfully
       const sections = {
@@ -326,7 +330,7 @@ export default function AdminSettings() {
       if (path) {
         signedLogoUrl = await getSignedLogoUrl(path);
       }
-      return { gym: gymData, branding: brandingData, signedLogoUrl, hours: hoursData, followup: followupData, loadedSections: sections };
+      return { gym: gymData, branding: brandingData, signedLogoUrl, hours: hoursData, followup: followupData, digestConfig: digestConfigResult.data, loadedSections: sections };
     },
     enabled: !!gymId,
   });
@@ -346,11 +350,18 @@ export default function AdminSettings() {
       if (gym.referral_config) {
         setReferralConfig({ ...DEFAULT_REFERRAL_CONFIG, ...gym.referral_config });
       }
-      // Load digest config from gym JSONB column
-      if (gym.digest_config) {
-        const dc = gym.digest_config;
+      // Load digest config from admin_digest_config table
+      const dc = settingsData?.digestConfig;
+      if (dc) {
         if (dc.frequency) setDigestFrequency(dc.frequency);
-        if (dc.content) setDigestContent(prev => ({ ...prev, ...dc.content }));
+        setDigestContent(prev => ({
+          ...prev,
+          churn_alerts: dc.include_churn ?? prev.churn_alerts,
+          attendance_trends: dc.include_attendance ?? prev.attendance_trends,
+          new_members: dc.include_signups ?? prev.new_members,
+          challenge_updates: dc.include_challenges ?? prev.challenge_updates,
+          revenue_redemptions: dc.include_revenue ?? prev.revenue_redemptions,
+        }));
       }
     }
     // Load digest settings from churn_followup_settings
@@ -583,15 +594,23 @@ export default function AdminSettings() {
         }, { onConflict: 'gym_id' });
       if (fupErr) throw fupErr;
 
-      // Save extended config (frequency, content) to gyms.digest_config JSONB
-      const { error: gymErr } = await supabase
-        .from('gyms')
-        .update({
-          digest_config: { frequency: digestFrequency, content: digestContent },
+      // Save extended config (frequency, content) to admin_digest_config
+      const { error: dcErr } = await supabase
+        .from('admin_digest_config')
+        .upsert({
+          gym_id: gymId,
+          profile_id: profile.id,
+          enabled: digestEnabled,
+          frequency: digestFrequency,
+          day_of_week: digestDay,
+          include_churn: digestContent.churn_alerts ?? true,
+          include_attendance: digestContent.attendance_trends ?? true,
+          include_signups: digestContent.new_members ?? true,
+          include_challenges: digestContent.challenge_updates ?? true,
+          include_revenue: digestContent.revenue_redemptions ?? true,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', gymId);
-      if (gymErr) throw gymErr;
+        }, { onConflict: 'gym_id,profile_id' });
+      if (dcErr) throw dcErr;
 
       queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
       setDigestSaved(true);
@@ -755,8 +774,22 @@ export default function AdminSettings() {
           }, { onConflict: 'gym_id' }),
         );
         promises.push(
+          supabase.from('admin_digest_config').upsert({
+            gym_id: gymId,
+            profile_id: profile.id,
+            enabled: digestEnabled,
+            frequency: digestFrequency,
+            day_of_week: digestDay,
+            include_churn: digestContent.churn_alerts ?? true,
+            include_attendance: digestContent.attendance_trends ?? true,
+            include_signups: digestContent.new_members ?? true,
+            include_challenges: digestContent.challenge_updates ?? true,
+            include_revenue: digestContent.revenue_redemptions ?? true,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'gym_id,profile_id' }),
+        );
+        promises.push(
           supabase.from('gyms').update({
-            digest_config: { frequency: digestFrequency, content: digestContent },
             referral_config: {
               ...referralConfig,
               max_per_month: referralConfig.max_per_month ? Number(referralConfig.max_per_month) : null,
@@ -859,7 +892,7 @@ export default function AdminSettings() {
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied</p>
+        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger, #EF4444)' }}>{t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}</p>
       </div>
     );
   }
@@ -898,32 +931,17 @@ export default function AdminSettings() {
         </div>
       )}
 
-      {/* ── Live Config Summary ── */}
+      {/* ── Compact Live Config Summary ── */}
       <FadeIn delay={0}>
-        <AdminCard padding="p-4" className="mb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)' }}>
-            {t('admin.settings.liveConfigTitle', 'Current Live Config')}
-          </p>
-          <div className="flex flex-wrap gap-2">
+        <AdminCard padding="p-3 px-4" className="mb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider mr-1" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.settings.liveConfigTitle', 'Current Live Config')}
+            </p>
             <ConfigPill
-              label={t('admin.settings.summaryRegistration', 'Registration')}
-              value={regModeLabel}
-              color={registrationMode === 'invite_only' ? 'var(--color-warning)' : 'var(--color-success)'}
-            />
-            <ConfigPill
-              label={t('admin.settings.summaryClasses', 'Classes')}
-              value={classesEnabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
-              color={classesEnabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
-            />
-            <ConfigPill
-              label={t('admin.settings.summaryDigest', 'Digest')}
-              value={digestEnabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
-              color={digestEnabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
-            />
-            <ConfigPill
-              label={t('admin.settings.summaryReferral', 'Referral')}
-              value={referralConfig.enabled ? t('admin.settings.summaryYes', 'Yes') : t('admin.settings.summaryNo', 'No')}
-              color={referralConfig.enabled ? 'var(--color-success)' : 'var(--color-text-muted)'}
+              label={t('admin.settings.gymName', 'Gym Name')}
+              value={name || '—'}
+              color="var(--color-accent)"
             />
             <ConfigPill
               label={t('admin.settings.summaryPalette', 'Palette')}
@@ -931,25 +949,28 @@ export default function AdminSettings() {
               color="var(--color-accent)"
             />
             <ConfigPill
-              label={t('admin.settings.summaryClosures', 'Closures')}
-              value={String(closures.length)}
-              color={closures.length > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)'}
+              label={t('admin.settings.summaryRegistration', 'Registration')}
+              value={regModeLabel}
+              color={registrationMode === 'invite_only' ? 'var(--color-warning)' : 'var(--color-success)'}
             />
           </div>
         </AdminCard>
       </FadeIn>
 
       {/* ── Tab Navigation ── */}
-      <div className="mb-5">
-        <FilterBar options={tabOptions} active={activeTab} onChange={setActiveTab} />
-      </div>
+      <AdminTabs
+        tabs={tabOptions}
+        active={settingsTab}
+        onChange={setSettingsTab}
+        className="mb-5"
+      />
 
       {error && <p className="text-[13px] text-red-400 mb-4">{error}</p>}
 
       {/* ════════════════════════════════════════════════════════ */}
       {/* ── GENERAL TAB ──                                       */}
       {/* ════════════════════════════════════════════════════════ */}
-      {activeTab === TAB_GENERAL && (
+      {settingsTab === TAB_GENERAL && (
         <div className="space-y-4">
           {/* Gym Info */}
           <FadeIn delay={0}>
@@ -959,7 +980,8 @@ export default function AdminSettings() {
                 <div>
                   <label htmlFor="gym-name" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymName', 'Gym Name')}</label>
                   <input id="gym-name" value={name} onChange={e => setName(e.target.value)}
-                    className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+                    className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
+                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                 </div>
                 {/* Gym Slug */}
                 <div>
@@ -974,7 +996,7 @@ export default function AdminSettings() {
           <FadeIn delay={20}>
             <AdminCard hover padding="p-5">
               <SectionLabel icon={Globe} className="mb-3">{t('admin.settings.language')}</SectionLabel>
-              <div className="rounded-2xl overflow-hidden divide-y" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+              <div className="rounded-2xl min-w-0 divide-y" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                 {LANGUAGES.map(lang => (
                   <button
                     key={lang.code}
@@ -1035,10 +1057,12 @@ export default function AdminSettings() {
                         ) : (
                           <div className="flex items-center gap-2 flex-1">
                             <input type="time" value={dh.open_time} onChange={e => updateDay('open_time', e.target.value)}
-                              className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                              className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none w-[110px] transition-colors"
+                              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                             <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.to', 'to')}</span>
                             <input type="time" value={dh.close_time} onChange={e => updateDay('close_time', e.target.value)}
-                              className="bg-[#111827] border border-white/6 rounded-lg px-2.5 py-1.5 text-[12px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 w-[110px]" />
+                              className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none w-[110px] transition-colors"
+                              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                           </div>
                         )}
                       </div>
@@ -1058,21 +1082,23 @@ export default function AdminSettings() {
                 <div className="space-y-3 mb-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.date')}</label>
+                      <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.closures.date')}</label>
                       <input
                         type="date"
                         value={closureDate}
                         onChange={e => setClosureDate(e.target.value)}
                         min={new Date().toISOString().slice(0, 10)}
-                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+                        className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.reason')}</label>
+                      <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.closures.reason')}</label>
                       <select
                         value={closureReason}
                         onChange={e => setClosureReason(e.target.value)}
-                        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none"
+                        className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none appearance-none transition-colors"
+                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                       >
                         <option value="holiday">{t('admin.closures.reasonHoliday')}</option>
                         <option value="maintenance">{t('admin.closures.reasonMaintenance')}</option>
@@ -1082,28 +1108,31 @@ export default function AdminSettings() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.closures.name')}</label>
+                    <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.closures.name')}</label>
                     <input
                       type="text"
                       value={closureName}
                       onChange={e => setClosureName(e.target.value)}
                       placeholder={t('admin.closures.namePlaceholder')}
-                      className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40"
+                      className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                     />
                   </div>
-                  <button
-                    onClick={handleAddClosure}
-                    disabled={!closureDate || closureSaving}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-50"
-                    style={{
-                      backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                      color: 'var(--color-accent)',
-                      border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                    }}
-                  >
-                    <Plus size={14} />
-                    {closureSaving ? t('admin.closures.adding') : t('admin.closures.addClosure')}
-                  </button>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleAddClosure}
+                      disabled={!closureDate || closureSaving}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                        color: 'var(--color-accent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                      }}
+                    >
+                      <Plus size={14} />
+                      {closureSaving ? t('admin.closures.adding') : t('admin.closures.addClosure')}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Upcoming closures list */}
@@ -1223,11 +1252,11 @@ export default function AdminSettings() {
       {/* ════════════════════════════════════════════════════════ */}
       {/* ── BRANDING TAB ──                                      */}
       {/* ════════════════════════════════════════════════════════ */}
-      {activeTab === TAB_BRANDING && (
-        <div className="space-y-4">
-          <div className="grid xl:grid-cols-12 gap-4">
+      {settingsTab === TAB_BRANDING && (
+        <div className="space-y-4 min-w-0">
+          <div className="grid xl:grid-cols-12 gap-4 min-w-0">
             {/* Logo & Welcome */}
-            <FadeIn delay={0} className="xl:col-span-6">
+            <FadeIn delay={0} className="xl:col-span-6 min-w-0 min-w-0">
               <AdminCard hover padding="p-5">
                 <SectionLabel className="mb-4">{t('admin.settings.branding', 'Branding')}</SectionLabel>
                 <div className="space-y-4">
@@ -1235,15 +1264,16 @@ export default function AdminSettings() {
                     <label htmlFor="welcome-msg" className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.welcomeMessage', 'Welcome Message')}</label>
                     <textarea id="welcome-msg" value={welcomeMsg} onChange={e => setWelcome(e.target.value)} rows={2}
                       placeholder={t('admin.settings.welcomePlaceholder')}
-                      className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
+                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none transition-colors"
+                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                   </div>
                   <div>
                     <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.gymLogo', 'Gym Logo')}</label>
                     <div className="flex items-center gap-3">
                       {logoUrl ? (
-                        <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} className="w-12 h-12 rounded-xl object-contain bg-[#111827] border border-white/6 p-1" />
+                        <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} className="w-12 h-12 rounded-xl object-contain p-1" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }} />
                       ) : (
-                        <div className="w-12 h-12 rounded-xl bg-[#111827] border border-white/6 flex items-center justify-center flex-shrink-0">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                           <ImageIcon size={20} className="text-[#6B7280]" />
                         </div>
                       )}
@@ -1264,23 +1294,27 @@ export default function AdminSettings() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
                       <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.primaryColor', 'Primary Color')}</label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <input type="color" value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                          className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
+                          className="w-10 h-10 rounded-xl cursor-pointer p-1 flex-shrink-0"
+                          style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }} />
                         <input value={primaryColor} onChange={e => setPrimary(e.target.value)}
-                          className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
+                          className="flex-1 min-w-0 rounded-xl px-3 py-2 text-[13px] outline-none font-mono transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                       </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.settings.accentColor', 'Accent Color')}</label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <input type="color" value={accentColor} onChange={e => setAccent(e.target.value)}
-                          className="w-10 h-10 rounded-xl border border-white/6 bg-[#111827] cursor-pointer p-1" />
+                          className="w-10 h-10 rounded-xl cursor-pointer p-1 flex-shrink-0"
+                          style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }} />
                         <input value={accentColor} onChange={e => setAccent(e.target.value)}
-                          className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 font-mono" />
+                          className="flex-1 min-w-0 rounded-xl px-3 py-2 text-[13px] outline-none font-mono transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
                       </div>
                     </div>
                   </div>
@@ -1289,7 +1323,7 @@ export default function AdminSettings() {
             </FadeIn>
 
             {/* Theme & Colors */}
-            <FadeIn delay={30} className="xl:col-span-6">
+            <FadeIn delay={30} className="xl:col-span-6 min-w-0 min-w-0">
               <AdminCard hover padding="p-5">
                 <SectionLabel icon={Palette} className="mb-2">{t('admin.settings.themeColors', 'Theme & Colors')}</SectionLabel>
                 <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
@@ -1297,7 +1331,7 @@ export default function AdminSettings() {
                 </p>
 
                 {/* Palette Grid */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                   {getAllPalettes().map((palette) => {
                     const isActive = selectedPalette === palette.id;
                     return (
@@ -1384,10 +1418,10 @@ export default function AdminSettings() {
                   </button>
 
                   {customExpanded && (
-                    <div className="px-4 pb-4 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
+                    <div className="px-4 pb-4 space-y-3 min-w-0">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {/* Primary color */}
-                        <div>
+                        <div className="min-w-0">
                           <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
                             {t('admin.settings.primaryColor', 'Primary Color')}
                           </label>
@@ -1584,11 +1618,11 @@ export default function AdminSettings() {
       {/* ════════════════════════════════════════════════════════ */}
       {/* ── OPERATIONS TAB ──                                    */}
       {/* ════════════════════════════════════════════════════════ */}
-      {activeTab === TAB_OPERATIONS && (
-        <div className="space-y-4">
-          <div className="grid xl:grid-cols-12 gap-4">
+      {settingsTab === TAB_OPERATIONS && (
+        <div className="space-y-4 min-w-0">
+          <div className="grid xl:grid-cols-12 gap-4 min-w-0">
             {/* Weekly Digest */}
-            <FadeIn delay={0} className="xl:col-span-6">
+            <FadeIn delay={0} className="xl:col-span-6 min-w-0 min-w-0">
               <AdminCard hover padding="p-5">
                 <SectionLabel icon={Mail} className="mb-4">{t('admin.digest.sectionTitle')}</SectionLabel>
 
@@ -1635,7 +1669,7 @@ export default function AdminSettings() {
                           {digestFrequency === 'monthly' ? t('admin.digest.deliveryDate') : t('admin.digest.deliveryDay')}
                         </label>
                         {digestFrequency === 'weekly' && (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                             {DAY_KEYS.map((dayKey, idx) => {
                               const isActive = digestDay === idx;
                               return (
@@ -1819,7 +1853,7 @@ export default function AdminSettings() {
             </FadeIn>
 
             {/* Referral Program */}
-            <FadeIn delay={30} className="xl:col-span-6">
+            <FadeIn delay={30} className="xl:col-span-6 min-w-0 min-w-0">
               <AdminCard hover padding="p-5">
                 <SectionLabel icon={Users} className="mb-4">{t('admin.referral.sectionTitle')}</SectionLabel>
 
@@ -1881,7 +1915,8 @@ export default function AdminSettings() {
                           value={referralConfig.max_per_month ?? ''}
                           onChange={e => setReferralConfig(c => ({ ...c, max_per_month: e.target.value ? Number(e.target.value) : null }))}
                           placeholder={t('admin.referral.maxPerMonthPlaceholder')}
-                          className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                          className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                         />
                       </div>
                     </>
@@ -1913,15 +1948,17 @@ export default function AdminSettings() {
                 </button>
                 {offersOpen && (
                   <div className="px-5 pb-5 border-t pt-4 space-y-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                    {/* Add offer button */}
-                    <button
-                      onClick={() => openOfferModal()}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all"
-                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
-                    >
-                      <Plus size={14} />
-                      {t('admin.offers.addOffer')}
-                    </button>
+                    {/* Add offer button — right-aligned */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => openOfferModal()}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all"
+                        style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+                      >
+                        <Plus size={14} />
+                        {t('admin.offers.addOffer')}
+                      </button>
+                    </div>
 
                     {/* Offers list */}
                     {offers.length > 0 ? (

@@ -781,7 +781,8 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
     setSearching(true);
     const timer = setTimeout(() => {
       const raw = searchQuery.trim();
-      const pattern = `%${raw.replace(/'/g, "''")}%`;
+      const clean = raw.replace(/[%_\\,()."']/g, '');
+      const pattern = `%${clean}%`;
       supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
@@ -1011,7 +1012,7 @@ const SocialFeed = ({ embedded = false }) => {
   const [hasMore, setHasMore]         = useState(true);
   const [friendships, setFriendships] = useState([]);
   const [showFriends, setShowFriends]   = useState(false);
-  const FEED_TABS = ['forYou', 'recent', 'mine'];
+  const FEED_TABS = ['forYou', 'mine'];
   const [tab, setTab]                 = useState('forYou');
   const [friendStreaks, setFriendStreaks] = useState([]);
   const [reportedIds, setReportedIds] = useState(new Set());
@@ -1259,10 +1260,10 @@ const SocialFeed = ({ embedded = false }) => {
         showToast(validation.error, 'error');
         return;
       }
-      const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic' };
+      const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
       const ext = mimeToExt[validation.mime] || 'jpg';
       const path = `social-posts/${user.id}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(path, photoFile);
+      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(path, photoFile, { contentType: validation.mime || photoFile.type });
       if (!uploadErr) {
         const { data: urlData } = supabase.storage.from('social-posts').getPublicUrl(path);
         photo_url = urlData?.publicUrl ?? null;
@@ -1334,22 +1335,16 @@ const SocialFeed = ({ embedded = false }) => {
     return [...items].sort((a, b) => scoreFeedItem(b, friendIds) - scoreFeedItem(a, friendIds));
   }, [visibleFeed, friendIds, user?.id]);
 
-  // Recent feed — pure chronological
-  const recentFeed = useMemo(
-    () => visibleFeed.filter(item => item.actor_id !== user?.id),
-    [visibleFeed, user?.id]
-  );
-
   const myFeed = useMemo(
     () => visibleFeed.filter(item => item.actor_id === user?.id),
     [visibleFeed, user?.id]
   );
 
-  const activeFeed = tab === 'forYou' ? rankedFeed : tab === 'recent' ? recentFeed : myFeed;
+  const activeFeed = tab === 'forYou' ? rankedFeed : myFeed;
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={!embedded ? { background: 'var(--color-bg-primary)' } : undefined}>
-      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-8'}`}>
+      <div className={`${embedded ? '' : 'max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (
@@ -1435,7 +1430,6 @@ const SocialFeed = ({ embedded = false }) => {
           <UnderlineTabs
             tabs={[
               { key: 'forYou', label: t('social.tabs.forYou') },
-              { key: 'recent', label: t('social.tabs.recent') },
               { key: 'mine', label: t('social.tabs.mine') },
             ]}
             activeIndex={feedTabIndex}
@@ -1466,7 +1460,7 @@ const SocialFeed = ({ embedded = false }) => {
 
         {/* Swipeable feed panels */}
         {!loading && (
-          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['forYou', 'recent', 'mine']}>
+          <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['forYou', 'mine']}>
             {/* For You tab (ranked) */}
             <div>
               {rankedFeed.length === 0 ? (
@@ -1480,40 +1474,6 @@ const SocialFeed = ({ embedded = false }) => {
               ) : (
                 <div className="flex flex-col gap-5">
                   {rankedFeed.map((item) => (
-                    <FeedCard
-                      key={item.id}
-                      item={item}
-                      currentUserId={user.id}
-                      onToggleLike={handleReact}
-                      onReact={handleReact}
-                      onReport={handleReport}
-                      onHide={handleHide}
-                      onMute={handleMute}
-                      onDelete={handleDelete}
-                      onProfilePreview={setPreviewUserId}
-                      reportedIds={reportedIds}
-                      t={t}
-                    />
-                  ))}
-                  <LoadMoreButton hasMore={hasMore} loading={loadingMore} onLoadMore={handleLoadMore} />
-                  {!hasMore && <p className="text-center text-[13px] py-8 font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('social.allCaughtUp')}</p>}
-                </div>
-              )}
-            </div>
-
-            {/* Recent tab (chronological) */}
-            <div>
-              {recentFeed.length === 0 ? (
-                <EmptyState
-                  icon={Users}
-                  title={t('social.noFriendActivity')}
-                  description={t('social.noFriendActivityHint')}
-                  actionLabel={t('social.findFriends')}
-                  onAction={() => setShowFriends(true)}
-                />
-              ) : (
-                <div className="flex flex-col gap-5">
-                  {recentFeed.map((item) => (
                     <FeedCard
                       key={item.id}
                       item={item}

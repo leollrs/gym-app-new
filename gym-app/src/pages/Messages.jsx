@@ -1,13 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { MessageCircle, Send, ArrowLeft, Search, Plus, X, ChevronLeft, Archive, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
+import { sanitize } from '../lib/sanitize';
 import { Capacitor } from '@capacitor/core';
-import { Keyboard } from '@capacitor/keyboard';
+
+// Keyboard plugin — only available on native platforms
+let Keyboard = null;
+if (Capacitor.isNativePlatform()) {
+  import('@capacitor/keyboard').then(mod => { Keyboard = mod.Keyboard; }).catch(() => {});
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 const formatTime = (dateStr, t) => {
@@ -92,11 +98,12 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
       }
 
       // Search within friends only
+      const safeQuery = query.replace(/[%_\\,()."']/g, '');
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
         .in('id', friendIds)
-        .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
+        .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%`)
         .limit(20);
       setResults(data || []);
       setLoading(false);
@@ -193,7 +200,7 @@ const ChatView = ({ conversationId, onBack }) => {
 
   // Native keyboard events — get exact height from Capacitor plugin
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    if (!Capacitor.isNativePlatform() || !Keyboard) return;
     const listeners = [];
     Keyboard.addListener('keyboardWillShow', (info) => {
       setKbHeight(info.keyboardHeight);
@@ -459,7 +466,7 @@ const ChatView = ({ conversationId, onBack }) => {
                     }`}
                     style={!isSent ? { color: 'var(--color-text-primary)' } : undefined}
                   >
-                    {msg.body}
+                    {sanitize(msg.body)}
                   </div>
                 </div>
                 {/* Read receipt — only on the last sent message */}
@@ -508,12 +515,221 @@ const ChatView = ({ conversationId, onBack }) => {
   );
 };
 
+// ── Swipeable Row (Apple-style swipe actions) ──────────────────
+const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, rowId, t }) => {
+  const rowRef = useRef(null);
+  const startXRef = useRef(0);
+  const currentXRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const [offsetX, setOffsetX] = useState(0);
+  const [isOpen, setIsOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const SNAP_THRESHOLD = 80;
+  const FULL_SWIPE_THRESHOLD = 200;
+  const OPEN_WIDTH = 150; // 75px per button
+
+  // Close when another row opens
+  useEffect(() => {
+    if (openRowId !== rowId && isOpen) {
+      setTransitioning(true);
+      setOffsetX(0);
+      setIsOpen(false);
+      setDeleteConfirm(false);
+      setTimeout(() => setTransitioning(false), 300);
+    }
+  }, [openRowId, rowId, isOpen]);
+
+  const handleStart = useCallback((clientX) => {
+    startXRef.current = clientX;
+    currentXRef.current = clientX;
+    isDraggingRef.current = false;
+    setTransitioning(false);
+  }, []);
+
+  const handleMove = useCallback((clientX) => {
+    const diff = startXRef.current - clientX;
+    if (Math.abs(diff) > 10) {
+      isDraggingRef.current = true;
+    }
+    if (!isDraggingRef.current) return;
+
+    currentXRef.current = clientX;
+    // Only allow swiping left (positive diff = reveal actions)
+    const newOffset = isOpen ? Math.max(0, OPEN_WIDTH + diff) : Math.max(0, diff);
+    setOffsetX(Math.min(newOffset, 280));
+  }, [isOpen]);
+
+  const handleEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
+
+    setTransitioning(true);
+    setTimeout(() => setTransitioning(false), 300);
+
+    if (offsetX > FULL_SWIPE_THRESHOLD) {
+      // Full swipe — trigger delete directly
+      setOffsetX(0);
+      setIsOpen(false);
+      setDeleteConfirm(false);
+      onDelete();
+      return;
+    }
+
+    if (offsetX > SNAP_THRESHOLD) {
+      // Snap open
+      setOffsetX(OPEN_WIDTH);
+      setIsOpen(true);
+      setOpenRowId(rowId);
+    } else {
+      // Snap closed
+      setOffsetX(0);
+      setIsOpen(false);
+      setDeleteConfirm(false);
+    }
+  }, [offsetX, onDelete, rowId, setOpenRowId, isOpen]);
+
+  const handleClose = useCallback(() => {
+    setTransitioning(true);
+    setOffsetX(0);
+    setIsOpen(false);
+    setDeleteConfirm(false);
+    setTimeout(() => setTransitioning(false), 300);
+  }, []);
+
+  const handleArchiveClick = useCallback((e) => {
+    e.stopPropagation();
+    handleClose();
+    onArchive();
+  }, [onArchive, handleClose]);
+
+  const handleDeleteClick = useCallback((e) => {
+    e.stopPropagation();
+    if (!deleteConfirm) {
+      setDeleteConfirm(true);
+      return;
+    }
+    handleClose();
+    onDelete();
+  }, [deleteConfirm, onDelete, handleClose]);
+
+  // Touch events
+  const onTouchStart = useCallback((e) => handleStart(e.touches[0].clientX), [handleStart]);
+  const onTouchMove = useCallback((e) => handleMove(e.touches[0].clientX), [handleMove]);
+  const onTouchEnd = useCallback(() => handleEnd(), [handleEnd]);
+
+  // Mouse events for desktop
+  const onMouseDown = useCallback((e) => {
+    handleStart(e.clientX);
+    const onMouseMove = (ev) => handleMove(ev.clientX);
+    const onMouseUp = () => {
+      handleEnd();
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [handleStart, handleMove, handleEnd]);
+
+  // Prevent child click when dragging
+  const onClickCapture = useCallback((e) => {
+    if (isDraggingRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, []);
+
+  return (
+    <div ref={rowRef} style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Action buttons (revealed behind the row) */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        height: '100%',
+      }}>
+        <button
+          onClick={handleArchiveClick}
+          style={{
+            width: 75,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            background: 'var(--color-bg-elevated, #374151)',
+            color: 'var(--color-text-primary, #fff)',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 600,
+          }}
+        >
+          <Archive size={20} />
+          <span>{t('messages.archive', { defaultValue: 'Archive' })}</span>
+        </button>
+        <button
+          onClick={handleDeleteClick}
+          style={{
+            width: deleteConfirm ? 100 : 75,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            background: 'var(--color-danger, #EF4444)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 600,
+            transition: 'width 0.2s ease',
+          }}
+        >
+          <Trash2 size={20} />
+          <span>{deleteConfirm ? t('messages.deleteConfirm', { defaultValue: 'Delete?' }) : t('messages.deleteConversation', { defaultValue: 'Delete' })}</span>
+        </button>
+      </div>
+
+      {/* Sliding row content */}
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onClickCapture={onClickCapture}
+        style={{
+          transform: `translateX(-${offsetX}px)`,
+          transition: transitioning ? 'transform 0.3s ease' : 'none',
+          position: 'relative',
+          zIndex: 1,
+          background: 'var(--color-bg-primary, #111)',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'pan-y',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
 // ── Conversation List View (iMessage style) ─────────────────────
 const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
   const { t } = useTranslation('pages');
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [openRowId, setOpenRowId] = useState(null);
+  const [archivedIds, setArchivedIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('archived_conversations') || '[]');
+    } catch { return []; }
+  });
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -575,23 +791,61 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Realtime: reload when new messages arrive
+  // Realtime: reload when new messages arrive (debounced to prevent excessive refetches)
   useEffect(() => {
+    let debounceTimer;
     const channel = supabase
       .channel('dm-list')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        () => { loadConversations(); }
+        () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => loadConversations(), 2000);
+        }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel); };
   }, [loadConversations]);
+
+  // Close swipe row when tapping outside
+  const handleListClick = useCallback(() => {
+    if (openRowId) setOpenRowId(null);
+  }, [openRowId]);
+
+  const handleArchive = useCallback((convId) => {
+    setArchivedIds(prev => {
+      const next = [...prev, convId];
+      localStorage.setItem('archived_conversations', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleDelete = useCallback(async (convId) => {
+    // Optimistic removal from local state
+    setConversations(prev => prev.filter(c => c.id !== convId));
+    // Delete messages then conversation from database
+    await supabase.from('direct_messages').delete().eq('conversation_id', convId);
+    await supabase.from('conversations').delete().eq('id', convId);
+  }, []);
+
+  // Filter conversations by search query and exclude archived
+  const filteredConversations = useMemo(() => {
+    let result = conversations.filter(c => !archivedIds.includes(c.id));
+    if (!searchQuery.trim()) return result;
+    const q = searchQuery.toLowerCase();
+    return result.filter(conv => {
+      const name = (conv.otherUser?.full_name || '').toLowerCase();
+      const username = (conv.otherUser?.username || '').toLowerCase();
+      const lastMsg = (conv.lastMessage?.body || '').toLowerCase();
+      return name.includes(q) || username.includes(q) || lastMsg.includes(q);
+    });
+  }, [conversations, searchQuery, archivedIds]);
 
   return (
     <div>
-      {/* Header — clean, no extra safe-area padding (handled by layout) */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           {onGoBack && (
@@ -618,6 +872,31 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
         </button>
       </div>
 
+      {/* Search bar */}
+      {!loading && conversations.length > 0 && (
+        <div className="px-4 pb-2">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t('messages.searchConversations', { defaultValue: 'Search conversations...' })}
+              className="w-full pl-10 pr-9 py-2.5 rounded-xl text-[14px] border border-white/[0.06] bg-white/[0.04] outline-none focus:border-[var(--color-accent,#D4AF37)]/40 transition-colors"
+              style={{ color: 'var(--color-text-primary)' }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.1] flex items-center justify-center"
+              >
+                <X size={12} style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
@@ -634,61 +913,77 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
             {t('messages.startConversation')}
           </p>
         </div>
+      ) : filteredConversations.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-2 px-4">
+          <Search size={24} style={{ color: 'var(--color-text-subtle)' }} />
+          <p className="text-[14px]" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('messages.noSearchResults', { defaultValue: 'No conversations match your search' })}
+          </p>
+        </div>
       ) : (
-        <div>
-          {conversations.map((conv, idx) => {
+        <div onClick={handleListClick}>
+          {filteredConversations.map((conv, idx) => {
             const other = conv.otherUser;
             const displayName = other?.full_name || other?.username || 'Member';
             const preview = conv.lastMessage?.body
-              ? conv.lastMessage.body.length > 60
+              ? sanitize(conv.lastMessage.body.length > 60
                 ? conv.lastMessage.body.slice(0, 60) + '...'
-                : conv.lastMessage.body
+                : conv.lastMessage.body)
               : '';
             const isSentByMe = conv.lastMessage?.sender_id === user.id;
             const hasUnread = conv.unreadCount > 0;
 
             return (
-              <button
+              <SwipeableRow
                 key={conv.id}
-                onClick={() => onSelectConversation(conv.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors text-left active:bg-white/[0.05]"
-                style={idx < conversations.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : undefined}
+                rowId={conv.id}
+                openRowId={openRowId}
+                setOpenRowId={setOpenRowId}
+                onArchive={() => handleArchive(conv.id)}
+                onDelete={() => handleDelete(conv.id)}
+                t={t}
               >
-                {/* Avatar — 48px */}
-                <div className="relative flex-shrink-0">
-                  {other && <UserAvatar user={other} size={48} />}
-                  {hasUnread && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--color-accent,#D4AF37)] text-black text-[10px] font-bold flex items-center justify-center">
-                      {conv.unreadCount > 9 ? '9+' : conv.unreadCount}
-                    </span>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  {/* Name + time on same line */}
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-[16px] truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--color-text-primary)' }}>
-                      {displayName}
-                    </p>
-                    {conv.lastMessage && (
-                      <span className="text-[12px] flex-shrink-0" style={{ color: hasUnread ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}>
-                        {formatTime(conv.lastMessage.created_at, t)}
+                <button
+                  onClick={() => onSelectConversation(conv.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors text-left active:bg-white/[0.05]"
+                  style={idx < filteredConversations.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : undefined}
+                >
+                  {/* Avatar — 48px */}
+                  <div className="relative flex-shrink-0">
+                    {other && <UserAvatar user={other} size={48} />}
+                    {hasUnread && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--color-accent,#D4AF37)] text-black text-[10px] font-bold flex items-center justify-center">
+                        {conv.unreadCount > 9 ? '9+' : conv.unreadCount}
                       </span>
                     )}
                   </div>
-                  {/* Message preview — gray */}
-                  {preview && (
-                    <p className={`text-[14px] truncate mt-0.5 ${hasUnread ? 'font-medium' : ''}`} style={{ color: hasUnread ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-                      {isSentByMe && <span style={{ color: 'var(--color-text-muted)' }}>{t('messages.you', { defaultValue: 'You' })}: </span>}
-                      {preview}
-                    </p>
-                  )}
-                </div>
 
-                {/* Chevron */}
-                <ChevronLeft size={16} className="rotate-180 flex-shrink-0 opacity-30" style={{ color: 'var(--color-text-muted)' }} />
-              </button>
+                  {/* Content */}
+                  <div className="min-w-0 flex-1">
+                    {/* Name + time on same line */}
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-[16px] truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--color-text-primary)' }}>
+                        {displayName}
+                      </p>
+                      {conv.lastMessage && (
+                        <span className="text-[12px] flex-shrink-0" style={{ color: hasUnread ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}>
+                          {formatTime(conv.lastMessage.created_at, t)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Message preview — gray */}
+                    {preview && (
+                      <p className={`text-[14px] truncate mt-0.5 ${hasUnread ? 'font-medium' : ''}`} style={{ color: hasUnread ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                        {isSentByMe && <span style={{ color: 'var(--color-text-muted)' }}>{t('messages.you', { defaultValue: 'You' })}: </span>}
+                        {preview}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Chevron */}
+                  <ChevronLeft size={16} className="rotate-180 flex-shrink-0 opacity-30" style={{ color: 'var(--color-text-muted)' }} />
+                </button>
+              </SwipeableRow>
             );
           })}
         </div>
@@ -701,17 +996,19 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
 const Messages = ({ embedded = false }) => {
   const { conversationId: routeConvId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [showPicker, setShowPicker] = useState(false);
   const [embeddedConvId, setEmbeddedConvId] = useState(null);
 
+  const basePath = location.pathname.startsWith('/trainer') ? '/trainer/messages' : '/messages';
   const conversationId = embedded ? embeddedConvId : routeConvId;
 
   const handleSelectConversation = (id) => {
     if (embedded) {
       setEmbeddedConvId(id);
     } else {
-      navigate(`/messages/${id}`);
+      navigate(`${basePath}/${id}`);
     }
   };
 
@@ -719,7 +1016,7 @@ const Messages = ({ embedded = false }) => {
     if (embedded) {
       setEmbeddedConvId(null);
     } else {
-      navigate('/messages');
+      navigate(basePath);
     }
   };
 
@@ -744,7 +1041,7 @@ const Messages = ({ embedded = false }) => {
       <ConversationList
         onSelectConversation={handleSelectConversation}
         onNewMessage={handleNewMessage}
-        onGoBack={() => navigate('/')}
+        onGoBack={() => navigate(location.pathname.startsWith('/trainer') ? '/trainer' : '/')}
       />
       <MemberPicker
         isOpen={showPicker}

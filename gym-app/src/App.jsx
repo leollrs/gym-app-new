@@ -49,15 +49,16 @@ const Classes          = lazy(() => import('./pages/Classes'));
 const Messages         = lazy(() => import('./pages/Messages'));
 
 // ── Lazy-loaded trainer pages ───────────────────────────────
-const TrainerLayout       = lazy(() => import('./layouts/TrainerLayout'));
-const TrainerDashboard    = lazy(() => import('./pages/trainer/TrainerDashboard'));
-const TrainerClients      = lazy(() => import('./pages/trainer/TrainerClients'));
-const TrainerPrograms     = lazy(() => import('./pages/trainer/TrainerPrograms'));
-const TrainerClientNotes  = lazy(() => import('./pages/trainer/TrainerClientNotes'));
-const TrainerAnalytics    = lazy(() => import('./pages/trainer/TrainerAnalytics'));
-const TrainerSchedule     = lazy(() => import('./pages/trainer/TrainerSchedule'));
-const TrainerWorkoutPlans = lazy(() => import('./pages/trainer/TrainerWorkoutPlans'));
-const TrainerClasses      = lazy(() => import('./pages/trainer/TrainerClasses'));
+const TrainerLayout        = lazy(() => import('./layouts/TrainerLayout'));
+const TrainerHome          = lazy(() => import('./pages/trainer/TrainerHome'));
+const TrainerClients       = lazy(() => import('./pages/trainer/TrainerClients'));
+const TrainerClientDetail  = lazy(() => import('./pages/trainer/TrainerClientDetail'));
+const TrainerCalendar      = lazy(() => import('./pages/trainer/TrainerCalendar'));
+const TrainerPlans         = lazy(() => import('./pages/trainer/TrainerPlans'));
+const TrainerMessages      = lazy(() => import('./pages/trainer/TrainerMessages'));
+const TrainerSocial        = lazy(() => import('./pages/trainer/TrainerSocial'));
+const TrainerClasses       = lazy(() => import('./pages/trainer/TrainerClasses'));
+const TrainerProfile       = lazy(() => import('./pages/trainer/TrainerProfile'));
 
 // ── Lazy-loaded admin pages ─────────────────────────────────
 const AdminLayout        = lazy(() => import('./layouts/AdminLayout'));
@@ -86,6 +87,7 @@ const AdminDigestConfig  = lazy(() => import('./pages/admin/AdminDigestConfig'))
 const AdminABTesting     = lazy(() => import('./pages/admin/AdminABTesting'));
 const AdminEmailTemplates = lazy(() => import('./pages/admin/AdminEmailTemplates'));
 const AdminRewards       = lazy(() => import('./pages/admin/AdminRewards'));
+const AdminProfile       = lazy(() => import('./pages/admin/AdminProfile'));
 
 // ── Lazy-loaded platform super-admin pages ──────────────────
 const PlatformLayout     = lazy(() => import('./layouts/PlatformLayout'));
@@ -100,15 +102,7 @@ const SmsManagement      = lazy(() => import('./pages/platform/SmsManagement'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
 
 // ── APPLY SAVED THEME PREFERENCE ────────────────────────────
-(() => {
-  const saved = localStorage.getItem('theme');
-  if (!saved) return; // No preference saved — respect index.html system preference check
-  if (saved === 'light') {
-    document.documentElement.classList.remove('dark');
-  } else {
-    document.documentElement.classList.add('dark');
-  }
-})();
+// Theme is now system-based — html.dark class managed by ThemeContext + index.html
 
 // ── SCROLL TO TOP ON NAVIGATION ──────────────────────────────
 // Disable browser scroll restoration — we handle it manually
@@ -765,6 +759,7 @@ function App() {
                 <Route path="/ab-testing"  element={<AdminABTesting />} />
                 <Route path="/email-templates" element={<AdminEmailTemplates />} />
                 <Route path="/rewards"     element={<AdminRewards />} />
+                <Route path="/profile"     element={<AdminProfile />} />
                 <Route path="/settings"     element={<AdminSettings />} />
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>
@@ -784,15 +779,24 @@ function App() {
               <ErrorBoundary>
               <Suspense fallback={<Skeleton variant="page" />}>
               <Routes>
-                <Route path="/"                element={<TrainerDashboard />} />
-                <Route path="/clients"         element={<TrainerClients />} />
-                <Route path="/client/:clientId" element={<TrainerClientNotes />} />
-                <Route path="/schedule"        element={<TrainerSchedule />} />
-                <Route path="/plans"           element={<TrainerWorkoutPlans />} />
-                <Route path="/analytics"       element={<TrainerAnalytics />} />
-                <Route path="/programs"        element={<TrainerPrograms />} />
-                <Route path="/classes"        element={<TrainerClasses />} />
-                <Route path="*"              element={<Navigate to="/trainer" replace />} />
+                <Route path="/"                         element={<TrainerHome />} />
+                <Route path="/clients"                  element={<TrainerClients />} />
+                <Route path="/clients/:clientId"        element={<TrainerClientDetail />} />
+                <Route path="/calendar"                 element={<TrainerCalendar />} />
+                <Route path="/plans"                    element={<TrainerPlans />} />
+                <Route path="/messages"                 element={<TrainerMessages />} />
+                <Route path="/messages/:conversationId" element={<TrainerMessages />} />
+                <Route path="/notifications"            element={<Notifications />} />
+                <Route path="/social"                   element={<TrainerSocial />} />
+                <Route path="/classes"                  element={<TrainerClasses />} />
+                <Route path="/profile"                  element={<TrainerProfile />} />
+                <Route path="/notification-settings"    element={<NotificationSettings />} />
+                {/* Backward-compatible redirects */}
+                <Route path="/client/:clientId" element={<Navigate to="/trainer/clients/:clientId" replace />} />
+                <Route path="/schedule"         element={<Navigate to="/trainer/calendar" replace />} />
+                <Route path="/analytics"        element={<Navigate to="/trainer" replace />} />
+                <Route path="/programs"         element={<Navigate to="/trainer/plans" replace />} />
+                <Route path="*"                 element={<Navigate to="/trainer" replace />} />
               </Routes>
               </Suspense>
               </ErrorBoundary>

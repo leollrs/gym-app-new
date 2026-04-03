@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2, UtensilsCrossed, Search, X, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
+import { calculateMacros } from '../lib/macroCalculator';
+import { generateWeekPlan } from '../lib/mealPlanner';
+import { MEALS } from '../data/meals';
+import { isMealAllergenSafe, isMealDietaryCompliant } from '../lib/mealPreferences';
 
 // ── DATA ───────────────────────────────────────────────────
 // values are stored in DB; labels come from translation files
@@ -175,6 +179,16 @@ const Onboarding = () => {
   // Generate plan screen state (shown after onboarding completes)
   const [showGeneratePlan, setShowGeneratePlan] = useState(false); // 'ask' | 'generating' | 'done' | false
   const [generateError, setGenerateError] = useState('');
+
+  // Meal plan flow state (shown after workout plan)
+  const [showMealPlan, setShowMealPlan] = useState(false); // 'ask' | 'prefs' | 'generating' | 'done' | false
+  const [mealPlanError, setMealPlanError] = useState('');
+  const [dietaryRestrictions, setDietaryRestrictions] = useState([]);
+  const [foodAllergies, setFoodAllergies] = useState([]);
+  const [dislikedIngredients, setDislikedIngredients] = useState([]);
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [generatedMealPlan, setGeneratedMealPlan] = useState(null);
+  const [mealPlanMacros, setMealPlanMacros] = useState(null);
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
   const setMax = (exerciseId, value) =>
@@ -502,10 +516,189 @@ const Onboarding = () => {
   };
 
   const handleSkipGeneratePlan = () => {
-    navigate('/welcome');
+    setShowGeneratePlan(false);
+    setShowMealPlan('ask');
   };
 
   const handlePlanDone = () => {
+    setShowGeneratePlan(false);
+    setShowMealPlan('ask');
+  };
+
+  // ── MEAL PLAN FLOW ───────────────────────────────────────────
+
+  const DIETARY_OPTIONS = [
+    { value: 'vegan',       key: 'vegan' },
+    { value: 'vegetarian',  key: 'vegetarian' },
+    { value: 'pescatarian', key: 'pescatarian' },
+    { value: 'keto',        key: 'keto' },
+    { value: 'gluten_free', key: 'gluten_free' },
+    { value: 'dairy_free',  key: 'dairy_free' },
+    { value: 'halal',       key: 'halal' },
+  ];
+
+  const ALLERGY_OPTIONS = [
+    { value: 'nuts',      key: 'allergyNuts' },
+    { value: 'shellfish', key: 'allergyShellfish' },
+    { value: 'dairy',     key: 'allergyDairy' },
+    { value: 'eggs',      key: 'allergyEggs' },
+    { value: 'soy',       key: 'allergySoy' },
+    { value: 'wheat',     key: 'allergyWheat' },
+    { value: 'fish',      key: 'allergyFish' },
+  ];
+
+  // Common ingredients for dislike selection (readable names)
+  const COMMON_INGREDIENTS = [
+    'chicken_breast', 'salmon_fillet', 'ground_turkey', 'lean_ground_beef',
+    'tofu', 'shrimp', 'eggs', 'greek_yogurt', 'oats', 'brown_rice',
+    'quinoa', 'sweet_potato', 'broccoli', 'spinach', 'avocado',
+    'peanut_butter', 'cottage_cheese', 'tuna', 'mushrooms', 'bell_pepper',
+    'black_beans', 'chickpeas', 'lentils', 'kale', 'cauliflower',
+    'zucchini', 'asparagus', 'brussels_sprouts', 'coconut_milk',
+    'soy_sauce', 'olive_oil',
+  ];
+
+  // Compute how many meals match current restrictions
+  const availableMealCount = useMemo(() => {
+    return MEALS.filter(m =>
+      isMealAllergenSafe(m, foodAllergies) &&
+      isMealDietaryCompliant(m, dietaryRestrictions) &&
+      !(m.ingredients || []).some(i => dislikedIngredients.includes(i))
+    ).length;
+  }, [foodAllergies, dietaryRestrictions, dislikedIngredients]);
+
+  const filteredCommonIngredients = useMemo(() => {
+    if (!ingredientSearch.trim()) return COMMON_INGREDIENTS;
+    const q = ingredientSearch.toLowerCase();
+    return COMMON_INGREDIENTS.filter(i => i.replace(/_/g, ' ').includes(q));
+  }, [ingredientSearch]);
+
+  const toggleRestriction = (val) =>
+    setDietaryRestrictions(prev =>
+      prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]
+    );
+
+  const toggleAllergy = (val) =>
+    setFoodAllergies(prev =>
+      prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]
+    );
+
+  const toggleDislike = (val) =>
+    setDislikedIngredients(prev =>
+      prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]
+    );
+
+  const formatIngredient = (ing) =>
+    ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const handleSkipMealPlan = () => {
+    navigate('/welcome');
+  };
+
+  const handleMealPlanPrefs = () => {
+    setShowMealPlan('prefs');
+  };
+
+  const handleGenerateMealPlan = async () => {
+    setShowMealPlan('generating');
+    setMealPlanError('');
+    try {
+      const { data: profileRow } = await supabase
+        .from('profiles').select('gym_id').eq('id', user.id).single();
+      const gymId = profileRow?.gym_id;
+
+      // Calculate macros from onboarding data
+      const heightInches = data.height_feet || data.height_inches
+        ? (parseInt(data.height_feet || 0) * 12) + parseInt(data.height_inches || 0)
+        : 70; // default 5'10"
+      const macros = calculateMacros({
+        weightLbs: parseFloat(data.initial_weight_lbs) || 170,
+        heightInches,
+        age: parseInt(data.age) || 25,
+        sex: data.sex || 'male',
+        trainingDays: data.training_days_per_week || 4,
+        goal: data.primary_goal || 'general_fitness',
+      });
+      setMealPlanMacros(macros);
+
+      // Save dietary preferences to DB
+      await supabase
+        .from('member_onboarding')
+        .update({
+          dietary_restrictions: dietaryRestrictions,
+          food_allergies: foodAllergies,
+        })
+        .eq('profile_id', user.id);
+
+      // Save disliked ingredients
+      if (dislikedIngredients.length > 0) {
+        const dislikeRows = dislikedIngredients.map(ing => ({
+          profile_id: user.id,
+          gym_id: gymId,
+          food_name: ing,
+        }));
+        await supabase
+          .from('disliked_foods')
+          .upsert(dislikeRows, { onConflict: 'profile_id,food_name', ignoreDuplicates: true });
+      }
+
+      // Generate the 7-day meal plan
+      const weekPlan = generateWeekPlan({
+        targets: macros,
+        favorites: [],
+        allergies: foodAllergies,
+        restrictions: dietaryRestrictions,
+        affinities: {},
+      });
+
+      setGeneratedMealPlan(weekPlan);
+
+      // Store generated plan in DB
+      const startOfWeek = new Date();
+      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1); // Monday
+      await supabase
+        .from('generated_meal_plans')
+        .upsert({
+          profile_id: user.id,
+          gym_id: gymId,
+          week_start: startOfWeek.toISOString().split('T')[0],
+          plan_data: weekPlan,
+          macro_targets: macros,
+          is_active: true,
+        }, { onConflict: 'profile_id,week_start' });
+
+      // Save macro targets to nutrition_targets if table exists
+      await supabase
+        .from('nutrition_targets')
+        .upsert({
+          profile_id: user.id,
+          gym_id: gymId,
+          calories: macros.calories,
+          protein_g: macros.protein,
+          carbs_g: macros.carbs,
+          fat_g: macros.fat,
+        }, { onConflict: 'profile_id' })
+        .then(() => {}) // ignore errors if table doesn't exist yet
+        .catch(() => {});
+
+      posthog?.capture('onboarding_meal_plan_generated', {
+        restrictions: dietaryRestrictions,
+        allergies: foodAllergies,
+        dislikes_count: dislikedIngredients.length,
+        meals_available: availableMealCount,
+        goal: data.primary_goal,
+        calories: macros.calories,
+        protein: macros.protein,
+      });
+
+      setShowMealPlan('done');
+    } catch (err) {
+      setMealPlanError(err.message || t('common:somethingWentWrong'));
+      setShowMealPlan('prefs');
+    }
+  };
+
+  const handleMealPlanDone = () => {
     navigate('/welcome');
   };
 
@@ -518,8 +711,8 @@ const Onboarding = () => {
     <div className="min-h-screen px-4 py-10 pb-28 md:pb-12 flex flex-col items-center" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[480px] mx-auto md:max-w-4xl">
 
-        {/* Header — hidden during generate plan screens */}
-        {!showGeneratePlan && (
+        {/* Header — hidden during generate plan / meal plan screens */}
+        {!showGeneratePlan && !showMealPlan && (
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
               <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
@@ -529,7 +722,7 @@ const Onboarding = () => {
           </div>
         )}
 
-        {!showGeneratePlan && <StepIndicator current={step} />}
+        {!showGeneratePlan && !showMealPlan && <StepIndicator current={step} />}
 
         {/* ── STEP 0: INVITE CODE ── */}
         {step === 0 && (
@@ -1225,14 +1418,14 @@ const Onboarding = () => {
         )}
 
         {/* ── Health disclaimer ── */}
-        {step === TOTAL_STEPS - 1 && !showGeneratePlan && (
+        {step === TOTAL_STEPS - 1 && !showGeneratePlan && !showMealPlan && (
           <p className="text-[11px] text-center leading-relaxed mt-4" style={{ color: "var(--color-text-subtle)" }}>
             {t('disclaimer')}
           </p>
         )}
 
-        {/* ── NAV BUTTONS (hidden on invite code step and generate plan screens) ── */}
-        {step > 0 && !showGeneratePlan && (
+        {/* ── NAV BUTTONS (hidden on invite code step, generate plan, and meal plan screens) ── */}
+        {step > 0 && !showGeneratePlan && !showMealPlan && (
         <div className="flex gap-3 mt-8">
           <button
             type="button"
@@ -1267,7 +1460,7 @@ const Onboarding = () => {
         )}
 
         {/* Skip on body stats or health step */}
-        {(step === 6 || step === 7) && !showGeneratePlan && (
+        {(step === 6 || step === 7) && !showGeneratePlan && !showMealPlan && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
@@ -1346,10 +1539,311 @@ const Onboarding = () => {
               onClick={handlePlanDone}
               className="w-full max-w-xs flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
             >
-              {t('generatePlan.goToDashboard')} <ChevronRight size={17} />
+              {t('common:continue')} <ChevronRight size={17} />
             </button>
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════
+            MEAL PLAN FLOW (after workout plan)
+            ══════════════════════════════════════════════════════ */}
+
+        {/* ── MEAL PLAN: Ask screen ── */}
+        {showMealPlan === 'ask' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
+              <UtensilsCrossed size={28} className="text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+                {t('mealPlan.askTitle')}
+              </h2>
+              <p className="text-[14px] leading-relaxed max-w-sm mx-auto" style={{ color: "var(--color-text-subtle)" }}>
+                {t('mealPlan.askDesc')}
+              </p>
+            </div>
+
+            <div className="w-full space-y-3">
+              <button
+                type="button"
+                onClick={handleMealPlanPrefs}
+                className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
+              >
+                <UtensilsCrossed size={16} /> {t('mealPlan.generate')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSkipMealPlan}
+                className="w-full text-center text-[13px] py-2.5 transition-colors" style={{ color: "var(--color-text-muted)" }}
+              >
+                {t('mealPlan.skip')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── MEAL PLAN: Dietary Preferences screen ── */}
+        {showMealPlan === 'prefs' && (
+          <div className="animate-fade-in py-4">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/25 mb-3">
+                <UtensilsCrossed size={22} className="text-emerald-400" />
+              </div>
+              <h2 className="text-[20px] font-bold mb-1" style={{ color: "var(--color-text-primary)" }}>
+                {t('mealPlan.prefsTitle')}
+              </h2>
+              <p className="text-[13px]" style={{ color: "var(--color-text-subtle)" }}>
+                {t('mealPlan.prefsSubtitle')}
+              </p>
+            </div>
+
+            {/* Dietary restrictions */}
+            <div className="mb-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.restrictionsLabel')}
+              </p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.restrictionsHint')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DIETARY_OPTIONS.map(opt => {
+                  const active = dietaryRestrictions.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => toggleRestriction(opt.value)}
+                      className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                        active
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                          : 'bg-[var(--color-bg-card)] border-white/[0.06] text-[var(--color-text-subtle)] hover:border-white/16'
+                      }`}
+                    >
+                      {t(`mealPlan.${opt.key}`)}
+                    </button>
+                  );
+                })}
+              </div>
+              {dietaryRestrictions.length === 0 && (
+                <p className="text-[11px] mt-2" style={{ color: "var(--color-text-muted)" }}>{t('mealPlan.none')}</p>
+              )}
+            </div>
+
+            {/* Food allergies */}
+            <div className="mb-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.allergiesLabel')}
+              </p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.allergiesHint')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ALLERGY_OPTIONS.map(opt => {
+                  const active = foodAllergies.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => toggleAllergy(opt.value)}
+                      className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                        active
+                          ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                          : 'bg-[var(--color-bg-card)] border-white/[0.06] text-[var(--color-text-subtle)] hover:border-white/16'
+                      }`}
+                    >
+                      {t(`mealPlan.${opt.key}`)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Disliked ingredients */}
+            <div className="mb-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.dislikesLabel')}
+              </p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                {t('mealPlan.dislikesHint')}
+              </p>
+
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
+                <input
+                  type="text"
+                  value={ingredientSearch}
+                  onChange={e => setIngredientSearch(e.target.value)}
+                  placeholder={t('mealPlan.dislikePlaceholder')}
+                  className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-[13px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-emerald-500/40 focus:outline-none transition-colors"
+                  style={{ color: "var(--color-text-primary)" }}
+                />
+                {ingredientSearch && (
+                  <button
+                    onClick={() => setIngredientSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    <X size={14} style={{ color: "var(--color-text-muted)" }} />
+                  </button>
+                )}
+              </div>
+
+              {/* Selected dislikes chips */}
+              {dislikedIngredients.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {dislikedIngredients.map(ing => (
+                    <button
+                      key={ing}
+                      onClick={() => toggleDislike(ing)}
+                      className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 transition-all hover:bg-red-500/25"
+                    >
+                      {formatIngredient(ing)} <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Ingredient grid */}
+              <div className="flex flex-wrap gap-2 max-h-[160px] overflow-y-auto">
+                {filteredCommonIngredients
+                  .filter(i => !dislikedIngredients.includes(i))
+                  .map(ing => (
+                    <button
+                      key={ing}
+                      type="button"
+                      onClick={() => toggleDislike(ing)}
+                      className="text-[12px] font-medium px-3 py-1.5 rounded-full bg-[var(--color-bg-card)] border border-white/[0.06] text-[var(--color-text-subtle)] hover:border-white/16 transition-all"
+                    >
+                      {formatIngredient(ing)}
+                    </button>
+                  ))}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: "var(--color-text-muted)" }}>
+                {dislikedIngredients.length > 0
+                  ? t('mealPlan.selectedDislikes', { count: dislikedIngredients.length })
+                  : t('mealPlan.noDislikes')}
+              </p>
+            </div>
+
+            {/* Available meals count */}
+            <div className={`rounded-xl px-4 py-3 mb-5 border ${
+              availableMealCount < 30
+                ? 'bg-yellow-500/8 border-yellow-500/20'
+                : 'bg-emerald-500/8 border-emerald-500/20'
+            }`}>
+              <div className="flex items-center gap-2">
+                {availableMealCount < 30 && <AlertTriangle size={16} className="text-yellow-400 flex-shrink-0" />}
+                <p className={`text-[13px] font-semibold ${
+                  availableMealCount < 30 ? 'text-yellow-400' : 'text-emerald-400'
+                }`}>
+                  {t('mealPlan.mealsAvailable', { count: availableMealCount })}
+                </p>
+              </div>
+              {availableMealCount < 30 && (
+                <p className="text-[12px] mt-1" style={{ color: "var(--color-text-muted)" }}>
+                  {t('mealPlan.tooFewMeals')}
+                </p>
+              )}
+            </div>
+
+            {mealPlanError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+                <p className="text-[13px] text-red-400 text-center">{mealPlanError}</p>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowMealPlan('ask')}
+                className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
+                style={{ color: "var(--color-text-primary)" }}
+              >
+                <ChevronLeft size={17} /> {t('common:back')}
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateMealPlan}
+                disabled={availableMealCount < 10}
+                className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
+              >
+                <UtensilsCrossed size={16} /> {t('mealPlan.continueToGenerate')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── MEAL PLAN: Generating screen ── */}
+        {showMealPlan === 'generating' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
+            <Loader2 size={36} className="text-emerald-400 animate-spin" />
+            <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+              {t('mealPlan.generating')}
+            </p>
+          </div>
+        )}
+
+        {/* ── MEAL PLAN: Done screen ── */}
+        {showMealPlan === 'done' && (
+          <div className="animate-fade-in flex flex-col items-center text-center gap-5 py-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
+              <Check size={28} className="text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+                {t('mealPlan.ready')}
+              </h2>
+              <p className="text-[14px] leading-relaxed max-w-sm mx-auto mb-2" style={{ color: "var(--color-text-subtle)" }}>
+                {t('mealPlan.readyDesc')}
+              </p>
+              {mealPlanMacros && (
+                <p className="text-[12px] font-medium" style={{ color: "var(--color-text-muted)" }}>
+                  {t('mealPlan.readyMacros', {
+                    calories: mealPlanMacros.calories,
+                    protein: mealPlanMacros.protein,
+                    carbs: mealPlanMacros.carbs,
+                    fat: mealPlanMacros.fat,
+                  })}
+                </p>
+              )}
+            </div>
+
+            {/* Preview: 7-day plan summary */}
+            {generatedMealPlan && (
+              <div className="w-full space-y-2 text-left max-h-[240px] overflow-y-auto">
+                {generatedMealPlan.map((day, idx) => (
+                  <div key={idx} className="rounded-xl border border-white/[0.06] px-4 py-3" style={{ backgroundColor: "var(--color-bg-card)" }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[13px] font-bold" style={{ color: "var(--color-text-primary)" }}>
+                        {t('mealPlan.dayLabel', { day: idx + 1 })}
+                      </p>
+                      <p className="text-[11px] font-medium" style={{ color: "var(--color-text-muted)" }}>
+                        {day.totals.calories} cal · {day.totals.protein}g P
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {day.meals.map((meal, mi) => (
+                        <p key={mi} className="text-[12px] truncate" style={{ color: "var(--color-text-subtle)" }}>
+                          {data.language === 'es' && meal.title_es ? meal.title_es : meal.title}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleMealPlanDone}
+              className="w-full max-w-xs flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all mt-2"
+            >
+              {t('mealPlan.goToDashboard')} <ChevronRight size={17} />
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );

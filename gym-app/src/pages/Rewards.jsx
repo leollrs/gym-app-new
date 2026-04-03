@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
+import { signQRPayload } from '../lib/qrSecurity';
 import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Skeleton from '../components/Skeleton';
@@ -173,6 +174,11 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
 const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, onClose }) => {
   const { t } = useTranslation('pages');
   const payload = `gym-redeem:${gymId}:${userId}:${reward.id}:${redemptionId}`;
+  const [signedPayload, setSignedPayload] = useState(null);
+
+  useEffect(() => {
+    signQRPayload(payload).then(setSignedPayload);
+  }, [payload]);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -211,7 +217,7 @@ const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, on
         {/* QR code */}
         <div className="bg-white flex flex-col items-center p-8">
           <QRCodeSVG
-            value={payload}
+            value={signedPayload || payload}
             size={220}
             level="H"
             includeMargin={false}
@@ -378,6 +384,12 @@ const ChallengePrizesBanner = ({ prizes, t, onShowQr }) => {
 // ── Challenge Prize QR Modal ────────────────────────────────────────────────
 const ChallengePrizeQRModal = ({ prize, onClose }) => {
   const { t } = useTranslation('pages');
+  const challengePayload = `challenge-prize:${prize.qr_code}`;
+  const [signedPayload, setSignedPayload] = useState(null);
+
+  useEffect(() => {
+    signQRPayload(challengePayload).then(setSignedPayload);
+  }, [challengePayload]);
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -416,7 +428,7 @@ const ChallengePrizeQRModal = ({ prize, onClose }) => {
 
         <div className="bg-white flex flex-col items-center p-8">
           <QRCodeSVG
-            value={`challenge-prize:${prize.qr_code}`}
+            value={signedPayload || challengePayload}
             size={220}
             level="H"
             includeMargin={false}

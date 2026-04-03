@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
-  Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle,
+  Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle, CalendarCheck,
 } from 'lucide-react';
 import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek } from 'date-fns';
@@ -119,7 +119,7 @@ const DashboardSkeleton = () => (
 
 /* ── Main ────────────────────────────────────────────────── */
 const Dashboard = () => {
-  const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile } = useAuth();
+  const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile, gymConfig } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
 
@@ -142,6 +142,7 @@ const Dashboard = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [liveChallenge, setLiveChallenge] = useState(null);
   const [gymClosedDays, setGymClosedDays] = useState(new Set());
+  const [todayClassBookings, setTodayClassBookings] = useState([]);
   const [userPoints, setUserPoints] = useState(ctxLifetimePoints ?? 0);
   useEffect(() => { if (ctxLifetimePoints != null) setUserPoints(ctxLifetimePoints); }, [ctxLifetimePoints]);
   const handleSkipSuggestion = async () => {
@@ -382,6 +383,18 @@ const Dashboard = () => {
       if (rpcData?.challenge) {
         setLiveChallenge(rpcData.challenge);
       }
+
+      // Fetch today's class bookings if classes are enabled
+      if (gymConfig?.classesEnabled) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data: classBookings } = await supabase
+          .from('gym_class_bookings')
+          .select('id, schedule_id, status, booking_date, gym_class_schedules(start_time, end_time, gym_classes(name, name_es, image_url))')
+          .eq('user_id', user.id)
+          .eq('booking_date', todayStr)
+          .in('status', ['confirmed', 'attended']);
+        if (!cancelled) setTodayClassBookings(classBookings || []);
+      }
     };
 
     load();
@@ -609,6 +622,46 @@ const Dashboard = () => {
                   schedule={schedule}
                 />
               </section>
+
+              {/* ════════════════════════════════════════════════
+                  1b. TODAY'S CLASS BANNER
+                 ════════════════════════════════════════════════ */}
+              {isToday && todayClassBookings.length > 0 && (
+                <section className="mb-3">
+                  <Link
+                    to="/classes"
+                    className="block w-full rounded-2xl bg-gradient-to-br from-[#818CF8]/10 to-[#818CF8]/[0.02] border border-[#818CF8]/20 p-4 hover:from-[#818CF8]/15 transition-all active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-[#818CF8]/15 flex items-center justify-center flex-shrink-0">
+                        <CalendarCheck size={20} className="text-[#818CF8]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-[#818CF8]">
+                          {t('dashboard.todayHasClass')}
+                        </p>
+                        {todayClassBookings.map(booking => {
+                          const sched = booking.gym_class_schedules;
+                          const cls = sched?.gym_classes;
+                          const className = i18n.language === 'es' && cls?.name_es ? cls.name_es : cls?.name;
+                          const isCheckedIn = booking.status === 'attended';
+                          return (
+                            <p key={booking.id} className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                              {className} · {sched?.start_time?.slice(0, 5)}
+                              {isCheckedIn && (
+                                <span className="text-[#10B981] font-semibold ml-1.5">
+                                  ✓ {t('dashboard.classCheckedIn')}
+                                </span>
+                              )}
+                            </p>
+                          );
+                        })}
+                      </div>
+                      <ChevronRight size={16} className="text-[#818CF8]/60 flex-shrink-0" />
+                    </div>
+                  </Link>
+                </section>
+              )}
 
               {/* ════════════════════════════════════════════════
                   2. TODAY'S WORKOUT — Dominant, action-first

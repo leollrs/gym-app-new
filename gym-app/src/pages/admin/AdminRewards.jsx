@@ -14,7 +14,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
-  SectionLabel, AdminPageShell,
+  SectionLabel, AdminPageShell, AdminTabs,
 } from '../../components/admin';
 
 // ── Constants ──────────────────────────────────────────────
@@ -202,7 +202,7 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
             value={form.description_es}
             onChange={e => set('description_es', e.target.value)}
             rows={2}
-            placeholder="Descripcion opcional..."
+            placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
             className={`${inputClass} resize-none`}
           />
         </div>
@@ -387,7 +387,7 @@ function RewardLog({ gymId, isEs, t }) {
 
   return (
     <>
-      <SectionLabel className="mt-10">
+      <SectionLabel>
         <Clock size={14} className="inline mr-1.5 -mt-px" />
         {t('admin.rewards.activityLog', 'Activity Log')}
       </SectionLabel>
@@ -395,7 +395,7 @@ function RewardLog({ gymId, isEs, t }) {
       <FadeIn>
         <AdminCard className="mt-4">
           {isLoading ? (
-            <div className="py-8 text-center text-[12px] text-[#6B7280]">Loading...</div>
+            <div className="py-8 text-center text-[12px] text-[#6B7280]">{t('common:loading')}</div>
           ) : logEntries.length === 0 ? (
             <div className="py-8 text-center">
               <Clock size={24} className="mx-auto text-[#4B5563] mb-2" />
@@ -464,6 +464,7 @@ export default function AdminRewards() {
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
 
+  const [rewardsTab, setRewardsTab] = useState('catalog');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingReward, setEditingReward] = useState(null);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
@@ -585,19 +586,34 @@ export default function AdminRewards() {
       <PageHeader
         title={t('admin.rewards.title', 'Rewards')}
         subtitle={t('admin.rewards.subtitle', 'Manage your reward catalog and referral milestones')}
+        actions={
+          rewardsTab === 'catalog' && (
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
+            >
+              <Plus size={14} />
+              {t('admin.rewards.addReward', 'Add Reward')}
+            </button>
+          )
+        }
       />
 
-      {/* ── Reward Catalog ─────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-1">
-        <SectionLabel>{t('admin.rewards.catalog', 'Reward Catalog')}</SectionLabel>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
-        >
-          <Plus size={14} />
-          {t('admin.rewards.addReward', 'Add Reward')}
-        </button>
-      </div>
+      {/* ── Tabs ──────────────────────────────────────────── */}
+      <AdminTabs
+        tabs={[
+          { key: 'catalog', label: t('admin.rewards.tabCatalog', 'Catalog'), icon: Gift },
+          { key: 'redemptions', label: t('admin.rewards.tabRedemptions', 'Redemptions'), icon: Clock },
+          { key: 'performance', label: t('admin.rewards.tabPerformance', 'Performance'), icon: Trophy },
+        ]}
+        active={rewardsTab}
+        onChange={setRewardsTab}
+        className="mb-6"
+      />
+
+      {/* ── Catalog Tab ───────────────────────────────────── */}
+      {rewardsTab === 'catalog' && <>
+      <SectionLabel className="mb-1">{t('admin.rewards.catalog', 'Reward Catalog')}</SectionLabel>
 
       {loadingRewards ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -706,9 +722,11 @@ export default function AdminRewards() {
           ))}
         </div>
       )}
+      </>}
 
-      {/* ── Referral Milestones ────────────────────────────── */}
-      <SectionLabel className="mt-10">
+      {/* ── Performance Tab ───────────────────────────────── */}
+      {rewardsTab === 'performance' && <>
+      <SectionLabel>
         {t('admin.rewards.referralMilestones', 'Referral Milestones')}
       </SectionLabel>
 
@@ -757,7 +775,7 @@ export default function AdminRewards() {
 
           {/* Milestones list */}
           {loadingMilestones ? (
-            <div className="py-6 text-center text-[12px] text-[#6B7280]">Loading...</div>
+            <div className="py-6 text-center text-[12px] text-[#6B7280]">{t('common:loading')}</div>
           ) : milestones.length === 0 ? (
             <div className="py-8 text-center">
               <Milestone size={28} className="mx-auto text-[#6B7280] mb-2" />
@@ -803,9 +821,10 @@ export default function AdminRewards() {
           )}
         </AdminCard>
       </FadeIn>
+      </>}
 
-      {/* ── Reward Activity Log ─────────────────────────────── */}
-      <RewardLog gymId={gymId} isEs={isEs} t={t} />
+      {/* ── Redemptions Tab ───────────────────────────────── */}
+      {rewardsTab === 'redemptions' && <RewardLog gymId={gymId} isEs={isEs} t={t} />}
 
       {/* ── Reward Modal ─────────────────────────────────────── */}
       <RewardModal

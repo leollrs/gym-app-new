@@ -578,7 +578,8 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
         .order('name');
 
       if (debouncedQuery.trim()) {
-        const q = `%${debouncedQuery.trim()}%`;
+        const safeQuery = debouncedQuery.trim().replace(/[%_\\,()."']/g, '');
+        const q = `%${safeQuery}%`;
         query = query.or(`name.ilike.${q},name_es.ilike.${q}`);
       }
 

@@ -28,7 +28,7 @@ function Spinner({ label }) {
   return (
     <div className="flex items-center gap-2 py-6 justify-center">
       <div className="w-4 h-4 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-      <span className="text-[12px] text-[#6B7280]">{label}</span>
+      <span className="text-[12px] text-[var(--color-text-muted)]">{label}</span>
     </div>
   );
 }
@@ -69,12 +69,12 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[480px] max-h-[85vh] bg-[#0F172A] rounded-t-2xl sm:rounded-2xl border border-white/8 overflow-y-auto">
+      <div className="relative w-full sm:max-w-[480px] max-h-[90vh] sm:max-h-[85vh] bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-[#0F172A] border-b border-white/6 px-4 py-3 flex items-center justify-between z-10">
-          <h3 className="text-[15px] font-bold text-[#E5E7EB]">{t('trainerClasses.classDetails')}</h3>
+        <div className="sticky top-0 bg-[var(--color-bg-card)] border-b border-[var(--color-border-subtle)] px-4 py-3 flex items-center justify-between z-10">
+          <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.classDetails')}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors">
-            <X size={18} className="text-[#6B7280]" />
+            <X size={18} className="text-[var(--color-text-muted)]" />
           </button>
         </div>
 
@@ -82,22 +82,22 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
           {/* Class info */}
           <div className="flex items-center gap-3">
             {cls.image_url ? (
-              <img src={cls.image_url} alt={cls.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+              <img src={cls.image_url} alt={cls.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
             ) : (
               <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/6"
+                className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
                 style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
               >
                 <CalendarDays size={22} style={{ color: cls.accent_color || '#D4AF37' }} />
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <h4 className="text-[15px] font-bold text-[#E5E7EB] truncate">{cls.name}</h4>
+              <h4 className="text-[15px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h4>
               <div className="flex items-center gap-3 mt-1">
-                <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
                   <Clock size={12} /> {cls.duration_minutes} min
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
                   <Users size={12} /> {cls.max_capacity}
                 </span>
               </div>
@@ -107,13 +107,13 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
           {/* Schedule slots */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h5 className="text-[13px] font-semibold text-[#E5E7EB]">
+              <h5 className="text-[13px] font-semibold text-[var(--color-text-primary)]">
                 {t('trainerClasses.schedule')} ({schedules.length})
               </h5>
               {!adding && (
                 <button
                   onClick={() => setAdding(true)}
-                  className="flex items-center gap-1 text-[12px] text-[#D4AF37] hover:text-[#C4A030] transition-colors font-medium"
+                  className="flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:text-[#C4A030] transition-colors font-medium"
                 >
                   <Plus size={13} /> {t('trainerClasses.addSlot')}
                 </button>
@@ -123,16 +123,16 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             {schedules.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {schedules.map(slot => (
-                  <div key={slot.id} className="flex items-center justify-between p-2.5 bg-[#111827] rounded-lg border border-white/6">
-                    <span className="text-[12px] text-[#E5E7EB]">
+                  <div key={slot.id} className="flex items-center justify-between p-2.5 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border-subtle)]">
+                    <span className="text-[12px] text-[var(--color-text-primary)]">
                       {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey || '')}
                     </span>
-                    <span className="text-[12px] text-[#9CA3AF]">
+                    <span className="text-[12px] text-[var(--color-text-secondary)]">
                       {slot.start_time?.slice(0, 5)} – {slot.end_time?.slice(0, 5)}
                     </span>
                     <button
                       onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-1.5 rounded hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
+                      className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-muted)] hover:text-red-400 transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -142,13 +142,13 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             )}
 
             {adding && (
-              <div className="p-3 bg-[#111827] rounded-xl border border-white/6 space-y-3">
+              <div className="p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] space-y-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('trainerClasses.day')}</label>
+                  <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.day')}</label>
                   <select
                     value={newSlot.day_of_week}
                     onChange={e => setNewSlot(s => ({ ...s, day_of_week: Number(e.target.value) }))}
-                    className="w-full bg-[#0A0D14] border border-white/6 rounded-lg px-3 py-2.5 text-[12px] text-[#E5E7EB] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                    className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                   >
                     {DAYS_OF_WEEK.map(d => (
                       <option key={d.value} value={d.value}>{tc(d.labelKey)}</option>
@@ -157,34 +157,34 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('trainerClasses.start')}</label>
+                    <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.start')}</label>
                     <input
                       type="time"
                       value={newSlot.start_time}
                       onChange={e => setNewSlot(s => ({ ...s, start_time: e.target.value }))}
-                      className="w-full bg-[#0A0D14] border border-white/6 rounded-lg px-3 py-2.5 text-[12px] text-[#E5E7EB] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('trainerClasses.end')}</label>
+                    <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.end')}</label>
                     <input
                       type="time"
                       value={newSlot.end_time}
                       onChange={e => setNewSlot(s => ({ ...s, end_time: e.target.value }))}
-                      className="w-full bg-[#0A0D14] border border-white/6 rounded-lg px-3 py-2.5 text-[12px] text-[#E5E7EB] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleAddSlot}
-                    className="px-3 py-2 bg-[#D4AF37] text-[#05070B] text-[12px] font-semibold rounded-xl hover:bg-[#C4A030] transition-colors min-h-[36px]"
+                    className="px-3 py-2 bg-[var(--color-accent)] text-[var(--color-text-on-accent)] text-[12px] font-semibold rounded-xl hover:bg-[var(--color-accent-dark)] transition-colors min-h-[36px]"
                   >
                     {t('trainerClasses.save')}
                   </button>
                   <button
                     onClick={() => setAdding(false)}
-                    className="px-3 py-2 text-[12px] text-[#6B7280] hover:text-[#E5E7EB] transition-colors min-h-[36px]"
+                    className="px-3 py-2 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-h-[36px]"
                   >
                     {t('trainerClasses.cancel')}
                   </button>
@@ -193,7 +193,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             )}
 
             {schedules.length === 0 && !adding && (
-              <p className="text-[12px] text-[#6B7280] italic">No schedule slots yet</p>
+              <p className="text-[12px] text-[var(--color-text-muted)] italic">{t('trainerClasses.noScheduleSlots')}</p>
             )}
           </div>
         </div>
@@ -227,50 +227,50 @@ function MyClassesTab({ classes, gymId, t, tc }) {
     <>
       {classes.length === 0 ? (
         <div className="text-center py-16">
-          <CalendarDays size={40} className="mx-auto text-[#6B7280] mb-3" />
-          <p className="text-[15px] text-[#6B7280]">{t('trainerClasses.noClasses')}</p>
+          <CalendarDays size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
+          <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {classes.map(cls => {
             const nextDate = getNextDate(cls);
             return (
               <button
                 key={cls.id}
                 onClick={() => setSelectedClass(cls)}
-                className="w-full bg-[#111827] rounded-2xl border border-white/6 p-4 hover:border-white/12 transition-all text-left group"
+                className="w-full bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] p-4 hover:border-white/12 transition-all text-left group"
               >
                 <div className="flex items-center gap-3">
                   {cls.image_url ? (
-                    <img src={cls.image_url} alt={cls.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+                    <img src={cls.image_url} alt={cls.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
                   ) : (
                     <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/6"
+                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
                       style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
                     >
                       <CalendarDays size={20} style={{ color: cls.accent_color || '#D4AF37' }} />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-[14px] font-bold text-[#E5E7EB] truncate">{cls.name}</h3>
+                    <h3 className="text-[14px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h3>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                      <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
                         <Clock size={11} /> {cls.duration_minutes} min
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
                         <Users size={11} /> {cls.max_capacity}
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)]">
                         <CalendarDays size={11} /> {cls.gym_class_schedules?.length || 0} {t('trainerClasses.slots')}
                       </span>
                     </div>
                     {nextDate && (
-                      <p className="text-[10px] text-[#D4AF37] mt-1.5 font-medium">
+                      <p className="text-[10px] text-[var(--color-accent)] mt-1.5 font-medium">
                         {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d')}
                       </p>
                     )}
                   </div>
-                  <ChevronRight size={16} className="text-[#6B7280] group-hover:text-[#D4AF37] transition-colors flex-shrink-0" />
+                  <ChevronRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors flex-shrink-0" />
                 </div>
               </button>
             );
@@ -352,12 +352,12 @@ function BookingsTab({ classes, t }) {
               onClick={() => setSelectedDate(dayStr)}
               className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl min-w-[52px] min-h-[52px] transition-all ${
                 isActive
-                  ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                  : 'bg-[#111827] text-[#6B7280] border border-white/6 hover:border-white/12'
+                  ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
+                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
               }`}
             >
               <span className="text-[10px] font-medium uppercase">{format(day, 'EEE')}</span>
-              <span className={`text-[15px] font-bold ${isActive ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+              <span className={`text-[15px] font-bold ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
                 {format(day, 'd')}
               </span>
             </button>
@@ -370,8 +370,8 @@ function BookingsTab({ classes, t }) {
         <Spinner label={t('trainerClasses.loading')} />
       ) : Object.keys(grouped).length === 0 ? (
         <div className="text-center py-12">
-          <Users size={32} className="mx-auto text-[#6B7280] mb-2" />
-          <p className="text-[13px] text-[#6B7280]">{t('trainerClasses.noBookings')}</p>
+          <Users size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+          <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerClasses.noBookings')}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -386,23 +386,23 @@ function BookingsTab({ classes, t }) {
                   >
                     <CalendarDays size={12} style={{ color: cls?.accent_color || '#D4AF37' }} />
                   </div>
-                  <span className="text-[13px] font-semibold text-[#E5E7EB]">{cls?.name || 'Unknown'}</span>
-                  <span className="text-[11px] text-[#6B7280] ml-auto">{classBookings.length}</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{cls?.name || t('trainerClasses.unknown')}</span>
+                  <span className="text-[11px] text-[var(--color-text-muted)] ml-auto">{classBookings.length}</span>
                 </div>
                 <div className="space-y-1.5">
                   {classBookings.map(b => (
-                    <div key={b.id} className="flex items-center gap-2.5 p-2.5 bg-[#111827] rounded-xl border border-white/6">
+                    <div key={b.id} className="flex items-center gap-2.5 p-2.5 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]">
                       {b.profiles?.avatar_url ? (
                         <img src={b.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[11px] font-bold text-[#D4AF37]">
+                        <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[11px] font-bold text-[var(--color-accent)]">
                             {b.profiles?.full_name?.[0]?.toUpperCase() || '?'}
                           </span>
                         </div>
                       )}
-                      <span className="flex-1 text-[13px] text-[#E5E7EB] truncate">
-                        {b.profiles?.full_name || 'Unknown'}
+                      <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate">
+                        {b.profiles?.full_name || t('trainerClasses.unknown')}
                       </span>
                       {b.attended ? (
                         <span className="flex items-center gap-1 text-[11px] text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-full font-medium">
@@ -411,7 +411,7 @@ function BookingsTab({ classes, t }) {
                       ) : (
                         <button
                           onClick={() => handleMarkAttended(b.id)}
-                          className="flex items-center gap-1 text-[11px] text-[#D4AF37] bg-[#D4AF37]/10 px-2.5 py-1.5 rounded-full font-medium hover:bg-[#D4AF37]/20 transition-colors min-h-[32px]"
+                          className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[32px]"
                         >
                           <UserCheck size={11} /> {t('trainerClasses.markAttended')}
                         </button>
@@ -484,8 +484,8 @@ function AnalyticsTab({ classes, t }) {
   if (classes.length === 0) {
     return (
       <div className="text-center py-16">
-        <BarChart3 size={40} className="mx-auto text-[#6B7280] mb-3" />
-        <p className="text-[15px] text-[#6B7280]">{t('trainerClasses.noClasses')}</p>
+        <BarChart3 size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
+        <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
       </div>
     );
   }
@@ -500,8 +500,8 @@ function AnalyticsTab({ classes, t }) {
             onClick={() => setSelectedClassId(cls.id)}
             className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[12px] font-medium transition-all min-h-[36px] ${
               cls.id === selectedClassId
-                ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30'
-                : 'bg-[#111827] text-[#6B7280] border border-white/6 hover:border-white/12'
+                ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
+                : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
             }`}
           >
             {cls.name}
@@ -514,27 +514,27 @@ function AnalyticsTab({ classes, t }) {
         <Spinner label={t('trainerClasses.loading')} />
       ) : !analytics || analytics.total === 0 ? (
         <div className="text-center py-12">
-          <BarChart3 size={32} className="mx-auto text-[#6B7280] mb-2" />
-          <p className="text-[13px] text-[#6B7280]">{t('trainerClasses.noData')}</p>
+          <BarChart3 size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+          <p className="text-[13px] text-[var(--color-text-muted)]">{t('trainerClasses.noData')}</p>
         </div>
       ) : (
         <>
           {/* Attendance rate + avg rating cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-4 bg-[#111827] rounded-2xl border border-white/6">
-              <p className="text-[11px] font-medium text-[#6B7280] mb-1.5">{t('trainerClasses.attendanceRate')}</p>
-              <p className="text-[22px] font-bold text-[#E5E7EB]">{analytics.attendanceRate}%</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-4 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)]">
+              <p className="text-[11px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('trainerClasses.attendanceRate')}</p>
+              <p className="text-[22px] font-bold text-[var(--color-text-primary)]">{analytics.attendanceRate}%</p>
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
                 {analytics.attended}/{analytics.total}
               </p>
             </div>
-            <div className="p-4 bg-[#111827] rounded-2xl border border-white/6">
-              <p className="text-[11px] font-medium text-[#6B7280] mb-1.5">{t('trainerClasses.avgRating')}</p>
+            <div className="p-4 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)]">
+              <p className="text-[11px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('trainerClasses.avgRating')}</p>
               {analytics.avgRating ? (
                 <>
                   <div className="flex items-center gap-1.5">
-                    <p className="text-[22px] font-bold text-[#E5E7EB]">{analytics.avgRating}</p>
-                    <Star size={18} className="text-[#D4AF37] fill-[#D4AF37]" />
+                    <p className="text-[22px] font-bold text-[var(--color-text-primary)]">{analytics.avgRating}</p>
+                    <Star size={18} className="text-[var(--color-accent)] fill-[#D4AF37]" />
                   </div>
                   <div className="mt-2.5 space-y-1">
                     {[5, 4, 3, 2, 1].map(star => {
@@ -542,22 +542,22 @@ function AnalyticsTab({ classes, t }) {
                       const maxCount = Math.max(...analytics.starDist, 1);
                       return (
                         <div key={star} className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-[#6B7280] w-3 text-right">{star}</span>
-                          <Star size={8} className="text-[#D4AF37] fill-[#D4AF37]" />
+                          <span className="text-[9px] text-[var(--color-text-muted)] w-3 text-right">{star}</span>
+                          <Star size={8} className="text-[var(--color-accent)] fill-[#D4AF37]" />
                           <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-[#D4AF37]"
+                              className="h-full rounded-full bg-[var(--color-accent)]"
                               style={{ width: `${(count / maxCount) * 100}%` }}
                             />
                           </div>
-                          <span className="text-[9px] text-[#6B7280] w-4">{count}</span>
+                          <span className="text-[9px] text-[var(--color-text-muted)] w-4">{count}</span>
                         </div>
                       );
                     })}
                   </div>
                 </>
               ) : (
-                <p className="text-[14px] text-[#6B7280]">--</p>
+                <p className="text-[14px] text-[var(--color-text-muted)]">--</p>
               )}
             </div>
           </div>
@@ -565,36 +565,36 @@ function AnalyticsTab({ classes, t }) {
           {/* Recent attendees */}
           {hasTemplate && analytics.recentResults.length > 0 && (
             <div>
-              <p className="text-[12px] font-semibold text-[#6B7280] mb-2.5">{t('trainerClasses.recentAttendees')}</p>
+              <p className="text-[12px] font-semibold text-[var(--color-text-muted)] mb-2.5">{t('trainerClasses.recentAttendees')}</p>
               <div className="space-y-1.5">
                 {analytics.recentResults.map((r, i) => (
                   <div
                     key={`${r.profile_id}-${i}`}
-                    className="flex items-center gap-2.5 p-3 bg-[#111827] rounded-xl border border-white/6"
+                    className="flex items-center gap-2.5 p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]"
                   >
                     {r.profiles?.avatar_url ? (
                       <img src={r.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[11px] font-bold text-[#D4AF37]">
+                      <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[11px] font-bold text-[var(--color-accent)]">
                           {r.profiles?.full_name?.[0]?.toUpperCase() || '?'}
                         </span>
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="block text-[13px] text-[#E5E7EB] truncate">
-                        {r.profiles?.full_name || 'Unknown'}
+                      <span className="block text-[13px] text-[var(--color-text-primary)] truncate">
+                        {r.profiles?.full_name || t('trainerClasses.unknown')}
                       </span>
                       {r.attended_at && (
-                        <span className="text-[10px] text-[#6B7280]">
+                        <span className="text-[10px] text-[var(--color-text-muted)]">
                           {format(new Date(r.attended_at), 'MMM d')}
                         </span>
                       )}
                     </div>
                     {r.workout_sessions?.total_volume_lbs != null && (
-                      <span className="text-[11px] text-[#9CA3AF] flex items-center gap-1 flex-shrink-0">
+                      <span className="text-[11px] text-[var(--color-text-secondary)] flex items-center gap-1 flex-shrink-0">
                         <Dumbbell size={11} />
-                        {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} lbs
+                        {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} {t('trainerClasses.lbs')}
                       </span>
                     )}
                     {r.rating != null && (
@@ -603,7 +603,7 @@ function AnalyticsTab({ classes, t }) {
                           <Star
                             key={s}
                             size={10}
-                            className={s <= Math.round(r.rating) ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#6B7280]'}
+                            className={s <= Math.round(r.rating) ? 'text-[var(--color-accent)] fill-[#D4AF37]' : 'text-[var(--color-text-muted)]'}
                           />
                         ))}
                       </div>
@@ -646,19 +646,19 @@ function RoutineSelector({ gymId, value, onChange, t }) {
   return (
     <div>
       {selected ? (
-        <div className="flex items-center gap-2 p-3 bg-[#0F172A] border border-white/6 rounded-xl">
-          <Dumbbell size={14} className="text-[#D4AF37] flex-shrink-0" />
-          <span className="flex-1 text-[13px] text-[#E5E7EB] truncate">
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl">
+          <Dumbbell size={14} className="text-[var(--color-accent)] flex-shrink-0" />
+          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate min-w-0">
             {selected.name}
-            <span className="text-[#6B7280] ml-1.5">
-              ({selected.routine_exercises?.[0]?.count || 0} exercises)
+            <span className="text-[var(--color-text-muted)] ml-1.5">
+              ({t('trainerClasses.exerciseCount', { count: selected.routine_exercises?.[0]?.count || 0 })})
             </span>
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-[11px] text-[#D4AF37] hover:text-[#C4A030] font-medium transition-colors"
+              className="text-[11px] text-[var(--color-accent)] hover:text-[#C4A030] font-medium transition-colors"
             >
               {t('trainerClasses.changeTemplate')}
             </button>
@@ -674,26 +674,26 @@ function RoutineSelector({ gymId, value, onChange, t }) {
       ) : (
         <div className="space-y-1.5">
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={t('trainerClasses.changeTemplate')}
-              className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>
           {search && filtered.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded-xl border border-white/6 bg-[#0F172A]">
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-card)]">
               {filtered.map(r => (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => { onChange(r.id); setSearch(''); }}
-                  className="w-full text-left px-3 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.04] transition-colors flex items-center gap-2 min-h-[40px]"
+                  className="w-full text-left px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] hover:bg-white/[0.04] transition-colors flex items-center gap-2 min-h-[40px]"
                 >
-                  <Dumbbell size={12} className="text-[#6B7280]" />
+                  <Dumbbell size={12} className="text-[var(--color-text-muted)]" />
                   <span className="truncate">{r.name}</span>
-                  <span className="text-[#6B7280] ml-auto flex-shrink-0">
+                  <span className="text-[var(--color-text-muted)] ml-auto flex-shrink-0">
                     {r.routine_exercises?.[0]?.count || 0}
                   </span>
                 </button>
@@ -701,7 +701,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
             </div>
           )}
           {search && filtered.length === 0 && (
-            <p className="text-[11px] text-[#6B7280] italic px-1">{t('trainerClasses.noTemplatesFound')}</p>
+            <p className="text-[11px] text-[var(--color-text-muted)] italic px-1">{t('trainerClasses.noTemplatesFound')}</p>
           )}
         </div>
       )}
@@ -731,14 +731,14 @@ function TemplatePreview({ templateId, t }) {
   return (
     <div className="space-y-1 mt-2">
       {exercises.map((ex, i) => (
-        <div key={ex.id} className="flex items-center gap-2 p-2.5 bg-[#0F172A] rounded-lg border border-white/6">
-          <span className="text-[10px] text-[#6B7280] w-4 text-right">{i + 1}.</span>
-          <span className="flex-1 text-[12px] text-[#E5E7EB] truncate">{ex.exercises?.name || 'Unknown'}</span>
-          <span className="text-[10px] text-[#6B7280]">{ex.sets}x{ex.reps}</span>
+        <div key={ex.id} className="flex items-center gap-2 p-2.5 bg-[var(--color-bg-card)] rounded-lg border border-[var(--color-border-subtle)]">
+          <span className="text-[10px] text-[var(--color-text-muted)] w-4 text-right">{i + 1}.</span>
+          <span className="flex-1 text-[12px] text-[var(--color-text-primary)] truncate">{ex.exercises?.name || t('trainerClasses.unknown')}</span>
+          <span className="text-[10px] text-[var(--color-text-muted)]">{ex.sets}x{ex.reps}</span>
         </div>
       ))}
       {exercises.length === 0 && (
-        <p className="text-[11px] text-[#6B7280] italic">{t('trainerClasses.noExercises')}</p>
+        <p className="text-[11px] text-[var(--color-text-muted)] italic">{t('trainerClasses.noExercises')}</p>
       )}
     </div>
   );
@@ -785,8 +785,8 @@ function TemplatesTab({ classes, gymId, t }) {
   if (classes.length === 0) {
     return (
       <div className="text-center py-16">
-        <Dumbbell size={40} className="mx-auto text-[#6B7280] mb-3" />
-        <p className="text-[15px] text-[#6B7280]">{t('trainerClasses.noClasses')}</p>
+        <Dumbbell size={40} className="mx-auto text-[var(--color-text-muted)] mb-3" />
+        <p className="text-[15px] text-[var(--color-text-muted)]">{t('trainerClasses.noClasses')}</p>
       </div>
     );
   }
@@ -800,36 +800,36 @@ function TemplatesTab({ classes, gymId, t }) {
           : null;
 
         return (
-          <div key={cls.id} className="bg-[#111827] rounded-2xl border border-white/6 overflow-hidden">
+          <div key={cls.id} className="bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden">
             <button
               onClick={() => setExpandedClass(isExpanded ? null : cls.id)}
               className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors"
             >
               {cls.image_url ? (
-                <img src={cls.image_url} alt={cls.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+                <img src={cls.image_url} alt={cls.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-[var(--color-border-subtle)]" />
               ) : (
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/6"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border border-[var(--color-border-subtle)]"
                   style={{ backgroundColor: (cls.accent_color || '#D4AF37') + '20' }}
                 >
                   <CalendarDays size={16} style={{ color: cls.accent_color || '#D4AF37' }} />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <h4 className="text-[13px] font-bold text-[#E5E7EB] truncate">{cls.name}</h4>
+                <h4 className="text-[13px] font-bold text-[var(--color-text-primary)] truncate">{cls.name}</h4>
                 {templateName ? (
-                  <span className="flex items-center gap-1 text-[11px] text-[#D4AF37] mt-0.5">
+                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] mt-0.5">
                     <Dumbbell size={11} /> {templateName}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-[#6B7280] mt-0.5">{t('trainerClasses.noTemplate')}</span>
+                  <span className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{t('trainerClasses.noTemplate')}</span>
                 )}
               </div>
-              <ChevronRight size={16} className={`text-[#6B7280] transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              <ChevronRight size={16} className={`text-[var(--color-text-muted)] transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
             </button>
 
             {isExpanded && (
-              <div className="px-4 pb-4 space-y-3 border-t border-white/6 pt-3">
+              <div className="px-4 pb-4 space-y-3 border-t border-[var(--color-border-subtle)] pt-3">
                 <RoutineSelector
                   gymId={gymId}
                   value={cls.workout_template_id}
@@ -855,7 +855,7 @@ export default function TrainerClasses() {
   const trainerId = profile?.id;
   const [activeTab, setActiveTab] = useState('myClasses');
 
-  useEffect(() => { document.title = 'Trainer - My Classes | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('trainerClasses.documentTitle'); }, [t]);
 
   const { data: classes = [], isLoading } = useQuery({
     queryKey: ['trainer', 'my-classes', trainerId],
@@ -894,11 +894,11 @@ export default function TrainerClasses() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 max-w-[480px] mx-auto md:max-w-4xl">
+    <div className="px-4 md:px-6 py-6 max-w-4xl mx-auto w-full">
       {/* Header */}
       <div className="mb-5">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB]">{t('trainerClasses.title')}</h1>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">{t('trainerClasses.subtitle')}</p>
+        <h1 className="text-[22px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.title')}</h1>
+        <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('trainerClasses.subtitle')}</p>
       </div>
 
       {/* Tab bar */}
@@ -909,8 +909,8 @@ export default function TrainerClasses() {
             onClick={() => setActiveTab(tab)}
             className={`flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-medium transition-all min-h-[40px] ${
               tab === activeTab
-                ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                : 'bg-[#111827] text-[#6B7280] hover:text-[#9CA3AF]'
+                ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
+                : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
             }`}
           >
             {t(`trainerClasses.${tabKeys[tab]}`)}
@@ -922,7 +922,7 @@ export default function TrainerClasses() {
       {isLoading && (
         <div className="space-y-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 bg-[#111827] rounded-2xl border border-white/6 animate-pulse" />
+            <div key={i} className="h-24 bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] animate-pulse" />
           ))}
         </div>
       )}

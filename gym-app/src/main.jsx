@@ -90,6 +90,7 @@ onWatchMessage((msg) => {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const supabaseRef = supabaseUrl.match(/https:\/\/([^.]+)\./)?.[1] || '';
       const storageKey = `sb-${supabaseRef}-auth-token`;
+      // TODO: Use supabase.auth.getSession() instead of direct localStorage access
       const userId = JSON.parse(localStorage.getItem(storageKey) || '{}')?.user?.id;
       if (userId) {
         const cached = getCached(`routines:${userId}`);

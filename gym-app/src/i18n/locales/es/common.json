@@ -75,7 +75,24 @@
     "skipToMain": "Saltar al contenido principal",
     "abTesting": "Pruebas A/B",
     "rewards": "Recompensas",
-    "search": "Buscar páginas..."
+    "profile": "Mi Perfil",
+    "search": "Buscar páginas...",
+    "primary": "PRINCIPAL",
+    "coaching": "COACHING Y RETENCIÓN",
+    "business": "NEGOCIO",
+    "configuration": "CONFIGURACIÓN",
+    "advancedTools": "Herramientas Avanzadas",
+    "noResults": "No se encontraron páginas.",
+    "advancedDesc": {
+      "reports": "Exportaciones y descargas de datos",
+      "leaderboard": "Monitorear clasificaciones",
+      "moderation": "Revisar contenido reportado",
+      "auditLog": "Seguimiento de acciones administrativas",
+      "segments": "Segmentación avanzada de miembros",
+      "abTesting": "Experimentos de retención",
+      "digest": "Configuración de resúmenes programados",
+      "emailTemplates": "Gestionar plantillas de email"
+    }
   },
   "days": {
     "mon": "Lun",
@@ -108,12 +125,15 @@
     "es": "Español"
   },
   "trainerNav": {
-    "dashboard": "Panel",
+    "home": "Inicio",
     "clients": "Clientes",
-    "schedule": "Horario",
+    "calendar": "Horario",
     "plans": "Planes",
-    "analytics": "Analíticas",
-    "programs": "Programas",
+    "messages": "Mensajes",
+    "social": "Social",
+    "notifications": "Notificaciones",
+    "profile": "Perfil",
+    "signOut": "Cerrar sesión",
     "classes": "Mis Clases"
   },
   "platformNav": {

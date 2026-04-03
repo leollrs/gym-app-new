@@ -66,14 +66,14 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
             onKeyDown={(e) => handleKeyDown(e, i)}
             className={`flex-1 py-2.5 text-[13px] font-semibold text-center transition-colors relative ${
               i === activeIndex
-                ? 'text-[#E5E7EB]'
-                : 'text-[#6B7280]'
+                ? 'text-[var(--color-text-primary)]'
+                : 'text-[var(--color-text-muted)]'
             }`}
           >
             {tab.label}
             {tab.count != null && tab.count > 0 && (
               <span className={`ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
-                i === activeIndex ? 'bg-[#D4AF37]/20 text-[#D4AF37]' : 'bg-white/[0.06] text-[#6B7280]'
+                i === activeIndex ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'
               }`}>
                 {tab.count}
               </span>
@@ -82,11 +82,11 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
         ))}
       </div>
       {/* Bottom border */}
-      <div className="h-[1px] bg-white/[0.06]" />
+      <div className="h-[1px]" style={{ background: 'var(--color-border-subtle)' }} />
       {/* Sliding underline */}
       <div
-        className="absolute bottom-0 h-[2px] rounded-full bg-[#D4AF37] transition-all duration-300 ease-out"
-        style={{ left: indicator.left, width: indicator.width }}
+        className="absolute bottom-0 h-[2px] rounded-full transition-all duration-300 ease-out"
+        style={{ left: indicator.left, width: indicator.width, background: 'var(--color-accent)' }}
       />
     </div>
   );

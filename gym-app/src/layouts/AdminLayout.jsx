@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
   BarChart3, Megaphone, Settings, LogOut, ChevronRight,
-  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award,
+  TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Mail, Palette, Target, Search, FlaskConical, Award, Wrench, UserCog,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,54 +13,52 @@ const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboar
 
 const NAV_SECTIONS = [
   {
-    labelKey: 'adminNav.main',
+    labelKey: 'adminNav.primary',
     items: [
-      { to: '/admin',              labelKey: 'adminNav.overview',      icon: LayoutDashboard, exact: true },
-      { to: '/admin/members',      labelKey: 'adminNav.members',       icon: Users },
+      { to: '/admin',              labelKey: 'adminNav.overview',       icon: LayoutDashboard, exact: true },
+      { to: '/admin/members',      labelKey: 'adminNav.members',        icon: Users },
+      { to: '/admin/classes',      labelKey: 'adminNav.classes',        icon: CalendarDays, requiresConfig: 'classesEnabled' },
+      { to: '/admin/messages',     labelKey: 'adminNav.messages',       icon: MessageSquare },
+      { to: '/admin/announcements',labelKey: 'adminNav.announcements',  icon: Megaphone },
     ],
   },
   {
-    labelKey: 'adminNav.intelligence',
+    labelKey: 'adminNav.coaching',
     items: [
-      { to: '/admin/churn',        labelKey: 'adminNav.churnIntel',   icon: AlertTriangle },
-      { to: '/admin/segments',    labelKey: 'adminNav.segments',      icon: Filter },
-      { to: '/admin/ab-testing', labelKey: 'adminNav.abTesting',    icon: FlaskConical },
-      { to: '/admin/analytics',    labelKey: 'adminNav.analytics',     icon: TrendingUp },
+      { to: '/admin/churn',        labelKey: 'adminNav.churnIntel',    icon: AlertTriangle },
+      { to: '/admin/attendance',   labelKey: 'adminNav.attendance',     icon: CalendarCheck },
+      { to: '/admin/challenges',   labelKey: 'adminNav.challenges',     icon: Trophy },
+      { to: '/admin/programs',     labelKey: 'adminNav.programs',       icon: Dumbbell },
+      { to: '/admin/trainers',     labelKey: 'adminNav.trainers',       icon: UserCheck },
     ],
   },
   {
-    labelKey: 'adminNav.engage',
+    labelKey: 'adminNav.business',
     items: [
-      { to: '/admin/attendance',   labelKey: 'adminNav.attendance',    icon: CalendarCheck },
-      { to: '/admin/challenges',   labelKey: 'adminNav.challenges',    icon: Trophy },
-      { to: '/admin/trainers',     labelKey: 'adminNav.trainers',      icon: UserCheck },
-      { to: '/admin/programs',     labelKey: 'adminNav.programs',      icon: Dumbbell },
-      { to: '/admin/leaderboard',  labelKey: 'adminNav.leaderboard',   icon: BarChart3 },
-      { to: '/admin/messages',      labelKey: 'adminNav.messages',      icon: MessageSquare },
-      { to: '/admin/classes',      labelKey: 'adminNav.classes',       icon: CalendarDays, requiresConfig: 'classesEnabled' },
-      { to: '/admin/store',        labelKey: 'adminNav.store',         icon: ShoppingBag },
-      { to: '/admin/rewards',      labelKey: 'adminNav.rewards',       icon: Award },
-      { to: '/admin/revenue',     labelKey: 'adminNav.revenue',       icon: DollarSign },
-      { to: '/admin/announcements',labelKey: 'adminNav.announcements', icon: Megaphone },
-      { to: '/admin/referrals',  labelKey: 'adminNav.referrals',     icon: Gift },
-      { to: '/admin/nps',        labelKey: 'adminNav.nps',            icon: MessageCircle },
-      { to: '/admin/email-templates', labelKey: 'adminNav.emailTemplates', icon: Palette },
-    ],
-  },
-  {
-    labelKey: 'adminNav.system',
-    items: [
-      { to: '/admin/moderation',   labelKey: 'adminNav.moderation',    icon: ShieldAlert },
-      { to: '/admin/audit-log',   labelKey: 'adminNav.auditLog',      icon: ClipboardList },
-      { to: '/admin/reports',     labelKey: 'adminNav.reports',        icon: Download },
-      { to: '/admin/digest',     labelKey: 'adminNav.digest',          icon: Mail },
-      { to: '/admin/settings',     labelKey: 'adminNav.settings',      icon: Settings },
+      { to: '/admin/analytics',    labelKey: 'adminNav.analytics',      icon: TrendingUp },
+      { to: '/admin/revenue',      labelKey: 'adminNav.revenue',        icon: DollarSign },
+      { to: '/admin/referrals',    labelKey: 'adminNav.referrals',      icon: Gift },
+      { to: '/admin/rewards',      labelKey: 'adminNav.rewards',        icon: Award },
+      { to: '/admin/store',        labelKey: 'adminNav.store',          icon: ShoppingBag },
+      { to: '/admin/nps',          labelKey: 'adminNav.nps',            icon: MessageCircle },
     ],
   },
 ];
 
+// Advanced Tools — accessible via sidebar entry + dedicated index, hidden from primary nav
+const ADVANCED_PAGES = [
+  { to: '/admin/reports',          labelKey: 'adminNav.reports',        icon: Download,      descKey: 'adminNav.advancedDesc.reports' },
+  { to: '/admin/leaderboard',     labelKey: 'adminNav.leaderboard',    icon: BarChart3,     descKey: 'adminNav.advancedDesc.leaderboard' },
+  { to: '/admin/moderation',      labelKey: 'adminNav.moderation',     icon: ShieldAlert,   descKey: 'adminNav.advancedDesc.moderation' },
+  { to: '/admin/audit-log',       labelKey: 'adminNav.auditLog',       icon: ClipboardList, descKey: 'adminNav.advancedDesc.auditLog' },
+  { to: '/admin/segments',        labelKey: 'adminNav.segments',       icon: Filter,        descKey: 'adminNav.advancedDesc.segments' },
+  { to: '/admin/ab-testing',      labelKey: 'adminNav.abTesting',      icon: FlaskConical,  descKey: 'adminNav.advancedDesc.abTesting' },
+  { to: '/admin/digest',          labelKey: 'adminNav.digest',         icon: Mail,          descKey: 'adminNav.advancedDesc.digest' },
+  { to: '/admin/email-templates', labelKey: 'adminNav.emailTemplates', icon: Palette,       descKey: 'adminNav.advancedDesc.emailTemplates' },
+];
+
 // Bottom nav shows 4 most-used items + a "More" button
-const MOBILE_PRIMARY_PATHS = ['/admin', '/admin/members', '/admin/challenges', '/admin/settings'];
+const MOBILE_PRIMARY_PATHS = ['/admin', '/admin/members', '/admin/classes', '/admin/messages'];
 
 // Helper: filter nav items by gymConfig feature flags
 function filterNavItems(items, config) {
@@ -75,19 +73,22 @@ function getFilteredNav(config) {
     ...s,
     items: filterNavItems(s.items, config),
   }));
-  const allNav = sections.flatMap(s => s.items);
+  const settingsItem = { to: '/admin/settings', labelKey: 'adminNav.settings', icon: Settings };
+  const profileItem = { to: '/admin/profile', labelKey: 'adminNav.profile', icon: UserCog };
+  const allNav = [...sections.flatMap(s => s.items), ...ADVANCED_PAGES, profileItem, settingsItem];
   return {
     sections,
+    advancedPages: ADVANCED_PAGES,
     mobileNav: allNav.filter(n => MOBILE_PRIMARY_PATHS.includes(n.to)),
     mobileMoreNav: allNav.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to)),
   };
 }
 
 const linkClass = (active) =>
-  `flex items-center gap-2.5 pl-3 pr-3 py-2.5 rounded-lg text-[14px] font-medium transition-all relative ${
+  `admin-nav-link ${
     active
-      ? 'bg-white/[0.03] text-[#D4AF37] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-[#D4AF37]'
-      : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.02]'
+      ? 'admin-nav-link-active'
+      : ''
   }`;
 
 export default function AdminLayout({ children }) {
@@ -144,8 +145,10 @@ export default function AdminLayout({ children }) {
     }
   }, [profile?.role, gymConfig.setupCompleted]);
 
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+
   // Filter nav items based on gymConfig feature flags
-  const { sections: filteredSections, mobileNav: MOBILE_NAV, mobileMoreNav: MOBILE_MORE_NAV } = getFilteredNav(gymConfig);
+  const { sections: filteredSections, advancedPages, mobileNav: MOBILE_NAV, mobileMoreNav: MOBILE_MORE_NAV } = getFilteredNav(gymConfig);
   const navQuery = navSearch.trim().toLowerCase();
   const visibleSections = filteredSections
     .map((section) => ({
@@ -155,6 +158,9 @@ export default function AdminLayout({ children }) {
         : section.items,
     }))
     .filter((section) => section.items.length > 0);
+  const matchedAdvanced = navQuery
+    ? advancedPages.filter((item) => t(item.labelKey).toLowerCase().includes(navQuery))
+    : [];
 
   // Close "More" menu on route change
   useEffect(() => {
@@ -206,7 +212,7 @@ export default function AdminLayout({ children }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070B] flex">
+    <div className="min-h-screen admin-shell flex">
       {/* Admin onboarding wizard for first-time gym setup */}
       {showOnboardingWizard && (
         <Suspense fallback={null}>
@@ -219,7 +225,7 @@ export default function AdminLayout({ children }) {
       </a>
 
       {/* ── Desktop sidebar ──────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-[280px] xl:w-[320px] flex-shrink-0 border-r border-white/6 min-h-screen sticky top-0 h-screen">
+      <aside className="hidden md:flex flex-col w-[280px] xl:w-[320px] flex-shrink-0 admin-sidebar min-h-screen sticky top-0 h-screen">
         {/* Sidebar header */}
         <div className="px-4 pt-5 pb-4">
           <div className="flex items-center gap-2.5">
@@ -227,28 +233,36 @@ export default function AdminLayout({ children }) {
               <img
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
-                className="w-8 h-8 rounded-lg object-contain bg-black/40 border border-white/8 flex-shrink-0"
+                className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
+                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-border-subtle)' }}
               />
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/8 flex items-center justify-center flex-shrink-0">
-                <LayoutDashboard size={14} className="text-[#6B7280]" />
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                <LayoutDashboard size={14} style={{ color: 'var(--color-text-subtle)' }} />
               </div>
             )}
             <div className="min-w-0">
-              <p className="text-[15px] font-semibold text-[#E5E7EB] truncate leading-tight">
+              <p className="text-[15px] font-semibold truncate leading-tight"
+                style={{ color: 'var(--color-text-primary)' }}>
                 {gymName || 'Dashboard'}
               </p>
-              <p className="text-[12px] text-[#6B7280] leading-tight">{t('adminNav.admin')}</p>
+              <p className="text-[12px] leading-tight" style={{ color: 'var(--color-text-subtle)' }}>{t('adminNav.admin')}</p>
             </div>
           </div>
-          <div className="mt-4 border-b border-white/6" />
+          <div className="mt-4" style={{ height: '1px', background: 'var(--color-border-subtle)' }} />
           <div className="mt-4 relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-subtle)' }} />
             <input
               value={navSearch}
               onChange={(e) => setNavSearch(e.target.value)}
               placeholder={t('adminNav.search', { defaultValue: 'Search pages...' })}
-              className="w-full bg-[#0F172A] border border-white/8 rounded-xl pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40"
+              className="w-full rounded-xl pl-9 pr-3 py-2 text-[13px] outline-none"
+              style={{
+                background: 'var(--color-bg-input)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
             />
           </div>
         </div>
@@ -261,16 +275,18 @@ export default function AdminLayout({ children }) {
                 onClick={() => setCollapsedSections((prev) => ({ ...prev, [section.labelKey]: !prev[section.labelKey] }))}
                 className="w-full flex items-center justify-between px-3 mb-1.5 text-left"
               >
-                <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-[0.08em]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em]"
+                  style={{ color: 'var(--color-text-subtle)' }}>
                   {t(section.labelKey)}
                 </p>
                 <ChevronRight
                   size={12}
-                  className={`text-[#6B7280] transition-transform ${collapsedSections[section.labelKey] ? '' : 'rotate-90'}`}
+                  className={`transition-transform ${collapsedSections[section.labelKey] ? '' : 'rotate-90'}`}
+                  style={{ color: 'var(--color-text-subtle)' }}
                 />
               </button>
               {!collapsedSections[section.labelKey] && (
-                <div className="space-y-px">
+                <div className="space-y-0.5">
                   {section.items.map(({ to, labelKey, icon: Icon, exact }) => (
                     <NavLink
                       key={to}
@@ -281,7 +297,8 @@ export default function AdminLayout({ children }) {
                       <Icon size={16} strokeWidth={1.75} />
                       <span className="flex-1">{t(labelKey)}</span>
                       {to === '/admin/churn' && highRiskCount > 0 && (
-                        <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#EF4444] text-white leading-none">
+                        <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white leading-none"
+                          style={{ background: 'var(--color-danger)' }}>
                           {highRiskCount}
                         </span>
                       )}
@@ -291,22 +308,74 @@ export default function AdminLayout({ children }) {
               )}
             </div>
           ))}
-          {visibleSections.length === 0 && (
-            <p className="px-3 py-4 text-[12px] text-[#6B7280]">No pages match that search.</p>
+          {/* Search results from advanced pages */}
+          {matchedAdvanced.length > 0 && (
+            <div className="mt-5">
+              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
+                style={{ color: 'var(--color-text-subtle)' }}>
+                {t('adminNav.advancedTools')}
+              </p>
+              <div className="space-y-0.5">
+                {matchedAdvanced.map(({ to, labelKey, icon: Icon }) => (
+                  <NavLink key={to} to={to} end={false} className={({ isActive }) => linkClass(isActive)}>
+                    <Icon size={16} strokeWidth={1.75} />
+                    <span className="flex-1">{t(labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+          {visibleSections.length === 0 && matchedAdvanced.length === 0 && (
+            <p className="px-3 py-4 text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('adminNav.noResults', 'No pages match that search.')}</p>
+          )}
+
+          {/* Advanced Tools entry */}
+          {!navQuery && (
+            <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              <button
+                onClick={() => setAdvancedToolsOpen(prev => !prev)}
+                className="admin-nav-link w-full"
+              >
+                <Wrench size={16} strokeWidth={1.75} />
+                <span className="flex-1 text-left">{t('adminNav.advancedTools')}</span>
+                <ChevronRight size={12} className={`transition-transform ${advancedToolsOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {advancedToolsOpen && (
+                <div className="mt-1 space-y-0.5">
+                  {advancedPages.map(({ to, labelKey, icon: Icon, descKey }) => (
+                    <NavLink key={to} to={to} end={false} className={({ isActive }) => linkClass(isActive)}>
+                      <Icon size={16} strokeWidth={1.75} />
+                      <span className="flex-1">{t(labelKey)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+
+              {/* Settings — below Advanced Tools */}
+              <div className="mt-3 space-y-0.5">
+                <NavLink to="/admin/settings" end={false} className={({ isActive }) => linkClass(isActive)}>
+                  <Settings size={16} strokeWidth={1.75} />
+                  <span className="flex-1">{t('adminNav.settings')}</span>
+                </NavLink>
+              </div>
+            </div>
           )}
         </nav>
 
         {/* Online admins indicator (multi-admin) */}
         {onlineAdmins.length > 0 && (
           <div className="px-3 pb-2">
-            <div className="px-3 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-lg">
-              <p className="text-[10px] font-semibold text-emerald-400/80 uppercase tracking-wider mb-1.5">Online Now</p>
+            <div className="px-3 py-2 rounded-lg"
+              style={{ background: 'color-mix(in srgb, var(--color-success) 5%, transparent)', border: '1px solid color-mix(in srgb, var(--color-success) 10%, transparent)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                style={{ color: 'color-mix(in srgb, var(--color-success) 70%, var(--color-text-primary))' }}>Online Now</p>
               {onlineAdmins.map(a => (
                 <div key={a.profile_id} className="flex items-center gap-2 py-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-                  <span className="text-[11px] text-[#9CA3AF] truncate">{a.profiles?.full_name || 'Admin'}</span>
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0"
+                    style={{ background: 'var(--color-success)' }} />
+                  <span className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{a.profiles?.full_name || 'Admin'}</span>
                   {a.current_page && (
-                    <span className="text-[9px] text-[#6B7280] ml-auto flex-shrink-0">{a.current_page}</span>
+                    <span className="text-[9px] ml-auto flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{a.current_page}</span>
                   )}
                 </div>
               ))}
@@ -315,18 +384,28 @@ export default function AdminLayout({ children }) {
         )}
 
         {/* User + sign out */}
-        <div className="px-3 py-3 border-t border-white/6">
-          <div className="flex items-center gap-2.5 px-3 py-1.5 mb-1">
-            <div className="w-6 h-6 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] font-bold text-[#D4AF37]">
+        <div className="px-3 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <button
+            onClick={() => navigate('/admin/profile')}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 mb-1 rounded-lg transition-colors duration-200 text-left"
+            onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--color-accent) 6%, transparent)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}>
+              <span className="text-[10px] font-bold" style={{ color: 'var(--color-accent)' }}>
                 {profile?.full_name?.[0]?.toUpperCase() ?? 'A'}
               </span>
             </div>
-            <p className="text-[14px] font-medium text-[#9CA3AF] truncate">{profile?.full_name ?? 'Admin'}</p>
-          </div>
+            <p className="text-[14px] font-medium truncate" style={{ color: 'var(--color-text-muted)' }}>{profile?.full_name ?? 'Admin'}</p>
+            <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
+          </button>
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#EF4444] hover:bg-red-500/5 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors"
+            style={{ color: 'var(--color-text-subtle)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-danger)'; e.currentTarget.style.background = 'color-mix(in srgb, var(--color-danger) 5%, transparent)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-subtle)'; e.currentTarget.style.background = 'transparent'; }}
           >
             <LogOut size={14} />
             {t('adminNav.signOut')}
@@ -335,16 +414,59 @@ export default function AdminLayout({ children }) {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────── */}
-      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden"
+        style={{ background: 'var(--color-admin-panel)' }}>
         {/* Mobile top bar */}
         <header
-          className="md:hidden flex items-center justify-between px-4 border-b border-white/6 bg-[#05070B]/95 backdrop-blur-xl flex-shrink-0"
-          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: '12px', height: 'calc(52px + env(safe-area-inset-top))' }}
+          className="md:hidden flex items-center justify-between px-4 flex-shrink-0"
+          style={{
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: '12px',
+            height: 'calc(52px + env(safe-area-inset-top))',
+            background: 'var(--color-bg-nav)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderBottom: '1px solid var(--color-border-subtle)',
+          }}
         >
-          <p className="text-[15px] font-bold text-[#E5E7EB]">{t('adminNav.admin')}</p>
-          <button onClick={handleSignOut} aria-label={t('adminNav.signOut')} className="text-[#6B7280] hover:text-[#EF4444] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-            <LogOut size={18} />
-          </button>
+          {/* Left: gym logo or name */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {gymLogoUrl ? (
+              <img
+                src={gymLogoUrl}
+                alt={gymName || 'Gym logo'}
+                className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
+                style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-border-subtle)' }}
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                <LayoutDashboard size={13} style={{ color: 'var(--color-text-subtle)' }} />
+              </div>
+            )}
+            <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
+          </div>
+
+          {/* Right: alert badge + admin avatar (sign-out on tap) */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {highRiskCount > 0 && (
+              <div className="relative flex items-center justify-center w-8 h-8">
+                <AlertTriangle size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full"
+                  style={{ background: 'var(--color-danger)', boxShadow: '0 0 0 2px var(--color-admin-shell)' }} />
+              </div>
+            )}
+            <button
+              onClick={() => navigate('/admin/profile')}
+              aria-label={t('adminNav.profile')}
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 focus:ring-2 focus:outline-none"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+            >
+              <span className="text-[11px] font-bold" style={{ color: 'var(--color-accent)' }}>
+                {profile?.full_name?.[0]?.toUpperCase() ?? 'A'}
+              </span>
+            </button>
+          </div>
         </header>
 
         {/* Page content */}
@@ -366,55 +488,110 @@ export default function AdminLayout({ children }) {
         }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="bg-[#0F172A] border-t border-white/8 rounded-t-2xl px-4 pt-3 pb-4 overflow-hidden">
+        <div className="rounded-t-2xl px-4 pt-3 pb-4 overflow-hidden max-h-[70vh] overflow-y-auto"
+          style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-default)' }}>
           {/* Panel header */}
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[13px] font-semibold text-[#9CA3AF]">{t('adminNav.morePages')}</p>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('adminNav.morePages')}</p>
             <button
               onClick={() => setMoreMenuOpen(false)}
-              className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors"
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--color-text-subtle)' }}
               aria-label="Close menu"
             >
               <X size={18} />
             </button>
           </div>
-          {/* Nav grid */}
-          <div className="grid grid-cols-4 gap-2">
-            {MOBILE_MORE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={exact}
-                onClick={() => setMoreMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors ${
-                    isActive
-                      ? 'text-[#D4AF37] bg-[#D4AF37]/10'
-                      : 'text-[#9CA3AF] hover:bg-white/[0.04]'
-                  }`
-                }
-              >
-                <Icon size={22} strokeWidth={1.75} />
-                <span className="text-[10px] font-medium text-center leading-tight">{t(labelKey)}</span>
-              </NavLink>
+          {/* Grouped nav by section */}
+          {filteredSections
+            .map(section => ({
+              ...section,
+              items: section.items.filter(n => !MOBILE_PRIMARY_PATHS.includes(n.to)),
+            }))
+            .filter(section => section.items.length > 0)
+            .map(section => (
+              <div key={section.labelKey} className="mb-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 px-1"
+                  style={{ color: 'var(--color-text-faint)' }}>{t(section.labelKey)}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {section.items.map(({ to, labelKey, icon: Icon, exact }) => (
+                    <NavLink key={to} to={to} end={exact} onClick={() => setMoreMenuOpen(false)}
+                      className={({ isActive }) =>
+                        `flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors ${
+                          isActive ? '' : ''
+                        }`
+                      }
+                      style={({ isActive }) => ({
+                        color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
+                      })}>
+                      <Icon size={22} strokeWidth={1.75} />
+                      <span className="text-[10px] font-medium text-center leading-tight">{t(labelKey)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
             ))}
+          {/* Advanced Tools subsection */}
+          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <button
+              onClick={() => setAdvancedToolsOpen(prev => !prev)}
+              className="w-full flex items-center gap-2 px-1 mb-1.5"
+            >
+              <Wrench size={12} style={{ color: 'var(--color-text-faint)' }} />
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-faint)' }}>{t('adminNav.advancedTools')}</p>
+              <ChevronRight size={10} className={`ml-auto transition-transform ${advancedToolsOpen ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-faint)' }} />
+            </button>
+            {advancedToolsOpen && (
+              <div className="grid grid-cols-4 gap-2">
+                {advancedPages.map(({ to, labelKey, icon: Icon }) => (
+                  <NavLink key={to} to={to} end={false} onClick={() => setMoreMenuOpen(false)}
+                    className="flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-colors"
+                    style={({ isActive }) => ({
+                      color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                      background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
+                    })}>
+                    <Icon size={22} strokeWidth={1.75} />
+                    <span className="text-[10px] font-medium text-center leading-tight">{t(labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+
+            {/* Settings */}
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              <NavLink to="/admin/settings" end={false} onClick={() => setMoreMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors"
+                style={({ isActive }) => ({
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                  background: isActive ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent',
+                })}>
+                <Settings size={20} strokeWidth={1.75} />
+                <span className="text-[13px] font-medium">{t('adminNav.settings')}</span>
+              </NavLink>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ── Mobile bottom nav ─────────────────────────────────── */}
-      <nav aria-label="Admin mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex border-t border-white/8 bg-[#05070B]/95 backdrop-blur-2xl"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav aria-label="Admin mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex"
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          background: 'var(--color-bg-nav)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderTop: '1px solid var(--color-border-default)',
+        }}>
         {MOBILE_NAV.map(({ to, labelKey, icon: Icon, exact }) => (
           <NavLink
             key={to}
             to={to}
             end={exact}
-            className={({ isActive }) =>
-              `flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors ${
-                isActive ? 'text-[#D4AF37]' : 'text-[#6B7280]'
-              }`
-            }
+            className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors"
+            style={({ isActive }) => ({
+              color: isActive ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+            })}
           >
             <Icon size={20} />
             <span className="text-[10px] font-medium">{t(labelKey)}</span>
@@ -423,9 +600,8 @@ export default function AdminLayout({ children }) {
         {/* More button */}
         <button
           onClick={() => setMoreMenuOpen(prev => !prev)}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors ${
-            moreMenuOpen || moreIsActive ? 'text-[#D4AF37]' : 'text-[#6B7280]'
-          }`}
+          className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors"
+          style={{ color: moreMenuOpen || moreIsActive ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}
           aria-label={t('adminNav.morePages')}
           aria-expanded={moreMenuOpen}
         >

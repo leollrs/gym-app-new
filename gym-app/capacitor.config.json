@@ -5,7 +5,7 @@
   "server": {
     "androidScheme": "https",
     "iosScheme": "capacitor",
-    "allowNavigation": ["*.supabase.co"]
+    "allowNavigation": ["erdhnixjnjullhjzmvpm.supabase.co"]
   },
   "ios": {
     "contentInset": "never",

@@ -524,7 +524,7 @@ function AddMemberModal({ gymId, gymName, onClose, onCreated }) {
     e.preventDefault();
     setError('');
     if (!form.email.trim() || !form.password || !form.fullName.trim() || !form.username.trim()) { setError('All fields are required'); return; }
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { setError('Password must be 8+ characters with uppercase, lowercase, and a number'); return; }
     setSaving(true);
     try {
       const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', {

@@ -2099,21 +2099,29 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // Persist plan
   const savePlan = useCallback((newPlan) => {
     setPlan(newPlan);
+    const planToSave = { weekStart, days: newPlan };
+    const planJson = JSON.stringify(planToSave);
+    if (planJson.length > 500000) { // 500KB limit
+      console.warn('Meal plan too large to save');
+      return;
+    }
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ weekStart, days: newPlan }));
+      localStorage.setItem(storageKey, planJson);
       // Also update legacy key for current week (backward compat)
       if (weekOffset === 0) {
-        localStorage.setItem(legacyStorageKey, JSON.stringify({ weekStart, days: newPlan }));
+        localStorage.setItem(legacyStorageKey, planJson);
       }
-    } catch {}
-    // Attempt Supabase save (fire and forget)
+    } catch (err) {
+      console.error('Failed to save meal plan to localStorage:', err?.message);
+    }
+    // Attempt Supabase save
     if (userId) {
       supabase.from('meal_plans').upsert({
         profile_id: userId,
         week_start: weekStart,
         plan_data: newPlan,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'profile_id,week_start' }).then(() => {}).catch(() => {});
+      }, { onConflict: 'profile_id,week_start' }).catch(err => console.error('Failed to save meal plan:', err?.message));
     }
   }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset]);
 
@@ -3863,7 +3871,7 @@ export default function Nutrition({ embedded = false }) {
   };
 
   const handleDeleteLog = async (logId) => {
-    await supabase.from('food_logs').delete().eq('id', logId);
+    await supabase.from('food_logs').delete().eq('id', logId).eq('profile_id', user.id);
     setTodayLogs(prev => prev.filter(l => l.id !== logId));
   };
 
@@ -3871,6 +3879,7 @@ export default function Nutrition({ embedded = false }) {
     const { data, error } = await supabase.from('food_logs')
       .update(updates)
       .eq('id', logId)
+      .eq('profile_id', user.id)
       .select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)')
       .single();
     if (!error && data) {
@@ -3894,12 +3903,13 @@ export default function Nutrition({ embedded = false }) {
 
   const handleSave = async () => {
     setSaving(true);
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, parseInt(v) || 0));
     const payload = {
       profile_id: user.id, gym_id: profile.gym_id,
-      daily_calories: draft.daily_calories ? parseInt(draft.daily_calories) : null,
-      daily_protein_g: draft.daily_protein_g ? parseInt(draft.daily_protein_g) : null,
-      daily_carbs_g: draft.daily_carbs_g ? parseInt(draft.daily_carbs_g) : null,
-      daily_fat_g: draft.daily_fat_g ? parseInt(draft.daily_fat_g) : null,
+      daily_calories: draft.daily_calories ? clamp(draft.daily_calories, 800, 10000) : null,
+      daily_protein_g: draft.daily_protein_g ? clamp(draft.daily_protein_g, 10, 500) : null,
+      daily_carbs_g: draft.daily_carbs_g ? clamp(draft.daily_carbs_g, 10, 1000) : null,
+      daily_fat_g: draft.daily_fat_g ? clamp(draft.daily_fat_g, 5, 500) : null,
       updated_at: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('nutrition_targets')

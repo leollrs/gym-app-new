@@ -10,7 +10,7 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton } from '../../components/admin';
+import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, AdminTabs } from '../../components/admin';
 
 // Must match the announcement_type enum in the DB schema
 const TYPE_OPTS = [
@@ -188,6 +188,7 @@ export default function AdminAnnouncements() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => { document.title = t('admin.announcements.pageTitle', 'Admin - Announcements | TuGymPR'); }, [t]);
 
@@ -208,7 +209,7 @@ export default function AdminAnnouncements() {
   // ── Delete mutation ──
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('announcements').delete().eq('id', id);
+      const { error } = await supabase.from('announcements').delete().eq('id', id).eq('gym_id', gymId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -225,7 +226,8 @@ export default function AdminAnnouncements() {
       const { error: err } = await supabase
         .from('announcements')
         .update({ title: editForm.title, message: editForm.message, type: editForm.type, is_recurring: editForm.is_recurring, recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null, recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null, recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null })
-        .eq('id', editingId);
+        .eq('id', editingId)
+        .eq('gym_id', gymId);
       if (err) throw err;
     },
     onSuccess: () => {
@@ -256,11 +258,26 @@ export default function AdminAnnouncements() {
         actions={
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[14px] rounded-xl hover:bg-[#C4A030] transition-colors whitespace-nowrap flex-shrink-0">
-            <Plus size={15} /> {t('admin.announcements.new', 'New')}
+            <Plus size={15} /> {t('admin.announcements.newAnnouncement', 'New Announcement')}
           </button>
         }
         className="mb-6"
       />
+
+      {/* Status filter tabs */}
+      {announcements.length > 0 && (
+        <AdminTabs
+          tabs={[
+            { key: 'all', label: t('admin.announcements.filterAll', 'All') },
+            { key: 'scheduled', label: t('admin.announcements.filterScheduled', 'Scheduled') },
+            { key: 'sent', label: t('admin.announcements.filterSent', 'Sent') },
+            { key: 'recurring', label: t('admin.announcements.filterRecurring', 'Recurring') },
+          ]}
+          active={statusFilter}
+          onChange={setStatusFilter}
+          className="mb-4"
+        />
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -271,9 +288,23 @@ export default function AdminAnnouncements() {
           <Megaphone size={32} className="text-[#6B7280] mx-auto mb-3" />
           <p className="text-[14px] text-[#6B7280]">{t('admin.announcements.noAnnouncements', 'No announcements yet')}</p>
         </div>
-      ) : (
+      ) : (() => {
+        const filtered = announcements.filter(a => {
+          if (statusFilter === 'all') return true;
+          const isScheduled = a.published_at && isFuture(new Date(a.published_at));
+          if (statusFilter === 'scheduled') return isScheduled;
+          if (statusFilter === 'sent') return !isScheduled;
+          if (statusFilter === 'recurring') return a.is_recurring;
+          return true;
+        });
+        return filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <Megaphone size={28} className="text-[#6B7280] mx-auto mb-2" />
+            <p className="text-[13px] text-[#6B7280]">{t('admin.announcements.noMatchingAnnouncements', 'No announcements match this filter')}</p>
+          </div>
+        ) : (
         <div className="space-y-3">
-          {announcements.map((a, idx) => {
+          {filtered.map((a, idx) => {
             const isScheduled = a.published_at && isFuture(new Date(a.published_at));
             const isEditing = editingId === a.id;
             return (
@@ -376,7 +407,8 @@ export default function AdminAnnouncements() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {showCreate && (
         <CreateModal isOpen={showCreate} onClose={() => setShowCreate(false)} gymId={gymId} adminId={user.id} />

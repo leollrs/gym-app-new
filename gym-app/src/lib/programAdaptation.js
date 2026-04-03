@@ -111,6 +111,11 @@ export function loadAdaptationSuggestions() {
     const raw = localStorage.getItem('program_adaptations');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    // Validate parsed data structure and ranges
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    if (parsed.attendanceRate !== undefined && (parsed.attendanceRate < 0 || parsed.attendanceRate > 1)) return null;
+    if (parsed.suggestedDays !== undefined && (parsed.suggestedDays < 1 || parsed.suggestedDays > 7)) return null;
+    if (parsed.suggestedSplit !== undefined && typeof parsed.suggestedSplit !== 'string') return null;
     // Expire suggestions older than 7 days
     if (parsed.timestamp && Date.now() - new Date(parsed.timestamp).getTime() > 7 * 86400000) {
       localStorage.removeItem('program_adaptations');

@@ -197,7 +197,7 @@ const WorkoutBuilder = () => {
   const [searchParams] = useSearchParams();
   const rawReturn = searchParams.get('from') || '/workouts';
   // Only allow relative paths starting with / but not // (protocol-relative URLs)
-  const returnTo = (rawReturn.startsWith('/') && !rawReturn.startsWith('//')) ? rawReturn : '/workouts';
+  const returnTo = /^\/[a-zA-Z0-9\-\/\?=&]*$/.test(rawReturn) ? rawReturn : '/workouts';
   const { user, profile } = useAuth();
   const { showToast } = useToast();
   const [showLibrary, setShowLibrary] = useState(false);

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, ChevronRight, Search, Filter, SortAsc, ExternalLink } from 'lucide-react';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
@@ -28,15 +28,15 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
     ? 'text-emerald-400 bg-emerald-500/10'
     : isAtRisk
       ? 'text-amber-400 bg-amber-500/10'
-      : 'text-[#6B7280] bg-white/5';
+      : 'text-[var(--color-text-muted)] bg-[var(--color-bg-subtle)]';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="client-preview-title"
-        className="bg-[#0F172A] border border-white/8 rounded-t-2xl md:rounded-2xl w-full max-w-sm overflow-hidden"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
@@ -44,32 +44,42 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
           <button
             onClick={onClose}
             aria-label={t('trainerClients.close', 'Close')}
-            className="text-[#6B7280] hover:text-[#E5E7EB] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-lg"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Avatar + Name */}
+        {/* Avatar + Name + Summary */}
         <div className="flex flex-col items-center px-5 pb-4">
-          <div className="w-16 h-16 rounded-full bg-[#1E293B] flex items-center justify-center mb-3 relative">
-            <span className="text-[22px] font-bold text-[#9CA3AF]">{(client.full_name || 'U')[0]}</span>
-            <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#0F172A] ${
-              isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[#374151]'
+          <div className="w-20 h-20 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center mb-3 relative">
+            <span className="text-[28px] font-bold text-[var(--color-text-secondary)]">{(client.full_name || 'U')[0]}</span>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--color-bg-card)] ${
+              isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[var(--color-bg-inset)]'
             }`} />
           </div>
-          <p id="client-preview-title" className="text-[18px] font-bold text-[#E5E7EB] text-center">{client.full_name}</p>
+          <p id="client-preview-title" className="text-[18px] font-bold text-[var(--color-text-primary)] text-center">{client.full_name}</p>
           <span className={`mt-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusColor}`}>
             {statusLabel}
           </span>
+          {/* Summary line */}
+          <p className="mt-2 text-[12px] text-[var(--color-text-muted)] text-center">
+            {client.created_at
+              ? t('trainerClients.memberSince', 'Member since {{date}}', { date: new Date(client.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) })
+              : null}
+            {client.created_at && client.last_active_at ? ' · ' : ''}
+            {client.last_active_at
+              ? t('trainerClients.lastSeen', 'Last seen {{time}}', { time: formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true }) })
+              : null}
+          </p>
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-px bg-white/6 mx-5 rounded-xl overflow-hidden mb-5">
+        <div className="grid grid-cols-2 gap-3 mx-5 mb-5">
           {/* Last active */}
-          <div className="bg-[#111827] px-3.5 py-3">
-            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">
+          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
+            <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">
               {client.last_active_at
                 ? formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true })
                 : t('trainerClients.never', 'Never')}
@@ -77,15 +87,15 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
           </div>
 
           {/* Recent workouts */}
-          <div className="bg-[#111827] px-3.5 py-3">
-            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.recentWorkouts', 'Workouts (14d)')}</p>
-            <p className="text-[13px] font-semibold text-[#E5E7EB]">{client.recentWorkouts ?? 0}</p>
+          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.recentWorkouts', 'Workouts (14d)')}</p>
+            <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{client.recentWorkouts ?? 0}</p>
           </div>
 
           {/* Program */}
-          <div className="bg-[#111827] px-3.5 py-3">
-            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.program', 'Program')}</p>
-            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.program', 'Program')}</p>
+            <p className="text-[15px] font-semibold text-[var(--color-text-primary)] truncate">
               {client.assigned_program_id
                 ? t('trainerClients.assigned', 'Assigned')
                 : t('trainerClients.none', 'None')}
@@ -93,16 +103,16 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
           </div>
 
           {/* Churn risk */}
-          <div className="bg-[#111827] px-3.5 py-3">
-            <p className="text-[10px] text-[#6B7280] uppercase tracking-wide mb-0.5">{t('trainerClients.churnRisk', 'Churn Risk')}</p>
+          <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.churnRisk', 'Churn Risk')}</p>
             {churnScore && churnScore.score >= 30 ? (
-              <p className={`text-[13px] font-semibold ${
+              <p className={`text-[15px] font-semibold ${
                 churnScore.score >= 80 ? 'text-red-400' : churnScore.score >= 55 ? 'text-orange-400' : 'text-yellow-400'
               }`}>
                 {Math.round(churnScore.score)}%
               </p>
             ) : (
-              <p className="text-[13px] font-semibold text-emerald-400">{t('trainerClients.low', 'Low')}</p>
+              <p className="text-[15px] font-semibold text-emerald-400">{t('trainerClients.low', 'Low')}</p>
             )}
           </div>
         </div>
@@ -110,8 +120,15 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
         {/* Action buttons */}
         <div className="px-5 pb-5 space-y-2.5">
           <button
+            onClick={onClose}
+            className="w-full flex items-center justify-center gap-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl py-3 text-[14px] transition-colors min-h-[44px]"
+          >
+            <MessageSquare size={16} />
+            {t('trainerClients.message', 'Message')}
+          </button>
+          <button
             onClick={onOpen}
-            className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E5C94B] text-black font-bold rounded-xl py-3 text-[14px] transition-colors min-h-[44px]"
+            className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl py-3.5 text-[15px] transition-colors min-h-[48px]"
           >
             <ExternalLink size={16} />
             {t('trainerClients.openClient', 'Open Client')}
@@ -122,38 +139,174 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
   );
 };
 
-// ── Filter / sort constants ──────────────────────────────────────────────────
-const FILTERS = [
-  { key: 'all',        label: 'All' },
-  { key: 'active',     label: 'Active' },
-  { key: 'at_risk',    label: 'At Risk' },
-  { key: 'has_program',label: 'Has Program' },
-  { key: 'no_program', label: 'No Program' },
-];
+// ── Add Client from Gym modal ──────────────────────────────────────────────
+const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded }) => {
+  const { t } = useTranslation('pages');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [addingId, setAddingId] = useState(null);
 
-const SORTS = [
-  { key: 'last_active', label: 'Last Active' },
-  { key: 'name',        label: 'Name' },
-  { key: 'workouts',    label: 'Recent Workouts' },
-];
+  useEffect(() => {
+    const fetchMembers = async () => {
+      setLoadingMembers(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, username, last_active_at')
+        .eq('gym_id', gymId)
+        .eq('role', 'member')
+        .order('full_name');
+      if (error) logger.error('AddClientModal: failed to load members:', error);
+      setMembers(data || []);
+      setLoadingMembers(false);
+    };
+    fetchMembers();
+  }, [gymId]);
+
+  const filtered = useMemo(() => {
+    const excluded = new Set(existingClientIds);
+    let list = members.filter(m => !excluded.has(m.id));
+    if (memberSearch.trim()) {
+      const q = memberSearch.toLowerCase();
+      list = list.filter(m =>
+        m.full_name?.toLowerCase().includes(q) ||
+        m.username?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [members, memberSearch, existingClientIds]);
+
+  const handleAdd = async (memberId) => {
+    setAddingId(memberId);
+    try {
+      const { error } = await supabase.from('trainer_clients').upsert({
+        trainer_id: trainerId,
+        client_id: memberId,
+        gym_id: gymId,
+        is_active: true,
+      }, { onConflict: 'trainer_id,client_id' });
+      if (error) throw error;
+      onAdded(memberId);
+    } catch (err) {
+      logger.error('AddClientModal: failed to assign client:', err);
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm px-0 sm:px-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-client-title"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden mx-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 id="add-client-title" className="text-[16px] font-bold text-[var(--color-text-primary)]">
+            {t('trainerClients.addClient', 'Add Client')}
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label={t('trainerClients.close', 'Close')}
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-lg"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pb-3">
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <input
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              placeholder={t('trainerClients.searchMembers', 'Search gym members…')}
+              autoFocus
+              aria-label={t('trainerClients.searchMembers', 'Search gym members')}
+              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Member list */}
+        <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-1.5">
+          {loadingMembers ? (
+            <div className="flex justify-center py-12">
+              <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-10">
+              <Users size={24} className="text-[var(--color-text-muted)] mx-auto mb-2" />
+              <p className="text-[13px] text-[var(--color-text-muted)]">
+                {memberSearch.trim()
+                  ? t('trainerClients.noMembersMatch', 'No members match your search')
+                  : t('trainerClients.allMembersAssigned', 'All gym members are already assigned')}
+              </p>
+            </div>
+          ) : (
+            filtered.map(m => (
+              <div
+                key={m.id}
+                className="flex items-center gap-3 px-3.5 py-3 bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl"
+              >
+                <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0">
+                  <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(m.full_name || 'U')[0]}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[var(--color-text-primary)] truncate">{m.full_name}</p>
+                  {m.username && (
+                    <p className="text-[11px] text-[var(--color-text-muted)] truncate">@{m.username}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleAdd(m.id)}
+                  disabled={addingId === m.id}
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-[var(--color-accent)] hover:brightness-110 transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-accent-glow)' }}
+                  aria-label={t('trainerClients.addMember', 'Add {{name}}', { name: m.full_name })}
+                >
+                  {addingId === m.id ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <UserPlus size={16} />
+                  )}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Filter / sort constants ──────────────────────────────────────────────────
+const FILTER_KEYS = ['all', 'active', 'at_risk', 'has_program', 'no_program'];
+const SORT_KEYS = ['last_active', 'name', 'workouts'];
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function TrainerClients() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const [clients,  setClients]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('all');
   const [sortBy,   setSortBy]   = useState('last_active');
-  const [showFilters, setShowFilters] = useState(false);
   const [churnScores, setChurnScores] = useState({});
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   function getChurnLevel(score) {
-    if (score >= 80) return { label: 'Critical', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
-    if (score >= 55) return { label: 'High', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' };
-    return { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
+    if (score >= 80) return { label: t('trainerClients.churnCritical', 'Critical'), color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
+    if (score >= 55) return { label: t('trainerClients.churnHigh', 'High'), color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' };
+    return { label: t('trainerClients.churnMedium', 'Medium'), color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
   }
 
   useEffect(() => { document.title = 'Trainer - Clients | TuGymPR'; }, []);
@@ -218,7 +371,7 @@ export default function TrainerClients() {
       setLoading(false);
     };
     load();
-  }, [profile?.gym_id, profile?.id]);
+  }, [profile?.gym_id, profile?.id, reloadKey]);
 
   // Client-side search, filter, sort
   const filtered = useMemo(() => {
@@ -266,95 +419,100 @@ export default function TrainerClients() {
   }, [clients, search, filter, sortBy, churnScores]);
 
   return (
-    <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
-      <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">My Clients</h1>
-        <p className="text-[13px] text-[#6B7280] mt-0.5">{clients.length} assigned client{clients.length !== 1 ? 's' : ''}</p>
+    <div className="px-4 md:px-6 py-6 w-full max-w-5xl mx-auto pb-28 md:pb-12">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] truncate">{t('trainerClients.title', 'My Clients')}</h1>
+          <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">
+            {clients.length === 1
+              ? t('trainerClients.assignedCountOne', '{{count}} assigned client', { count: clients.length })
+              : t('trainerClients.assignedCountOther', '{{count}} assigned clients', { count: clients.length })}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddClient(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0"
+        >
+          <UserPlus size={16} />
+          <span className="hidden sm:inline">{t('trainerClients.addClient', 'Add Client')}</span>
+        </button>
       </div>
 
-      {/* Search + Filter bar */}
+      {/* Search + inline filter pills + sort cycle button */}
       {!loading && clients.length > 0 && (
-        <div className="mb-4 space-y-3 md:sticky md:top-0 md:z-10 md:bg-[#05070B] md:pb-2">
-          {/* Search */}
-          <div className="relative">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7280]" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search clients…"
-              aria-label="Search clients"
-              className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 transition-colors"
-            />
-          </div>
-
-          {/* Filter / Sort row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                filter !== 'all'
-                  ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                  : 'bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB]'
-              }`}
-            >
-              <Filter size={12} />
-              {FILTERS.find(f => f.key === filter)?.label || 'Filter'}
-            </button>
+        <div className="mb-4 space-y-2 md:sticky md:top-0 md:z-10 md:pb-2" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
+          {/* Search + sort in one row */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={t('trainerClients.searchClients', 'Search clients…')}
+                aria-label={t('trainerClients.searchClients', 'Search clients')}
+                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+            </div>
             <button
               onClick={() => {
-                const idx = SORTS.findIndex(s => s.key === sortBy);
-                setSortBy(SORTS[(idx + 1) % SORTS.length].key);
+                const idx = SORT_KEYS.indexOf(sortBy);
+                setSortBy(SORT_KEYS[(idx + 1) % SORT_KEYS.length]);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-medium bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors shrink-0 border border-[var(--color-border-subtle)]"
+              title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t('trainerClients.sort_' + sortBy, sortBy)}`}
             >
-              <SortAsc size={12} />
-              {SORTS.find(s => s.key === sortBy)?.label}
+              <SortAsc size={14} />
+              <span className="hidden sm:inline">{t('trainerClients.sort_' + sortBy, sortBy)}</span>
             </button>
           </div>
 
-          {/* Filter pills */}
-          {showFilters && (
-            <div className="flex gap-1.5 flex-wrap">
-              {FILTERS.map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => { setFilter(f.key); setShowFilters(false); }}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                    filter === f.key
-                      ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
-                      : 'bg-[#111827] text-[#6B7280] hover:text-[#9CA3AF]'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Always-visible compact filter pills */}
+          <div className="flex gap-1.5 flex-wrap overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible scrollbar-hide">
+            {FILTER_KEYS.map(fk => (
+              <button
+                key={fk}
+                onClick={() => setFilter(fk)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 md:shrink ${
+                  filter === fk
+                    ? 'text-[var(--color-accent)] font-semibold'
+                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+                }`}
+                style={filter === fk ? { backgroundColor: 'var(--color-accent-glow)' } : undefined}
+              >
+                {t('trainerClients.filter_' + fk, fk)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {loading ? (
         <div className="flex justify-center py-24">
-          <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
         </div>
       ) : clients.length === 0 ? (
         <div className="text-center py-20">
-          <Users size={32} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">No clients assigned yet</p>
-          <p className="text-[12px] text-[#6B7280] mt-1">Ask your admin to assign clients to you</p>
+          <Users size={32} className="text-[var(--color-text-muted)] mx-auto mb-3" />
+          <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerClients.noClients', 'No clients assigned yet')}</p>
+          <button
+            onClick={() => setShowAddClient(true)}
+            className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px]"
+          >
+            <UserPlus size={16} />
+            {t('trainerClients.addFirstClient', 'Add Your First Client')}
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
-          <Search size={24} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">No clients match your filters</p>
+          <Search size={24} className="text-[var(--color-text-muted)] mx-auto mb-3" />
+          <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerClients.noMatchingClients', 'No clients match your filters')}</p>
           <button onClick={() => { setSearch(''); setFilter('all'); }}
-            className="text-[12px] text-[#D4AF37] mt-2 hover:text-[#E5C94B] transition-colors">
-            Clear filters
+            className="text-[12px] text-[var(--color-accent)] mt-2 hover:text-[var(--color-accent-soft)] transition-colors">
+            {t('trainerClients.clearFilters', 'Clear filters')}
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.map(c => {
               const daysInactive = c.last_active_at
                 ? Math.floor((Date.now() - new Date(c.last_active_at)) / 86400000)
@@ -369,37 +527,50 @@ export default function TrainerClients() {
                 <button
                   key={c.id}
                   onClick={() => setSelected(c)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-[#0F172A] border border-white/[0.06] rounded-2xl hover:border-white/20 hover:bg-white/[0.03] transition-all text-left"
+                  className="w-full flex items-center gap-3 px-3 sm:px-4 py-3.5 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)] transition-all text-left overflow-hidden"
                 >
-                  <div className="w-9 h-9 rounded-full bg-[#1E293B] flex items-center justify-center flex-shrink-0 relative">
-                    <span className="text-[13px] font-bold text-[#9CA3AF]">{(c.full_name || 'U')[0]}</span>
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#05070B] ${
-                      isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[#374151]'
+                  <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0 relative">
+                    <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(c.full_name || 'U')[0]}</span>
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-bg-primary)] ${
+                      isActive ? 'bg-emerald-400' : isAtRisk ? 'bg-amber-400' : 'bg-[var(--color-bg-inset)]'
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{c.full_name}</p>
+                      <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{c.full_name}</p>
                       {riskLevel && (
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${riskLevel.bg} ${riskLevel.color}`}>
                           {Math.round(churn.score)}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-[#6B7280]">
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
                       {c.last_active_at
-                        ? `Active ${formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true })}`
-                        : 'Never active'}
+                        ? t('trainerClients.activeAgo', 'Active {{time}}', { time: formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true }) })
+                        : t('trainerClients.neverActive', 'Never active')}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-[12px] font-semibold text-[#9CA3AF]">{c.recentWorkouts}w / 14d</p>
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                    <div className="text-right hidden md:block">
+                      <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('trainerClients.workoutsSummary', '{{count}}w / 14d', { count: c.recentWorkouts })}</p>
                       {c.assigned_program_id && (
-                        <p className="text-[10px] text-[#D4AF37]">Program assigned</p>
+                        <p className="text-[10px] text-[var(--color-accent)]">{t('trainerClients.programAssigned', 'Program assigned')}</p>
                       )}
                     </div>
-                    <ChevronRight size={14} className="text-[#6B7280]" />
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: c.id });
+                          if (convId) navigate(`/trainer/messages/${convId}`);
+                        } catch (err) { logger.error('Error opening conversation:', err); }
+                      }}
+                      aria-label={t('trainerClients.messageClient', 'Message')}
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors"
+                    >
+                      <MessageSquare size={15} />
+                    </button>
+                    <ChevronRight size={14} className="text-[var(--color-text-muted)] hidden sm:block" />
                   </div>
                 </button>
               );
@@ -415,7 +586,20 @@ export default function TrainerClients() {
           onClose={() => setSelected(null)}
           onOpen={() => {
             setSelected(null);
-            navigate(`/trainer/client/${selected.id}`);
+            navigate(`/trainer/clients/${selected.id}`);
+          }}
+        />
+      )}
+
+      {showAddClient && (
+        <AddClientModal
+          trainerId={profile.id}
+          gymId={profile.gym_id}
+          existingClientIds={clients.map(c => c.id)}
+          onClose={() => setShowAddClient(false)}
+          onAdded={() => {
+            setShowAddClient(false);
+            setReloadKey(k => k + 1);
           }}
         />
       )}

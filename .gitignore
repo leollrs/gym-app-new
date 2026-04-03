@@ -10,6 +10,13 @@ gym-app/videos/
 *.MP4
 Lateral_raises_video.mp4
 
+# Environment files
+.env
+.env.*
+.env.local
+.env.production
+!.env.example
+
 # Private keys
 *.key
 *.pem

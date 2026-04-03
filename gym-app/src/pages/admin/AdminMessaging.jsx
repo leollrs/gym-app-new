@@ -15,9 +15,10 @@ import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import logger from '../../lib/logger';
 
-import { PageHeader, AdminCard, AdminModal, FadeIn } from '../../components/admin';
+import { PageHeader, AdminCard, AdminModal, FadeIn, AdminTabs } from '../../components/admin';
 import UserAvatar from '../../components/UserAvatar';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
+import { sanitize } from '../../lib/sanitize';
 
 // ────────────────────────────────────────────────────────────
 // Constants
@@ -85,26 +86,12 @@ export default function AdminMessaging() {
       />
 
       {/* ── Tab bar ──────────────────────────────────────── */}
-      <div className="mt-6 flex gap-1 bg-[#0F172A] border border-white/6 rounded-xl p-1 w-fit">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all min-h-[44px]
-                ${isActive
-                  ? 'bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.03] border border-transparent'
-                }`}
-            >
-              <Icon size={15} />
-              <span className="hidden sm:inline">{t(`admin.messaging.${tab.labelKey}`)}</span>
-            </button>
-          );
-        })}
-      </div>
+      <AdminTabs
+        tabs={TABS.map(tb => ({ key: tb.key, label: t(`admin.messaging.${tb.labelKey}`), icon: tb.icon }))}
+        active={activeTab}
+        onChange={setActiveTab}
+        className="mt-6 mb-4"
+      />
 
       {/* ── Tab content ──────────────────────────────────── */}
       <div className="mt-4">
@@ -262,61 +249,96 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   useEffect(() => {
     if (!gymId || !adminId) return;
 
+    // Debounce helpers to prevent excessive processing from unfiltered realtime events
+    let insertDebounceTimer;
+    let updateDebounceTimer;
+    let pendingInsert = null;
+    let pendingUpdate = null;
+
+    const processInsert = (payload) => {
+      const newMsg = payload.new;
+      if (!convoIdsRef.current.includes(newMsg.conversation_id)) return;
+
+      if (newMsg.conversation_id === activeConvoId) {
+        decryptMessage(newMsg.body, activeConvoId).then(decryptedBody => {
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, { ...newMsg, body: decryptedBody }];
+          });
+        }).catch(() => {
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        });
+        if (newMsg.sender_id !== adminId) {
+          supabase.from('direct_messages')
+            .update({ read_at: new Date().toISOString() })
+            .eq('id', newMsg.id)
+            .then(() => {});
+        }
+      }
+
+      decryptMessage(newMsg.body, newMsg.conversation_id).then(decryptedPreview => {
+        setConversations(prev => prev.map(c =>
+          c.id === newMsg.conversation_id
+            ? {
+                ...c,
+                last_message_at: newMsg.created_at,
+                last_message_preview: decryptedPreview,
+                last_message_sender_id: newMsg.sender_id,
+                unread_count: c.id === activeConvoId ? 0 : c.unread_count + 1,
+              }
+            : c
+        ).sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
+      }).catch(() => {});
+    };
+
+    const processUpdate = (payload) => {
+      if (payload.new.read_at && payload.new.sender_id === adminId) {
+        setMessages(prev => prev.map(m =>
+          m.id === payload.new.id ? { ...m, read_at: payload.new.read_at } : m
+        ));
+      }
+    };
+
     const channel = supabase.channel('admin_dm_realtime')
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         (payload) => {
-          const newMsg = payload.new;
-          if (!convoIdsRef.current.includes(newMsg.conversation_id)) return;
-
-          if (newMsg.conversation_id === activeConvoId) {
-            decryptMessage(newMsg.body, activeConvoId).then(decryptedBody => {
-              setMessages(prev => {
-                if (prev.some(m => m.id === newMsg.id)) return prev;
-                return [...prev, { ...newMsg, body: decryptedBody }];
-              });
-            }).catch(() => {
-              setMessages(prev => {
-                if (prev.some(m => m.id === newMsg.id)) return prev;
-                return [...prev, newMsg];
-              });
-            });
-            if (newMsg.sender_id !== adminId) {
-              supabase.from('direct_messages')
-                .update({ read_at: new Date().toISOString() })
-                .eq('id', newMsg.id)
-                .then(() => {});
-            }
+          // For messages in the active conversation, process immediately
+          if (payload.new.conversation_id === activeConvoId) {
+            clearTimeout(insertDebounceTimer);
+            processInsert(payload);
+          } else {
+            // For sidebar updates, debounce to reduce churn
+            pendingInsert = payload;
+            clearTimeout(insertDebounceTimer);
+            insertDebounceTimer = setTimeout(() => {
+              if (pendingInsert) processInsert(pendingInsert);
+              pendingInsert = null;
+            }, 2000);
           }
-
-          decryptMessage(newMsg.body, newMsg.conversation_id).then(decryptedPreview => {
-            setConversations(prev => prev.map(c =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_at: newMsg.created_at,
-                    last_message_preview: decryptedPreview,
-                    last_message_sender_id: newMsg.sender_id,
-                    unread_count: c.id === activeConvoId ? 0 : c.unread_count + 1,
-                  }
-                : c
-            ).sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
-          }).catch(() => {});
         }
       )
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'direct_messages' },
         (payload) => {
-          if (payload.new.read_at && payload.new.sender_id === adminId) {
-            setMessages(prev => prev.map(m =>
-              m.id === payload.new.id ? { ...m, read_at: payload.new.read_at } : m
-            ));
-          }
+          pendingUpdate = payload;
+          clearTimeout(updateDebounceTimer);
+          updateDebounceTimer = setTimeout(() => {
+            if (pendingUpdate) processUpdate(pendingUpdate);
+            pendingUpdate = null;
+          }, 2000);
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(insertDebounceTimer);
+      clearTimeout(updateDebounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, [gymId, adminId, activeConvoId]);
 
   // ── Send message ──────────────────────────────────────
@@ -473,7 +495,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                   const isActive = c.id === activeConvoId;
                   const previewText = c.last_message_preview
                     ? (c.last_message_sender_id === adminId ? `${t('admin.messaging.you')}: ` : '') +
-                      (c.last_message_preview.length > 50 ? c.last_message_preview.slice(0, 50) + '...' : c.last_message_preview)
+                      sanitize(c.last_message_preview.length > 50 ? c.last_message_preview.slice(0, 50) + '...' : c.last_message_preview)
                     : t('admin.messaging.noMessagesYet');
                   return (
                     <button key={c.id} onClick={() => { setActiveConvoId(c.id); setActiveMember(member); setMobileShowThread(true); }}
@@ -570,7 +592,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                                 ? 'bg-[#D4AF37]/15 text-[#E5E7EB] rounded-br-md'
                                 : 'bg-[#111827] text-[#E5E7EB] rounded-bl-md'
                             }`}>
-                              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{item.body}</p>
+                              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{sanitize(item.body)}</p>
                               <div className={`flex items-center gap-1 mt-1 ${isSent ? 'justify-end' : 'justify-start'}`}>
                                 <p className="text-[10px] text-[#6B7280]">{format(new Date(item.created_at), 'h:mm a')}</p>
                                 {isSent && <ReadIndicator readAt={item.read_at} />}

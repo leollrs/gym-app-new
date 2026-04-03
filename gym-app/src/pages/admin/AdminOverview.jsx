@@ -209,16 +209,16 @@ async function fetchOverviewData(gymId) {
 // ── Overview Loading Skeleton ─────────────────────────────
 function OverviewSkeleton() {
   return (
-    <AdminPageShell className="space-y-4">
-      <div className="h-7 bg-white/6 rounded-lg w-64 animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+    <AdminPageShell className="space-y-6">
+      <div className="h-8 bg-white/[0.04] dark:bg-white/[0.04] rounded-lg w-64 animate-pulse" />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 h-[80px] animate-pulse" />
+          <div key={i} className="bg-[#0F172A] dark:bg-[#0F172A] border border-white/[0.06] rounded-2xl p-5 h-[90px] animate-pulse" />
         ))}
       </div>
-      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
-        <CardSkeleton h="h-[340px]" />
-        <CardSkeleton h="h-[340px]" />
+      <div className="grid lg:grid-cols-[1fr_340px] gap-5">
+        <CardSkeleton h="h-[360px]" />
+        <CardSkeleton h="h-[360px]" />
       </div>
     </AdminPageShell>
   );
@@ -229,14 +229,24 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-xl text-left transition-all hover:brightness-110"
-      style={{ background: `${color}08`, border: `1px solid ${color}20` }}
+      className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-left
+        transition-all duration-200 hover:brightness-110 hover:translate-x-0.5
+        active:scale-[0.995]"
+      style={{ background: `${color}08`, border: `1px solid ${color}18` }}
     >
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+          transition-transform duration-200 group-hover:scale-110"
+        style={{ background: `${color}15` }}
+      >
         <Icon size={14} style={{ color }} />
       </div>
-      <p className="flex-1 text-[12px] text-[#E5E7EB]">{text}</p>
-      <span className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0" style={{ color }}>
+      <p className="flex-1 text-[12.5px] text-[#E5E7EB] dark:text-[#E5E7EB] leading-snug">{text}</p>
+      <span
+        className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0
+          transition-transform duration-200 hover:translate-x-0.5"
+        style={{ color }}
+      >
         {actionLabel} <ChevronRight size={11} />
       </span>
     </button>
@@ -254,23 +264,26 @@ function ActivityItem({ item, dateFnsLocale }) {
   const Icon = meta.icon;
 
   return (
-    <div className="flex items-center gap-3 py-2 group">
+    <div className="flex items-center gap-3 py-2.5 group hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
+      -mx-1 px-1 rounded-lg transition-colors duration-150">
       <div className="relative flex-shrink-0">
         <Avatar name={item.memberName} size="sm" src={item.avatarUrl} />
         <div
-          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0F172A]"
+          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center
+            border-2 border-[#0F172A] dark:border-[#0F172A]"
           style={{ background: `${meta.color}20` }}
         >
           <Icon size={8} style={{ color: meta.color }} />
         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] text-[#E5E7EB] truncate">
+        <p className="text-[12.5px] text-[#E5E7EB] dark:text-[#E5E7EB] truncate">
           <span className="font-medium">{item.memberName}</span>
-          <span className="text-[#6B7280] ml-1">{meta.label}</span>
+          <span className="text-[#6B7280] dark:text-[#6B7280] ml-1.5">{meta.label}</span>
         </p>
       </div>
-      <span className="text-[10px] text-[#4B5563] flex-shrink-0 tabular-nums">
+      <span className="text-[10px] text-[#4B5563] dark:text-[#4B5563] flex-shrink-0 tabular-nums
+        opacity-60 group-hover:opacity-100 transition-opacity duration-150">
         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true, ...(dateFnsLocale || {}) })}
       </span>
     </div>
@@ -281,23 +294,46 @@ function ActivityItem({ item, dateFnsLocale }) {
 function WatchlistRow({ member, t }) {
   const tier = getRiskTier(member.score);
   return (
-    <div className="flex items-center gap-2.5 py-2">
+    <div className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
+      -mx-1 px-1 rounded-lg transition-colors duration-150">
       <Avatar name={member.full_name} size="sm" src={member.avatar_url} />
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{member.full_name}</p>
-        <p className="text-[10px] text-[#6B7280]">
+        <p className="text-[12.5px] font-medium text-[#E5E7EB] dark:text-[#E5E7EB] truncate">{member.full_name}</p>
+        <p className="text-[10.5px] text-[#6B7280] dark:text-[#6B7280]">
           {member.neverActive
             ? t('admin.overview.neverLogged')
             : t('admin.overview.daysInactive', { count: member.daysInactive })}
         </p>
       </div>
       <span
-        className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 tabular-nums"
+        className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0 tabular-nums"
         style={{ color: tier.color, background: tier.bg }}
       >
         {member.score}%
       </span>
     </div>
+  );
+}
+
+// ── Quick Action Button ──────────────────────────────────
+function QuickActionButton({ icon: Icon, label, onClick, disabled = false }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold
+        border transition-all duration-200
+        ${disabled
+          ? 'text-[#4B5563] bg-white/[0.02] border-white/[0.04] cursor-not-allowed opacity-50'
+          : `text-[#9CA3AF] bg-white/[0.04] border-white/[0.06]
+             hover:text-[#E5E7EB] hover:border-white/[0.15] hover:bg-white/[0.07]
+             hover:shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:-translate-y-px
+             active:translate-y-0 active:shadow-none`
+        }`}
+    >
+      <Icon size={12.5} />
+      {label}
+    </button>
   );
 }
 
@@ -368,13 +404,20 @@ export default function AdminOverview() {
   if (isError) {
     return (
       <AdminPageShell>
-        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
-          <AlertTriangle size={28} className="text-[#EF4444]" />
-          <p className="text-[14px] font-semibold text-[#EF4444]">{t('admin.overview.loadError', 'Failed to load overview data')}</p>
-          <p className="text-[12px] text-[#6B7280] max-w-md text-center">{error?.message}</p>
+        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-5">
+          <div className="w-14 h-14 rounded-2xl bg-[#EF4444]/10 flex items-center justify-center">
+            <AlertTriangle size={24} className="text-[#EF4444]" />
+          </div>
+          <div className="text-center">
+            <p className="text-[15px] font-semibold text-[#EF4444]">{t('admin.overview.loadError', 'Failed to load overview data')}</p>
+            <p className="text-[12.5px] text-[#6B7280] max-w-md mt-1.5">{error?.message}</p>
+          </div>
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium text-[#E5E7EB] bg-white/[0.05] border border-white/10 hover:bg-white/[0.08] transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12.5px] font-medium
+              text-[#E5E7EB] bg-white/[0.05] border border-white/10
+              hover:bg-white/[0.08] hover:border-white/[0.15]
+              active:scale-[0.98] transition-all duration-200"
           >
             <RefreshCw size={13} />
             {t('admin.overview.refresh')}
@@ -431,64 +474,10 @@ export default function AdminOverview() {
     });
   }
 
+  const needsAttentionCount = alerts.length + (atRisk.length > 0 ? 1 : 0);
+
   return (
     <AdminPageShell>
-      {/* ── Header ───────────────────────────────────────── */}
-      <FadeIn>
-        <PageHeader
-          title={t('admin.overview.title')}
-          subtitle={format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)}
-          actions={
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={() => navigate('/admin/members')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
-                <Users size={12} />
-                {t('admin.overview.navMembers')}
-              </button>
-              <button onClick={() => navigate('/admin/churn')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
-                <AlertTriangle size={12} />
-                {t('admin.overview.navChurn')}
-              </button>
-              <button onClick={() => navigate('/admin/classes')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
-                <BookOpen size={12} />
-                {t('admin.overview.navClasses')}
-              </button>
-              <button onClick={() => navigate('/admin/messages')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#9CA3AF] bg-white/[0.04] border border-white/8 hover:text-[#E5E7EB] hover:border-white/15 hover:bg-white/[0.06] transition-all">
-                <MessageSquare size={12} />
-                {t('admin.overview.navMessages')}
-              </button>
-            </div>
-          }
-          className="mb-6"
-        />
-      </FadeIn>
-
-      {/* ════════════════════════════════════════════════════
-           SECTION 1 — ALERT BANNERS (only when action needed)
-         ════════════════════════════════════════════════════ */}
-      {alerts.length > 0 && (
-        <FadeIn delay={40}>
-          <div className="space-y-2 mb-5">
-            {alerts.map((a, i) => (
-              <AlertBanner key={i} icon={a.icon} text={a.text} actionLabel={a.actionLabel} color={a.color} onClick={a.onClick} />
-            ))}
-          </div>
-        </FadeIn>
-      )}
-
-      {/* ════════════════════════════════════════════════════
-           SECTION 2 — STAT CARDS (single row, no duplicates)
-         ════════════════════════════════════════════════════ */}
-      <div className={`grid gap-3 mb-5 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
-        <FadeIn delay={80}><StatCard label={t('admin.overview.glanceTotal')} value={stats.totalMembers} icon={Users} borderColor="#6366F1" /></FadeIn>
-        <FadeIn delay={120}><StatCard label={t('admin.overview.glanceCheckins')} value={stats.checkInsToday} icon={CalendarCheck} borderColor="#8B5CF6" /></FadeIn>
-        <FadeIn delay={160}><StatCard label={t('admin.overview.glanceActiveWeek')} value={stats.activeThisWeek} icon={Activity} borderColor="#3B82F6" /></FadeIn>
-        <FadeIn delay={200}><StatCard label={t('admin.overview.glanceNewMonth')} value={stats.newMembersMonth} icon={UserPlus} borderColor="#10B981" /></FadeIn>
-        <FadeIn delay={240}><StatCard label={t('admin.overview.glanceAtRisk')} value={stats.atRiskCount} icon={AlertTriangle} borderColor={stats.criticalCount > 0 ? '#EF4444' : '#F59E0B'} /></FadeIn>
-        {classesEnabled && (
-          <FadeIn delay={280}><StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" /></FadeIn>
-        )}
-      </div>
-
       {/* ── Password reset approval modal ────────────────── */}
       {resetApprovalId && (
         <PasswordResetApprovalModal
@@ -502,27 +491,142 @@ export default function AdminOverview() {
       )}
 
       {/* ════════════════════════════════════════════════════
-           SECTION 3 — RECENT ACTIVITY + WATCHLIST
+           SECTION 1 -- HEADER + QUICK-ACTION BUTTONS
          ════════════════════════════════════════════════════ */}
-      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+      <FadeIn>
+        <PageHeader
+          title={t('admin.overview.title')}
+          subtitle={`${format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)} · ${stats.checkInsToday} ${t('admin.overview.glanceCheckins').toLowerCase()}`}
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
+              <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
+              {classesEnabled && (
+                <QuickActionButton icon={BookOpen} label={t('admin.overview.navClasses')} onClick={() => navigate('/admin/classes')} />
+              )}
+              <QuickActionButton icon={MessageSquare} label={t('admin.overview.navMessages')} onClick={() => navigate('/admin/messages')} />
+            </div>
+          }
+          className="mb-8"
+        />
+      </FadeIn>
+
+      {/* ════════════════════════════════════════════════════
+           SECTION 2 -- HERO KPI STRIP ("Today at a Glance")
+           Stat cards are the first visual hero element
+         ════════════════════════════════════════════════════ */}
+      <FadeIn delay={40}>
+        <p className="text-[11.5px] font-semibold text-[#D4AF37] dark:text-[#D4AF37] uppercase tracking-[0.1em] mb-3">
+          {t('admin.overview.todayGlance', 'Today at a Glance')}
+        </p>
+      </FadeIn>
+      <div className={`grid gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+        <FadeIn delay={60}><StatCard label={t('admin.overview.glanceCheckins')} value={stats.checkInsToday} icon={CalendarCheck} borderColor="#8B5CF6" /></FadeIn>
+        <FadeIn delay={80}><StatCard label={t('admin.overview.glanceActiveWeek')} value={stats.activeThisWeek} icon={Activity} borderColor="#3B82F6" /></FadeIn>
+        {classesEnabled && (
+          <FadeIn delay={100}><StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" /></FadeIn>
+        )}
+        <FadeIn delay={120}><StatCard label={t('admin.overview.glanceNewMonth')} value={stats.newMembersMonth} icon={UserPlus} borderColor="#10B981" /></FadeIn>
+        <FadeIn delay={140}><StatCard label={t('admin.overview.glanceTotal')} value={stats.totalMembers} icon={Users} borderColor="#6366F1" /></FadeIn>
+      </div>
+
+      {/* ════════════════════════════════════════════════════
+           SECTION 3 -- "NEEDS ATTENTION NOW" ALERTS
+           Separated from KPIs with breathing room
+         ════════════════════════════════════════════════════ */}
+      <FadeIn delay={160}>
+        <div className="mb-8">
+          {needsAttentionCount > 0 ? (
+            <div className="rounded-2xl border border-[#EF4444]/15 bg-gradient-to-br from-[#EF4444]/[0.03] to-[#F59E0B]/[0.02] p-5 space-y-3">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-9 h-9 rounded-xl bg-[#EF4444]/10 flex items-center justify-center">
+                  <AlertTriangle size={16} className="text-[#EF4444]" />
+                </div>
+                <div>
+                  <p className="text-[14.5px] font-bold text-[#E5E7EB] dark:text-[#E5E7EB] tracking-tight">
+                    {t('admin.overview.needsAttention', 'Needs Attention Now')}
+                  </p>
+                  <p className="text-[11.5px] text-[#6B7280] dark:text-[#6B7280]">
+                    {t('admin.overview.needsAttentionSub', '{{count}} item(s) requiring your action', { count: needsAttentionCount })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Alert banners */}
+              <div className="space-y-2">
+                {alerts.map((a, i) => (
+                  <AlertBanner key={i} icon={a.icon} text={a.text} actionLabel={a.actionLabel} color={a.color} onClick={a.onClick} />
+                ))}
+              </div>
+
+              {/* Inline at-risk watchlist preview */}
+              {atRisk.length > 0 && (
+                <div className="mt-3 pt-3.5 border-t border-white/[0.06]">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <p className="text-[11px] font-semibold text-[#F59E0B] uppercase tracking-[0.1em]">
+                      {t('admin.overview.watchlistAtRisk')}
+                    </p>
+                    <button
+                      onClick={() => navigate('/admin/churn')}
+                      className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:text-[#E5C158]
+                        flex items-center gap-0.5 whitespace-nowrap
+                        transition-colors duration-200"
+                    >
+                      {t('admin.overview.viewAll')} <ChevronRight size={12} />
+                    </button>
+                  </div>
+                  <div className="divide-y divide-white/[0.04]">
+                    {atRisk.slice(0, 3).map(m => (
+                      <WatchlistRow key={m.id} member={m} t={t} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[#10B981]/15 bg-[#10B981]/[0.03] p-5 flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                <CheckCircle size={16} className="text-[#10B981]" />
+              </div>
+              <div>
+                <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">{t('admin.overview.allClear', 'All Clear')}</p>
+                <p className="text-[11.5px] text-[#6B7280] dark:text-[#6B7280]">{t('admin.overview.noAtRisk')} {t('admin.overview.everyoneActive')}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </FadeIn>
+
+      {/* ════════════════════════════════════════════════════
+           SECTION 4 -- RECENT ACTIVITY + FULL WATCHLIST
+           Two-column operational view
+         ════════════════════════════════════════════════════ */}
+      <div className="grid lg:grid-cols-[1fr_340px] gap-5">
         {/* Recent Activity Feed */}
-        <FadeIn delay={300}>
-          <AdminCard hover>
-            <div className="flex items-center gap-2.5 mb-3">
-              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.overview.recentActivity')}</p>
+        <FadeIn delay={200}>
+          <AdminCard hover padding="p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-white/[0.04] flex items-center justify-center">
+                <Activity size={13} className="text-[#9CA3AF]" />
+              </div>
+              <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">
+                {t('admin.overview.recentActivity')}
+              </p>
               {recentActivity.length > 0 && (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-[#6B7280]">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/[0.05] text-[#6B7280] ml-auto">
                   {recentActivity.length}
                 </span>
               )}
             </div>
             {recentActivity.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10">
-                <Clock size={20} className="text-[#4B5563] mb-2" />
-                <p className="text-[12px] text-[#6B7280]">{t('admin.overview.noActivity')}</p>
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-10 h-10 rounded-xl bg-white/[0.04] flex items-center justify-center mb-3">
+                  <Clock size={18} className="text-[#4B5563]" />
+                </div>
+                <p className="text-[12.5px] text-[#6B7280]">{t('admin.overview.noActivity')}</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/4">
+              <div className="divide-y divide-white/[0.04]">
                 {recentActivity.map((item, i) => (
                   <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} />
                 ))}
@@ -531,26 +635,42 @@ export default function AdminOverview() {
           </AdminCard>
         </FadeIn>
 
-        {/* Watchlist */}
-        <FadeIn delay={340}>
-          <AdminCard hover>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('admin.overview.watchlist')}</p>
-              <button onClick={() => navigate('/admin/churn')} className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:underline flex items-center gap-0.5 whitespace-nowrap">
+        {/* Full Watchlist */}
+        <FadeIn delay={240}>
+          <AdminCard hover padding="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
+                  <AlertTriangle size={13} className="text-[#F59E0B]" />
+                </div>
+                <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">
+                  {t('admin.overview.watchlist')}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/admin/churn')}
+                className="flex-shrink-0 text-[11px] text-[#D4AF37] hover:text-[#E5C158]
+                  flex items-center gap-0.5 whitespace-nowrap
+                  transition-colors duration-200"
+              >
                 {t('admin.overview.viewAll')} <ChevronRight size={12} />
               </button>
             </div>
 
             {atRisk.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8">
-                <CheckCircle size={18} className="text-[#10B981] mb-2" />
-                <p className="text-[12px] text-[#6B7280]">{t('admin.overview.noAtRisk')}</p>
-                <p className="text-[11px] text-[#4B5563] mt-0.5">{t('admin.overview.everyoneActive')}</p>
+              <div className="flex flex-col items-center justify-center py-10">
+                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mb-3">
+                  <CheckCircle size={18} className="text-[#10B981]" />
+                </div>
+                <p className="text-[12.5px] text-[#6B7280]">{t('admin.overview.noAtRisk')}</p>
+                <p className="text-[11px] text-[#4B5563] mt-1">{t('admin.overview.everyoneActive')}</p>
               </div>
             ) : (
               <>
-                <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider mb-2">{t('admin.overview.watchlistAtRisk')}</p>
-                <div className="divide-y divide-white/4">
+                <p className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-[0.08em] mb-2.5">
+                  {t('admin.overview.glanceAtRisk')} — {stats.atRiskCount}
+                </p>
+                <div className="divide-y divide-white/[0.04]">
                   {atRisk.map(m => (
                     <WatchlistRow key={m.id} member={m} t={t} />
                   ))}

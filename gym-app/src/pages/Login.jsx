@@ -14,6 +14,8 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
 
   // Forgot password state
   const [forgotMode,    setForgotMode]    = useState(false);
@@ -24,13 +26,28 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Rate limiting
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      const secondsLeft = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      setError(`Too many attempts. Try again in ${secondsLeft}s`);
+      return;
+    }
+
     setError('');
     setLoading(true);
     try {
       await signIn({ email, password });
+      setLoginAttempts(0);
       navigate('/');
     } catch (err) {
-      setError(err.message || t('invalidCredentials'));
+      setError(t('invalidCredentials'));
+      const attempts = loginAttempts + 1;
+      setLoginAttempts(attempts);
+      if (attempts >= 5) {
+        setLockoutUntil(Date.now() + 30000); // 30 second lockout after 5 fails
+        setLoginAttempts(0);
+      }
     } finally {
       setLoading(false);
     }

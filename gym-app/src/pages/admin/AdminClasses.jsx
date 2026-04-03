@@ -12,10 +12,11 @@ import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { validateImageFile } from '../../lib/validateImage';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
   PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton,
-  AdminPageShell, FilterBar, AdminModal, StatCard,
+  AdminPageShell, FilterBar, AdminModal, StatCard, AdminTabs,
 } from '../../components/admin';
 
 const DAYS_OF_WEEK = [
@@ -211,104 +212,112 @@ function ClassAnalytics({ classId, hasTemplate, t }) {
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 px-4">
-        <div className="w-4 h-4 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-        <span className="text-[12px] text-[#6B7280]">{t('admin.classes.loading', 'Loading...')}</span>
+        <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-accent)', borderTopColor: 'transparent' }} />
+        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.loading', 'Loading...')}</span>
       </div>
     );
   }
 
   if (!analytics || analytics.total === 0) {
-    return <p className="text-[12px] text-[#6B7280] italic py-3 px-4">{t('admin.classes.noResults')}</p>;
+    return <p className="text-[12px] italic py-3 px-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noResults')}</p>;
   }
 
   return (
     <div className="space-y-4 p-4">
       {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
-          <p className="text-[10px] font-medium text-[#6B7280] mb-1">{t('admin.classes.attendanceRate')}</p>
-          <p className="text-[18px] font-bold text-[#E5E7EB]">{analytics.attendanceRate}%</p>
-          <p className="text-[10px] text-[#6B7280]">{analytics.attended}/{analytics.total}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="p-3.5 rounded-xl transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+          <p className="text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.attendanceRate')}</p>
+          <p className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{analytics.attendanceRate}%</p>
+          <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{analytics.attended}/{analytics.total}</p>
         </div>
-        <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
-          <p className="text-[10px] font-medium text-[#6B7280] mb-1">{t('admin.classes.avgRating')}</p>
+        <div className="p-3.5 rounded-xl transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+          <p className="text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.avgRating')}</p>
           {analytics.avgRating ? (
             <div className="flex items-center gap-1">
-              <p className="text-[18px] font-bold text-[#E5E7EB]">{analytics.avgRating}</p>
-              <Star size={14} className="text-[#D4AF37] fill-[#D4AF37]" />
+              <p className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{analytics.avgRating}</p>
+              <Star size={14} style={{ color: 'var(--color-accent)', fill: 'var(--color-accent)' }} />
             </div>
           ) : (
-            <p className="text-[13px] text-[#6B7280]">--</p>
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>--</p>
           )}
         </div>
-        <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
+        <div className="p-3.5 rounded-xl transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
           <div className="flex items-center gap-1.5 mb-1">
-            <UserX size={11} className="text-[#EF4444]" />
-            <p className="text-[10px] font-medium text-[#6B7280]">{t('admin.classes.noShowRate')}</p>
+            <UserX size={11} style={{ color: 'var(--color-danger)' }} />
+            <p className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noShowRate')}</p>
           </div>
-          <p className={`text-[18px] font-bold ${analytics.noShowRate > 20 ? 'text-[#EF4444]' : analytics.noShowRate > 10 ? 'text-[#F59E0B]' : 'text-[#10B981]'}`}>
+          <p className="text-[18px] font-bold"
+            style={{ color: analytics.noShowRate > 20 ? 'var(--color-danger)' : analytics.noShowRate > 10 ? 'var(--color-warning)' : 'var(--color-success)' }}>
             {analytics.noShowRate}%
           </p>
-          <p className="text-[10px] text-[#6B7280]">{analytics.noShows} {t('admin.classes.noShows')}</p>
+          <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{analytics.noShows} {t('admin.classes.noShows')}</p>
         </div>
-        <div className="p-3 bg-[#111827] rounded-xl border border-white/6">
+        <div className="p-3.5 rounded-xl transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
           <div className="flex items-center gap-1.5 mb-1">
-            <XCircle size={11} className="text-[#F59E0B]" />
-            <p className="text-[10px] font-medium text-[#6B7280]">{t('admin.classes.cancellationRate')}</p>
+            <XCircle size={11} style={{ color: 'var(--color-warning)' }} />
+            <p className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.cancellationRate')}</p>
           </div>
-          <p className={`text-[18px] font-bold ${analytics.cancellationRate > 30 ? 'text-[#EF4444]' : analytics.cancellationRate > 15 ? 'text-[#F59E0B]' : 'text-[#E5E7EB]'}`}>
+          <p className="text-[18px] font-bold"
+            style={{ color: analytics.cancellationRate > 30 ? 'var(--color-danger)' : analytics.cancellationRate > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)' }}>
             {analytics.cancellationRate}%
           </p>
-          <p className="text-[10px] text-[#6B7280]">{analytics.cancelled} {t('admin.classes.cancellations')}</p>
+          <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{analytics.cancelled} {t('admin.classes.cancellations')}</p>
         </div>
       </div>
 
       {/* Star distribution */}
       {analytics.avgRating && (
-        <div className="space-y-1">
+        <div className="space-y-1.5 py-1">
           {[5, 4, 3, 2, 1].map(star => {
             const count = analytics.starDist[star - 1];
             const maxCount = Math.max(...analytics.starDist, 1);
             return (
               <div key={star} className="flex items-center gap-1.5">
-                <span className="text-[9px] text-[#6B7280] w-3 text-right">{star}</span>
-                <Star size={8} className="text-[#D4AF37] fill-[#D4AF37]" />
-                <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-[#D4AF37]" style={{ width: `${(count / maxCount) * 100}%` }} />
+                <span className="text-[9px] w-3 text-right tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{star}</span>
+                <Star size={8} style={{ color: 'var(--color-accent)', fill: 'var(--color-accent)' }} />
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(count / maxCount) * 100}%`, backgroundColor: 'var(--color-accent)' }} />
                 </div>
-                <span className="text-[9px] text-[#6B7280] w-4">{count}</span>
+                <span className="text-[9px] w-4 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{count}</span>
               </div>
             );
           })}
         </div>
       )}
 
-      <p className="text-[10px] text-[#6B7280] italic text-right">{t('admin.classes.last30Days')}</p>
+      <p className="text-[10px] italic text-right" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.last30Days')}</p>
 
       {/* Recent workout results */}
       {hasTemplate && analytics.recentResults.length > 0 && (
         <div>
-          <p className="text-[11px] font-medium text-[#6B7280] mb-2">{t('admin.classes.recentResults')}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.recentResults')}</p>
           <div className="space-y-1.5">
             {analytics.recentResults.map((r, i) => (
-              <div key={`${r.profile_id}-${i}`} className="flex items-center gap-2.5 p-2.5 bg-[#111827] rounded-lg border border-white/6">
+              <div key={`${r.profile_id}-${i}`} className="flex items-center gap-2.5 p-2.5 rounded-lg transition-colors hover:brightness-105"
+                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                 {r.profiles?.avatar_url ? (
                   <img src={r.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-bold text-[#D4AF37]">{r.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
+                    <span className="text-[10px] font-bold" style={{ color: 'var(--color-accent)' }}>{r.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
                   </div>
                 )}
-                <span className="flex-1 text-[12px] text-[#E5E7EB] truncate">{r.profiles?.full_name || t('admin.classes.unknown', 'Unknown')}</span>
+                <span className="flex-1 text-[12px] truncate" style={{ color: 'var(--color-text-primary)' }}>{r.profiles?.full_name || t('admin.classes.unknown', 'Unknown')}</span>
                 {r.workout_sessions?.total_volume_lbs != null && (
-                  <span className="text-[11px] text-[#9CA3AF] flex items-center gap-1 flex-shrink-0">
+                  <span className="text-[11px] flex items-center gap-1 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
                     <Dumbbell size={11} /> {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} {t('admin.classes.lbs', 'lbs')}
                   </span>
                 )}
                 {r.rating != null && (
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     {[1, 2, 3, 4, 5].map(s => (
-                      <Star key={s} size={10} className={s <= Math.round(r.rating) ? 'text-[#D4AF37] fill-[#D4AF37]' : 'text-[#6B7280]'} />
+                      <Star key={s} size={10} style={s <= Math.round(r.rating) ? { color: 'var(--color-accent)', fill: 'var(--color-accent)' } : { color: 'var(--color-text-faint)' }} />
                     ))}
                   </div>
                 )}
@@ -594,22 +603,24 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
         {/* Name */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[11px] font-medium text-[#6B7280]">{t('admin.classes.className')} *</label>
+            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} *</label>
             <CharCount value={form.name} max={NAME_MAX} />
           </div>
           <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setForm(f => ({ ...f, name: e.target.value })); }}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
             placeholder="Yoga, Spinning, CrossFit..." />
         </div>
 
         {/* Description */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[11px] font-medium text-[#6B7280]">{t('admin.classes.description')}</label>
+            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
             <CharCount value={form.description} max={DESC_MAX} />
           </div>
           <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setForm(f => ({ ...f, description: e.target.value })); }} rows={2}
-            className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none resize-none" />
+            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none resize-none transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
         </div>
 
         {/* Instructor (searchable - pulls from members, trainers, admins) */}
@@ -624,20 +635,22 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
         {/* Duration + Capacity */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.classes.duration')} ({tc('min') || 'min'})</label>
+            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'})</label>
             <input type="number" min={5} value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.classes.capacity')}</label>
+            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')}</label>
             <input type="number" min={1} value={form.max_capacity} onChange={e => setForm(f => ({ ...f, max_capacity: Number(e.target.value) }))}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
           </div>
         </div>
 
         {/* Color picker */}
         <div>
-          <label className="block text-[11px] font-medium text-[#6B7280] mb-1.5">{t('admin.classes.accentColor')}</label>
+          <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.accentColor')}</label>
           <div className="flex items-center gap-2 flex-wrap">
             {COLOR_PRESETS.map(c => (
               <button key={c} onClick={() => setForm(f => ({ ...f, accent_color: c }))}
@@ -654,7 +667,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
 
         {/* Image upload */}
         <div>
-          <label className="block text-[11px] font-medium text-[#6B7280] mb-1.5">{t('admin.classes.image')}</label>
+          <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.image')}</label>
           {imagePreview ? (
             <div className="relative w-full h-32 rounded-xl overflow-hidden border border-white/6">
               <img src={imagePreview} alt="" className="w-full h-full object-cover" />
@@ -958,20 +971,22 @@ function BookingsView({ classItem, t, tc }) {
   return (
     <div className="space-y-4">
       <input type="date" value={date} onChange={e => setDate(e.target.value)}
-        className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+        className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
       {isLoading ? (
-        <p className="text-[12px] text-[#6B7280]">{tc('loading')}</p>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{tc('loading')}</p>
       ) : bookings.length === 0 ? (
-        <p className="text-[12px] text-[#6B7280] italic">{t('admin.classes.noBookings')}</p>
+        <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noBookings')}</p>
       ) : (
         <div className="space-y-2">
           {bookings.map(b => (
-            <div key={b.id} className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6">
-              <span className="text-[13px] text-[#E5E7EB]">{b.profiles?.full_name || b.profiles?.username || t('admin.classes.unknown', 'Unknown')}</span>
-              <span className="text-[11px] text-[#6B7280]">{new Date(b.booked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <div key={b.id} className="flex items-center justify-between p-3 rounded-xl transition-colors"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+              <span className="text-[13px]" style={{ color: 'var(--color-text-primary)' }}>{b.profiles?.full_name || b.profiles?.username || t('admin.classes.unknown', 'Unknown')}</span>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{new Date(b.booked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           ))}
-          <p className="text-[11px] text-[#6B7280] text-right">{bookings.length} {t('admin.classes.booked')}</p>
+          <p className="text-[11px] text-right" style={{ color: 'var(--color-text-muted)' }}>{bookings.length} {t('admin.classes.booked')}</p>
         </div>
       )}
     </div>
@@ -991,16 +1006,17 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
   return (
     <AdminModal isOpen onClose={onClose} title={classItem.name} size="lg">
       {/* Detail tabs */}
-      <div className="flex gap-1 border-b border-white/6 mb-4 -mt-1">
+      <div className="flex gap-1 mb-4 -mt-1" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
         {DETAIL_TABS.map(tab => {
           const Icon = tab.icon;
+          const isActive = detailTab === tab.key;
           return (
             <button key={tab.key} onClick={() => setDetailTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold transition-colors border-b-2 -mb-px ${
-                detailTab === tab.key
-                  ? 'text-[#D4AF37] border-[#D4AF37]'
-                  : 'text-[#6B7280] border-transparent hover:text-[#E5E7EB]'
-              }`}>
+              className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold transition-all duration-200 border-b-2 -mb-px"
+              style={{
+                color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                borderColor: isActive ? 'var(--color-accent)' : 'transparent',
+              }}>
               <Icon size={13} /> {tab.label}
             </button>
           );
@@ -1042,10 +1058,10 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
             </div>
           )}
           {(!classItem.gym_class_schedules || classItem.gym_class_schedules.length === 0) && (
-            <p className="text-[12px] text-[#6B7280] italic py-2">{t('admin.classes.noScheduleSlots')}</p>
+            <p className="text-[12px] italic py-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noScheduleSlots')}</p>
           )}
-          <div className="pt-2 border-t border-white/6">
-            <p className="text-[11px] font-medium text-[#6B7280] mb-2">{t('admin.classes.addSchedule')}</p>
+          <div className="pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+            <p className="text-[11px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.addSchedule')}</p>
             <ScheduleSlotForm onAdd={(slot) => onAddSlot(classItem.id, slot)} t={t} tc={tc} />
           </div>
         </div>
@@ -1067,30 +1083,33 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
 // ── Slot Card (shared between ScheduleView sections) ──
 function SlotCard({ slot, onEditClass, onDeleteSlot, t }) {
   return (
-    <div className="flex items-center gap-3 p-3 bg-[#0F172A] border border-white/6 rounded-xl hover:bg-white/[0.02] transition-colors group">
-      <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: slot.class.accent_color || '#D4AF37' }} />
+    <div className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group hover:shadow-sm"
+      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+      <div className="w-1 h-8 rounded-full flex-shrink-0 transition-all duration-200 group-hover:h-10" style={{ backgroundColor: slot.class.accent_color || 'var(--color-accent)' }} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{slot.class.name}</p>
+          <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{slot.class.name}</p>
           {!slot.class.is_active && (
-            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/6 text-[#6B7280]">{t('admin.classes.inactive')}</span>
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>{t('admin.classes.inactive')}</span>
           )}
         </div>
-        <p className="text-[11px] text-[#6B7280]">
+        <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
           {slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}
           {slot.class.instructor && ` · ${slot.class.instructor}`}
         </p>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[11px] text-[#6B7280] flex items-center gap-1">
+        <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}>
           <Users size={11} /> {slot.class.max_capacity}
         </span>
         <button onClick={() => onEditClass(slot.class)}
-          className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] opacity-0 group-hover:opacity-100 transition-all">
+          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+          style={{ color: 'var(--color-text-muted)' }}>
           <Edit3 size={13} />
         </button>
         <button onClick={() => onDeleteSlot(slot.id)}
-          className="p-1.5 rounded-lg text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all">
+          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+          style={{ color: 'var(--color-text-muted)' }}>
           <Trash2 size={13} />
         </button>
       </div>
@@ -1139,10 +1158,10 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
 
   if (recurringSlots.length === 0 && specificSlots.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Calendar size={32} className="mx-auto text-[#4B5563] mb-3" />
-        <p className="text-[14px] font-semibold text-[#9CA3AF] mb-1">{t('admin.classes.noScheduleSlots')}</p>
-        <p className="text-[12px] text-[#6B7280]">{t('admin.classes.addSlotsFromClasses')}</p>
+      <div className="text-center py-16">
+        <Calendar size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
+        <p className="text-[14px] font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('admin.classes.noScheduleSlots')}</p>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.addSlotsFromClasses')}</p>
       </div>
     );
   }
@@ -1152,7 +1171,8 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
       {/* Recurring weekly slots */}
       {recurringSlots.length > 0 && (
         <div className="space-y-4">
-          <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wider flex items-center gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5"
+            style={{ color: 'var(--color-accent)' }}>
             <Repeat size={12} /> {t('admin.classes.recurringWeekly', 'Recurring Weekly')}
           </p>
           {DAYS_OF_WEEK.map(day => {
@@ -1160,7 +1180,7 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
             if (!daySlots?.length) return null;
             return (
               <div key={day.value}>
-                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-2 uppercase tracking-wider">{tc(day.labelKey)}</p>
+                <p className="text-[12px] font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{tc(day.labelKey)}</p>
                 <div className="space-y-1.5">
                   {daySlots.map(slot => (
                     <SlotCard key={slot.id} slot={slot} onEditClass={onEditClass} onDeleteSlot={onDeleteSlot} t={t} />
@@ -1175,7 +1195,8 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
       {/* Specific-date slots */}
       {specificSlots.length > 0 && (
         <div className="space-y-4">
-          <p className="text-[11px] font-semibold text-[#3B82F6] uppercase tracking-wider flex items-center gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5"
+            style={{ color: 'var(--color-info, #3B82F6)' }}>
             <CalendarDays size={12} /> {t('admin.classes.specificDates', 'Specific Dates')}
           </p>
           {Object.entries(groupedSpecific).map(([date, dateSlots]) => {
@@ -1183,7 +1204,7 @@ function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc }) {
             const label = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
             return (
               <div key={date}>
-                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-2">{label}</p>
+                <p className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>{label}</p>
                 <div className="space-y-1.5">
                   {dateSlots.map(slot => (
                     <SlotCard key={slot.id} slot={slot} onEditClass={onEditClass} onDeleteSlot={onDeleteSlot} t={t} />
@@ -1287,9 +1308,10 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
 
       {/* Search */}
       <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }} />
         <input type="text" placeholder={t('admin.classes.searchClasses')} value={search} onChange={e => setSearch(e.target.value)}
-          className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+          className="w-full rounded-xl pl-9 pr-4 py-2.5 text-[13px] outline-none transition-all duration-200"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
       </div>
 
       {/* Cards */}
@@ -1316,44 +1338,46 @@ function ClassesListView({ classes, onEdit, onDelete, onToggleActive, onOpenDeta
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-[14px] font-bold text-[#E5E7EB] truncate">{cls.name}</h3>
+                      <h3 className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</h3>
                       {!cls.is_active && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/6 text-[#6B7280] border border-white/10">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
                           {t('admin.classes.inactive')}
                         </span>
                       )}
                     </div>
-                    {cls.instructor && <p className="text-[12px] text-[#9CA3AF] mt-0.5">{cls.instructor}</p>}
+                    {cls.instructor && <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{cls.instructor}</p>}
                     {cls.trainer && (
                       <div className="flex items-center gap-1.5 mt-1">
                         {cls.trainer.avatar_url ? (
                           <img src={cls.trainer.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
                         ) : (
-                          <div className="w-4 h-4 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[7px] font-bold text-[#D4AF37]">{cls.trainer.full_name?.[0]?.toUpperCase() || '?'}</span>
+                          <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
+                            <span className="text-[7px] font-bold" style={{ color: 'var(--color-accent)' }}>{cls.trainer.full_name?.[0]?.toUpperCase() || '?'}</span>
                           </div>
                         )}
-                        <span className="text-[11px] text-[#9CA3AF]">
-                          <UserCheck size={11} className="inline mr-0.5 text-[#D4AF37]" />
+                        <span className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+                          <UserCheck size={11} className="inline mr-0.5" style={{ color: 'var(--color-accent)' }} />
                           {cls.trainer.full_name}
                         </span>
                       </div>
                     )}
                     {/* Schedule summary */}
                     {scheduleSummary && (
-                      <p className="text-[11px] text-[#6B7280] mt-1.5 flex items-center gap-1">
+                      <p className="text-[11px] mt-1.5 flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}>
                         <CalendarDays size={11} className="flex-shrink-0" />
                         <span className="truncate">{scheduleSummary}</span>
                       </p>
                     )}
                     {!scheduleSummary && (
-                      <p className="text-[11px] text-[#4B5563] italic mt-1.5">{t('admin.classes.noScheduleSlots')}</p>
+                      <p className="text-[11px] italic mt-1.5" style={{ color: 'var(--color-text-faint)' }}>{t('admin.classes.noScheduleSlots')}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <Toggle checked={cls.is_active} onChange={() => onToggleActive(cls)} label={t('admin.classes.toggleActive')} />
-                    <button onClick={() => onEdit(cls)} className="p-2 rounded-lg hover:bg-white/[0.04] text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label={tc('edit')}><Edit3 size={15} /></button>
-                    <button onClick={() => onDelete(cls)} className="p-2 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors" aria-label={tc('delete')}><Trash2 size={15} /></button>
+                    <button onClick={() => onEdit(cls)} className="p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-text-muted)' }} aria-label={tc('edit')}><Edit3 size={15} /></button>
+                    <button onClick={() => onDelete(cls)} className="p-2 rounded-lg transition-all duration-200 hover:scale-110" style={{ color: 'var(--color-text-muted)' }} aria-label={tc('delete')}><Trash2 size={15} /></button>
                   </div>
                 </div>
               </AdminCard>
@@ -1409,11 +1433,13 @@ function BookingsTabView({ classes, t, tc }) {
       {/* Class selector + date */}
       <div className="flex flex-col sm:flex-row gap-3">
         <select value={selectedClass?.id || ''} onChange={e => setSelectedClassId(e.target.value)}
-          className="flex-1 bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none cursor-pointer">
+          className="flex-1 rounded-xl px-3 py-2.5 text-[13px] outline-none appearance-none cursor-pointer transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-          className="bg-[#0F172A] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+          className="rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
       </div>
 
       {/* Status filter pills */}
@@ -1428,16 +1454,17 @@ function BookingsTabView({ classes, t, tc }) {
       {/* Bookings list */}
       {isLoading ? (
         <div className="flex items-center gap-2 py-8 justify-center">
-          <div className="w-4 h-4 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-          <span className="text-[12px] text-[#6B7280]">{tc('loading')}</span>
+          <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-accent)', borderTopColor: 'transparent' }} />
+          <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{tc('loading')}</span>
         </div>
       ) : filteredBookings.length === 0 ? (
-        <div className="text-center py-10">
-          <Users size={28} className="mx-auto text-[#4B5563] mb-3" />
-          <p className="text-[13px] text-[#6B7280]">{t('admin.classes.noBookingsForDate')}</p>
+        <div className="text-center py-12">
+          <Users size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
+          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noBookingsForDate')}</p>
         </div>
       ) : (
-        <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden divide-y divide-white/4">
+        <div className="rounded-[14px] overflow-hidden divide-y"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', borderColor: 'var(--color-border-subtle)' }}>
           {filteredBookings.map(b => {
             const statusColors = {
               confirmed: { bg: 'bg-[#10B981]/10', text: 'text-[#10B981]', border: 'border-[#10B981]/20' },
@@ -1449,17 +1476,18 @@ function BookingsTabView({ classes, t, tc }) {
             const sc = statusColors[status] || statusColors.confirmed;
 
             return (
-              <div key={b.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors">
+              <div key={b.id} className="flex items-center gap-3 px-4 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors duration-200">
                 {b.profiles?.avatar_url ? (
                   <img src={b.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[11px] font-bold text-[#9CA3AF]">{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'var(--color-border-subtle)' }}>
+                    <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-secondary)' }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{b.profiles?.full_name || t('admin.classes.unknown', 'Unknown')}</p>
-                  <p className="text-[10px] text-[#6B7280]">
+                  <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{b.profiles?.full_name || t('admin.classes.unknown', 'Unknown')}</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                     {new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     {b.waitlist_position && ` . #${b.waitlist_position} ${t('admin.classes.inWaitlist')}`}
                   </p>
@@ -1578,7 +1606,14 @@ export default function AdminClasses() {
     try {
       let imagePath = formModal?.image_path || null;
       if (formData.imageFile) {
-        const ext = formData.imageFile.name.split('.').pop();
+        const validation = await validateImageFile(formData.imageFile);
+        if (!validation.valid) {
+          showToast(validation.error, 'error');
+          setSaving(false);
+          return;
+        }
+        const mimeExtMap = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+        const ext = mimeExtMap[validation.mime] || 'jpg';
         const path = `${gymId}/${Date.now()}.${ext}`;
         const { error: uploadErr } = await supabase.storage
           .from('class-images')
@@ -1695,7 +1730,7 @@ export default function AdminClasses() {
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#EF4444] text-[14px] font-semibold">Access denied</p>
+        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-danger, #EF4444)' }}>{t('admin.overview.accessDenied', 'Access denied. You are not authorized to view this page.')}</p>
       </div>
     );
   }
@@ -1708,28 +1743,15 @@ export default function AdminClasses() {
         subtitle={`${activeClasses} ${t('admin.classes.activeClasses')} . ${totalSlots} ${t('admin.classes.weeklySlots')}`}
         actions={
           <button onClick={() => setFormModal('new')}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black hover:bg-[#C9A432] transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold transition-all duration-200 hover:scale-[1.03] hover:shadow-lg"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>
             <Plus size={15} /> {t('admin.classes.addClass')}
           </button>
         }
       />
 
       {/* Subnav tabs */}
-      <div className="flex gap-1 border-b border-white/6 pb-0">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-semibold transition-colors border-b-2 -mb-px ${
-                activeTab === tab.key
-                  ? 'text-[#D4AF37] border-[#D4AF37]'
-                  : 'text-[#6B7280] border-transparent hover:text-[#E5E7EB]'
-              }`}>
-              <Icon size={14} /> {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <AdminTabs tabs={TABS.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} active={activeTab} onChange={setActiveTab} className="mb-5" />
 
       {/* Tab content */}
       {isLoading ? (
@@ -1738,9 +1760,9 @@ export default function AdminClasses() {
         <FadeIn>
           <AdminCard padding="p-8">
             <div className="text-center">
-              <CalendarDays size={32} className="mx-auto text-[#6B7280] mb-3" />
-              <p className="text-[14px] font-semibold text-[#9CA3AF] mb-1">{t('admin.classes.noClasses')}</p>
-              <p className="text-[12px] text-[#6B7280]">{t('admin.classes.noClassesDesc')}</p>
+              <CalendarDays size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
+              <p className="text-[14px] font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('admin.classes.noClasses')}</p>
+              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noClassesDesc')}</p>
             </div>
           </AdminCard>
         </FadeIn>

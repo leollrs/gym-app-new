@@ -1,10 +1,10 @@
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabase';
+import logger from './logger';
 
-// Always log push events — even in production — since push is critical infrastructure
-const log = (...args) => console.log('[Push]', ...args);
-const err = (...args) => console.error('[Push]', ...args);
+const log = (...args) => logger.log('[Push]', ...args);
+const err = (...args) => logger.error('[Push]', ...args);
 
 const isNative = () => Capacitor.isNativePlatform();
 

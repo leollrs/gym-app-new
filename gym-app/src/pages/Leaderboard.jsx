@@ -418,6 +418,9 @@ const Leaderboard = ({ embedded = false }) => {
   // Fetch friend IDs for the current user
   useEffect(() => {
     if (!uid) return;
+    // SECURITY: uid comes from supabase.auth (user.id), not user input.
+    // Validate UUID format as a defense-in-depth measure before interpolating into .or() filter.
+    if (!/^[0-9a-f-]{36}$/i.test(uid)) return;
     supabase
       .from('friendships')
       .select('requester_id, addressee_id')
