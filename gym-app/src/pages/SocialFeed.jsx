@@ -5,6 +5,8 @@ import {
   Search, UserPlus, Check, X, Users, Flag, Gift,
   Image, Link, MoreHorizontal, EyeOff, VolumeX,
   AlertTriangle, Trash2, PenSquare,
+  Footprints, Bike, Waves, CircleDot, TrendingUp,
+  Droplets, PersonStanding, Flame,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -249,6 +251,44 @@ const FeedContent = ({ type, data, t }) => {
         {achDesc && (
           <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{sanitize(achDesc)}</p>
         )}
+      </div>
+    );
+  }
+
+  if (type === 'cardio_completed') {
+    const CARDIO_ICONS = {
+      running: Footprints, cycling: Bike, rowing: Waves, elliptical: CircleDot,
+      stair_climber: TrendingUp, jump_rope: Zap, swimming: Droplets,
+      walking: PersonStanding, hiit: Flame,
+    };
+    const CardioIcon = CARDIO_ICONS[data.cardio_type] || Footprints;
+    const durationMin = data.duration_seconds ? Math.round(data.duration_seconds / 60) : 0;
+    const typeName = t(`cardio.types.${data.cardio_type}`, data.cardio_type);
+    return (
+      <div className="rounded-2xl p-4 border-l-4 border-emerald-400 bg-emerald-900/20">
+        <div className="flex items-center gap-2 mb-2">
+          <CardioIcon size={16} className="text-emerald-400 flex-shrink-0" />
+          <p className="font-bold text-[13px] text-emerald-400">
+            {t('cardio.feedCompleted', { duration: durationMin, type: typeName })}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          {data.distance_km > 0 && (
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+              {t('cardio.feedDistance', { distance: data.distance_km.toFixed(1) })}
+            </span>
+          )}
+          {data.calories_burned > 0 && (
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+              <Flame size={12} /> {t('cardio.feedCalories', { calories: data.calories_burned })}
+            </span>
+          )}
+          {durationMin > 0 && (
+            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+              <Clock size={12} /> {durationMin} min
+            </span>
+          )}
+        </div>
       </div>
     );
   }

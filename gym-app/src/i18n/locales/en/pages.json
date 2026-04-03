@@ -3,6 +3,7 @@
     "myPlan": "My Plan",
     "nutrition": "Nutrition",
     "qr": "QR",
+    "cardio": "Cardio",
     "messages": "Messages",
     "today": "Today",
     "restDay": "Rest Day",
@@ -94,6 +95,14 @@
       "volume": "Volume",
       "prsHit": "PRs Hit",
       "weeklyVolume": "Weekly Volume",
+      "cardioThisWeek": "Cardio This Week",
+      "cardioTime": "Time",
+      "cardioDistance": "Distance",
+      "cardioCals": "Burned",
+      "cardioMin": "min",
+      "cardioKm": "km",
+      "cardioKcal": "kcal",
+      "noCardioYet": "No cardio sessions this week",
       "workoutHistory": "{{year}} Workout History",
       "noWorkoutsYet": "No workouts yet",
       "noWorkoutsHint": "Complete your first session to see your history",
@@ -702,6 +711,7 @@
     "remaining": "Remaining",
     "remainingMacros": "{{cal}} kcal, {{protein}}g protein remaining",
     "burnFromWorkout": "+{{cal}} kcal from today's workout",
+    "burnFromCardio": "+{{cal}} kcal from cardio",
     "complete": "Complete",
     "replaceMeal": "Replace",
     "previousWeek": "Previous week",
@@ -5848,5 +5858,40 @@
         "instruction": "Tilt your head to one side, gently press with the same-side hand. Hold each side."
       }
     }
+  },
+  "cardio": {
+    "title": "Log Cardio",
+    "subtitle": "Record a cardio session",
+    "activity": "Activity",
+    "duration": "Duration",
+    "minutes": "minutes",
+    "cal": "cal",
+    "distance": "Distance",
+    "optional": "optional",
+    "intensity": "Intensity",
+    "logButton": "Log Cardio",
+    "logging": "Logging...",
+    "loggedSuccess": "Cardio session logged!",
+    "logError": "Failed to log session. Try again.",
+    "types": {
+      "running": "Running",
+      "cycling": "Cycling",
+      "rowing": "Rowing",
+      "elliptical": "Elliptical",
+      "stair_climber": "Stair Climber",
+      "jump_rope": "Jump Rope",
+      "swimming": "Swimming",
+      "walking": "Walking",
+      "hiit": "HIIT"
+    },
+    "intensities": {
+      "easy": "Easy",
+      "moderate": "Moderate",
+      "hard": "Hard",
+      "max": "Max"
+    },
+    "feedCompleted": "completed a {{duration}}min {{type}} session",
+    "feedDistance": "{{distance}} km",
+    "feedCalories": "{{calories}} cal"
   }
 }

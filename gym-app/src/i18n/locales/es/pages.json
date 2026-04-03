@@ -3,6 +3,7 @@
     "myPlan": "Mi Plan",
     "nutrition": "Nutrición",
     "qr": "QR",
+    "cardio": "Cardio",
     "messages": "Mensajes",
     "today": "Hoy",
     "restDay": "Día de Descanso",
@@ -94,6 +95,14 @@
       "volume": "Volumen",
       "prsHit": "PRs Logrados",
       "weeklyVolume": "Volumen Semanal",
+      "cardioThisWeek": "Cardio Esta Semana",
+      "cardioTime": "Tiempo",
+      "cardioDistance": "Distancia",
+      "cardioCals": "Quemadas",
+      "cardioMin": "min",
+      "cardioKm": "km",
+      "cardioKcal": "kcal",
+      "noCardioYet": "Sin sesiones de cardio esta semana",
       "workoutHistory": "Historial de Entrenamientos {{year}}",
       "noWorkoutsYet": "Sin entrenamientos aún",
       "noWorkoutsHint": "Completa tu primera sesión para ver tu historial",
@@ -702,6 +711,7 @@
     "remaining": "Restantes",
     "remainingMacros": "Faltan {{cal}} kcal, {{protein}}g proteína",
     "burnFromWorkout": "+{{cal}} kcal del entrenamiento de hoy",
+    "burnFromCardio": "+{{cal}} kcal de cardio",
     "complete": "Completar",
     "replaceMeal": "Reemplazar",
     "previousWeek": "Semana anterior",
@@ -5848,5 +5858,40 @@
         "instruction": "Inclina la cabeza hacia un lado, presiona suavemente con la mano del mismo lado. Cada lado."
       }
     }
+  },
+  "cardio": {
+    "title": "Registrar Cardio",
+    "subtitle": "Registra una sesion de cardio",
+    "activity": "Actividad",
+    "duration": "Duracion",
+    "minutes": "minutos",
+    "cal": "cal",
+    "distance": "Distancia",
+    "optional": "opcional",
+    "intensity": "Intensidad",
+    "logButton": "Registrar Cardio",
+    "logging": "Registrando...",
+    "loggedSuccess": "Sesion de cardio registrada!",
+    "logError": "Error al registrar. Intenta de nuevo.",
+    "types": {
+      "running": "Correr",
+      "cycling": "Ciclismo",
+      "rowing": "Remo",
+      "elliptical": "Eliptica",
+      "stair_climber": "Escaladora",
+      "jump_rope": "Saltar Cuerda",
+      "swimming": "Natacion",
+      "walking": "Caminar",
+      "hiit": "HIIT"
+    },
+    "intensities": {
+      "easy": "Facil",
+      "moderate": "Moderado",
+      "hard": "Intenso",
+      "max": "Maximo"
+    },
+    "feedCompleted": "completo una sesion de {{type}} de {{duration}}min",
+    "feedDistance": "{{distance}} km",
+    "feedCalories": "{{calories}} cal"
   }
 }

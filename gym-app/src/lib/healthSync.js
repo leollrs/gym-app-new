@@ -1,5 +1,6 @@
 import { Health } from '@capgo/capacitor-health';
 import { Capacitor } from '@capacitor/core';
+import { supabase } from './supabase';
 import logger from './logger';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -319,5 +320,159 @@ export async function readWeeklyActivitySummary() {
     };
   } catch {
     return { steps: 0, calories: 0 };
+  }
+}
+
+// ── Cardio Health Import ──────────────────────────────────────────────────────
+
+/**
+ * Map Apple Health workout type identifiers to our cardio_type values.
+ */
+const HEALTH_WORKOUT_TYPE_MAP = {
+  running: 'running',
+  cycling: 'cycling',
+  walking: 'walking',
+  swimming: 'swimming',
+  rowing: 'rowing',
+  elliptical: 'elliptical',
+  // HealthKit HKWorkoutActivityType names
+  HKWorkoutActivityTypeRunning: 'running',
+  HKWorkoutActivityTypeCycling: 'cycling',
+  HKWorkoutActivityTypeWalking: 'walking',
+  HKWorkoutActivityTypeSwimming: 'swimming',
+  HKWorkoutActivityTypeRowing: 'rowing',
+  HKWorkoutActivityTypeElliptical: 'elliptical',
+};
+
+/**
+ * Read cardio workouts from Apple Health for the last 7 days.
+ * Returns an array of normalized cardio workout objects.
+ *
+ * @returns {Promise<Array<{
+ *   type: string,
+ *   startDate: string,
+ *   endDate: string,
+ *   durationSeconds: number,
+ *   distanceKm: number|null,
+ *   calories: number|null,
+ *   avgHeartRate: number|null,
+ *   source: 'health_kit'
+ * }>>}
+ */
+export async function readCardioWorkouts() {
+  try {
+    if (!isNative()) return [];
+
+    const start = daysAgo(7).toISOString();
+    const end = endOfDay().toISOString();
+
+    const result = await Health.readSamples({
+      dataType: 'workout',
+      startDate: start,
+      endDate: end,
+      limit: 100,
+      ascending: false,
+    });
+
+    const samples = result?.samples || [];
+    const workouts = [];
+
+    for (const sample of samples) {
+      const rawType = sample.workoutActivityType || sample.activityType || '';
+      const cardioType = HEALTH_WORKOUT_TYPE_MAP[rawType] || null;
+
+      // Skip non-cardio workout types
+      if (!cardioType) continue;
+
+      const startDate = new Date(sample.startDate);
+      const endDate = new Date(sample.endDate);
+      const durationSeconds = Math.round((endDate - startDate) / 1000);
+
+      if (durationSeconds <= 0) continue;
+
+      workouts.push({
+        type: cardioType,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        durationSeconds,
+        distanceKm: sample.distance != null
+          ? Math.round((sample.distance / 1000) * 1000) / 1000 // meters to km, 3 decimals
+          : null,
+        calories: sample.calories != null
+          ? Math.round(sample.calories)
+          : null,
+        avgHeartRate: sample.averageHeartRate != null
+          ? Math.round(sample.averageHeartRate)
+          : null,
+        source: 'health_kit',
+      });
+    }
+
+    return workouts;
+  } catch (e) {
+    logger.warn('readCardioWorkouts failed:', e);
+    return [];
+  }
+}
+
+/**
+ * Sync cardio workouts from Apple Health into the cardio_sessions table.
+ * Deduplicates by matching started_at (±60 seconds) and cardio_type.
+ *
+ * @param {string} profileId - The user's profile UUID
+ * @param {string} gymId - The user's gym UUID
+ * @returns {Promise<number>} Count of newly synced sessions
+ */
+export async function syncCardioFromHealth(profileId, gymId) {
+  try {
+    const workouts = await readCardioWorkouts();
+    if (workouts.length === 0) return 0;
+
+    // Fetch existing cardio sessions for the last 7 days to deduplicate
+    const { data: existing } = await supabase
+      .from('cardio_sessions')
+      .select('started_at, cardio_type')
+      .eq('profile_id', profileId)
+      .gte('started_at', daysAgo(7).toISOString())
+      .order('started_at', { ascending: false });
+
+    const existingSet = (existing || []).map((s) => ({
+      type: s.cardio_type,
+      time: new Date(s.started_at).getTime(),
+    }));
+
+    const isDuplicate = (workout) => {
+      const wTime = new Date(workout.startDate).getTime();
+      return existingSet.some(
+        (e) => e.type === workout.type && Math.abs(e.time - wTime) <= 60_000
+      );
+    };
+
+    let synced = 0;
+
+    for (const w of workouts) {
+      if (isDuplicate(w)) continue;
+
+      const { error } = await supabase.from('cardio_sessions').insert({
+        profile_id: profileId,
+        gym_id: gymId,
+        cardio_type: w.type,
+        duration_seconds: w.durationSeconds,
+        distance_km: w.distanceKm,
+        calories_burned: w.calories,
+        avg_heart_rate: w.avgHeartRate,
+        source: w.source,
+        started_at: w.startDate,
+        completed_at: w.endDate,
+      });
+
+      if (!error) synced++;
+      else logger.warn('syncCardioFromHealth insert error:', error);
+    }
+
+    return synced;
+  } catch (e) {
+    logger.warn('syncCardioFromHealth failed:', e);
+    return 0;
   }
 }

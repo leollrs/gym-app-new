@@ -2515,30 +2515,43 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
   const [plannedDays, setPlannedDays] = useState(() => countPlannedDays(userId));
   const [compliancePct, setCompliancePct] = useState(0);
   const [workoutBurn, setWorkoutBurn] = useState(0);
+  const [cardioBurn, setCardioBurn] = useState(0);
 
-  // Fetch today's workout calorie burn
+  // Fetch today's workout calorie burn + cardio calorie burn
   useEffect(() => {
     if (!userId) return;
     const fetchBurn = async () => {
       const todayStart = todayStr() + 'T00:00:00';
-      const { data } = await supabase
-        .from('workout_sessions')
-        .select('duration_seconds')
-        .eq('profile_id', userId)
-        .eq('status', 'completed')
-        .gte('completed_at', todayStart);
-      if (data && data.length > 0) {
-        const totalSeconds = data.reduce((s, r) => s + (r.duration_seconds || 0), 0);
+      const [workoutRes, cardioRes] = await Promise.all([
+        supabase
+          .from('workout_sessions')
+          .select('duration_seconds')
+          .eq('profile_id', userId)
+          .eq('status', 'completed')
+          .gte('completed_at', todayStart),
+        supabase
+          .from('cardio_sessions')
+          .select('calories_burned')
+          .eq('profile_id', userId)
+          .gte('started_at', todayStart),
+      ]);
+      if (workoutRes.data && workoutRes.data.length > 0) {
+        const totalSeconds = workoutRes.data.reduce((s, r) => s + (r.duration_seconds || 0), 0);
         setWorkoutBurn(Math.round((totalSeconds / 60) * 7)); // 7 cal/min average
+      }
+      if (cardioRes.data && cardioRes.data.length > 0) {
+        const totalCardio = cardioRes.data.reduce((s, r) => s + (r.calories_burned || 0), 0);
+        setCardioBurn(totalCardio);
       }
     };
     fetchBurn();
   }, [userId]);
 
-  // Adjusted targets including workout burn
-  const adjustedCalTarget = (targets?.daily_calories || 2000) + workoutBurn;
-  const adjustedProteinTarget = (targets?.daily_protein_g || 150) + Math.round(workoutBurn * 0.4 / 4);
-  const adjustedCarbsTarget = (targets?.daily_carbs_g || 200) + Math.round(workoutBurn * 0.6 / 4);
+  // Adjusted targets including workout burn + cardio burn
+  const totalBurn = workoutBurn + cardioBurn;
+  const adjustedCalTarget = (targets?.daily_calories || 2000) + totalBurn;
+  const adjustedProteinTarget = (targets?.daily_protein_g || 150) + Math.round(totalBurn * 0.4 / 4);
+  const adjustedCarbsTarget = (targets?.daily_carbs_g || 200) + Math.round(totalBurn * 0.6 / 4);
   const adjustedFatTarget = targets?.daily_fat_g || 65;
 
   const calTarget = adjustedCalTarget;
@@ -2729,6 +2742,17 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         </div>
       )}
 
+      {/* ── Cardio Calorie Burn ── */}
+      {cardioBurn > 0 && (
+        <div className="mx-4 mb-5 px-4 py-3 rounded-[14px] flex items-center gap-2.5"
+          style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.12)' }}>
+          <span className="text-[16px]">{'\u{1F3C3}'}</span>
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--color-success)' }}>
+            {t('nutrition.burnFromCardio', { cal: cardioBurn })}
+          </span>
+        </div>
+      )}
+
       {/* ── Sugerencia del Día — always visible ── */}
       <DailySuggestion
         targets={targets}
@@ -2737,7 +2761,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         lang={lang}
         t={t}
         userId={userId}
-        workoutBurn={workoutBurn}
+        workoutBurn={totalBurn}
       />
 
       {/* ── Today's Meals ── */}

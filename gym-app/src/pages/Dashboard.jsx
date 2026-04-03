@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
   Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle, CalendarCheck,
+  Activity,
 } from 'lucide-react';
 import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek } from 'date-fns';
@@ -28,6 +29,7 @@ import CoachMark from '../components/CoachMark';
 import QRCodeModal from '../components/QRCodeModal';
 import ReferralRewardBanner from '../components/ReferralRewardBanner';
 import NPSSurveyModal from '../components/NPSSurveyModal';
+import CardioLogModal from '../components/CardioLogModal';
 // AppTour moved to App.jsx to persist across page navigations
 
 // Build a lookup: exercise_id → videoUrl
@@ -169,6 +171,7 @@ const Dashboard = () => {
   const [activeProgram, setActiveProgram] = useState(null);
   const [showPlanInfo, setShowPlanInfo] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showCardioLog, setShowCardioLog] = useState(false);
   const [planWeek, setPlanWeek] = useState(1);
   const [planSelectedDay, setPlanSelectedDay] = useState(null);
   const [fullTemplates, setFullTemplates] = useState(null);
@@ -203,6 +206,12 @@ const Dashboard = () => {
       return () => { document.body.style.overflow = ''; };
     }
   }, [showQR]);
+  useEffect(() => {
+    if (showCardioLog) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [showCardioLog]);
   useEffect(() => {
     if (pickerOpen) {
       document.body.style.overflow = 'hidden';
@@ -439,6 +448,22 @@ const Dashboard = () => {
       setCache(`dash:${user.id}`, payload);
       runNotificationScheduler(user.id, profile.gym_id).catch(() => {});
 
+      // Background cardio sync from health store (non-blocking, at most once/hour)
+      try {
+        const healthSettings = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');
+        if (healthSettings.enabled || healthSettings.sync_enabled) {
+          const SYNC_KEY = 'tugympr_cardio_sync_ts';
+          const lastSync = parseInt(localStorage.getItem(SYNC_KEY) || '0', 10);
+          if (Date.now() - lastSync >= 3600000) {
+            import('../lib/healthSync').then(mod => {
+              if (mod.syncCardioFromHealth) {
+                mod.syncCardioFromHealth(user.id, profile.gym_id).catch(() => {});
+              }
+            }).catch(() => {});
+          }
+        }
+      } catch { /* health sync check failed — non-critical */ }
+
       // Use challenge from RPC result (already fetched in single call)
       if (rpcData?.challenge) {
         setLiveChallenge(rpcData.challenge);
@@ -535,6 +560,24 @@ const Dashboard = () => {
     setPickerOpen(true);
   }, []);
 
+  /**
+   * Callback for when a cardio session is logged (e.g. from CardioLogModal).
+   * The log_cardio_session RPC updates streak_cache, so we refresh the dashboard
+   * to pick up the new streak value and any XP earned.
+   * @param {{ session_id: string, xp_earned: number, streak: number }} result - RPC result
+   */
+  const handleCardioLogged = useCallback((result) => {
+    // Optimistically update streak if the RPC returned the new value
+    if (result?.streak != null) {
+      dispatch({
+        type: 'HYDRATE',
+        payload: { stats: { sessions: stats.sessions, streak: result.streak } },
+      });
+    }
+    // Trigger a full data refresh to pick up XP, activity feed, etc.
+    setRefreshKey(k => k + 1);
+  }, [stats.sessions]);
+
   /* ── Derived data ──────────────────────────────────────── */
   const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date())) && !isSameDay(selectedDate, new Date());
   const pastDaySessions = isPastDay
@@ -627,6 +670,15 @@ const Dashboard = () => {
             >
               <QrCode size={14} className="text-[#D4AF37]" />
               <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.qr')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCardioLog(true)}
+              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              aria-label="Log Cardio"
+            >
+              <Activity size={14} className="text-[#10B981]" />
+              <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.cardio', 'Cardio')}</span>
             </button>
             <Link
               to="/messages"
@@ -1474,6 +1526,13 @@ const Dashboard = () => {
       />
 
       {/* App Tour moved to PlatformLayout so it persists across page navigations */}
+
+      {/* ── CARDIO LOG MODAL ────────────────────────────── */}
+      <CardioLogModal
+        isOpen={showCardioLog}
+        onClose={() => setShowCardioLog(false)}
+        onLogged={() => setRefreshKey(k => k + 1)}
+      />
 
       {/* ── NPS SURVEY MODAL ─────────────────────────────── */}
       <NPSSurveyModal />

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Trophy, Zap, Activity, BarChart3, ChevronDown, ChevronRight, Clock, Dumbbell, Calendar,
-  Apple,
+  Apple, Flame, MapPin,
 } from 'lucide-react';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import Skeleton from '../../components/Skeleton';
@@ -33,6 +33,7 @@ export default function ProgressOverview() {
   const [volumeChart, setVolumeChart] = useState([]);
   const [earnedAchievements, setEarnedAchievements] = useState([]);
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
+  const [weeklyCardio, setWeeklyCardio] = useState({ minutes: 0, distance: 0, calories: 0, hasData: false });
 
   // Sync lifetime points from context when it loads
   useEffect(() => { if (ctxLifetimePoints != null) setPointsData(prev => ({ ...prev, lifetime_points: ctxLifetimePoints })); }, [ctxLifetimePoints]);
@@ -48,7 +49,7 @@ export default function ProgressOverview() {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-      const [pts, weekSessions, volumeData, achievementData, streakData, prCountData, friendCountData, totalVolumeData] = await Promise.all([
+      const [pts, weekSessions, volumeData, achievementData, streakData, prCountData, friendCountData, totalVolumeData, weekCardioData] = await Promise.all([
         getUserPoints(user.id),
         // This week's completed sessions
         supabase
@@ -98,6 +99,13 @@ export default function ProgressOverview() {
           .select('total_volume_lbs')
           .eq('profile_id', user.id)
           .eq('status', 'completed'),
+        // This week's cardio sessions
+        supabase
+          .from('cardio_sessions')
+          .select('duration_seconds, distance_km, calories_burned')
+          .eq('profile_id', user.id)
+          .gte('started_at', weekStart.toISOString())
+          .lte('started_at', weekEnd.toISOString()),
       ]);
 
       if (cancelled) return;
@@ -138,6 +146,17 @@ export default function ProgressOverview() {
       const achieveData = { totalSessions, currentStreak, totalPRs, friendCount, sessionsInFirst6Weeks: 0, challengesCompleted: 0, totalVolumeLbs };
       const earned = ACHIEVEMENT_DEFS.filter(a => a.check(achieveData));
       setEarnedAchievements(earned.slice(-3));
+
+      // Weekly cardio stats
+      const cardioRows = weekCardioData.data ?? [];
+      if (cardioRows.length > 0) {
+        const cardioMinutes = Math.round(cardioRows.reduce((s, r) => s + (r.duration_seconds || 0), 0) / 60);
+        const cardioDistance = cardioRows.reduce((s, r) => s + (parseFloat(r.distance_km) || 0), 0);
+        const cardioCals = cardioRows.reduce((s, r) => s + (r.calories_burned || 0), 0);
+        setWeeklyCardio({ minutes: cardioMinutes, distance: Math.round(cardioDistance * 10) / 10, calories: cardioCals, hasData: true });
+      } else {
+        setWeeklyCardio({ minutes: 0, distance: 0, calories: 0, hasData: false });
+      }
 
       setLoading(false);
     };
@@ -198,6 +217,28 @@ export default function ProgressOverview() {
           </div>
         ))}
       </div>
+
+      {/* Cardio This Week */}
+      {weeklyCardio.hasData && (
+        <div className="rounded-2xl border border-white/[0.06] p-5 overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
+          <p className="text-[14px] font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>{t('progress.overview.cardioThisWeek')}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: t('progress.overview.cardioTime'), value: weeklyCardio.minutes, unit: t('progress.overview.cardioMin'), icon: Clock, color: 'var(--color-blue-soft)' },
+              { label: t('progress.overview.cardioDistance'), value: weeklyCardio.distance > 0 ? weeklyCardio.distance : '--', unit: weeklyCardio.distance > 0 ? t('progress.overview.cardioKm') : '', icon: MapPin, color: 'var(--color-success)' },
+              { label: t('progress.overview.cardioCals'), value: weeklyCardio.calories, unit: t('progress.overview.cardioKcal'), icon: Flame, color: 'var(--color-danger)' },
+            ].map(({ label, value, unit, icon: Icon, color }) => (
+              <div key={label} className="flex flex-col items-center gap-1 text-center">
+                <Icon size={14} style={{ color }} strokeWidth={2} />
+                <p className="text-[20px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {value}{unit ? <span className="text-[10px] font-semibold ml-0.5" style={{ color: 'var(--color-text-subtle)' }}>{unit}</span> : null}
+                </p>
+                <p className="text-[9px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--color-text-subtle)' }}>{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Goals Section */}
       <GoalsSection />
