@@ -108,12 +108,14 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
         : null;
 
       const { error } = await supabase.rpc('log_cardio_session', {
-        p_cardio_type: cardioType,
-        p_duration_seconds: duration * 60,
-        p_distance_km: distanceKm,
-        p_calories_burned: estimatedCalories,
-        p_intensity: intensity,
-        p_source: 'manual',
+        p_payload: {
+          cardio_type: cardioType,
+          duration_seconds: duration * 60,
+          distance_km: distanceKm,
+          calories_burned: estimatedCalories,
+          intensity,
+          source: 'manual',
+        },
       });
 
       if (error) throw error;
