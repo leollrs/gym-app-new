@@ -1437,51 +1437,66 @@ const ActiveSession = () => {
     );
   }
 
+  // Auto-skip warm-up gate if no warm-ups available
+  useEffect(() => {
+    if (warmUpPhase === 'gate' && !dataLoading && exercises.length > 0 && warmUpExercises.length === 0) {
+      setWarmUpPhase('done');
+    }
+  }, [warmUpPhase, dataLoading, exercises.length, warmUpExercises.length]);
+
   // ── Warm-up gate page ──────────────────────────────────────────────────────
-  if (warmUpPhase === 'gate' && !dataLoading && warmUpExercises.length > 0) {
+  if (warmUpPhase === 'gate' && !dataLoading) {
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-orange-500/15 flex items-center justify-center mb-6">
-            <span className="text-[36px]">🔥</span>
+      <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
+        <div className="flex-1 flex flex-col items-center justify-center px-6">
+          {/* Icon */}
+          <div className="w-24 h-24 rounded-[28px] flex items-center justify-center mb-8" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.08))' }}>
+            <span className="text-[44px]">🔥</span>
           </div>
-          <h2 className="text-[24px] font-black tracking-tight mb-2" style={{ color: 'var(--color-text-primary)' }}>
-            {t('activeSession.warmUpReady', 'Time to Warm Up')}
+
+          {/* Title */}
+          <h2 className="text-[28px] font-black tracking-tight mb-3" style={{ color: 'var(--color-text-primary)' }}>
+            {t('activeSession.warmUpReady', 'Warm Up')}
           </h2>
-          <p className="text-[14px] leading-relaxed mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            {t('activeSession.warmUpDesc', { count: warmUpExercises.length, defaultValue: `${warmUpExercises.length} warm-up exercises selected for today's muscles` })}
+
+          {/* Subtitle */}
+          <p className="text-[15px] leading-relaxed max-w-[280px] text-center" style={{ color: 'var(--color-text-muted)' }}>
+            {t('activeSession.warmUpDesc2', { count: warmUpExercises.length, defaultValue: `${warmUpExercises.length} exercises to get your muscles ready` })}
           </p>
-          <div className="flex flex-wrap justify-center gap-1.5 mb-8">
-            {warmUpExercises.map(wu => (
-              <span key={wu.id} className="text-[11px] px-2.5 py-1 rounded-full font-medium bg-orange-500/10 text-orange-400">
-                {i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name}
-              </span>
+
+          {/* Exercise list preview */}
+          <div className="w-full max-w-xs mt-8 space-y-2">
+            {warmUpExercises.map((wu, idx) => (
+              <div key={wu.id} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                <span className="text-[14px] font-bold tabular-nums w-5 text-right" style={{ color: 'var(--color-text-subtle)' }}>{idx + 1}</span>
+                <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                  {i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name}
+                </span>
+                <span className="ml-auto text-[12px] tabular-nums" style={{ color: 'var(--color-text-subtle)' }}>{wu.durationSec}s</span>
+              </div>
             ))}
           </div>
         </div>
+
+        {/* Buttons */}
         <div className="w-full px-6 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] space-y-3">
           <button
             onClick={() => { setWarmUpPhase('active'); setWarmUpIndex(0); }}
             className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
             style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
           >
-            {t('activeSession.enterWarmUp', 'Enter Warm-Up')}
+            {t('activeSession.enterWarmUp', 'Start Warm-Up')}
           </button>
           <button
             onClick={() => setWarmUpPhase('done')}
-            className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors"
-            style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
+            className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
           >
-            {t('activeSession.skipWarmUp', 'Skip & Begin Workout')}
+            {t('activeSession.skipWarmUp', 'Skip')}
           </button>
         </div>
       </div>
     );
-  }
-
-  // If warm-up gate with no warm-ups loaded yet, auto-skip
-  if (warmUpPhase === 'gate' && !dataLoading && warmUpExercises.length === 0) {
-    setWarmUpPhase('done');
   }
 
   const isInWarmUp = warmUpPhase === 'active';
