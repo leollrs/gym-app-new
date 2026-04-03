@@ -21,8 +21,7 @@ import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
-// WarmUp overlay removed — warm-up exercises are now in the exercise library
-// and can be added to routines like any other exercise
+import { selectWarmUps } from '../lib/warmUpSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
@@ -204,8 +203,12 @@ const ActiveSession = () => {
   const [exercises, setExercises]     = useState([]);
   const onboardingRef = useRef(null); // cached onboarding for intra-session suggestions
 
-  // Show warm-up only for fresh sessions (not resumed) and not empty workouts
-  // WarmUp overlay removed — warm-up exercises now in exercise library
+  // Warm-up phase: 'gate' (show splash), 'active' (doing warm-ups), 'done' (skipped or finished)
+  const [warmUpPhase, setWarmUpPhase] = useState(() =>
+    savedSession || IS_EMPTY_SESSION(id) ? 'done' : 'gate'
+  );
+  const [warmUpExercises, setWarmUpExercises] = useState([]);
+  const [warmUpIndex, setWarmUpIndex] = useState(0);
 
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(
     savedSession?.currentExerciseIndex ?? 0
@@ -524,6 +527,12 @@ const ActiveSession = () => {
         }));
 
       setExercises(sortedExercises);
+
+      // Select muscle-relevant warm-ups based on exercises in this routine
+      if (warmUpPhase !== 'done') {
+        const muscleGroups = [...new Set(sortedExercises.map(e => e.muscle).filter(Boolean))];
+        setWarmUpExercises(selectWarmUps(muscleGroups));
+      }
 
       const exerciseIds = sortedExercises.map(e => e.id);
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -1428,8 +1437,54 @@ const ActiveSession = () => {
     );
   }
 
-  // WarmUp overlay removed — warm-up exercises are in the exercise library
+  // ── Warm-up gate page ──────────────────────────────────────────────────────
+  if (warmUpPhase === 'gate' && !dataLoading && warmUpExercises.length > 0) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-3xl bg-orange-500/15 flex items-center justify-center mb-6">
+            <span className="text-[36px]">🔥</span>
+          </div>
+          <h2 className="text-[24px] font-black tracking-tight mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            {t('activeSession.warmUpReady', 'Time to Warm Up')}
+          </h2>
+          <p className="text-[14px] leading-relaxed mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            {t('activeSession.warmUpDesc', { count: warmUpExercises.length, defaultValue: `${warmUpExercises.length} warm-up exercises selected for today's muscles` })}
+          </p>
+          <div className="flex flex-wrap justify-center gap-1.5 mb-8">
+            {warmUpExercises.map(wu => (
+              <span key={wu.id} className="text-[11px] px-2.5 py-1 rounded-full font-medium bg-orange-500/10 text-orange-400">
+                {i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="w-full px-6 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] space-y-3">
+          <button
+            onClick={() => { setWarmUpPhase('active'); setWarmUpIndex(0); }}
+            className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
+            style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+          >
+            {t('activeSession.enterWarmUp', 'Enter Warm-Up')}
+          </button>
+          <button
+            onClick={() => setWarmUpPhase('done')}
+            className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors"
+            style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
+          >
+            {t('activeSession.skipWarmUp', 'Skip & Begin Workout')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
+  // If warm-up gate with no warm-ups loaded yet, auto-skip
+  if (warmUpPhase === 'gate' && !dataLoading && warmUpExercises.length === 0) {
+    setWarmUpPhase('done');
+  }
+
+  const isInWarmUp = warmUpPhase === 'active';
   const currentExercise = exercises[currentExerciseIndex];
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
   const knownPR         = currentExercise ? livePRs.current[currentExercise.id] : null;
@@ -1614,15 +1669,15 @@ const ActiveSession = () => {
 
       {/* Session Header */}
       <SessionHeader
-        routineName={routineName}
+        routineName={isInWarmUp ? t('activeSession.warmUpPhase', 'Warm-Up') : routineName}
         className={className}
         isPaused={isPaused}
         elapsedTime={elapsedTime}
         formatTime={formatTime}
         completedSets={completedSets}
         totalSets={totalSets}
-        exercises={exercises}
-        currentExerciseIndex={currentExerciseIndex}
+        exercises={isInWarmUp ? warmUpExercises : exercises}
+        currentExerciseIndex={isInWarmUp ? warmUpIndex : currentExerciseIndex}
         showResumedBanner={showResumedBanner}
         savedSession={savedSession}
         sessionKey={sessionKey}
@@ -1682,8 +1737,99 @@ const ActiveSession = () => {
         />
       )}
 
+      {/* Warm-Up Active Phase */}
+      {isInWarmUp && warmUpExercises.length > 0 && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pt-4 pb-6">
+            {/* Phase label */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[20px]">🔥</span>
+              <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                {t('activeSession.warmUpPhase', 'Warm-Up')}
+              </h3>
+              <span className="text-[12px] font-bold px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400">
+                {warmUpIndex + 1}/{warmUpExercises.length}
+              </span>
+            </div>
+
+            {/* Current warm-up exercise card */}
+            {warmUpExercises[warmUpIndex] && (() => {
+              const wu = warmUpExercises[warmUpIndex];
+              const wuName = i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name;
+              return (
+                <div className="rounded-2xl p-5 mb-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, orange 20%, transparent)' }}>
+                  <h4 className="text-[18px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{wuName}</h4>
+                  <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{wu.durationSec}s</p>
+
+                  {/* Navigation buttons */}
+                  <div className="flex gap-3">
+                    {warmUpIndex > 0 && (
+                      <button
+                        onClick={() => setWarmUpIndex(i => i - 1)}
+                        className="flex-1 py-3 rounded-xl font-semibold text-[13px] transition-colors"
+                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
+                      >
+                        {t('activeSession.previousWarmUp', 'Previous')}
+                      </button>
+                    )}
+                    {warmUpIndex < warmUpExercises.length - 1 ? (
+                      <button
+                        onClick={() => setWarmUpIndex(i => i + 1)}
+                        className="flex-1 py-3 rounded-xl font-bold text-[13px] active:scale-[0.97] transition-transform"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
+                      >
+                        {t('activeSession.nextWarmUp', 'Next')}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setWarmUpPhase('done')}
+                        className="flex-1 py-3 rounded-xl font-bold text-[13px] active:scale-[0.97] transition-transform bg-[#10B981] text-white"
+                      >
+                        {t('activeSession.beginWorkout', 'Begin Workout')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Warm-up exercise list */}
+            <div className="space-y-1.5">
+              {warmUpExercises.map((wu, idx) => {
+                const name = i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name;
+                const isActive = idx === warmUpIndex;
+                const isDone = idx < warmUpIndex;
+                return (
+                  <button
+                    key={wu.id}
+                    onClick={() => setWarmUpIndex(idx)}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-colors ${isActive ? 'ring-1 ring-orange-400/30' : ''}`}
+                    style={{ backgroundColor: isActive ? 'color-mix(in srgb, orange 8%, var(--color-bg-card))' : 'var(--color-surface-hover)' }}
+                  >
+                    <span className={`text-[13px] font-semibold ${isDone ? 'line-through' : ''}`} style={{ color: isDone ? 'var(--color-text-subtle)' : 'var(--color-text-primary)' }}>
+                      {name}
+                    </span>
+                    <span className="ml-auto text-[11px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{wu.durationSec}s</span>
+                    {isDone && <span className="text-green-400 text-[13px]">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Skip remaining warm-ups */}
+            <button
+              onClick={() => setWarmUpPhase('done')}
+              className="w-full mt-4 py-2.5 rounded-xl text-[12px] font-medium transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {t('activeSession.skipRemainingWarmUp', 'Skip remaining & start workout')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scrollable Exercise Area */}
-      <div className="flex-1 overflow-y-auto">
+      {!isInWarmUp && <div className="flex-1 overflow-y-auto">
         {exercises.length === 0 && isEmptyMode ? (
           /* ── Empty workout — no exercises yet ── */
           <div className="flex flex-col items-center justify-center h-full px-6 text-center">
@@ -1768,7 +1914,7 @@ const ActiveSession = () => {
             </div>
           );
         })() : null}
-      </div>
+      </div>}
 
       {/* ── Add Exercise Modal ──────────────────── */}
       <AnimatePresence>

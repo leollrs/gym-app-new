@@ -204,34 +204,15 @@ export default function GymWOD() {
 
       if (rErr) throw rErr;
 
-      // Prepend warm-up exercises, then workout exercises
-      const warmUpExercises = [
-        { exercise_id: 'ex_wu_jj', target_sets: 1, target_reps: '45s', rest_seconds: 10 },
-        { exercise_id: 'ex_wu_ac', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
-        { exercise_id: 'ex_wu_ls', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
-        { exercise_id: 'ex_wu_hc', target_sets: 1, target_reps: '30s', rest_seconds: 10 },
-        { exercise_id: 'ex_wu_lc', target_sets: 1, target_reps: '60s', rest_seconds: 30 },
-      ];
-
-      const warmUpRows = warmUpExercises.map((wu, i) => ({
-        routine_id:   routine.id,
-        exercise_id:  wu.exercise_id,
-        position:     i + 1,
-        target_sets:  wu.target_sets,
-        target_reps:  wu.target_reps,
-        rest_seconds: wu.rest_seconds,
-      }));
-
-      const workoutRows = exercises.map((ex, i) => ({
+      // Insert routine exercises (warm-ups handled dynamically by ActiveSession)
+      const rows = exercises.map((ex, i) => ({
         routine_id:   routine.id,
         exercise_id:  ex.exerciseId,
-        position:     warmUpExercises.length + i + 1,
+        position:     i + 1,
         target_sets:  ex.sets,
         target_reps:  ex.reps,
         rest_seconds: ex.restSeconds,
       }));
-
-      const rows = [...warmUpRows, ...workoutRows];
 
       const { error: exErr } = await supabase
         .from('routine_exercises')
