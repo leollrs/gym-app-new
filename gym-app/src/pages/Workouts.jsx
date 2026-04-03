@@ -1565,6 +1565,14 @@ const Workouts = () => {
           {(() => {
             // Gym Exclusive filter shows only gym programs
             if (programCategoryFilter === 'Gym Exclusive') {
+              if (gymPrograms.length === 0) {
+                return (
+                  <div className="col-span-2 rounded-2xl py-10 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('workouts.noGymExclusives', 'No gym exclusive programs available')}</p>
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noGymExclusivesHint', 'Check back later for programs from your gym')}</p>
+                  </div>
+                );
+              }
               return gymPrograms.map(prog => (
                 <button
                   key={prog.id}
