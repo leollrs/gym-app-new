@@ -84,6 +84,17 @@ private class LiveActivityManager {
             return
         }
 
+        // If Swift knows rest is still active but JS says not resting (race condition),
+        // keep showing the rest countdown instead of briefly flashing workout timer
+        if !state.isResting && isRestActive, let cachedEnd = cachedRestEndDate, cachedEnd > Date() {
+            var restState = state
+            restState.isResting = true
+            restState.restEndDate = cachedEnd
+            let content = ActivityContent(state: restState, staleDate: cachedEnd)
+            await pushUpdate(content)
+            return
+        }
+
         restEndTimer?.cancel()
         restEndTimer = nil
         endBackgroundTask()

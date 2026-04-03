@@ -4,7 +4,7 @@ import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizon
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { computeSuggestion } from '../lib/overloadEngine';
+import { computeSuggestion, computeIntraSessionSuggestion } from '../lib/overloadEngine';
 import { requestNotificationPermission, scheduleRestDoneNotification, cancelRestNotification } from '../lib/restNotification';
 import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotification } from '../lib/workoutNotification';
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
@@ -21,6 +21,7 @@ import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
+import WarmUp from './active-session/WarmUp';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
@@ -76,12 +77,12 @@ const isPR = (exerciseId, weight, reps, knownPRs) => {
 
 // ── PR Celebration Banner ─────────────────────────────────────────────────────
 const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
-  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] animate-scale-pop">
-    <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 max-w-xs">
-      <Trophy size={24} className="flex-shrink-0 text-white" />
+  <div className="fixed top-0 left-0 right-0 z-[200] animate-scale-pop">
+    <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-orange-500 px-5 py-5 shadow-2xl flex items-center gap-4 w-full" style={{ boxShadow: '0 8px 32px rgba(212, 175, 55, 0.4)' }}>
+      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20 flex-shrink-0"><Trophy size={28} className="text-white drop-shadow-lg" /></div>
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-[14px] leading-tight text-white truncate">{t('activeSession.newPersonalRecord')}</p>
-        <p className="text-[12px] text-white/90 mt-0.5 truncate">{exercise} — {weight} lbs × {reps}</p>
+        <p className="font-extrabold text-[17px] leading-tight text-white tracking-wide uppercase drop-shadow-sm">{t('activeSession.newPersonalRecord')}</p>
+        <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{exercise} — {weight} lbs × {reps}</p>
       </div>
       <button onClick={onDismiss} aria-label="Dismiss" className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
     </div>
@@ -200,11 +201,15 @@ const ActiveSession = () => {
   const [dataLoading, setDataLoading] = useState(true);
   const [routineName, setRoutineName] = useState('');
   const [exercises, setExercises]     = useState([]);
+  const onboardingRef = useRef(null); // cached onboarding for intra-session suggestions
+
+  // Show warm-up only for fresh sessions (not resumed) and not empty workouts
+  const [showWarmUp, setShowWarmUp] = useState(() => !savedSession && !IS_EMPTY_SESSION(id));
 
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(
     savedSession?.currentExerciseIndex ?? 0
   );
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(savedSession?.isPaused ?? false);
 
   const startedAt = useRef(savedSession?.startedAt ?? new Date().toISOString());
   const [elapsedTime, setElapsedTime] = useState(savedSession?.elapsedTime ?? 0);
@@ -251,7 +256,7 @@ const ActiveSession = () => {
   // Always holds the latest state so beforeunload/visibilitychange can save without stale closures
   const saveRef = useRef(null);
   const lastTickAt = useRef(Date.now());
-  const isPausedRef = useRef(false);
+  const isPausedRef = useRef(savedSession?.isPaused ?? false);
   const draftSaveRef = useRef(null);
 
   const [loggedSets, setLoggedSets] = useState({});
@@ -265,6 +270,11 @@ const ActiveSession = () => {
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [saveWarning, setSaveWarning] = useState('');
   const [error, setError] = useState(null);
+
+  // ── Auto workout ender state ───────────────────────────────────────────────
+  const [showAutoEndPrompt, setShowAutoEndPrompt] = useState(false);
+  const autoEndPromptDismissed = useRef(false); // true once user taps "keep going"
+  const autoEndTriggered = useRef(false); // prevents double-fire of auto-finish
 
   // ── Exercise Swap state ─────────────────────────────────────────────────────
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -505,6 +515,7 @@ const ActiveSession = () => {
           restSeconds: re.rest_seconds,
           groupId:     re.group_id || null,
           groupType:   re.group_type || null,
+          muscle:      re.exercises?.muscle_group || localExercises.find(e => e.id === re.exercise_id)?.muscle || null,
           videoUrl:    re.exercises?.video_url || null,
           instructions:    re.exercises?.instructions || null,
           instructions_es: re.exercises?.instructions_es || null,
@@ -523,7 +534,7 @@ const ActiveSession = () => {
           .eq('profile_id', user.id)
           .in('exercise_id', exerciseIds),
         supabase.from('member_onboarding')
-          .select('fitness_level, primary_goal')
+          .select('fitness_level, primary_goal, initial_weight_lbs, sex')
           .eq('profile_id', user.id)
           .maybeSingle(),
         supabase
@@ -536,7 +547,7 @@ const ActiveSession = () => {
           .limit(1),
         supabase
           .from('session_drafts')
-          .select('logged_sets, session_prs, live_prs, current_exercise_index, elapsed_time, started_at')
+          .select('logged_sets, session_prs, live_prs, current_exercise_index, elapsed_time, started_at, is_paused')
           .eq('profile_id', user.id)
           .eq('routine_id', id)
           .gte('updated_at', cutoff)
@@ -546,6 +557,7 @@ const ActiveSession = () => {
       const prMap = {};
       prs?.forEach(pr => { prMap[pr.exercise_id] = { weight: pr.weight_lbs, reps: pr.reps }; });
       livePRs.current = prMap;
+      onboardingRef.current = onboarding;
 
       const prevSetsMap = {};
       if (lastSessions?.length > 0) {
@@ -562,11 +574,16 @@ const ActiveSession = () => {
         });
       }
 
-      const enriched = sortedExercises.map(ex => ({
+      const enriched = sortedExercises.map(ex => {
+        const libEx = localExercises.find(e => e.id === ex.id);
+        const exerciseMeta = libEx ? { movementPattern: libEx.movementPattern } : null;
+        return {
         ...ex,
+        movementPattern: libEx?.movementPattern || null,
         history:    prevSetsMap[ex.id] || [],
-        suggestion: computeSuggestion(prevSetsMap[ex.id] || [], onboarding, ex.targetReps),
-      }));
+        suggestion: computeSuggestion(prevSetsMap[ex.id] || [], onboarding, ex.targetReps, 0, exerciseMeta),
+        };
+      });
       setExercises(enriched);
 
       // DB draft wins; fall back to localStorage if no DB draft
@@ -578,6 +595,7 @@ const ActiveSession = () => {
             currentExerciseIndex:  dbDraft.current_exercise_index,
             elapsedTime:           dbDraft.elapsed_time,
             startedAt:             dbDraft.started_at,
+            isPaused:              dbDraft.is_paused ?? false,
           }
         : savedSession
           ? {
@@ -587,6 +605,7 @@ const ActiveSession = () => {
               currentExerciseIndex: savedSession.currentExerciseIndex,
               elapsedTime:          savedSession.elapsedTime,
               startedAt:            savedSession.startedAt,
+              isPaused:             savedSession.isPaused ?? false,
             }
           : null;
 
@@ -611,6 +630,10 @@ const ActiveSession = () => {
         if (draft.currentExerciseIndex) setCurrentExerciseIndex(draft.currentExerciseIndex);
         if (draft.elapsedTime)          setElapsedTime(draft.elapsedTime);
         if (draft.startedAt)            startedAt.current = draft.startedAt;
+        if (draft.isPaused) {
+          setIsPaused(true);
+          isPausedRef.current = true;
+        }
         // Sync DB draft back to localStorage so fast local reads also work
         if (dbDraft) {
           try { localStorage.setItem(sessionKey, JSON.stringify(draft)); } catch { }
@@ -688,6 +711,17 @@ const ActiveSession = () => {
     const cs = Object.values(loggedSets).flat().filter(s => s.completed).length;
     const ts = Object.values(loggedSets).flat().length;
     if (ts === 0) return; // Don't update with empty state
+
+    // Guard against race condition: if restStartedAt is set but isResting hasn't
+    // updated yet (React state is async), skip this update to avoid briefly showing
+    // "LOG NEXT SET" before the rest countdown appears on the Live Activity.
+    if (!isResting && restStartedAt.current) {
+      const restElapsed = (Date.now() - restStartedAt.current) / 1000;
+      if (restElapsed < currentRestDurationRef.current) {
+        return; // Rest was just started but isResting state hasn't caught up yet
+      }
+    }
+
     try {
       const now = Math.floor((Date.now() - sessionStartTime.current) / 1000);
       const curEx = exercises[currentExerciseIndex];
@@ -739,6 +773,39 @@ const ActiveSession = () => {
     return () => clearInterval(interval);
   }, [isPaused]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Auto workout ender — 2h prompt, 3h hard stop ──────────────────────────
+  const TWO_HOURS = 2 * 60 * 60;
+  const THREE_HOURS = 3 * 60 * 60;
+
+  useEffect(() => {
+    if (showAutoEndPrompt) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [showAutoEndPrompt]);
+
+  useEffect(() => {
+    if (dataLoading) return;
+    // Check every 10 seconds using drift-free elapsed calculation
+    const check = setInterval(() => {
+      const now = Math.floor((Date.now() - sessionStartTime.current) / 1000);
+
+      // 3-hour hard stop — auto-finish regardless
+      if (now >= THREE_HOURS && !autoEndTriggered.current) {
+        autoEndTriggered.current = true;
+        setShowAutoEndPrompt(false);
+        handleFinishRef.current?.();
+        return;
+      }
+
+      // 2-hour prompt — only if not already dismissed and not already showing
+      if (now >= TWO_HOURS && !autoEndPromptDismissed.current && !showAutoEndPrompt && !autoEndTriggered.current) {
+        setShowAutoEndPrompt(true);
+      }
+    }, 10_000);
+    return () => clearInterval(check);
+  }, [dataLoading, showAutoEndPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Keep refs in sync (synchronous, never stale) ───────────────────────────
   isPausedRef.current = isPaused;
   currentRestDurationRef.current = currentRestDuration;
@@ -752,6 +819,7 @@ const ActiveSession = () => {
     currentExerciseIndex,
     routineName,
     exerciseSwaps,
+    isPaused,
     ...(isEmptyMode && { exercises }), // Save exercises for empty mode restore
   };
   if (!dataLoading && user && profile && !isEmptyMode) {
@@ -766,6 +834,7 @@ const ActiveSession = () => {
       session_prs: sessionPRs,
       live_prs: livePRs.current,
       current_exercise_index: currentExerciseIndex,
+      is_paused: isPaused,
       updated_at: new Date().toISOString(),
     };
   }
@@ -833,6 +902,7 @@ const ActiveSession = () => {
             setIsResting(false);
             restStartedAt.current = null;
             localStorage.removeItem(`gym_rest_${id}`);
+            window.scrollTo(0, 0);
           } else {
             setRestTimer(remaining);
             setIsResting(true);
@@ -888,6 +958,9 @@ const ActiveSession = () => {
       setIsResting(false);
       restStartedAt.current = null;
       try { localStorage.removeItem(restStateKey); } catch { }
+      // Haptic feedback when rest completes (vibration pattern: buzz-pause-buzz-pause-buzz)
+      try { navigator.vibrate?.([200, 100, 200, 100, 200]); } catch { }
+      window.scrollTo(0, 0);
       return;
     }
     // Tick every second — always recalculate from anchor timestamp (drift-proof)
@@ -1047,6 +1120,30 @@ const ActiveSession = () => {
       }
 
       updated[exerciseId][setIndex] = set;
+
+      // ── Intra-session progressive overload: update suggestion for next set ──
+      if (completing) {
+        const completedSetsThisSession = updated[exerciseId]
+          .filter(s => s.completed && s.weight && s.reps)
+          .map(s => ({ weight: parseFloat(s.weight), reps: parseInt(s.reps, 10) }));
+
+        const curExForSuggestion = exercises.find(e => e.id === exerciseId);
+        const intraResult = computeIntraSessionSuggestion(
+          completedSetsThisSession,
+          onboardingRef.current,
+          curExForSuggestion?.targetReps,
+          curExForSuggestion?.movementPattern,
+        );
+
+        if (intraResult) {
+          // Update the exercise's suggestion for the next set
+          setTimeout(() => {
+            setExercises(prev => prev.map(ex =>
+              ex.id === exerciseId ? { ...ex, suggestion: intraResult } : ex
+            ));
+          }, 0);
+        }
+      }
 
       // Immediately persist — bypasses the React render cycle race condition
       // (visibilitychange can fire before the next render updates saveRef)
@@ -1272,6 +1369,7 @@ const ActiveSession = () => {
           sessionId: result.session_id,
           streak: result.streak,
           heartRate: watchHRSummary.current || (watchHeartRate ? { averageBPM: watchHeartRate.avgBPM, maxBPM: watchHeartRate.bpm, minBPM: 0 } : null),
+          workedMuscleGroups: [...new Set(exercises.filter(ex => (loggedSets[ex.id] || []).some(s => s.completed)).map(ex => ex.muscle).filter(Boolean))],
         },
       });
     } catch (err) {
@@ -1329,6 +1427,16 @@ const ActiveSession = () => {
     );
   }
 
+  // ── Warm-up screen (shown before first exercise for fresh sessions) ─────────
+  if (showWarmUp && !dataLoading) {
+    return (
+      <WarmUp
+        onComplete={() => setShowWarmUp(false)}
+        onSkip={() => setShowWarmUp(false)}
+      />
+    );
+  }
+
   const currentExercise = exercises[currentExerciseIndex];
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
   const knownPR         = currentExercise ? livePRs.current[currentExercise.id] : null;
@@ -1338,11 +1446,15 @@ const ActiveSession = () => {
   const activeSet = activeSetIndex >= 0 ? currentSets[activeSetIndex] : null;
   const allSetsComplete = activeSetIndex === -1;
   const hasNextExercise = currentExerciseIndex < exercises.length - 1;
+  // Bodyweight exercises (pull-ups, dips, etc.) do not require a weight to complete a set
+  const currentLocalEx = currentExercise ? localExercises.find(e => e.id === currentExercise.id) : null;
+  const isCurrentBodyweight = currentLocalEx?.equipment === 'Bodyweight';
   const canComplete = activeSet
-    && activeSet.reps && activeSet.weight
+    && activeSet.reps
     && !isNaN(Number(activeSet.reps)) && Number(activeSet.reps) > 0
-    && !isNaN(Number(activeSet.weight)) && Number(activeSet.weight) > 0;
-
+    && (isCurrentBodyweight
+      ? (activeSet.weight === '' || activeSet.weight === '0' || (!isNaN(Number(activeSet.weight)) && Number(activeSet.weight) >= 0))
+      : (activeSet.weight && !isNaN(Number(activeSet.weight)) && Number(activeSet.weight) > 0));
   const handleCompleteSet = () => {
     if (!canComplete || !currentExercise) return;
     handleToggleComplete(
@@ -1463,6 +1575,38 @@ const ActiveSession = () => {
         </div>
       )}
 
+      {/* Auto workout ender — 2h still-going prompt */}
+      {showAutoEndPrompt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="dialog" aria-labelledby="auto-end-dialog-title">
+          <div className="rounded-[20px] w-full max-w-sm p-6 border border-white/[0.06]" style={{ background: 'var(--color-bg-card)' }}>
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+              <span className="text-[24px]" role="img" aria-label="clock">&#9200;</span>
+            </div>
+            <h3 id="auto-end-dialog-title" className="text-[18px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              {t('activeSession.autoEndTitle', "You've been working out for 2 hours")}
+            </h3>
+            <p className="text-[13px] text-center leading-relaxed mb-6" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('activeSession.autoEndMessage', 'Are you still going? The session will auto-finish at 3 hours.')}
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => { autoEndPromptDismissed.current = true; setShowAutoEndPrompt(false); }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              >
+                {t('activeSession.keepGoing', 'Yes, keep going')}
+              </button>
+              <button
+                onClick={() => { setShowAutoEndPrompt(false); setShowFinishModal(true); }}
+                className="w-full py-3.5 rounded-2xl font-bold text-[14px] border border-white/[0.06] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('activeSession.finishWorkout', 'Finish workout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Finish Modal */}
       {showFinishModal && (
         <SessionSummary
@@ -1511,6 +1655,7 @@ const ActiveSession = () => {
               setAdjustedRestSeconds(currentRestDuration);
             }
             setIsResting(false); restStartedAt.current = null; cancelRestNotification(); restNotificationScheduled.current = false; try { localStorage.removeItem(restStateKey); } catch { }
+            window.scrollTo(0, 0);
           }}
           onAdjustRest={(delta) => {
             const newDuration = Math.max(15, currentRestDuration + delta);
@@ -1528,6 +1673,19 @@ const ActiveSession = () => {
               } catch { }
             }
           }}
+          upcomingExercise={(() => {
+            const curEx = exercises[currentExerciseIndex];
+            if (!curEx) return null;
+            const curSets = loggedSets[curEx.id] || [];
+            const allCompleted = curSets.length > 0 && curSets.every(s => s.completed);
+            if (!allCompleted) return null;
+            // Find next exercise that still has incomplete sets
+            for (let i = currentExerciseIndex + 1; i < exercises.length; i++) {
+              const nextSets = loggedSets[exercises[i].id] || [];
+              if (nextSets.some(s => !s.completed)) return exercises[i];
+            }
+            return null;
+          })()}
         />
       )}
 

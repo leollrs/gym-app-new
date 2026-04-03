@@ -16,6 +16,8 @@ const LABEL_ES = {
   'Legs':      'Piernas',
   'Upper':     'Tren Superior',
   'Lower':     'Tren Inferior',
+  'Push + Shoulders': 'Empuje + Hombros',
+  'Pull + Arms':      'Tirón + Brazos',
 };
 const localizeLabel = (label) =>
   i18n.language === 'es' && LABEL_ES[label] ? LABEL_ES[label] : label;
@@ -72,6 +74,19 @@ const META = {
   ex_cr:    { tier: 'secondary', diff: 'beginner'     },
   ex_llr:   { tier: 'primary',   diff: 'intermediate' },
   ex_abwh:  { tier: 'primary',   diff: 'intermediate' },
+  ex_splk:  { tier: 'isolation', diff: 'beginner'     },
+  ex_mcr:   { tier: 'secondary', diff: 'beginner'     },
+  ex_rtwt:  { tier: 'isolation', diff: 'beginner'     },
+  ex_bcr:   { tier: 'isolation', diff: 'beginner'     },
+  ex_dbug:  { tier: 'isolation', diff: 'beginner'     },
+  ex_wdch:  { tier: 'secondary', diff: 'intermediate' },
+  ex_palp:  { tier: 'secondary', diff: 'intermediate' },
+  ex_dsu:   { tier: 'secondary', diff: 'beginner'     },
+  ex_vup:   { tier: 'primary',   diff: 'intermediate' },
+  ex_hbh:   { tier: 'isolation', diff: 'beginner'     },
+  ex_dgfl:  { tier: 'primary',   diff: 'advanced'     },
+  ex_scc:   { tier: 'secondary', diff: 'intermediate' },
+  ex_cpplk: { tier: 'secondary', diff: 'intermediate' },
   // Calves
   ex_scr:   { tier: 'secondary', diff: 'beginner'     },
   ex_secr:  { tier: 'isolation', diff: 'beginner'     },
@@ -86,6 +101,18 @@ const GOAL_CONFIG = {
   general_fitness:{ sets: [3, 3], reps: '10-12', rest: 75  },
 };
 
+// Short workout overrides: fewer sets, shorter rest — used when shortWorkout=true
+const SHORT_GOAL_CONFIG = {
+  muscle_gain:    { sets: [2, 3], reps: '8-12',  rest: 60  },
+  fat_loss:       { sets: [2, 3], reps: '12-15', rest: 45  },
+  strength:       { sets: [3, 4], reps: '3-6',   rest: 120 },
+  endurance:      { sets: [2, 2], reps: '15-20', rest: 30  },
+  general_fitness:{ sets: [2, 3], reps: '10-12', rest: 60  },
+};
+
+// Max exercises per session for short workouts (compound-focused)
+const SHORT_WORKOUT_MAX_EXERCISES = 4;
+
 const RECOVERY_MOD = {
   aggressive:   { setsBonus: 1,  restMod: -15 },
   standard:     { setsBonus: 0,  restMod: 0   },
@@ -97,7 +124,16 @@ const RECOVERY_MOD = {
 // Each entry: { muscle, tier } = one exercise slot
 // Ordered slots determine which exercises get picked (A: offset 0, B: offset 1)
 
-function buildPushSlots(level, gender, priority) {
+function buildPushSlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    // Short: 3-4 compound-focused exercises
+    return [
+      { muscle: 'Chest',     tier: 'primary'   },
+      { muscle: 'Shoulders', tier: 'primary'   },
+      { muscle: 'Triceps',   tier: 'secondary'  },
+      { muscle: 'Core',      tier: 'isolation'  },
+    ];
+  }
   const slots = [
     { muscle: 'Chest',     tier: 'primary'   },
     { muscle: 'Chest',     tier: 'secondary'  },
@@ -115,12 +151,22 @@ function buildPushSlots(level, gender, priority) {
   return slots;
 }
 
-function buildPullSlots(level, gender, priority) {
+function buildPullSlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    // Short: 3-4 compound-focused exercises
+    return [
+      { muscle: 'Back',   tier: 'primary'   },
+      { muscle: 'Back',   tier: 'secondary'  },
+      { muscle: 'Biceps', tier: 'secondary'  },
+      { muscle: 'Core',   tier: 'secondary'  },
+    ];
+  }
   const slots = [
     { muscle: 'Back',   tier: 'primary'   },
     { muscle: 'Back',   tier: 'secondary'  },
     { muscle: 'Biceps', tier: 'secondary'  },
     { muscle: 'Biceps', tier: 'isolation'  },
+    { muscle: 'Core',   tier: 'isolation'  },
   ];
   if (level !== 'beginner') {
     slots.push({ muscle: 'Back',   tier: 'secondary' });
@@ -128,7 +174,17 @@ function buildPullSlots(level, gender, priority) {
   return slots;
 }
 
-function buildLegsSlots(level, gender, priority) {
+function buildLegsSlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    // Short: 3-4 compound-focused exercises
+    const slots = [
+      { muscle: 'Legs',   tier: 'primary'   },
+      { muscle: 'Legs',   tier: 'secondary'  },
+      { muscle: 'Glutes', tier: 'primary'   },
+      { muscle: 'Core',   tier: 'primary'   },
+    ];
+    return slots;
+  }
   const slots = [
     { muscle: 'Legs',   tier: 'primary'   },
     { muscle: 'Legs',   tier: 'secondary'  },
@@ -148,7 +204,15 @@ function buildLegsSlots(level, gender, priority) {
   return slots;
 }
 
-function buildUpperSlots(level, gender, priority) {
+function buildUpperSlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    return [
+      { muscle: 'Chest',     tier: 'primary'   },
+      { muscle: 'Back',      tier: 'primary'   },
+      { muscle: 'Shoulders', tier: 'primary'   },
+      { muscle: 'Core',      tier: 'isolation'  },
+    ];
+  }
   const slots = [
     { muscle: 'Chest',     tier: 'primary'   },
     { muscle: 'Back',      tier: 'primary'   },
@@ -168,7 +232,15 @@ function buildUpperSlots(level, gender, priority) {
   return slots;
 }
 
-function buildLowerSlots(level, gender, priority) {
+function buildLowerSlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    return [
+      { muscle: 'Legs',   tier: 'primary'   },
+      { muscle: 'Legs',   tier: 'secondary'  },
+      { muscle: 'Glutes', tier: 'primary'   },
+      { muscle: 'Core',   tier: 'primary'   },
+    ];
+  }
   const slots = [
     { muscle: 'Legs',   tier: 'primary'   },
     { muscle: 'Legs',   tier: 'secondary'  },
@@ -186,7 +258,15 @@ function buildLowerSlots(level, gender, priority) {
   return slots;
 }
 
-function buildFullBodySlots(level, gender, priority) {
+function buildFullBodySlots(level, gender, priority, shortWorkout = false) {
+  if (shortWorkout) {
+    return [
+      { muscle: 'Legs',      tier: 'primary'   },
+      { muscle: 'Chest',     tier: 'primary'   },
+      { muscle: 'Back',      tier: 'primary'   },
+      { muscle: 'Core',      tier: 'primary'   },
+    ];
+  }
   const slots = [
     { muscle: 'Legs',      tier: 'primary'   },
     { muscle: 'Chest',     tier: 'primary'   },
@@ -214,26 +294,36 @@ const SPLIT_TEMPLATES = {
     }));
   },
   ppl:          () => [
-    { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps'] },
-    { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps'] },
+    { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
     { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
   ],
-  upper_lower:  () => [
-    { label: 'Upper', slotsKey: 'upper', muscles: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps'] },
-    { label: 'Lower', slotsKey: 'lower', muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
-  ],
+  upper_lower:  (days) => {
+    const base = [
+      { label: 'Upper', slotsKey: 'upper', muscles: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Core'] },
+      { label: 'Lower', slotsKey: 'lower', muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
+    ];
+    // For 4 days, repeat Upper/Lower to fill all slots
+    const count = Math.max(2, Math.min(days || 4, 6));
+    return Array.from({ length: count }, (_, i) => ({ ...base[i % 2] }));
+  },
   ppl_extended: () => [
-    { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps'] },
-    { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps'] },
-    { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
-    { label: 'Upper', slotsKey: 'upper', muscles: ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps'] },
-    { label: 'Lower', slotsKey: 'lower', muscles: ['Legs', 'Glutes', 'Core'] },
+    { label: 'Push',             slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull',             slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
+    { label: 'Legs',             slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
+    { label: 'Push + Shoulders', slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+    { label: 'Pull + Arms',     slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
   ],
-  ppl_double:   () => [
-    { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps'] },
-    { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps'] },
-    { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
-  ],
+  ppl_double:   (days) => {
+    const base = [
+      { label: 'Push',  slotsKey: 'push',  muscles: ['Chest', 'Shoulders', 'Triceps', 'Core'] },
+      { label: 'Pull',  slotsKey: 'pull',  muscles: ['Back', 'Biceps', 'Core'] },
+      { label: 'Legs',  slotsKey: 'legs',  muscles: ['Legs', 'Glutes', 'Core', 'Calves'] },
+    ];
+    // For 6+ days, repeat PPL cycle to fill all slots
+    const count = Math.max(3, Math.min(days || 6, 7));
+    return Array.from({ length: count }, (_, i) => ({ ...base[i % 3] }));
+  },
 };
 
 const SLOTS_BUILDERS = {
@@ -290,9 +380,9 @@ function pickExercise(pool, muscle, tier, variantOffset, usageMap) {
 }
 
 // ── Build a single routine from slots ──────────────────────────────────────
-function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set()) {
+function buildRoutine(template, pool, variantOffset, variant, level, gender, priority, goalConfig, recoveryMod, goalExerciseIds = new Set(), shortWorkout = false) {
   const buildSlots = SLOTS_BUILDERS[template.slotsKey];
-  const slots = buildSlots(level, gender, priority);
+  const slots = buildSlots(level, gender, priority, shortWorkout);
 
   const usageMap = new Map();
   const exercises = [];
@@ -431,6 +521,7 @@ export function generateProgram(onboarding, goals = []) {
     age                  = 30,
     gender               = 'other',
     priority_muscles     = [],
+    short_workout        = false,
   } = onboarding;
 
   // Build set of exercise IDs from active lift goals
@@ -475,9 +566,10 @@ export function generateProgram(onboarding, goals = []) {
     return allowedDiff.has(diff);
   });
 
-  // 5. Volume config
-  const goalConfig   = GOAL_CONFIG[primary_goal]  || GOAL_CONFIG.general_fitness;
-  const recoveryMod  = RECOVERY_MOD[recoveryTier] || RECOVERY_MOD.standard;
+  // 5. Volume config (short workouts use reduced sets/rest)
+  const goalConfigMap = short_workout ? SHORT_GOAL_CONFIG : GOAL_CONFIG;
+  const goalConfig    = goalConfigMap[primary_goal] || goalConfigMap.general_fitness;
+  const recoveryMod   = RECOVERY_MOD[recoveryTier] || RECOVERY_MOD.standard;
 
   // 6. Determine split & day templates
   const splitType = getSplitType(training_days_per_week);
@@ -486,10 +578,10 @@ export function generateProgram(onboarding, goals = []) {
 
   // 7. Generate A and B routine sets
   const routinesA = dayTemplates.map(t =>
-    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds)
+    buildRoutine(t, pool, 0, 'A', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout)
   );
   const routinesB = dayTemplates.map(t =>
-    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds)
+    buildRoutine(t, pool, 1, 'B', fitness_level, gender, priority_muscles, goalConfig, recoveryMod, goalExerciseIds, short_workout)
   );
 
   // 8. Cardio
@@ -499,7 +591,7 @@ export function generateProgram(onboarding, goals = []) {
     full_body:    'Full Body',
     ppl:          'Push / Pull / Legs',
     upper_lower:  'Upper / Lower',
-    ppl_extended: 'PPL + Upper/Lower',
+    ppl_extended: 'PPL + Push/Pull',
     ppl_double:   'PPL × 2',
   };
 
@@ -508,6 +600,7 @@ export function generateProgram(onboarding, goals = []) {
     splitLabel:   SPLIT_LABELS[splitType],
     somatotype,
     recoveryTier,
+    shortWorkout: short_workout,
     routinesA,
     routinesB,
     cardio,

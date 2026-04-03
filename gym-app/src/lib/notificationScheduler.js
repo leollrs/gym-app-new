@@ -14,6 +14,7 @@ import {
   isQuietHours,
 } from './notifications';
 import { REWARDS_CATALOG, getUserPoints } from './rewardsEngine';
+import { checkSmartVisitReminder, formatScheduleTime } from './workoutScheduleTracker';
 
 // ── HELPERS ──────────────────────────────────────────────────
 
@@ -640,6 +641,44 @@ async function checkPunchCardProximity(userId, gymId, profile) {
   }
 }
 
+/**
+ * Smart Visit Reminder
+ * If the user has a detected workout schedule pattern and it's ~1 hour before
+ * their usual workout time on a preferred day, send a push reminder.
+ * Requires 5+ completed sessions with a clear pattern.
+ */
+async function checkSmartVisitNotification(userId, gymId, profile) {
+  if (!profile.notif_workout_reminders) return;
+
+  // Check if we already sent a smart visit notification today
+  const alreadySent = await wasNotificationWithTitleSince(userId, 'usually work out', todayStart());
+  if (alreadySent) return;
+
+  // Also check Spanish variant
+  const alreadySentEs = await wasNotificationWithTitleSince(userId, 'sueles entrenar', todayStart());
+  if (alreadySentEs) return;
+
+  const result = await checkSmartVisitReminder(userId, gymId);
+  if (!result || !result.shouldNotify) return;
+
+  const localDay = localizedDayName(result.dayName);
+
+  await sendNotification(userId, gymId, {
+    type: NOTIFICATION_TYPES.SYSTEM,
+    title: i18n.t('notifications.smartVisitTitle', {
+      ns: 'common',
+      defaultValue: 'Time to hit the gym!',
+    }),
+    body: i18n.t('notifications.smartVisitBody', {
+      ns: 'common',
+      time: result.formattedTime,
+      day: localDay,
+      defaultValue: `You usually work out around ${result.formattedTime} on ${localDay}s. Let's keep the streak going!`,
+    }),
+    dedupKey: `smart_visit_${userId}_${new Date().toISOString().slice(0, 10)}`,
+  });
+}
+
 // ── MAIN SCHEDULER ───────────────────────────────────────────
 
 /**
@@ -678,6 +717,7 @@ export async function runNotificationScheduler(userId, gymId) {
     checkNutritionReminder(userId, gymId, profile),
     checkWeightLogReminder(userId, gymId, profile),
     checkPunchCardProximity(userId, gymId, profile),
+    checkSmartVisitNotification(userId, gymId, profile),
   ];
 
   const results = await Promise.allSettled(checks);

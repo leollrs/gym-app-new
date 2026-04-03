@@ -769,6 +769,7 @@
     "rest": "Descanso",
     "nextSetWhenZero": "Siguiente serie cuando el temporizador llegue a cero",
     "skipRest": "Saltar Descanso",
+    "upcomingExercise": "Siguiente",
     "restTotal": "total",
     "filterByMuscle": "Grupo Muscular",
     "filterByEquipment": "Equipamiento",
@@ -804,6 +805,10 @@
     "wrongDayTitle": "Entrenamiento de otro día",
     "wrongDayMessage": "Esta rutina está programada para el {{scheduledDay}}, pero hoy es {{todayDay}}. ¿Quieres continuar de todas formas?",
     "startAnyway": "Sí, empezar igualmente",
+    "autoEndTitle": "Llevas 2 horas entrenando",
+    "autoEndMessage": "¿Sigues entrenando? La sesión se finalizará automáticamente a las 3 horas.",
+    "keepGoing": "Sí, seguir entrenando",
+    "finishWorkout": "Finalizar entrenamiento",
     "emptyWorkout": "Entrenamiento Libre",
     "addExercise": "Agregar Ejercicio",
     "addExercisePrompt": "Busca y agrega ejercicios a tu entrenamiento",
@@ -1343,7 +1348,12 @@
     "previewProgram": "Vista Previa del Programa",
     "back": "Atrás",
     "generating": "Generando...",
-    "somethingWentWrong": "Algo salió mal. Inténtalo de nuevo."
+    "somethingWentWrong": "Algo salió mal. Inténtalo de nuevo.",
+    "sessionLength": "Duración de la sesión",
+    "sessionStandard": "Estándar",
+    "sessionStandardDesc": "45-60 min, 5-7 ejercicios",
+    "sessionShort": "Corta",
+    "sessionShortDesc": "15-20 min, 3-4 compuestos"
   },
   "createRoutine": {
     "duration": {
@@ -4749,6 +4759,40 @@
     "settingUp": "Configurando...",
     "startThisWorkout": "Comenzar Entrenamiento"
   },
+  "gymWOD": {
+    "title": "Entrenamiento del Gimnasio del Dia",
+    "new": "Nuevo",
+    "startWorkout": "Comenzar Entrenamiento",
+    "settingUp": "Configurando...",
+    "difficulty": {
+      "beginner": "Principiante",
+      "intermediate": "Intermedio",
+      "advanced": "Avanzado"
+    },
+    "themes": {
+      "upper_body_blast": "Explosion de Tren Superior",
+      "push_power_hour": "Hora de Empuje",
+      "chest___shoulders_crusher": "Destroza Pecho y Hombros",
+      "leg_day_challenge": "Desafio de Piernas",
+      "lower_body_burner": "Quema de Tren Inferior",
+      "quads___glutes_grind": "Cuadriceps y Gluteos al Maximo",
+      "back_attack": "Ataque de Espalda",
+      "pull_day_power": "Poder de Tiron",
+      "back___biceps_builder": "Constructor de Espalda y Biceps",
+      "full_body_burn": "Quema de Cuerpo Completo",
+      "total_body_torch": "Cuerpo Completo Intenso",
+      "head_to_toe_hustle": "De Pies a Cabeza",
+      "upper_body_sculpt": "Esculpe Tren Superior",
+      "arms___shoulders_shred": "Brazos y Hombros al Limite",
+      "upper_body_domination": "Dominio del Tren Superior",
+      "lower_body_blast": "Explosion de Tren Inferior",
+      "legs___core_inferno": "Infierno de Piernas y Core",
+      "glute___quad_assault": "Asalto a Gluteos y Cuadriceps",
+      "core___stability": "Core y Estabilidad",
+      "midsection_mayhem": "Caos Abdominal",
+      "core_strength_circuit": "Circuito de Fuerza Core"
+    }
+  },
   "workoutBuilder": {
     "sets": "Series",
     "reps": "Repeticiones",
@@ -4832,6 +4876,7 @@
     "noRecentAnnouncements": "Sin anuncios recientes.",
     "noAdditionalInfo": "Sin información adicional disponible.",
     "offers": "Ofertas",
+    "today": "Hoy",
     "validUntil": "Válido hasta",
     "noExpiry": "Sin vencimiento"
   },
@@ -5353,6 +5398,7 @@
     "noClasses": "No hay clases programadas para este día",
     "noBookings": "Sin reservas próximas",
     "upcomingClasses": "Próximas Clases",
+    "noUpcomingClasses": "No hay clases programadas próximamente",
     "viewAll": "Ver Todas",
     "instructor": "Instructor",
     "minutes": "{{count}} min",
@@ -5710,5 +5756,96 @@
     "trainerBadge": "Entrenador",
     "goBack": "Volver",
     "typeDeleteToConfirm": "Escribe DELETE para confirmar:"
+  },
+  "warmUp": {
+    "title": "Calentamiento",
+    "skip": "Saltar Calentamiento",
+    "subtitle": "Prepara tu cuerpo. Completa cada movimiento o avanza cuando estés listo.",
+    "startWorkout": "Empezar Entrenamiento",
+    "startWorkoutEarly": "Empezar Entrenamiento",
+    "movements": {
+      "jumpingJacks": "Saltos de Tijera",
+      "armCircles": "Círculos de Brazos",
+      "legSwings": "Balanceo de Piernas",
+      "hipCircles": "Círculos de Cadera",
+      "lightCardio": "Cardio Ligero"
+    },
+    "movementTips": {
+      "jumpingJacks": "Salta abriendo piernas y levantando brazos. Mantén un ritmo constante.",
+      "armCircles": "Extiende los brazos a los lados. Círculos pequeños, luego más grandes.",
+      "legSwings": "Agárrate de algo para equilibrarte. Balancea cada pierna hacia adelante y atrás.",
+      "hipCircles": "Manos en la cadera. Haz círculos amplios en ambas direcciones.",
+      "lightCardio": "Trota en el lugar, rodillas altas o salta la cuerda. Eleva tu ritmo cardíaco."
+    }
+  },
+  "coolDown": {
+    "title": "Estiramientos de Vuelta a la Calma",
+    "subtitle": "Mantén cada estiramiento con suavidad. Respira y relájate.",
+    "stretches": {
+      "doorwayChestStretch": {
+        "name": "Estiramiento de Pecho en Marco de Puerta",
+        "instruction": "Coloca el antebrazo en un marco de puerta a la altura del hombro. Inclínate suavemente. Mantén cada lado."
+      },
+      "crossBodyChestStretch": {
+        "name": "Estiramiento de Pecho Cruzado",
+        "instruction": "Extiende un brazo cruzando el pecho. Usa la otra mano para presionarlo. Mantén cada lado."
+      },
+      "childsPose": {
+        "name": "Postura del Niño",
+        "instruction": "Arrodíllate, siéntate sobre los talones, extiende los brazos hacia adelante en el suelo. Respira profundo."
+      },
+      "catCowStretch": {
+        "name": "Estiramiento Gato-Vaca",
+        "instruction": "En cuatro puntos, alterna entre arquear la espalda hacia arriba y hundirla. Lento y controlado."
+      },
+      "crossBodyShoulder": {
+        "name": "Estiramiento de Hombro Cruzado",
+        "instruction": "Tira de un brazo cruzando el pecho con la mano opuesta. Mantén cada lado."
+      },
+      "overheadTricepShoulder": {
+        "name": "Estiramiento de Tríceps y Hombro",
+        "instruction": "Lleva un brazo detrás de la cabeza, usa la otra mano para presionar suavemente el codo hacia abajo."
+      },
+      "wallBicepStretch": {
+        "name": "Estiramiento de Bíceps en Pared",
+        "instruction": "Coloca la palma en una pared a la altura del hombro. Gira el cuerpo suavemente hasta sentir el estiramiento."
+      },
+      "overheadTricepStretch": {
+        "name": "Estiramiento de Tríceps por Encima",
+        "instruction": "Levanta un brazo, dobla el codo detrás de la cabeza. Presiona suavemente con la otra mano."
+      },
+      "standingQuadStretch": {
+        "name": "Estiramiento de Cuádriceps de Pie",
+        "instruction": "De pie sobre una pierna, lleva el otro pie hacia los glúteos. Mantén las rodillas juntas. Cada lado."
+      },
+      "standingHamstringStretch": {
+        "name": "Estiramiento de Isquiotibiales de Pie",
+        "instruction": "De pie con un pie adelante, inclínate desde la cadera. Intenta tocar los dedos del pie. Cada lado."
+      },
+      "seatedFigureFour": {
+        "name": "Estiramiento Figura Cuatro Sentado",
+        "instruction": "Siéntate, cruza un tobillo sobre la rodilla opuesta. Inclínate suavemente hacia adelante. Cada lado."
+      },
+      "cobraStretch": {
+        "name": "Estiramiento de Cobra",
+        "instruction": "Boca abajo, empuja hacia arriba con las manos. Levanta el pecho, mantén las caderas en el suelo."
+      },
+      "seatedSpinalTwist": {
+        "name": "Torsión Espinal Sentado",
+        "instruction": "Siéntate con las piernas extendidas, cruza una pierna. Gira hacia la rodilla doblada. Cada lado."
+      },
+      "wallCalfStretch": {
+        "name": "Estiramiento de Pantorrilla en Pared",
+        "instruction": "Manos en la pared. Da un paso atrás con un pie, presiona el talón contra el suelo. Cada lado."
+      },
+      "wristExtensorStretch": {
+        "name": "Estiramiento de Muñeca",
+        "instruction": "Extiende un brazo hacia adelante, tira de los dedos hacia atrás con la otra mano. Cada lado."
+      },
+      "upperTrapStretch": {
+        "name": "Estiramiento de Trapecio Superior",
+        "instruction": "Inclina la cabeza hacia un lado, presiona suavemente con la mano del mismo lado. Cada lado."
+      }
+    }
   }
 }

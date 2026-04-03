@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { CheckCircle, Trophy, Plus, Clock, Play, X, MessageSquare, ArrowLeftRight } from 'lucide-react';
 import { exercises as exerciseLibrary } from '../../data/exercises';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import CoachMark from '../../components/CoachMark';
 import { useTranslation } from 'react-i18next';
 import { exName, exInstructions } from '../../lib/exerciseName';
@@ -205,6 +206,7 @@ const ExerciseCard = ({
   adjustedRestSeconds,
 }) => {
   const { t } = useTranslation('pages');
+  const { user } = useAuth();
   // Track which sets just completed for pulse animation
   const [justCompleted, setJustCompleted] = useState(new Set());
   const prevCompletedRef = useRef(new Set());
@@ -212,6 +214,22 @@ const ExerciseCard = ({
   const [openNoteIndex, setOpenNoteIndex] = useState(null);
   // Show RPE selector for the most recently completed set
   const [showRpeForSet, setShowRpeForSet] = useState(null);
+  // User body weight for BW button
+  const [userBodyWeight, setUserBodyWeight] = useState(null);
+
+  // Fetch user's latest body weight for bodyweight exercises
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('body_metrics')
+      .select('weight_lbs')
+      .eq('profile_id', user.id)
+      .order('logged_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.weight_lbs) setUserBodyWeight(parseFloat(data.weight_lbs));
+      });
+  }, [user]);
 
   useEffect(() => {
     const nowCompleted = new Set();
@@ -232,6 +250,7 @@ const ExerciseCard = ({
   const videoUrl = exercise.videoUrl || videoMap[exercise.id] || null;
   const localEx = exerciseLibrary.find(e => e.id === exercise.id);
   const muscle = localEx?.muscle || '';
+  const isBodyweight = localEx?.equipment === 'Bodyweight';
 
   // Find the current active set (first incomplete)
   const activeSetIndex = currentSets.findIndex(s => !s.completed);
@@ -305,21 +324,30 @@ const ExerciseCard = ({
         return (
           <div className="space-y-4">
 
-            {/* Last session reference */}
-            {historyForActiveSet && (
+            {/* Last session reference + suggestion */}
+            {(historyForActiveSet || suggestedWeight) && (
               <div className="text-center">
-                <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('activeSession.lastSession')}: <span className="font-semibold" style={{ color: 'var(--color-text-muted)' }}>{historyForActiveSet.reps} reps @ {historyForActiveSet.weight} lb</span>
-                </p>
+                {historyForActiveSet && (
+                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('activeSession.lastSession')}: <span className="font-semibold" style={{ color: 'var(--color-text-muted)' }}>{historyForActiveSet.reps} reps @ {historyForActiveSet.weight} lb</span>
+                  </p>
+                )}
                 {suggestedWeight && (
                   <CoachMark
                     id="active-session-suggestion"
                     title="Smart Suggestions"
-                    description="This is your target weight based on your last performance and progressive overload."
+                    description={suggestion?.note === 'first_time_estimated'
+                      ? "Estimated starting weight based on your body weight, fitness level, and goal."
+                      : suggestion?.note === 'intra_session_bump'
+                        ? "You crushed the last set! Try bumping up the weight."
+                        : "This is your target weight based on your last performance and progressive overload."}
                     position="bottom"
                   >
                     <p className="text-[11px] text-[#D4AF37]/70 mt-0.5">
                       {t('activeSession.suggested')}: <span className="font-semibold text-[#D4AF37]">{suggestedWeight} lb</span>
+                      {suggestion?.note === 'intra_session_bump' && (
+                        <span className="ml-1 text-emerald-400">&#x2191;</span>
+                      )}
                     </p>
                   </CoachMark>
                 )}
@@ -341,12 +369,29 @@ const ExerciseCard = ({
                 onChange={e => {
                   let v = e.target.value;
                   if (v !== '' && (Number(v) < 0 || Number(v) > 9999)) return;
+                  // Strip leading zeros (e.g. "01" → "1") but allow plain "0"
+                  if (v.length > 1 && v[0] === '0' && v[1] !== '.') v = String(Number(v));
                   onUpdateSet(activeExId, activeSetIndex, 'weight', v);
                 }}
                 placeholder={suggestedWeight ? String(suggestedWeight) : '0'}
                 className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
                 style={{ color: 'var(--color-text-primary)' }}
               />
+              {/* BW (bodyweight) button for bodyweight exercises */}
+              {isBodyweight && userBodyWeight && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateSet(activeExId, activeSetIndex, 'weight', String(Math.round(userBodyWeight)))}
+                  className={`mt-2 mx-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
+                    String(set.weight) === String(Math.round(userBodyWeight))
+                      ? 'bg-[#D4AF37] text-black'
+                      : 'bg-white/[0.06] border border-white/[0.06] hover:border-[#D4AF37]/30'
+                  }`}
+                  style={String(set.weight) !== String(Math.round(userBodyWeight)) ? { color: 'var(--color-text-primary)' } : undefined}
+                >
+                  BW — {Math.round(userBodyWeight)} lb
+                </button>
+              )}
             </div>
 
             {/* Reps input + quick select */}
@@ -364,6 +409,8 @@ const ExerciseCard = ({
                 onChange={e => {
                   let v = e.target.value;
                   if (v !== '' && (Number(v) < 0 || Number(v) > 999)) return;
+                  // Strip leading zeros (e.g. "01" → "1") but allow plain "0"
+                  if (v.length > 1 && v[0] === '0' && v[1] !== '.') v = String(Number(v));
                   onUpdateSet(activeExId, activeSetIndex, 'reps', v);
                 }}
                 placeholder={suggestedReps ? String(suggestedReps) : '0'}

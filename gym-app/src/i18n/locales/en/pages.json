@@ -769,6 +769,7 @@
     "rest": "Rest",
     "nextSetWhenZero": "Next set when timer hits zero",
     "skipRest": "Skip Rest",
+    "upcomingExercise": "Up Next",
     "restTotal": "total",
     "filterByMuscle": "Muscle Group",
     "filterByEquipment": "Equipment",
@@ -804,6 +805,10 @@
     "wrongDayTitle": "Different Day's Workout",
     "wrongDayMessage": "This routine is scheduled for {{scheduledDay}}, but today is {{todayDay}}. Do you want to proceed anyway?",
     "startAnyway": "Yes, Start Anyway",
+    "autoEndTitle": "You've been working out for 2 hours",
+    "autoEndMessage": "Are you still going? The session will auto-finish at 3 hours.",
+    "keepGoing": "Yes, keep going",
+    "finishWorkout": "Finish workout",
     "emptyWorkout": "Empty Workout",
     "addExercise": "Add Exercise",
     "addExercisePrompt": "Search and add exercises to your workout",
@@ -1343,7 +1348,12 @@
     "previewProgram": "Preview Program",
     "back": "Back",
     "generating": "Generating...",
-    "somethingWentWrong": "Something went wrong. Please try again."
+    "somethingWentWrong": "Something went wrong. Please try again.",
+    "sessionLength": "Session length",
+    "sessionStandard": "Standard",
+    "sessionStandardDesc": "45-60 min, 5-7 exercises",
+    "sessionShort": "Short",
+    "sessionShortDesc": "15-20 min, 3-4 compounds"
   },
   "createRoutine": {
     "duration": {
@@ -4749,6 +4759,40 @@
     "settingUp": "Setting up...",
     "startThisWorkout": "Start This Workout"
   },
+  "gymWOD": {
+    "title": "Gym Workout of the Day",
+    "new": "New",
+    "startWorkout": "Start This Workout",
+    "settingUp": "Setting up...",
+    "difficulty": {
+      "beginner": "Beginner",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced"
+    },
+    "themes": {
+      "upper_body_blast": "Upper Body Blast",
+      "push_power_hour": "Push Power Hour",
+      "chest___shoulders_crusher": "Chest & Shoulders Crusher",
+      "leg_day_challenge": "Leg Day Challenge",
+      "lower_body_burner": "Lower Body Burner",
+      "quads___glutes_grind": "Quads & Glutes Grind",
+      "back_attack": "Back Attack",
+      "pull_day_power": "Pull Day Power",
+      "back___biceps_builder": "Back & Biceps Builder",
+      "full_body_burn": "Full Body Burn",
+      "total_body_torch": "Total Body Torch",
+      "head_to_toe_hustle": "Head-to-Toe Hustle",
+      "upper_body_sculpt": "Upper Body Sculpt",
+      "arms___shoulders_shred": "Arms & Shoulders Shred",
+      "upper_body_domination": "Upper Body Domination",
+      "lower_body_blast": "Lower Body Blast",
+      "legs___core_inferno": "Legs & Core Inferno",
+      "glute___quad_assault": "Glute & Quad Assault",
+      "core___stability": "Core & Stability",
+      "midsection_mayhem": "Midsection Mayhem",
+      "core_strength_circuit": "Core Strength Circuit"
+    }
+  },
   "workoutBuilder": {
     "sets": "Sets",
     "reps": "Reps",
@@ -4813,6 +4857,7 @@
     "noRecentAnnouncements": "No recent announcements.",
     "noAdditionalInfo": "No additional info available yet.",
     "offers": "Offers",
+    "today": "Today",
     "validUntil": "Valid until",
     "noExpiry": "No expiry"
   },
@@ -5353,6 +5398,7 @@
     "noClasses": "No classes scheduled for this day",
     "noBookings": "No upcoming bookings",
     "upcomingClasses": "Upcoming Classes",
+    "noUpcomingClasses": "No upcoming classes scheduled",
     "viewAll": "View All",
     "instructor": "Instructor",
     "minutes": "{{count}} min",
@@ -5710,5 +5756,96 @@
     "trainerBadge": "Trainer",
     "goBack": "Go back",
     "typeDeleteToConfirm": "Type DELETE to confirm:"
+  },
+  "warmUp": {
+    "title": "Warm Up",
+    "skip": "Skip Warm-Up",
+    "subtitle": "Get your body ready. Complete each movement or skip ahead when ready.",
+    "startWorkout": "Start Workout",
+    "startWorkoutEarly": "Start Workout",
+    "movements": {
+      "jumpingJacks": "Jumping Jacks",
+      "armCircles": "Arm Circles",
+      "legSwings": "Leg Swings",
+      "hipCircles": "Hip Circles",
+      "lightCardio": "Light Cardio"
+    },
+    "movementTips": {
+      "jumpingJacks": "Jump feet wide, raise arms overhead. Keep a steady rhythm.",
+      "armCircles": "Extend arms to the sides. Small circles, then gradually bigger.",
+      "legSwings": "Hold onto something for balance. Swing each leg forward and back.",
+      "hipCircles": "Hands on hips. Make wide circles in both directions.",
+      "lightCardio": "Jog in place, high knees, or jump rope. Elevate your heart rate."
+    }
+  },
+  "coolDown": {
+    "title": "Cool Down Stretches",
+    "subtitle": "Hold each stretch gently. Breathe and relax into it.",
+    "stretches": {
+      "doorwayChestStretch": {
+        "name": "Doorway Chest Stretch",
+        "instruction": "Place forearm on a door frame at shoulder height. Lean forward gently. Hold each side."
+      },
+      "crossBodyChestStretch": {
+        "name": "Cross-Body Chest Stretch",
+        "instruction": "Extend one arm across your chest. Use the other hand to press it closer. Hold each side."
+      },
+      "childsPose": {
+        "name": "Child's Pose",
+        "instruction": "Kneel, sit back on heels, extend arms forward on the floor. Breathe deeply."
+      },
+      "catCowStretch": {
+        "name": "Cat-Cow Stretch",
+        "instruction": "On all fours, alternate between arching your back up and dipping it down. Slow and controlled."
+      },
+      "crossBodyShoulder": {
+        "name": "Cross-Body Shoulder Stretch",
+        "instruction": "Pull one arm across your chest with the opposite hand. Hold each side."
+      },
+      "overheadTricepShoulder": {
+        "name": "Overhead Tricep & Shoulder Stretch",
+        "instruction": "Reach one arm behind your head, use the other hand to gently press the elbow down."
+      },
+      "wallBicepStretch": {
+        "name": "Wall Bicep Stretch",
+        "instruction": "Place palm flat on a wall at shoulder height. Turn body away gently until you feel the stretch."
+      },
+      "overheadTricepStretch": {
+        "name": "Overhead Tricep Stretch",
+        "instruction": "Raise one arm overhead, bend elbow behind your head. Gently press with the other hand."
+      },
+      "standingQuadStretch": {
+        "name": "Standing Quad Stretch",
+        "instruction": "Stand on one leg, pull the other foot toward your glutes. Keep knees together. Hold each side."
+      },
+      "standingHamstringStretch": {
+        "name": "Standing Hamstring Stretch",
+        "instruction": "Stand with one foot forward, hinge at the hips. Reach toward your toes. Hold each side."
+      },
+      "seatedFigureFour": {
+        "name": "Seated Figure-Four Stretch",
+        "instruction": "Sit down, cross one ankle over the opposite knee. Lean forward gently. Hold each side."
+      },
+      "cobraStretch": {
+        "name": "Cobra Stretch",
+        "instruction": "Lie face down, press up through your hands. Lift your chest, keep hips on the floor."
+      },
+      "seatedSpinalTwist": {
+        "name": "Seated Spinal Twist",
+        "instruction": "Sit with legs extended, cross one leg over. Twist toward the bent knee. Hold each side."
+      },
+      "wallCalfStretch": {
+        "name": "Wall Calf Stretch",
+        "instruction": "Place hands on a wall. Step one foot back, press heel into the floor. Hold each side."
+      },
+      "wristExtensorStretch": {
+        "name": "Wrist Extensor Stretch",
+        "instruction": "Extend one arm forward, pull fingers back gently with the other hand. Hold each side."
+      },
+      "upperTrapStretch": {
+        "name": "Upper Trap Stretch",
+        "instruction": "Tilt your head to one side, gently press with the same-side hand. Hold each side."
+      }
+    }
   }
 }

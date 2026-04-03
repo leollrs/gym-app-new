@@ -70,17 +70,26 @@ export default function MyGym() {
       setHolidays(holidaysRes.data || []);
       setAnnouncements(annRes.data || []);
 
-      // Fetch upcoming classes if enabled
+      // Fetch upcoming classes if enabled — next 7 days of scheduled classes
       if (gymConfig?.classesEnabled) {
-        const todayDow = new Date().getDay();
+        const now = new Date();
+        const todayDow = now.getDay();
+        // Fetch schedules for all days of the week, then sort client-side by proximity
         const classRes = await supabase
           .from('gym_class_schedules')
-          .select('id, start_time, end_time, gym_classes(name, color, instructor)')
+          .select('id, day_of_week, start_time, end_time, gym_classes(name, color, instructor)')
           .eq('gym_id', profile.gym_id)
-          .eq('day_of_week', todayDow)
-          .order('start_time')
-          .limit(3);
-        setUpcomingClasses(classRes.data || []);
+          .order('start_time');
+        const allSchedules = classRes.data || [];
+        // Sort by how many days away each class is (today first, then tomorrow, etc.)
+        const sorted = allSchedules
+          .map(s => ({
+            ...s,
+            daysAway: (s.day_of_week - todayDow + 7) % 7,
+          }))
+          .sort((a, b) => a.daysAway - b.daysAway || (a.start_time || '').localeCompare(b.start_time || ''))
+          .slice(0, 5);
+        setUpcomingClasses(sorted);
       }
 
       // Fetch active offers
@@ -206,7 +215,7 @@ export default function MyGym() {
         </section>
 
         {/* Upcoming Classes */}
-        {gymConfig?.classesEnabled && upcomingClasses.length > 0 && (
+        {gymConfig?.classesEnabled && (
           <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -222,30 +231,38 @@ export default function MyGym() {
                 <ChevronRight size={14} />
               </button>
             </div>
-            <div className="space-y-2">
-              {upcomingClasses.map(sched => {
-                const cls = sched.gym_classes;
-                if (!cls) return null;
-                return (
-                  <div
-                    key={sched.id}
-                    onClick={() => navigate('/classes')}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors active:scale-[0.98]"
-                    style={{ backgroundColor: 'var(--color-bg-secondary)' }}
-                  >
-                    {cls.color && <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: cls.color }} />}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
-                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {fmt(sched.start_time)} – {fmt(sched.end_time)}
-                        {cls.instructor ? ` · ${cls.instructor}` : ''}
-                      </p>
+            {upcomingClasses.length === 0 ? (
+              <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('classes.noUpcomingClasses', 'No upcoming classes scheduled')}</p>
+            ) : (
+              <div className="space-y-2">
+                {upcomingClasses.map(sched => {
+                  const cls = sched.gym_classes;
+                  if (!cls) return null;
+                  const isToday = sched.daysAway === 0;
+                  const dayLabel = isToday
+                    ? t('myGym.today', 'Today')
+                    : t(`myGym.days.${DAY_KEYS[sched.day_of_week]}`);
+                  return (
+                    <div
+                      key={sched.id}
+                      onClick={() => navigate('/classes')}
+                      className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors active:scale-[0.98]"
+                      style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+                    >
+                      {cls.color && <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: cls.color }} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
+                        <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {dayLabel} · {fmt(sched.start_time)} – {fmt(sched.end_time)}
+                          {cls.instructor ? ` · ${cls.instructor}` : ''}
+                        </p>
+                      </div>
+                      <ChevronRight size={16} style={{ color: 'var(--color-text-faint)' }} />
                     </div>
-                    <ChevronRight size={16} style={{ color: 'var(--color-text-faint)' }} />
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
 

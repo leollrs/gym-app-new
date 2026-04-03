@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle, Timer } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
@@ -38,24 +38,61 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
         <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.bodyProfileDesc')}</p>
       </div>
 
-      {/* Height + Weight */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Session length toggle */}
+      <div>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionLength')}</label>
+        <div className="flex gap-2">
+          {[
+            { value: false, icon: Dumbbell, label: t('generateWorkout.sessionStandard'), desc: t('generateWorkout.sessionStandardDesc') },
+            { value: true,  icon: Timer,    label: t('generateWorkout.sessionShort'),    desc: t('generateWorkout.sessionShortDesc') },
+          ].map(opt => (
+            <button
+              key={String(opt.value)}
+              type="button"
+              onClick={() => set('short_workout', opt.value)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border transition-all ${
+                form.short_workout === opt.value
+                  ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50'
+                  : ''
+              }`}
+              style={form.short_workout !== opt.value ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)' } : undefined}
+            >
+              <opt.icon size={16} className={form.short_workout === opt.value ? 'text-[#D4AF37]' : ''} style={form.short_workout !== opt.value ? { color: 'var(--color-text-subtle)' } : undefined} />
+              <span className={`text-[13px] font-semibold ${form.short_workout === opt.value ? 'text-[#D4AF37]' : ''}`} style={form.short_workout !== opt.value ? { color: 'var(--color-text-subtle)' } : undefined}>{opt.label}</span>
+              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Height (ft + in) + Weight (lbs) */}
+      <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightCm')}</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightFt', 'Height (ft)')}</label>
           <input
-            type="number" min="100" max="250" placeholder="e.g. 175"
-            value={form.height_cm}
-            onChange={e => set('height_cm', e.target.value)}
+            type="number" min="3" max="8" placeholder="5"
+            value={form.height_ft}
+            onChange={e => set('height_ft', e.target.value)}
             className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
             style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
           />
         </div>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.weightKg')}</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightIn', 'Height (in)')}</label>
           <input
-            type="number" min="30" max="300" placeholder="e.g. 80"
-            value={form.weight_kg}
-            onChange={e => set('weight_kg', e.target.value)}
+            type="number" min="0" max="11" placeholder="9"
+            value={form.height_in}
+            onChange={e => set('height_in', e.target.value)}
+            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
+            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.weightLbs', 'Weight (lbs)')}</label>
+          <input
+            type="number" min="60" max="600" placeholder="175"
+            value={form.weight_lbs}
+            onChange={e => set('weight_lbs', e.target.value)}
             className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
             style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
           />
@@ -266,12 +303,20 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   const [result, setResult] = useState(null);
   const focusTrapRef = useFocusTrap(true, onClose);
 
+  // Auto-fill from onboarding data: prefer imperial fields from onboarding, fall back to metric conversion
+  const initHeightInches = onboarding?.height_inches
+    || (onboarding?.height_cm ? Math.round(onboarding.height_cm / 2.54) : null);
+  const initWeightLbs = onboarding?.initial_weight_lbs
+    || (onboarding?.weight_kg ? Math.round(onboarding.weight_kg * 2.205) : null);
+
   const [form, setForm] = useState({
-    height_cm:       onboarding?.height_cm  || '',
-    weight_kg:       onboarding?.weight_kg  || '',
+    height_ft:       initHeightInches ? String(Math.floor(initHeightInches / 12)) : '',
+    height_in:       initHeightInches ? String(initHeightInches % 12) : '',
+    weight_lbs:      initWeightLbs ? String(initWeightLbs) : '',
     age:             onboarding?.age         || '',
-    gender:          onboarding?.gender      || 'other',
+    gender:          onboarding?.gender || onboarding?.sex || 'other',
     priority_muscles: onboarding?.priority_muscles || [],
+    short_workout:   false,
   });
 
   const onChange = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
@@ -285,17 +330,27 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     };
   });
 
+  // Convert imperial form values to metric for the generator
+  const formToMetric = () => {
+    const totalInches = (parseInt(form.height_ft, 10) || 0) * 12 + (parseInt(form.height_in, 10) || 0);
+    const heightCm = totalInches > 0 ? Math.round(totalInches * 2.54) : 170;
+    const weightKg = form.weight_lbs ? Math.round(parseFloat(form.weight_lbs) / 2.205) : 70;
+    return { heightCm, weightKg };
+  };
+
   // Generate preview when moving to step 1
   useEffect(() => {
     if (step === 1) {
       try {
+        const { heightCm, weightKg } = formToMetric();
         const r = generateProgram({
           ...onboarding,
-          height_cm:       parseFloat(form.height_cm) || 170,
-          weight_kg:       parseFloat(form.weight_kg) || 70,
+          height_cm:       heightCm,
+          weight_kg:       weightKg,
           age:             parseInt(form.age, 10)       || 30,
           gender:          form.gender,
           priority_muscles: form.priority_muscles,
+          short_workout:   form.short_workout,
         });
         setResult(r);
       } catch (e) {
@@ -312,14 +367,21 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     setError('');
     setGymHoursWarnings([]);
     try {
-      // Save updated body data to member_onboarding
+      // Convert imperial to metric for storage
+      const { heightCm, weightKg } = formToMetric();
+      const totalInches = (parseInt(form.height_ft, 10) || 0) * 12 + (parseInt(form.height_in, 10) || 0);
+
+      // Save updated body data to member_onboarding (both imperial + metric)
       await supabase.from('member_onboarding').upsert({
         profile_id:      user.id,
         gym_id:          profile.gym_id,
-        height_cm:       parseFloat(form.height_cm) || null,
-        weight_kg:       parseFloat(form.weight_kg) || null,
+        height_cm:       heightCm || null,
+        weight_kg:       weightKg || null,
+        height_inches:   totalInches || null,
+        initial_weight_lbs: parseFloat(form.weight_lbs) || null,
         age:             parseInt(form.age, 10)       || null,
         gender:          form.gender,
+        sex:             form.gender,
         priority_muscles: form.priority_muscles,
       }, { onConflict: 'profile_id' });
 
@@ -497,7 +559,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   };
 
   const canAdvance = step === 0
-    ? (!!form.height_cm && !!form.weight_kg && !!form.age)
+    ? (!!form.height_ft && !!form.weight_lbs && !!form.age)
     : true;
 
   return (

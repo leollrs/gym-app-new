@@ -1,8 +1,9 @@
 import React from 'react';
-import { SkipForward, Plus, Minus } from 'lucide-react';
+import { SkipForward, Plus, Minus, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { exName } from '../../lib/exerciseName';
 
-const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip, onAdjustRest }) => {
+const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip, onAdjustRest, upcomingExercise }) => {
   const { t } = useTranslation('pages');
   const progress = currentRestDuration > 0
     ? ((currentRestDuration - restTimer) / currentRestDuration) * 100
@@ -83,6 +84,37 @@ const RestTimer = ({ restTimer, currentRestDuration, formatTime, onSkip, onAdjus
         <SkipForward size={16} />
         {t('activeSession.skipRest')}
       </button>
+
+      {/* Upcoming exercise preview — shown on last set of current exercise */}
+      {upcomingExercise && (
+        <div
+          className="mt-6 mx-6 w-[calc(100%-48px)] max-w-sm rounded-2xl px-4 py-3"
+          style={{
+            backgroundColor: 'var(--color-bg-card)',
+            border: '1px solid var(--color-border-default)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <ChevronRight size={14} style={{ color: 'var(--color-accent)' }} />
+            <span className="text-[11px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--color-accent)' }}>
+              {t('activeSession.upcomingExercise', 'Up Next')}
+            </span>
+          </div>
+          <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+            {exName(upcomingExercise)}
+          </p>
+          {upcomingExercise.suggestion?.suggestedWeight && (
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {upcomingExercise.targetSets} x {upcomingExercise.suggestion.suggestedReps ?? upcomingExercise.targetReps} @ {upcomingExercise.suggestion.suggestedWeight} lbs
+            </p>
+          )}
+          {!upcomingExercise.suggestion?.suggestedWeight && (
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {upcomingExercise.targetSets} x {upcomingExercise.targetReps} reps
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };

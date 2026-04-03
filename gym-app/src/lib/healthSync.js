@@ -47,7 +47,7 @@ export async function requestPermissions() {
   try {
     if (!isNative()) return { granted: false };
     await Health.requestAuthorization({
-      read: ['steps', 'weight', 'heartRate', 'calories'],
+      read: ['steps', 'weight', 'height', 'heartRate', 'calories'],
       write: ['weight'],
     });
     return { granted: true };
@@ -150,6 +150,86 @@ export async function readWeightHistory(days = 30) {
   } catch (e) {
     logger.warn('readWeightHistory failed:', e);
     return [];
+  }
+}
+
+/**
+ * Read the latest height from the health store (last 365 days).
+ * Returns { value: number (inches), date: string } or null.
+ */
+export async function readHeight() {
+  try {
+    if (!isNative()) return null;
+    const result = await Health.readSamples({
+      dataType: 'height',
+      startDate: daysAgo(365).toISOString(),
+      endDate: endOfDay().toISOString(),
+      limit: 1,
+      ascending: false,
+    });
+    const sample = result?.samples?.[0];
+    if (!sample) return null;
+    // Health stores height in meters — convert to inches
+    const inches = Math.round((sample.value || 0) * 39.3701 * 10) / 10;
+    return {
+      value: inches,
+      date: new Date(sample.startDate).toISOString().split('T')[0],
+    };
+  } catch (e) {
+    logger.warn('readHeight failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Read biological sex from the health store.
+ * Returns 'male' | 'female' | null.
+ */
+export async function readBiologicalSex() {
+  try {
+    if (!isNative()) return null;
+    const result = await Health.getCharacteristics();
+    const sex = result?.biologicalSex;
+    if (sex === 'male' || sex === 'female') return sex;
+    // Some platforms return capitalized or numeric values
+    if (typeof sex === 'string') {
+      const lower = sex.toLowerCase();
+      if (lower.includes('male') && !lower.includes('female')) return 'male';
+      if (lower.includes('female')) return 'female';
+    }
+    return null;
+  } catch (e) {
+    logger.warn('readBiologicalSex failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Read date of birth from the health store.
+ * Returns { dateOfBirth: string (ISO), age: number } or null.
+ */
+export async function readDateOfBirth() {
+  try {
+    if (!isNative()) return null;
+    const result = await Health.getCharacteristics();
+    const dob = result?.dateOfBirth;
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    if (isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    if (age < 5 || age > 120) return null;
+    return {
+      dateOfBirth: birthDate.toISOString().split('T')[0],
+      age,
+    };
+  } catch (e) {
+    logger.warn('readDateOfBirth failed:', e);
+    return null;
   }
 }
 

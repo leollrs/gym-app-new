@@ -8,10 +8,37 @@ import logger from './logger';
 import i18n from 'i18next';
 
 const REST_NOTIF_ID = 1001;
+let channelCreated = false;
 
 const isNative = () => {
   try { return window.Capacitor?.isNativePlatform?.() === true; }
   catch { return false; }
+};
+
+const isAndroid = () => {
+  try { return window.Capacitor?.getPlatform?.() === 'android'; }
+  catch { return false; }
+};
+
+/**
+ * Ensure the high-priority Android notification channel exists.
+ * On iOS this is a no-op (channels are Android-only).
+ */
+const ensureRestTimerChannel = async () => {
+  if (channelCreated || !isAndroid()) return;
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.createChannel({
+      id: 'rest-timer',
+      name: 'Rest Timer',
+      description: 'Alerts when your rest period is complete',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      sound: 'default',
+    });
+    channelCreated = true;
+  } catch (e) { logger.warn('Failed to create rest-timer channel:', e); }
 };
 
 export const requestNotificationPermission = async () => {
@@ -19,6 +46,7 @@ export const requestNotificationPermission = async () => {
     try {
       const { LocalNotifications } = await import('@capacitor/local-notifications');
       const { display } = await LocalNotifications.requestPermissions();
+      await ensureRestTimerChannel();
       return display === 'granted';
     } catch { return false; }
   }
@@ -40,8 +68,9 @@ export const scheduleRestDoneNotification = async (exerciseName, delaySeconds) =
           body: i18n.t('notifications.timeForNextSet', { ns: 'common', exercise: exerciseName, defaultValue: `Time for your next set of ${exerciseName}!` }),
           schedule: { at: new Date(Date.now() + delaySeconds * 1000) },
           sound: 'default',
-          importance: 4,
+          importance: 5,
           visibility: 1,
+          channelId: 'rest-timer',
         }],
       });
     } catch (e) { logger.warn('LocalNotifications error:', e); }

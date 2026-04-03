@@ -19,11 +19,15 @@ export function foodImageUrl(path) {
 /**
  * Convert a local program image path (e.g. "/programs/starting-strength.jpg")
  * to its Supabase Storage public URL.
+ * The bucket is "program-images" and files are stored at the root (e.g. "starting-strength.jpg"),
+ * so we strip the "programs/" prefix from the path.
  */
 export function programImageUrl(path) {
   if (!path) return null;
   if (path.startsWith('http')) return path;
   let clean = path.startsWith('/') ? path.slice(1) : path;
+  // Strip "programs/" prefix — files in the bucket are at the root level
+  clean = clean.replace(/^programs\//, '');
   const { data } = supabase.storage.from('program-images').getPublicUrl(clean);
   return data?.publicUrl || null;
 }

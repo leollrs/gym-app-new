@@ -384,6 +384,8 @@ const Workouts = () => {
   const [onboardingData, setOnboardingData]     = useState(null);
   const [goalsMismatch, setGoalsMismatch]       = useState(false);
   const [adaptationSuggestions, setAdaptationSuggestions] = useState(null);
+  // Workout schedule: maps routine_id -> day_of_week (0=Sun..6=Sat)
+  const [workoutScheduleMap, setWorkoutScheduleMap] = useState({});
 
   // Load adaptation suggestions from localStorage on mount
   useEffect(() => {
@@ -469,15 +471,22 @@ const Workouts = () => {
   useEffect(() => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
-      const [{ data: allGp }, { data: ob }] = await Promise.all([
+      const [{ data: allGp }, { data: ob }, { data: latestWeight }] = await Promise.all([
         supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
-        supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes').eq('profile_id', user.id).maybeSingle(),
+        supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
+        supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
       const programs = allGp || [];
       setAllPrograms(programs);
       const latest = programs[0] || null;
       setGeneratedProgram(latest);
-      setOnboardingData(ob || null);
+      // Enrich onboarding data with latest actual body weight if available
+      const enriched = ob ? { ...ob } : null;
+      if (enriched && latestWeight?.weight_lbs) {
+        enriched.initial_weight_lbs = latestWeight.weight_lbs;
+        enriched.weight_kg = Math.round(latestWeight.weight_lbs / 2.205);
+      }
+      setOnboardingData(enriched);
       setProgramLoading(false);
       if (latest && ob && new Date(latest.expires_at) > new Date()) {
         const programCreated = new Date(latest.created_at);
@@ -495,6 +504,20 @@ const Workouts = () => {
     };
     load();
   }, [user?.id, profile?.gym_id]);
+
+  // Load workout schedule (routine -> day mapping)
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('workout_schedule')
+      .select('routine_id, day_of_week')
+      .eq('profile_id', user.id)
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(s => { map[s.routine_id] = s.day_of_week; });
+        setWorkoutScheduleMap(map);
+      });
+  }, [user?.id]);
 
   // Fetch today's completed workout sessions
   useEffect(() => {
@@ -537,6 +560,11 @@ const Workouts = () => {
         if (!r.name.startsWith('Auto:')) return false;
         if (isWeekA) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
         return r.name.endsWith(' B');
+      }).sort((a, b) => {
+        // Sort by scheduled day of week so routines appear in chronological order
+        const dayA = workoutScheduleMap[a.id] ?? 99;
+        const dayB = workoutScheduleMap[b.id] ?? 99;
+        return dayA - dayB;
       })
     : [];
 
@@ -878,6 +906,13 @@ const Workouts = () => {
             {t('workouts.library')}
           </Link>
           <button
+            onClick={() => setShowGenerator(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
+          >
+            <Zap size={14} />
+            {t('workouts.newProgram', 'New Program')}
+          </button>
+          <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors"
             style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
@@ -996,19 +1031,33 @@ const Workouts = () => {
                   <div className="space-y-2">
                     {thisWeekRoutines.map(routine => {
                       const isExpanded = expandedProgramRoutineId === routine.id;
+                      const scheduledDow = workoutScheduleMap[routine.id];
+                      const DOW_LABELS = [
+                        t('days.sun', { ns: 'common' }), t('days.mon', { ns: 'common' }), t('days.tue', { ns: 'common' }),
+                        t('days.wed', { ns: 'common' }), t('days.thu', { ns: 'common' }), t('days.fri', { ns: 'common' }), t('days.sat', { ns: 'common' }),
+                      ];
+                      const dayLabel = scheduledDow !== undefined ? DOW_LABELS[scheduledDow] : null;
+                      const isToday = scheduledDow !== undefined && scheduledDow === new Date().getDay();
                       return (
                         <div key={routine.id}>
                           <button
                             type="button"
                             onClick={() => setExpandedProgramRoutineId(isExpanded ? null : routine.id)}
                             className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left"
-                            style={{ backgroundColor: 'var(--color-surface-hover)' }}
+                            style={{ backgroundColor: isToday ? 'color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-hover))' : 'var(--color-surface-hover)' }}
                           >
                             <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
                               <Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</p>
+                                {dayLabel && (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${isToday ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : ''}`} style={!isToday ? { color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' } : undefined}>
+                                    {dayLabel}{isToday ? ` - ${t('workouts.today', 'Today')}` : ''}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{routine.exerciseCount} {t('workouts.exercises')}</p>
                             </div>
                             <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />

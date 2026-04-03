@@ -115,6 +115,7 @@
     "weightPlaceholder": "ej. 175",
     "injuries": "¿Algún dolor o limitación?",
     "injuriesHint": "Evitaremos ejercicios que afecten estas áreas y sugeriremos alternativas más seguras.",
+    "fromHealth": "de Salud",
     "noneSelected": "Nada seleccionado — todos los ejercicios disponibles.",
     "areasCount": "{{count}} área marcada — trabajaremos alrededor de esta.",
     "areasCount_plural": "{{count}} áreas marcadas — trabajaremos alrededor de estas.",
@@ -150,7 +151,13 @@
     "connected": "{{healthPlatformName}} Conectado",
     "unavailable": "{{healthPlatformName}} no está disponible en este dispositivo. Puedes configurarlo después en ajustes.",
     "error": "No se pudo conectar. Puedes intentarlo después en ajustes.",
-    "skip": "Configurar después"
+    "skip": "Configurar después",
+    "prefillTitle": "Encontramos datos en tu app de salud:",
+    "prefillWeight": "Peso: {{value}} lbs",
+    "prefillHeight": "Estatura: {{feet}}'{{inches}}\"",
+    "prefillAge": "Edad: {{value}}",
+    "prefillSex": "Sexo: {{value}}",
+    "prefillHint": "Regresa a Datos Corporales para revisar o cambiar estos valores."
   },
 
   "social": {

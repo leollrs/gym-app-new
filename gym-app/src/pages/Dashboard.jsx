@@ -18,6 +18,7 @@ import { getLevel } from '../components/LevelBadge';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { localizeRoutineName } from '../lib/exerciseName';
 import GymPulse from '../components/GymPulse';
+import GymWOD from '../components/GymWOD';
 import { getTodayChallenge } from '../lib/dailyChallenges';
 
 import DayStrip from '../components/DayStrip';
@@ -1087,7 +1088,15 @@ const Dashboard = () => {
               </section>
 
               {/* ════════════════════════════════════════════════
-                  6. GYM ACTIVITY
+                  6. GYM WORKOUT OF THE DAY
+                 ════════════════════════════════════════════════ */}
+              <section className="mt-0 mb-3">
+                <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3" />
+                <GymWOD />
+              </section>
+
+              {/* ════════════════════════════════════════════════
+                  7. GYM ACTIVITY
                  ════════════════════════════════════════════════ */}
               <section className="mt-0 mb-6">
                 <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3" />

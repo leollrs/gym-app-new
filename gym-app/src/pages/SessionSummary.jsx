@@ -10,11 +10,13 @@ import { awardAchievements } from '../lib/achievements';
 import AchievementToast from '../components/AchievementToast';
 import { sanitize } from '../lib/sanitize';
 import AnimatedCounter from '../components/AnimatedCounter';
+import CoolDown from './active-session/CoolDown';
 import { formatDurationLong as formatTime } from '../lib/dateUtils';
 import { localizeRoutineName } from '../lib/exerciseName';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
 import { analyzeAndAdapt, saveAdaptationSuggestions } from '../lib/programAdaptation';
 import { updateGoalsAfterWorkout } from '../lib/goalUpdater';
+import { updateWorkoutSchedulePattern } from '../lib/workoutScheduleTracker';
 
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
@@ -54,6 +56,7 @@ const SessionSummary = () => {
     xpEarned       = 0,
     heartRate      = null,
     streak         = 0,
+    workedMuscleGroups = [],
   } = location.state ?? {};
 
   // Entrance animation
@@ -207,6 +210,13 @@ const SessionSummary = () => {
         });
       } catch {
         // Non-critical — silently ignore goal update errors
+      }
+
+      // Update workout schedule pattern for smart visit notifications
+      try {
+        await updateWorkoutSchedulePattern(user.id, profile.gym_id);
+      } catch {
+        // Non-critical — silently ignore schedule pattern errors
       }
     };
     fire();
@@ -364,6 +374,18 @@ const SessionSummary = () => {
               {t('sessionSummary.noPRsToday')}
             </p>
           </div>
+        )}
+
+        {/* ── Cool Down Stretches ────────────────────────────────── */}
+        {completedSets > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.3, ease: 'easeOut' }}
+            className="w-full max-w-sm md:max-w-lg mb-6 flex justify-center"
+          >
+            <CoolDown muscleGroups={workedMuscleGroups} />
+          </motion.div>
         )}
 
         {/* ── Actions ────────────────────────────────────────────── */}

@@ -191,8 +191,15 @@ export default function Classes() {
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const dayLabels = isEs ? DAY_LABELS_ES : DAY_LABELS_EN;
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
-  const { user, profile } = useAuth();
+  const { user, profile, gymConfig } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect if gym doesn't have classes enabled
+  useEffect(() => {
+    if (gymConfig && !gymConfig.classesEnabled) {
+      navigate('/', { replace: true });
+    }
+  }, [gymConfig, navigate]);
 
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => format(today, 'yyyy-MM-dd'), [today]);

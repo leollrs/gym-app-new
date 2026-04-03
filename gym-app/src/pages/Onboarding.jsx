@@ -6,7 +6,7 @@ import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
-import { isAvailable as healthAvailable, requestPermissions as healthRequest } from '../lib/healthSync';
+import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight, readBiologicalSex, readDateOfBirth } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
@@ -77,32 +77,36 @@ function getDefaultDays(freq) {
 // Map English day names to index for display
 const DAY_NAME_TO_INDEX = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
 
-const TOTAL_STEPS = 9; // invite code step 0, language step 1, health step 7
+const TOTAL_STEPS = 9; // invite code step 0, language step 1, health step 7 (core onboarding steps)
+const TOTAL_STEPS_WITH_PLANS = 11; // includes workout plan (step 9) and meal plan (step 10)
 
 // ── STEP INDICATOR ─────────────────────────────────────────
-const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics'];
+const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics', 'Program', 'Nutrition'];
 
 // Analytics step names (used for PostHog events and DB tracking)
 const STEP_NAMES = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'body_stats', 'health_sync', 'social'];
 
-const StepIndicator = ({ current }) => (
-  <div className="flex items-center justify-between mb-8 px-2">
-    {STEP_LABELS.map((label, i) => (
-      <div key={i} className="flex flex-col items-center gap-1.5">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold transition-all duration-300 ${
-          i < current ? 'bg-[#D4AF37] text-black' :
-          i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
-          'bg-white/[0.04] text-[var(--color-text-muted)]'
-        }`}>
-          {i < current ? <Check size={14} /> : i + 1}
+const StepIndicator = ({ current, total }) => {
+  const labels = total ? STEP_LABELS.slice(0, total) : STEP_LABELS;
+  return (
+    <div className="flex items-center justify-between mb-8 px-1">
+      {labels.map((label, i) => (
+        <div key={i} className="flex flex-col items-center gap-1">
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
+            i < current ? 'bg-[#D4AF37] text-black' :
+            i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
+            'bg-white/[0.04] text-[var(--color-text-muted)]'
+          }`}>
+            {i < current ? <Check size={12} /> : i + 1}
+          </div>
+          <span className={`text-[8px] font-medium tracking-wide ${
+            i <= current ? 'text-[#D4AF37]' : 'text-[var(--color-text-muted)]'
+          }`}>{label}</span>
         </div>
-        <span className={`text-[9px] font-medium tracking-wide ${
-          i <= current ? 'text-[#D4AF37]' : 'text-[var(--color-text-muted)]'
-        }`}>{label}</span>
-      </div>
-    ))}
-  </div>
-);
+      ))}
+    </div>
+  );
+};
 
 // ── OPTION CARD ────────────────────────────────────────────
 const OptionCard = ({ selected, onClick, icon: Icon, label, desc, badge }) => (
@@ -132,6 +136,16 @@ const OptionCard = ({ selected, onClick, icon: Icon, label, desc, badge }) => (
     {selected && <Check size={16} className="text-[#D4AF37] flex-shrink-0" />}
   </button>
 );
+
+// ── HEALTH DATA BADGE ─────────────────────────────────────
+const HealthBadge = ({ visible, t }) => {
+  if (!visible) return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 ml-2">
+      <Heart size={10} /> {t('bodyStats.fromHealth')}
+    </span>
+  );
+};
 
 // ── CONTEXT HINT ───────────────────────────────────────────
 const Hint = ({ children }) => (
@@ -314,6 +328,7 @@ const Onboarding = () => {
   };
 
   const [healthStatus, setHealthStatus] = useState('idle'); // idle | linking | linked | unavailable | error
+  const [healthPrefill, setHealthPrefill] = useState({}); // tracks which fields came from Health: { weight: true, height: true, age: true, sex: true }
   const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
   const healthPlatformName = platform === 'ios' ? 'Apple Health' : platform === 'android' ? 'Health Connect' : 'Health';
 
@@ -329,6 +344,49 @@ const Onboarding = () => {
       if (granted) {
         setHealthStatus('linked');
         set('health_linked', true);
+
+        // Read health data to pre-fill body stats (only fill empty fields)
+        const prefilled = {};
+        const [weightData, heightData, sexData, dobData] = await Promise.allSettled([
+          readLatestWeight(),
+          readHeight(),
+          readBiologicalSex(),
+          readDateOfBirth(),
+        ]);
+
+        setData(prev => {
+          const updates = { ...prev };
+
+          // Weight (lbs) — only pre-fill if empty
+          if (weightData.status === 'fulfilled' && weightData.value?.value && !prev.initial_weight_lbs) {
+            updates.initial_weight_lbs = String(Math.round(weightData.value.value));
+            prefilled.weight = true;
+          }
+
+          // Height (inches) — only pre-fill if both feet and inches are empty
+          if (heightData.status === 'fulfilled' && heightData.value?.value && !prev.height_feet && !prev.height_inches) {
+            const totalInches = heightData.value.value;
+            updates.height_feet = String(Math.floor(totalInches / 12));
+            updates.height_inches = String(Math.round(totalInches % 12));
+            prefilled.height = true;
+          }
+
+          // Biological sex — only pre-fill if not yet selected
+          if (sexData.status === 'fulfilled' && sexData.value && !prev.sex) {
+            updates.sex = sexData.value;
+            prefilled.sex = true;
+          }
+
+          // Age from date of birth — only pre-fill if empty
+          if (dobData.status === 'fulfilled' && dobData.value?.age && !prev.age) {
+            updates.age = String(dobData.value.age);
+            prefilled.age = true;
+          }
+
+          return updates;
+        });
+
+        setHealthPrefill(prefilled);
       } else {
         setHealthStatus('error');
       }
@@ -711,18 +769,19 @@ const Onboarding = () => {
     <div className="min-h-screen px-4 py-10 pb-28 md:pb-12 flex flex-col items-center" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[480px] mx-auto md:max-w-4xl">
 
-        {/* Header — hidden during generate plan / meal plan screens */}
-        {!showGeneratePlan && !showMealPlan && (
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
-              <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
-            </div>
-            <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('title')}</h1>
-            <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
+            <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
           </div>
-        )}
+          <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('title')}</h1>
+          <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
+        </div>
 
-        {!showGeneratePlan && !showMealPlan && <StepIndicator current={step} />}
+        {/* Step indicator — shows all steps including program + nutrition */}
+        {!showGeneratePlan && !showMealPlan && <StepIndicator current={step} total={TOTAL_STEPS_WITH_PLANS} />}
+        {showGeneratePlan && <StepIndicator current={TOTAL_STEPS} total={TOTAL_STEPS_WITH_PLANS} />}
+        {showMealPlan && <StepIndicator current={TOTAL_STEPS + 1} total={TOTAL_STEPS_WITH_PLANS} />}
 
         {/* ── STEP 0: INVITE CODE ── */}
         {step === 0 && (
@@ -1117,8 +1176,9 @@ const Onboarding = () => {
 
             {/* Sex */}
             <div className="mb-5">
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+              <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.sex')}
+                <HealthBadge visible={healthPrefill.sex} t={t} />
               </label>
               <div className="flex gap-2">
                 {[{ value: 'male', label: t('bodyStats.male') }, { value: 'female', label: t('bodyStats.female') }].map(opt => (
@@ -1141,8 +1201,9 @@ const Onboarding = () => {
 
             {/* Age */}
             <div className="mb-5">
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+              <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.age')}
+                <HealthBadge visible={healthPrefill.age} t={t} />
               </label>
               <input
                 type="number"
@@ -1158,8 +1219,9 @@ const Onboarding = () => {
 
             {/* Height */}
             <div className="mb-5">
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+              <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.height')}
+                <HealthBadge visible={healthPrefill.height} t={t} />
               </label>
               <div className="flex gap-2">
                 <div className="flex-1 relative">
@@ -1193,8 +1255,9 @@ const Onboarding = () => {
 
             {/* Weight */}
             <div className="mb-6">
-              <label className="block text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+              <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.weight')}
+                <HealthBadge visible={healthPrefill.weight} t={t} />
               </label>
               <p className="text-[12px] mb-2" style={{ color: "var(--color-text-muted)" }}>{t('bodyStats.weightHint')}</p>
               <input
@@ -1310,11 +1373,43 @@ const Onboarding = () => {
 
               {/* Success state */}
               {healthStatus === 'linked' && (
-                <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
-                  <Check size={18} className="text-emerald-400" />
-                  <span className="text-[14px] font-semibold text-emerald-400">
-                    {t('health.connected', { healthPlatformName })}
-                  </span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
+                    <Check size={18} className="text-emerald-400" />
+                    <span className="text-[14px] font-semibold text-emerald-400">
+                      {t('health.connected', { healthPlatformName })}
+                    </span>
+                  </div>
+
+                  {/* Health data pre-fill summary */}
+                  {Object.keys(healthPrefill).length > 0 && (
+                    <div className="bg-[#D4AF37]/8 border border-[#D4AF37]/20 rounded-xl px-4 py-3">
+                      <p className="text-[12px] font-semibold text-[#D4AF37] mb-2">{t('health.prefillTitle')}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {healthPrefill.weight && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                            {t('health.prefillWeight', { value: data.initial_weight_lbs })}
+                          </span>
+                        )}
+                        {healthPrefill.height && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                            {t('health.prefillHeight', { feet: data.height_feet, inches: data.height_inches })}
+                          </span>
+                        )}
+                        {healthPrefill.age && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                            {t('health.prefillAge', { value: data.age })}
+                          </span>
+                        )}
+                        {healthPrefill.sex && (
+                          <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                            {t('health.prefillSex', { value: t(`bodyStats.${data.sex}`) })}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-muted)' }}>{t('health.prefillHint')}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
