@@ -36,6 +36,9 @@ export default function GymWOD() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [todayRoutineName, setTodayRoutineName] = useState(null);
+  const [wodDraft, setWodDraft] = useState(null); // resumable WOD session
 
   const gymId = profile?.gym_id;
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -128,6 +131,57 @@ export default function GymWOD() {
     loadWOD();
     return () => { cancelled = true; };
   }, [gymId, today]);
+
+  // Check for resumable WOD session in localStorage
+  useEffect(() => {
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith('gym_session_')) continue;
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data?.routineName?.startsWith('WOD:') && data?.loggedSets && data?.startedAt) {
+          const age = Date.now() - new Date(data.startedAt).getTime();
+          if (age < 24 * 60 * 60 * 1000) { // less than 24h old
+            const sets = Object.values(data.loggedSets).flat();
+            const completed = sets.filter(s => s.completed).length;
+            setWodDraft({
+              routineId: key.replace('gym_session_', ''),
+              routineName: data.routineName,
+              completedSets: completed,
+              totalSets: sets.length,
+            });
+            break;
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Check if user has a scheduled workout today
+  useEffect(() => {
+    if (!user?.id) return;
+    const todayDow = new Date().getDay();
+    supabase
+      .from('workout_schedule')
+      .select('routine_id, routines(name)')
+      .eq('profile_id', user.id)
+      .eq('day_of_week', todayDow)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.routines?.name) {
+          const name = data.routines.name.replace(/^Auto:\s*/, '').replace(/ [AB]$/, '');
+          setTodayRoutineName(name);
+        }
+      });
+  }, [user?.id]);
+
+  // User taps "Start" — if there's a scheduled workout, ask to confirm replacement
+  const handleStartClick = () => {
+    if (todayRoutineName) {
+      setShowConfirm(true);
+    } else {
+      handleStart();
+    }
+  };
 
   // ── Start workout: create temp routine and navigate to session ─────────────
   const handleStart = async () => {
@@ -299,9 +353,31 @@ export default function GymWOD() {
         })}
       </div>
 
+      {/* Resume banner for in-progress WOD */}
+      {wodDraft && (
+        <button
+          onClick={() => navigate(`/session/${wodDraft.routineId}`)}
+          className="w-full flex items-center gap-3 p-3 rounded-xl mb-3 border transition-colors active:scale-[0.98]"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}
+        >
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}>
+            <Zap className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-[12px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+              {t('gymWOD.resumeWOD', 'Resume WOD in progress')}
+            </p>
+            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {wodDraft.completedSets}/{wodDraft.totalSets} {t('dashboard.sets', 'sets')} · {t('dashboard.tapToResume', 'Tap to resume')}
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+      )}
+
       {/* CTA */}
       <button
-        onClick={handleStart}
+        onClick={handleStartClick}
         disabled={saving}
         className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm py-3 rounded-xl transition-colors disabled:opacity-60"
       >
@@ -318,6 +394,38 @@ export default function GymWOD() {
           </>
         )}
       </button>
+
+      {/* Replace workout confirmation modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setShowConfirm(false)}>
+          <div className="w-full max-w-sm rounded-[20px] p-6" style={{ backgroundColor: 'var(--color-bg-card)' }} onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-2xl bg-orange-500/15 flex items-center justify-center mx-auto mb-4">
+              <Flame className="w-6 h-6 text-orange-400" />
+            </div>
+            <h3 className="text-[16px] font-bold text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              {t('gymWOD.replaceTitle', 'Replace today\'s workout?')}
+            </h3>
+            <p className="text-[13px] text-center mb-5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('gymWOD.replaceDesc', { routine: todayRoutineName, defaultValue: `You have "${todayRoutineName}" scheduled for today. Starting the Workout of the Day will replace it for this session.` })}
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => { setShowConfirm(false); handleStart(); }}
+                className="w-full py-3 rounded-xl font-bold text-[13px] bg-orange-500 text-white active:scale-[0.98] transition-transform"
+              >
+                {t('gymWOD.replaceConfirm', 'Yes, start WOD')}
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="w-full py-3 rounded-xl font-medium text-[13px] transition-colors"
+                style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
+              >
+                {t('gymWOD.replaceCancel', 'Keep my scheduled workout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

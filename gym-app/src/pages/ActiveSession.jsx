@@ -21,7 +21,8 @@ import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
 import RestTimer from './active-session/RestTimer';
 import SessionSummary from './active-session/SessionSummary';
-import WarmUp from './active-session/WarmUp';
+// WarmUp overlay removed — warm-up exercises are now in the exercise library
+// and can be added to routines like any other exercise
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
@@ -204,7 +205,7 @@ const ActiveSession = () => {
   const onboardingRef = useRef(null); // cached onboarding for intra-session suggestions
 
   // Show warm-up only for fresh sessions (not resumed) and not empty workouts
-  const [showWarmUp, setShowWarmUp] = useState(() => !savedSession && !IS_EMPTY_SESSION(id));
+  // WarmUp overlay removed — warm-up exercises now in exercise library
 
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(
     savedSession?.currentExerciseIndex ?? 0
@@ -1427,15 +1428,7 @@ const ActiveSession = () => {
     );
   }
 
-  // ── Warm-up screen (shown before first exercise for fresh sessions) ─────────
-  if (showWarmUp && !dataLoading) {
-    return (
-      <WarmUp
-        onComplete={() => setShowWarmUp(false)}
-        onSkip={() => setShowWarmUp(false)}
-      />
-    );
-  }
+  // WarmUp overlay removed — warm-up exercises are in the exercise library
 
   const currentExercise = exercises[currentExerciseIndex];
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
