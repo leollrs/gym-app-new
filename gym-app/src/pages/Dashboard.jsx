@@ -299,6 +299,12 @@ const Dashboard = () => {
       const programStart = fetchedProgram ? new Date(fetchedProgram.program_start) : null;
 
       const scheduleMap = {};
+      // Determine if we're in week 1 of the program (partial week)
+      const sMap = fetchedProgram?.schedule_map;
+      const isWeek1 = fetchedProgram && programStart
+        && Math.floor((today - programStart) / (7 * 86400000)) === 0;
+      const week1DowSet = isWeek1 && sMap?.week1_dows ? new Set(sMap.week1_dows) : null;
+
       for (const row of scheduleData) {
         const routine = fetchedRoutines.find(r => r.id === row.routine_id);
         if (routine) {
@@ -309,6 +315,9 @@ const Dashboard = () => {
             const createdAfterProgram = new Date(routine.created_at || 0) >= programStart;
             if (!isAutoRoutine || !createdAfterProgram) continue;
           }
+          // In week 1, only show routines for days from the start date onward
+          if (week1DowSet && !week1DowSet.has(row.day_of_week)) continue;
+
           scheduleMap[row.day_of_week] = {
             routineId: row.routine_id,
             label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
@@ -737,6 +746,40 @@ const Dashboard = () => {
                       ~{estimatedCal} {t('dashboard.cal')}
                     </span>
                   </div>
+                </section>
+              )}
+
+              {/* ════════════════════════════════════════════════
+                  2c. IN-PROGRESS WORKOUTS — Resume banners (above hero)
+                 ════════════════════════════════════════════════ */}
+              {isToday && allActiveDrafts.length > 0 && (
+                <section className="mb-3">
+                  {allActiveDrafts.map(draft => {
+                    const draftSets = Object.values(draft.loggedSets || {}).flat();
+                    const completed = draftSets.filter(s => s.completed).length;
+                    const total = draftSets.length;
+                    return (
+                      <Link
+                        key={draft.routineId}
+                        to={`/session/${draft.routineId}`}
+                        className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border mb-1.5 active:scale-[0.98] transition-transform"
+                        style={{ backgroundColor: 'color-mix(in srgb, #60A5FA 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, #60A5FA 25%, transparent)' }}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
+                          <Play size={16} fill="#60A5FA" className="text-[#60A5FA]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                            {draft.routineName || t('dashboard.workout')}
+                          </p>
+                          <p className="text-[11px] text-[#60A5FA]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {completed}/{total} {t('dashboard.sets')} · {t('dashboard.tapToResume')}
+                          </p>
+                        </div>
+                        <ChevronRight size={14} className="text-[#60A5FA]" />
+                      </Link>
+                    );
+                  })}
                 </section>
               )}
 
