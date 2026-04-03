@@ -555,16 +555,21 @@ const Workouts = () => {
   const currentWeekNum = programActive ? Math.floor((today - new Date(generatedProgram.program_start)) / (7 * 86400000)) + 1 : 0;
   const isWeekA = currentWeekNum % 2 === 1;
 
+  // Start DOW of the program (e.g. Friday=5 if started on Friday)
+  const programStartDow = programActive ? new Date(generatedProgram.program_start).getDay() : 0;
+
   const thisWeekRoutines = programActive
     ? routines.filter(r => {
         if (!r.name.startsWith('Auto:')) return false;
         if (isWeekA) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
         return r.name.endsWith(' B');
       }).sort((a, b) => {
-        // Sort by scheduled day of week so routines appear in chronological order
+        // Sort relative to program start day so e.g. Fri-started programs show Fri first
         const dayA = workoutScheduleMap[a.id] ?? 99;
         const dayB = workoutScheduleMap[b.id] ?? 99;
-        return dayA - dayB;
+        const relA = (dayA - programStartDow + 7) % 7;
+        const relB = (dayB - programStartDow + 7) % 7;
+        return relA - relB;
       })
     : [];
 
