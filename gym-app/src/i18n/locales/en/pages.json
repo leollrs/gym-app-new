@@ -828,6 +828,7 @@
     "tapToAddExercises": "Tap \"Add Exercise\" to start building your workout",
     "addToWorkout": "Add",
     "skipExercise": "Skip",
+    "remove": "Remove",
     "workoutCompleteTitle": "Workout Complete!",
     "workoutCompleteSubtitle": "Add more exercises or finish your workout",
     "rpeLabel": "RPE — How hard was it?",

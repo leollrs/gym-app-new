@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward } from 'lucide-react';
+import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -72,9 +72,9 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
 
   return (
     <div className="w-full rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
-      {/* Timer display — same layout as rest timer */}
-      <div className="flex items-center justify-center py-6">
-        <div className="relative w-32 h-32">
+      {/* Timer display */}
+      <div className="flex items-center justify-center py-8">
+        <div className="relative w-44 h-44">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128">
             <circle cx="64" cy="64" r="58" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
             <circle
@@ -85,7 +85,7 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[32px] font-black tabular-nums" style={{ color: done ? '#10B981' : 'var(--color-text-primary)' }}>
+            <span className="text-[38px] font-black tabular-nums" style={{ color: done ? '#10B981' : 'var(--color-text-primary)' }}>
               {done ? '✓' : mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : secs}
             </span>
           </div>
@@ -1689,7 +1689,7 @@ const ActiveSession = () => {
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           {/* Icon */}
           <div className="w-24 h-24 rounded-[28px] flex items-center justify-center mb-8" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(234,88,12,0.08))' }}>
-            <span className="text-[44px]">🔥</span>
+            <Flame size={40} className="text-orange-400" />
           </div>
 
           {/* Title */}
@@ -2037,9 +2037,7 @@ const ActiveSession = () => {
                     <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
                   </div>
                 ) : (
-                  <div className="w-full h-32 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.08), rgba(234,88,12,0.03))' }}>
-                    <span className="text-[48px]">🔥</span>
-                  </div>
+                  <div className="w-full h-24" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.1), rgba(234,88,12,0.03))' }} />
                 )}
 
                 {/* Exercise info */}
@@ -2116,9 +2114,7 @@ const ActiveSession = () => {
                     {/* Card — same as warm-up exercise card */}
                     <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)' }}>
                       {/* Blue gradient header (warm-up uses orange) */}
-                      <div className="w-full h-32 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(96,165,250,0.03))' }}>
-                        <span className="text-[48px]">🧘</span>
-                      </div>
+                      <div className="w-full h-24" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(96,165,250,0.03))' }} />
 
                       {/* Stretch info */}
                       <div className="px-4 pt-4 pb-3">
@@ -2173,7 +2169,7 @@ const ActiveSession = () => {
                   className="flex items-center gap-2 px-5 py-3 rounded-2xl text-[13px] font-semibold mb-3 transition-colors active:scale-[0.97]"
                   style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60A5FA' }}
                 >
-                  🧘 {t('activeSession.startCooldown', 'Cool Down Stretches')}
+                  {t('activeSession.startCooldown', 'Cool Down Stretches')}
                 </button>
               )}
               {cooldownPhase === 'done' && (
@@ -2498,8 +2494,8 @@ const ActiveSession = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-md flex flex-col"
-            style={{ paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}
+            className="fixed inset-0 z-[250] flex flex-col"
+            style={{ backgroundColor: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}
           >
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex-1 min-w-0">

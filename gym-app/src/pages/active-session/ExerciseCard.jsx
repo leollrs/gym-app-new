@@ -194,10 +194,10 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, onSk
             <button
               onClick={onRemoveExercise}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] hover:border-red-500/30 transition-colors active:scale-95"
-              aria-label={t?.('activeSession.removeExercise') ?? 'Remove'}
+              aria-label="Remove"
             >
               <X size={13} style={{ color: '#EF4444' }} />
-              <span className="text-[12px] font-semibold" style={{ color: '#EF4444' }}>{t?.('activeSession.removeExercise') ?? 'Remove'}</span>
+              <span className="text-[12px] font-semibold" style={{ color: '#EF4444' }}>{t?.('activeSession.remove', 'Remove')}</span>
             </button>
           )}
         </div>
