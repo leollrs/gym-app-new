@@ -780,17 +780,16 @@ const Workouts = () => {
         scheduleDays.sort((a, b) => a - b);
       }
 
-      // "Start from today" mode: rotate scheduleDays so today's day (or next open day) comes first
+      // "Start from today" mode: chain workouts from today forward using training days.
+      // E.g. if schedule is [Mon,Tue,Wed,Thu,Fri] but start is Wednesday,
+      // Day 1→Wed, Day 2→Thu, Day 3→Fri, Day 4→Mon(next week), Day 5→Tue(next week).
       if (useStartMode === 'today' && scheduleDays.length > 0) {
         const todayDow = new Date().getDay();
-        // Find the first schedule day on or after today
-        const todayIdx = scheduleDays.findIndex(d => d >= todayDow);
-        if (todayIdx > 0) {
-          // Rotate: days from todayIdx onward come first, then days before
-          scheduleDays = [...scheduleDays.slice(todayIdx), ...scheduleDays.slice(0, todayIdx)];
-        } else if (todayIdx === -1) {
-          // All schedule days are before today in the week — next week, keep order
-        }
+        const sorted = [...scheduleDays].sort((a, b) => a - b);
+        // Find training days from today onward (this week), then wrap to next week
+        const fromToday = sorted.filter(d => d >= todayDow);
+        const beforeToday = sorted.filter(d => d < todayDow);
+        scheduleDays = [...fromToday, ...beforeToday];
       }
 
       // Check if workouts might extend past closing time (soft warning)
@@ -905,13 +904,6 @@ const Workouts = () => {
             <BookOpen size={14} />
             {t('workouts.library')}
           </Link>
-          <button
-            onClick={() => setShowGenerator(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
-          >
-            <Zap size={14} />
-            {t('workouts.newProgram', 'New Program')}
-          </button>
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors"
@@ -1279,9 +1271,9 @@ const Workouts = () => {
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.myPrograms')}</p>
           <button
             onClick={() => setShowGenerator(true)}
-            className="text-[11px] font-medium transition-colors"
-            style={{ color: 'var(--color-text-subtle)' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
           >
+            <Zap size={12} />
             {t('workouts.newProgram')}
           </button>
         </div>
