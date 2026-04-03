@@ -1134,31 +1134,33 @@ const Dashboard = () => {
 
         // Use schedule_map from the program (authoritative DOW→routine index mapping)
         const sMap = prog.schedule_map || null;
-        const week1Dows = new Set(sMap?.week1_dows ?? Object.keys(schedule).map(Number).filter(d => d >= progStartDow));
-        const wrappedDows = new Set(sMap?.wrapped_dows ?? Object.keys(schedule).map(Number).filter(d => d < progStartDow));
-        const hasWrapped = wrappedDows.size > 0;
+        const hasWrapped = (sMap?.wrapped_dows?.length ?? 0) > 0;
 
-        // Build DOW→routine_index mapping from schedule_map
-        const dowToRoutineIdx = {};
+        // Build DOW→routine_index maps for each week type
+        const normalDowMap = {};
+        const week1DowMap = {};
+        const lastWeekDowMap = {};
         if (sMap?.routine_day_map) {
-          for (const entry of sMap.routine_day_map) {
-            dowToRoutineIdx[entry.day_of_week] = entry.routine_index;
-          }
-        } else {
-          // Fallback: reconstruct from schedule + template name matching
-          for (const [dowStr, entry] of Object.entries(schedule)) {
-            const dow = Number(dowStr);
-            const idx = (templateWeeks['1'] || []).findIndex(d => {
-              const tName = (i18n.language === 'es' && d.name_es ? d.name_es : d.name) || '';
-              return entry.label && (entry.label.includes(tName) || tName.includes(entry.label));
-            });
-            if (idx !== -1) dowToRoutineIdx[dow] = idx;
-          }
+          for (const e of sMap.routine_day_map) normalDowMap[e.day_of_week] = e.routine_index;
+        }
+        if (sMap?.week1_map) {
+          for (const e of sMap.week1_map) week1DowMap[e.day_of_week] = e.routine_index;
+        }
+        if (sMap?.last_week_map) {
+          for (const e of sMap.last_week_map) lastWeekDowMap[e.day_of_week] = e.routine_index;
         }
 
-        // Resolve which template week to show
-        // If partial first week, the template "week 1" exercises apply to weeks 1 AND 2
-        // (week 1 is partial, week 2 is the first full cycle using template week 1 data)
+        // Select the correct DOW map for the viewed week
+        let activeDowMap;
+        if (hasWrapped && planWeek === 1) {
+          activeDowMap = week1DowMap;
+        } else if (hasWrapped && planWeek === totalWeeks) {
+          activeDowMap = lastWeekDowMap;
+        } else {
+          activeDowMap = normalDowMap;
+        }
+
+        // Resolve template week (week 1 partial uses template week 1, week 2 also uses template week 1)
         const effectiveTemplateWeek = hasWrapped && planWeek > 1
           ? Math.min(planWeek - 1, weekKeys.length)
           : Math.min(planWeek, weekKeys.length);
@@ -1167,24 +1169,26 @@ const Dashboard = () => {
         const canPrev = planWeek > 1;
         const canNext = planWeek < totalWeeks;
 
-        // Build 7-day view, using DOW→routine index for correct mapping
+        // Build 7-day view, using the active DOW map for this week
         const DAY_LABELS = [t('days.sunday', { ns: 'common' }), t('days.monday', { ns: 'common' }), t('days.tuesday', { ns: 'common' }), t('days.wednesday', { ns: 'common' }), t('days.thursday', { ns: 'common' }), t('days.friday', { ns: 'common' }), t('days.saturday', { ns: 'common' })];
+        const activeDowSet = new Set(Object.keys(activeDowMap).map(Number));
+
         const fullWeek = DAY_LABELS.map((label, dow) => {
           const isClosed = gymClosedDays.has(dow);
           if (isClosed) return { label, name: label, exercises: [], isRest: false, isClosed: true };
 
-          // Partial week filtering
+          // For partial weeks, days not in the active map are either "not started" or rest
           if (hasWrapped) {
-            if (planWeek === 1 && !week1Dows.has(dow)) {
+            if (planWeek === 1 && !activeDowSet.has(dow)) {
               return { label, name: label, exercises: [], isRest: true, isClosed: false, notStarted: dow < progStartDow };
             }
-            if (planWeek === totalWeeks && !wrappedDows.has(dow)) {
+            if (planWeek === totalWeeks && !activeDowSet.has(dow)) {
               return { label, name: label, exercises: [], isRest: true, isClosed: false };
             }
           }
 
-          // KEY FIX: look up routine index for this DOW, then get template data by index
-          const routineIdx = dowToRoutineIdx[dow];
+          // Look up routine index for this DOW using the active week's map
+          const routineIdx = activeDowMap[dow];
           if (routineIdx !== undefined && currentWeekDays[routineIdx]) {
             const workoutDay = currentWeekDays[routineIdx];
             return { label, name: (i18n.language === 'es' && workoutDay.name_es ? workoutDay.name_es : workoutDay.name), exercises: workoutDay.exercises || [], isRest: false, isClosed: false };

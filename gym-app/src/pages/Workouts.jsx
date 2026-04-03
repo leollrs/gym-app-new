@@ -557,42 +557,73 @@ const Workouts = () => {
   const currentWeekNum = Math.min(rawWeekNum, totalProgramWeeks);
   const isWeekA = currentWeekNum % 2 === 1;
 
-  // Use schedule_map from generated_programs (authoritative), fall back to computed
+  // Use schedule_map from generated_programs (authoritative)
   const schedMap = generatedProgram?.schedule_map || null;
   const programStartDow = schedMap?.start_dow ?? (programActive ? new Date(generatedProgram.program_start).getDay() : 1);
-  const week1DowSet = new Set(schedMap?.week1_dows ?? []);
-  const wrappedDowSet = new Set(schedMap?.wrapped_dows ?? []);
-  const hasWrappedDays = wrappedDowSet.size > 0;
+  const hasWrappedDays = (schedMap?.wrapped_dows?.length ?? 0) > 0;
 
-  // Filter routines for a given week number, accounting for partial first/last weeks
+  // Build DOW→routine_index maps for each week type
+  const normalDowToIdx = {}; // week 2+ (steady state)
+  const week1DowToIdx = {};  // week 1 (partial, shifted)
+  const lastWeekDowToIdx = {}; // last week (partial, wrapped)
+  if (schedMap?.routine_day_map) {
+    for (const e of schedMap.routine_day_map) normalDowToIdx[e.day_of_week] = e.routine_index;
+  }
+  if (schedMap?.week1_map) {
+    for (const e of schedMap.week1_map) week1DowToIdx[e.day_of_week] = e.routine_index;
+  }
+  if (schedMap?.last_week_map) {
+    for (const e of schedMap.last_week_map) lastWeekDowToIdx[e.day_of_week] = e.routine_index;
+  }
+
+  // Reverse map: routine_index → routine_id (using workoutScheduleMap which is routine_id→dow)
+  // workoutScheduleMap stores normal (week 2+) DOW assignments
+  const routineIdByNormalDow = {};
+  for (const [rid, dow] of Object.entries(workoutScheduleMap)) {
+    routineIdByNormalDow[dow] = rid;
+  }
+
+  // Get routines for a specific week, with correct DOW labels per week
   const getRoutinesForWeek = (weekNum) => {
     if (!programActive) return [];
     const weekVariant = weekNum % 2 === 1;
-    let filtered = routines.filter(r => {
+    const autoRoutines = routines.filter(r => {
       if (!r.name.startsWith('Auto:')) return false;
       if (weekVariant) return r.name.endsWith(' A') || (!r.name.endsWith(' B') && routines.filter(x => x.name === r.name + ' B').length === 0);
       return r.name.endsWith(' B');
     });
 
-    // Filter by partial weeks when program started mid-week
-    if (hasWrappedDays) {
-      filtered = filtered.filter(r => {
-        const dow = workoutScheduleMap[r.id];
-        if (dow === undefined) return true;
-        if (weekNum === 1) return week1DowSet.has(dow);
-        if (weekNum === totalProgramWeeks) return wrappedDowSet.has(dow);
-        return true;
-      });
+    // Determine which DOW map to use for this week
+    let dowMap;
+    if (hasWrappedDays && weekNum === 1) {
+      dowMap = week1DowToIdx; // partial first week
+    } else if (hasWrappedDays && weekNum === totalProgramWeeks) {
+      dowMap = lastWeekDowToIdx; // partial last week
+    } else {
+      dowMap = normalDowToIdx; // full weeks (week 2 through N-1)
     }
 
-    // Sort by DOW, rotated from start day for proper visual order
-    return filtered.sort((a, b) => {
-      const rawA = workoutScheduleMap[a.id] ?? 99;
-      const rawB = workoutScheduleMap[b.id] ?? 99;
-      const dayA = rawA >= programStartDow ? rawA - programStartDow : rawA + 7 - programStartDow;
-      const dayB = rawB >= programStartDow ? rawB - programStartDow : rawB + 7 - programStartDow;
-      return dayA - dayB;
-    });
+    // Build the list: for each DOW in this week's map, find the matching routine
+    const result = [];
+    const dowEntries = Object.entries(dowMap).map(([d, idx]) => [Number(d), idx]).sort((a, b) => a[0] - b[0]);
+    for (const [dow, routineIdx] of dowEntries) {
+      // Find the routine assigned to this DOW in the normal schedule
+      // (workout_schedule stores normal DOW, so for week 1 we need to find routine by index)
+      let routine;
+      if (weekNum === 1 || weekNum === totalProgramWeeks) {
+        // For partial weeks, find routine by its normal DOW (routine_index maps to normal_dows[routine_index])
+        const normalDow = schedMap?.normal_dows?.[routineIdx];
+        const rid = normalDow !== undefined ? routineIdByNormalDow[normalDow] : null;
+        routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+      } else {
+        const rid = routineIdByNormalDow[dow];
+        routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+      }
+      if (routine) {
+        result.push({ ...routine, _displayDow: dow });
+      }
+    }
+    return result;
   };
 
   const thisWeekRoutines = getRoutinesForWeek(currentWeekNum);
@@ -775,32 +806,53 @@ const Workouts = () => {
         allAvailableDays.sort((a, b) => a - b);
       }
 
-      // CRITICAL: Rotate FIRST (chain from start date), THEN slice to N routines.
-      // This ensures mid-week starts pick the correct days.
-      // E.g. available=[1,2,3,4,5,6], startDow=5, 5 routines:
-      //   fromStart=[5,6], beforeStart=[1,2,3,4]
-      //   rotated=[5,6,1,2,3,4], sliced=[5,6,1,2,3]
-      //   → Fri,Sat,Mon,Tue,Wed (Saturday is NOT dropped)
+      // Two schedule mappings:
+      // 1. "normalDays" = the original preferred training day order (for week 2+)
+      //    E.g. with 5 routines and preferred [Mon-Sat]: [Mon,Tue,Wed,Thu,Fri]
+      // 2. "week1Days" = rotated from start date (for the partial first week)
+      //    E.g. starting Friday: week 1 has [Fri,Sat], week 2 snaps back to [Mon-Fri]
       const startDow = startDate.getDay();
+
+      // Normal schedule: first N available days in calendar order (for week 2+)
+      const normalDays = allAvailableDays.slice(0, firstWeek.length);
+
+      // Week 1 schedule: rotate from start date, take consecutive days
       const sorted = [...allAvailableDays].sort((a, b) => a - b);
       const fromStart = sorted.filter(d => d >= startDow);
       const beforeStart = sorted.filter(d => d < startDow);
       const rotated = [...fromStart, ...beforeStart];
-      let scheduleDays = rotated.slice(0, firstWeek.length); // slice AFTER rotation
+      const week1AllDays = rotated.slice(0, firstWeek.length);
 
-      // Determine partial week info
-      const week1Dows = scheduleDays.filter(d => d >= startDow);
-      const wrappedDows = scheduleDays.filter(d => d < startDow);
+      // Week 1 only contains days from startDow onward (this calendar week)
+      const week1Dows = week1AllDays.filter(d => d >= startDow);
+      // Wrapped days go into last week
+      const wrappedDows = week1AllDays.filter(d => d < startDow);
       const needsExtraWeek = wrappedDows.length > 0;
       const baseDuration = selectedTemplate.durationWeeks || 6;
       const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
 
-      // Build schedule_map for display logic
+      // The DB workout_schedule uses normalDays (the steady-state week 2+ mapping)
+      let scheduleDays = normalDays;
+
+      // Build schedule_map with both mappings
       const scheduleMapData = {
-        routine_day_map: scheduleDays.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
+        // routine_day_map = the NORMAL (week 2+) DOW assignments
+        routine_day_map: normalDays.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
+        // week1_map = the shifted DOW assignments for week 1 only
+        week1_map: week1Dows.map((dow, idx) => {
+          // Map week1 DOWs to routine indices based on position in the rotated order
+          const rotatedIdx = week1AllDays.indexOf(dow);
+          return { routine_index: rotatedIdx, day_of_week: dow };
+        }),
+        // last_week_map = wrapped days that form the last partial week
+        last_week_map: wrappedDows.map((dow) => {
+          const rotatedIdx = week1AllDays.indexOf(dow);
+          return { routine_index: rotatedIdx, day_of_week: dow };
+        }),
         start_dow: startDow,
         week1_dows: week1Dows,
         wrapped_dows: wrappedDows,
+        normal_dows: normalDays,
       };
 
       const expiresAt = new Date(startDate);
@@ -1106,13 +1158,15 @@ const Workouts = () => {
                   <div className="space-y-2">
                     {weekRoutines.map(routine => {
                       const isExpanded = expandedProgramRoutineId === routine.id;
-                      const scheduledDow = workoutScheduleMap[routine.id];
+                      // Use _displayDow (per-week DOW) instead of the fixed workoutScheduleMap
+                      const scheduledDow = routine._displayDow ?? workoutScheduleMap[routine.id];
                       const DOW_LABELS = [
                         t('days.sun', { ns: 'common' }), t('days.mon', { ns: 'common' }), t('days.tue', { ns: 'common' }),
                         t('days.wed', { ns: 'common' }), t('days.thu', { ns: 'common' }), t('days.fri', { ns: 'common' }), t('days.sat', { ns: 'common' }),
                       ];
                       const dayLabel = scheduledDow !== undefined ? DOW_LABELS[scheduledDow] : null;
-                      const isToday = scheduledDow !== undefined && scheduledDow === new Date().getDay();
+                      // Only show "Today" badge when viewing the current week
+                      const isToday = isViewingCurrentWeek && scheduledDow !== undefined && scheduledDow === new Date().getDay();
                       return (
                         <div key={routine.id}>
                           <button
