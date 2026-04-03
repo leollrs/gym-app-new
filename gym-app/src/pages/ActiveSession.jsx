@@ -1437,15 +1437,8 @@ const ActiveSession = () => {
     );
   }
 
-  // Auto-skip warm-up gate if no warm-ups available
-  useEffect(() => {
-    if (warmUpPhase === 'gate' && !dataLoading && exercises.length > 0 && warmUpExercises.length === 0) {
-      setWarmUpPhase('done');
-    }
-  }, [warmUpPhase, dataLoading, exercises.length, warmUpExercises.length]);
-
-  // ── Warm-up gate page ──────────────────────────────────────────────────────
-  if (warmUpPhase === 'gate' && !dataLoading) {
+  // ── Warm-up gate page (only show after exercises loaded AND warm-ups selected) ──
+  if (warmUpPhase === 'gate' && !dataLoading && warmUpExercises.length > 0) {
     return (
       <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}>
         <div className="flex-1 flex flex-col items-center justify-center px-6">
@@ -1499,6 +1492,7 @@ const ActiveSession = () => {
     );
   }
 
+  // If we reach here while still in gate (no warm-ups available), treat as done
   const isInWarmUp = warmUpPhase === 'active';
   const currentExercise = exercises[currentExerciseIndex];
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
