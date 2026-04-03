@@ -150,8 +150,18 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap }) =>
             </>
           )}
         </div>
-        {/* Action buttons — centered below */}
+        {/* Action buttons — Swap left, Demo right */}
         <div className="flex items-center justify-center gap-2 mt-3">
+          {onSwap && (
+            <button
+              onClick={onSwap}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-[#D4AF37]/30 transition-colors active:scale-95"
+              aria-label={t?.('activeSession.swapExercise') ?? 'Swap exercise'}
+            >
+              <ArrowLeftRight size={13} style={{ color: 'var(--color-text-primary)' }} />
+              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.swap') ?? 'Swap'}</span>
+            </button>
+          )}
           {videoUrl && (
             <button
               onClick={() => setShowVideo(v => !v)}
@@ -168,16 +178,6 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap }) =>
                   <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.demo') ?? 'Demo'}</span>
                 </>
               )}
-            </button>
-          )}
-          {onSwap && (
-            <button
-              onClick={onSwap}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-[#D4AF37]/30 transition-colors active:scale-95"
-              aria-label={t?.('activeSession.swapExercise') ?? 'Swap exercise'}
-            >
-              <ArrowLeftRight size={13} style={{ color: 'var(--color-text-primary)' }} />
-              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t?.('activeSession.swap') ?? 'Swap'}</span>
             </button>
           )}
         </div>
