@@ -26,6 +26,7 @@ import Onboarding from './pages/Onboarding';
 const Workouts = lazy(() => import('./pages/Workouts'));
 const SocialFeed       = lazy(() => import('./pages/SocialFeed'));
 const ActiveSession    = lazy(() => import('./pages/ActiveSession'));
+const LiveCardio       = lazy(() => import('./pages/LiveCardio'));
 const Profile          = lazy(() => import('./pages/Profile'));
 const MemberSettings   = lazy(() => import('./pages/MemberSettings'));
 const WorkoutBuilder   = lazy(() => import('./pages/WorkoutBuilder'));
@@ -830,6 +831,7 @@ function App() {
                 <Route path="/record"            element={<QuickStart />} />
                 <Route path="/session/:id"       element={<ActiveSession />} />
                 <Route path="/session-summary"   element={<SessionSummary />} />
+                <Route path="/cardio-live"       element={<LiveCardio />} />
 
                 {/* Social & community */}
                 <Route path="/community"         element={<Community />} />
