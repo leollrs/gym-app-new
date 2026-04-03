@@ -813,21 +813,20 @@ const Workouts = () => {
       }
 
       // Two schedule mappings:
-      // 1. "normalDays" = the original preferred training day order (for week 2+)
-      //    E.g. with 5 routines and preferred [Mon-Sat]: [Mon,Tue,Wed,Thu,Fri]
+      // 1. "normalDays" = the steady-state DOW assignments (for week 2+), sorted calendar order
       // 2. "week1Days" = rotated from start date (for the partial first week)
-      //    E.g. starting Friday: week 1 has [Fri,Sat], week 2 snaps back to [Mon-Fri]
+      // IMPORTANT: both use the SAME set of DOWs, just ordered differently.
       const startDow = startDate.getDay();
 
-      // Normal schedule: first N available days in calendar order (for week 2+)
-      const normalDays = allAvailableDays.slice(0, firstWeek.length);
-
-      // Week 1 schedule: rotate from start date, take consecutive days
+      // Rotate from start date to pick the N closest training days
       const sorted = [...allAvailableDays].sort((a, b) => a - b);
       const fromStart = sorted.filter(d => d >= startDow);
       const beforeStart = sorted.filter(d => d < startDow);
       const rotated = [...fromStart, ...beforeStart];
       const week1AllDays = rotated.slice(0, firstWeek.length);
+
+      // Normal schedule: same DOWs as week1AllDays, but in calendar order (for week 2+)
+      const normalDays = [...week1AllDays].sort((a, b) => a - b);
 
       // Week 1 only contains days from startDow onward (this calendar week)
       const week1Dows = week1AllDays.filter(d => d >= startDow);

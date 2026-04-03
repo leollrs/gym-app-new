@@ -140,6 +140,19 @@ const Dashboard = () => {
   const [weekSessions, setWeekSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(() => readActiveSession());
   const [allActiveDrafts, setAllActiveDrafts] = useState(() => readAllActiveSessions());
+  // Refresh active drafts when page becomes visible (user returns from a workout)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setAllActiveDrafts(readAllActiveSessions());
+        setActiveSession(readActiveSession());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    // Also refresh on mount (covers React Router navigation)
+    setAllActiveDrafts(readAllActiveSessions());
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
   const [refreshKey, setRefreshKey] = useState(0);
   const [liveChallenge, setLiveChallenge] = useState(null);
   const [gymClosedDays, setGymClosedDays] = useState(new Set());
