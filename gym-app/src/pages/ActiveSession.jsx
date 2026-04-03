@@ -25,39 +25,67 @@ import { selectWarmUps } from '../lib/warmUpSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
 
-// ── Warm-Up Timer — countdown circle for each warm-up exercise ──────────────
+// ── Warm-Up Timer — drift-free countdown using Date.now() anchor ────────────
 const WarmUpTimer = ({ durationSec, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(durationSec);
   const [running, setRunning] = useState(false);
-  const intervalRef = useRef(null);
+  const startedAtRef = useRef(null);   // Date.now() when play was pressed
+  const elapsedBeforePause = useRef(0); // seconds elapsed before last pause
+  const rafRef = useRef(null);
+  const completedRef = useRef(false);
 
+  // Reset on exercise change
   useEffect(() => {
     setTimeLeft(durationSec);
     setRunning(false);
-    return () => clearInterval(intervalRef.current);
+    startedAtRef.current = null;
+    elapsedBeforePause.current = 0;
+    completedRef.current = false;
+    cancelAnimationFrame(rafRef.current);
   }, [durationSec]);
 
+  // Drift-free tick using requestAnimationFrame + Date.now()
   useEffect(() => {
-    if (!running) { clearInterval(intervalRef.current); return; }
-    intervalRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current);
-          setRunning(false);
-          onComplete();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(intervalRef.current);
-  }, [running, onComplete]);
+    if (!running) { cancelAnimationFrame(rafRef.current); return; }
+    if (!startedAtRef.current) startedAtRef.current = Date.now();
+
+    const tick = () => {
+      const elapsed = elapsedBeforePause.current + (Date.now() - startedAtRef.current) / 1000;
+      const remaining = Math.max(0, durationSec - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining <= 0 && !completedRef.current) {
+        completedRef.current = true;
+        setRunning(false);
+        onComplete();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [running, durationSec, onComplete]);
+
+  const handlePlayPause = () => {
+    if (running) {
+      // Pause: accumulate elapsed time
+      elapsedBeforePause.current += (Date.now() - startedAtRef.current) / 1000;
+      startedAtRef.current = null;
+      setRunning(false);
+    } else {
+      // Play
+      startedAtRef.current = Date.now();
+      setRunning(true);
+    }
+  };
 
   const progress = 1 - (timeLeft / durationSec);
   const circumference = 2 * Math.PI * 58;
   const dashOffset = circumference * (1 - progress);
-  const mins = Math.floor(timeLeft / 60);
-  const secs = timeLeft % 60;
+  const displaySeconds = Math.ceil(timeLeft);
+  const mins = Math.floor(displaySeconds / 60);
+  const secs = displaySeconds % 60;
 
   return (
     <div className="flex flex-col items-center">
@@ -70,21 +98,20 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
             stroke={timeLeft === 0 ? '#10B981' : '#f97316'}
             strokeWidth="5" strokeLinecap="round"
             strokeDasharray={circumference} strokeDashoffset={dashOffset}
-            className="transition-all duration-500"
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-[40px] font-black tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
             {mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : secs}
           </span>
-          {timeLeft === 0 && <span className="text-[13px] font-bold text-[#10B981] mt-1">Done</span>}
+          {displaySeconds === 0 && <span className="text-[13px] font-bold text-[#10B981] mt-1">Done</span>}
         </div>
       </div>
 
       {/* Play/Pause button */}
-      {timeLeft > 0 && (
+      {displaySeconds > 0 && (
         <button
-          onClick={() => setRunning(r => !r)}
+          onClick={handlePlayPause}
           className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform"
           style={{ backgroundColor: running ? 'rgba(255,255,255,0.08)' : '#f97316' }}
         >
