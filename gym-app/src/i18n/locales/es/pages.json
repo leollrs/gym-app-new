@@ -1286,7 +1286,8 @@
       "trained": "Entrenado",
       "restDay": "Día de Descanso",
       "missed": "Perdido",
-      "frozen": "Congelado"
+      "frozen": "Congelado",
+      "today": "Hoy"
     },
     "streaks": {
       "dayStreak": "Racha de {{count}} días",

@@ -5835,7 +5835,7 @@ export const programTemplates = [
   },
 },
 {
-  id: 'tmpl_women_upper_lower', image: '/programs/women_upper_lower.png',
+  id: 'tmpl_women_upper_lower', image: '/programs/women_upper_lower.jpg',
   name: "Women's Upper/Lower Split",
   name_es: 'Tren Superior/Inferior Mujeres',
   description: "A balanced upper/lower split designed for women. Extra posterior chain and glute volume, shoulder emphasis for V-taper, and higher rep ranges that women respond well to.",

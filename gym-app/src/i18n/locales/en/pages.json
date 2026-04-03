@@ -1286,7 +1286,8 @@
       "trained": "Trained",
       "restDay": "Rest day",
       "missed": "Missed",
-      "frozen": "Frozen"
+      "frozen": "Frozen",
+      "today": "Today"
     },
     "streaks": {
       "dayStreak": "{{count}} day streak",

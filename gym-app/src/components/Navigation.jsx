@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -118,7 +118,7 @@ const Navigation = () => {
 
   const [streakMonths, setStreakMonths] = useState([]);
   const [freezeStatus, setFreezeStatus] = useState(null); // { used, max }
-  const scrollRef = useRef(null);
+  const [viewedMonthIndex, setViewedMonthIndex] = useState(0); // 0 = current month
 
   const loadStreakDays = useCallback(async () => {
     if (!user?.id) return;
@@ -182,6 +182,7 @@ const Navigation = () => {
     // ── CALENDAR GENERATION ────────────────────────────────────
     // Streak count comes from streak_cache (already in `streak` state).
     // Calendar only determines visual status per day.
+    // Show ALL days in each month (including future days, styled differently).
     const startDate = new Date(createdAt.getFullYear(), createdAt.getMonth(), 1);
     const months = [];
     let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -194,18 +195,20 @@ const Navigation = () => {
 
       for (let day = 1; day <= daysInMonth; day++) {
         const d = new Date(year, month, day);
-        if (d > today) break;
         const key = toKey(d);
         const dow = d.getDay();
         const isToday = key === todayKey;
+        const isFuture = d > today;
         const hasWorkout = workoutDates.has(key);
         const beforeAccount = key < createdAtKey;
         const isFrozen = frozenDateSet.has(key);
         const isClosureDate = closureDateSet.has(key);
 
         let status;
-        if (beforeAccount) {
+        if (isFuture) {
           status = 'future';
+        } else if (beforeAccount) {
+          status = 'before-account';
         } else if (isToday && !hasWorkout) {
           status = 'today';
         } else if (hasWorkout) {
@@ -238,6 +241,7 @@ const Navigation = () => {
     });
 
     setStreakMonths(months);
+    setViewedMonthIndex(0); // Reset to current month when data loads
   }, [user?.id, profile?.gym_id, streakData, i18n.language]);
 
   const isRecordActive =
@@ -505,7 +509,7 @@ const Navigation = () => {
   {showStreakModal && createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowStreakModal(false)}>
       <div role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" className="rounded-[20px] w-full max-w-sm border overflow-hidden flex flex-col" style={{ maxHeight: '85vh', background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
+        {/* Header (fixed) */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${streak > 0 ? 'bg-orange-500/15' : 'bg-white/[0.04]'}`}>
@@ -534,12 +538,13 @@ const Navigation = () => {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 px-5 pb-3 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 pb-3 flex-shrink-0">
           {[
             { color: 'bg-[#10B981]', label: t('navigation.legend.trained', { ns: 'pages' }) },
             { color: 'bg-[#6B7280]', label: t('navigation.legend.restDay', { ns: 'pages' }) },
             { color: 'bg-red-500', label: t('navigation.legend.missed', { ns: 'pages' }) },
             { color: 'bg-blue-400', label: t('navigation.legend.frozen', { ns: 'pages' }) },
+            { color: 'bg-[#D4AF37]', label: t('navigation.legend.today', { ns: 'pages', defaultValue: 'Today' }) },
           ].map(({ color, label }) => (
             <span key={label} className="flex items-center gap-1.5 text-[9px]" style={{ color: 'var(--color-text-subtle)' }}>
               <span className={`w-2 h-2 rounded-sm ${color}`} />
@@ -548,17 +553,43 @@ const Navigation = () => {
           ))}
         </div>
 
-        {/* Scrollable month-by-month calendar */}
-        <div ref={scrollRef} className="overflow-y-auto flex-1 min-h-0 px-5 pb-5">
-          {streakMonths.map((monthData, mi) => {
+        {/* Single-month calendar with navigation */}
+        <div className="px-5 pb-5">
+          {streakMonths.length > 0 && (() => {
+            const monthData = streakMonths[viewedMonthIndex] || streakMonths[0];
             const firstDayDow = monthData.days.length > 0 ? monthData.days[0].dow : 0;
-            // Pad to start on Sunday (Sun=0 cols, Mon=1 col, ... Sat=6 cols)
             const padCount = firstDayDow;
+            const canGoBack = viewedMonthIndex < streakMonths.length - 1;
+            const canGoForward = viewedMonthIndex > 0;
 
             return (
-              <div key={`${monthData.year}-${monthData.month}`} className={mi > 0 ? 'mt-5' : ''}>
-                {/* Month header */}
-                <p className="text-[12px] font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>{monthData.label}</p>
+              <div>
+                {/* Month navigation header */}
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    type="button"
+                    onClick={() => canGoBack && setViewedMonthIndex(i => i + 1)}
+                    disabled={!canGoBack}
+                    aria-label={t('navigation.streaks.prevMonth', { ns: 'pages', defaultValue: 'Previous month' })}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-20"
+                    style={{ color: 'var(--color-text-muted)', background: canGoBack ? 'rgba(255,255,255,0.04)' : 'transparent' }}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <p className="text-[14px] font-bold capitalize" style={{ color: 'var(--color-text-primary)' }}>
+                    {monthData.label}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => canGoForward && setViewedMonthIndex(i => i - 1)}
+                    disabled={!canGoForward}
+                    aria-label={t('navigation.streaks.nextMonth', { ns: 'pages', defaultValue: 'Next month' })}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none disabled:opacity-20"
+                    style={{ color: 'var(--color-text-muted)', background: canGoForward ? 'rgba(255,255,255,0.04)' : 'transparent' }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
                 {/* Day-of-week labels */}
                 <div className="grid grid-cols-7 gap-1 mb-1">
                   {(t('days.initials', { returnObjects: true }) || ['S','M','T','W','T','F','S']).map((d, i) => (
@@ -573,16 +604,19 @@ const Navigation = () => {
                     let bg = 'bg-white/[0.04]';
                     let colorStyle = 'var(--color-text-muted)';
                     let ring = '';
+                    let opacity = '';
 
-                    if (day.status === 'done') { bg = 'bg-[#10B981]'; colorStyle = '#fff'; }
+                    if (day.status === 'future') { bg = 'bg-white/[0.06]'; colorStyle = 'var(--color-text-subtle)'; opacity = 'opacity-60'; }
+                    else if (day.status === 'before-account') { bg = 'bg-white/[0.03]'; colorStyle = 'var(--color-text-subtle)'; opacity = 'opacity-30'; }
+                    else if (day.status === 'done') { bg = 'bg-[#10B981]'; colorStyle = '#fff'; }
                     else if (day.status === 'rest') { bg = 'bg-[#6B7280]/20'; colorStyle = 'var(--color-text-subtle)'; }
                     else if (day.status === 'broken') { bg = 'bg-red-500/20'; colorStyle = 'rgb(248 113 113)'; ring = 'ring-1 ring-red-500/40'; }
                     else if (day.status === 'frozen') { bg = 'bg-blue-400/20'; colorStyle = 'rgb(96 165 250)'; }
-                    else if (day.status === 'today') { bg = 'bg-white/[0.06]'; colorStyle = 'var(--color-text-primary)'; ring = 'ring-1 ring-[#D4AF37]/40'; }
+                    else if (day.status === 'today') { bg = 'bg-[#D4AF37]/15'; colorStyle = '#D4AF37'; ring = 'ring-2 ring-[#D4AF37]/50'; }
                     else if (day.status === 'missed') { bg = 'bg-red-500/10'; colorStyle = 'rgb(248 113 113 / 0.6)'; }
 
                     return (
-                      <div key={day.key} className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${bg} ${ring}`} style={{ fontVariantNumeric: 'tabular-nums', color: colorStyle }}>
+                      <div key={day.key} className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${bg} ${ring} ${opacity}`} style={{ fontVariantNumeric: 'tabular-nums', color: colorStyle }}>
                         {dayNum}
                       </div>
                     );
@@ -590,7 +624,7 @@ const Navigation = () => {
                 </div>
               </div>
             );
-          })}
+          })()}
         </div>
 
         {/* Broken at info */}
