@@ -33,7 +33,7 @@ UPDATE exercises SET instructions_es = CASE id
   WHEN 'ex_rdl' THEN 'Rodillas ligeramente flexionadas. Flexiona en las caderas, la barra baja por las piernas. Siente el estiramiento en isquios.'
   WHEN 'ex_smr' THEN 'Pecho contra la almohadilla. Jala las manijas hacia atrás, aprieta las escápulas.'
   WHEN 'ex_sap' THEN 'Brazos rectos, codos ligeramente flexionados. Jala la barra desde la cabeza hasta los muslos. Aprieta dorsales.'
-  WHEN 'ex_sdl' THEN 'Postura amplia, puntas hacia afuera. Agarre dentro de las rodillas. Empuja caderas al frente hasta bloquear.'
+  WHEN 'ex_sdl' THEN 'Postura amplia, puntas hacia afuera. Aåççgarre dentro de las rodillas. Empuja caderas al frente hasta bloquear.'
   WHEN 'ex_tbr' THEN 'A horcajadas sobre la barra. Manija V o agarra los discos. Rema al pecho, aprieta escápulas.'
   WHEN 'ex_tbdl' THEN 'De pie dentro de la barra trampa. Agarre neutro. Empuja el suelo, ponte de pie erguido.'
   WHEN 'ex_arnp' THEN 'Empieza con palmas hacia ti. Rota hacia afuera mientras empujas sobre la cabeza.'

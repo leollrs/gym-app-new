@@ -17,7 +17,7 @@ CREATE POLICY "food_images_admin_insert"
     AND EXISTS (
       SELECT 1 FROM profiles
       WHERE id = auth.uid()
-      AND role IN ('admin', 'super_admin')
+      AND role IN ('super_admin')
     )
   );
 
@@ -30,7 +30,7 @@ CREATE POLICY "food_images_admin_update"
     AND EXISTS (
       SELECT 1 FROM profiles
       WHERE id = auth.uid()
-      AND role IN ('admin', 'super_admin')
+      AND role IN ('super_admin')
     )
   )
   WITH CHECK (
@@ -38,7 +38,7 @@ CREATE POLICY "food_images_admin_update"
     AND EXISTS (
       SELECT 1 FROM profiles
       WHERE id = auth.uid()
-      AND role IN ('admin', 'super_admin')
+      AND role IN ('super_admin')
     )
   );
 
@@ -51,6 +51,6 @@ CREATE POLICY "food_images_admin_delete"
     AND EXISTS (
       SELECT 1 FROM profiles
       WHERE id = auth.uid()
-      AND role IN ('admin', 'super_admin')
+      AND role IN ('super_admin')
     )
   );
