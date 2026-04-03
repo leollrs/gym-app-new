@@ -910,6 +910,40 @@ const Dashboard = () => {
                 {/* Wait for today's sessions to load before rendering hero to prevent flash */}
                 {isToday && !todaysSessionsLoaded ? (
                   <div className="w-full rounded-[20px] bg-white/[0.04] animate-pulse" style={{ aspectRatio: '9 / 10' }} />
+                ) : isToday && (() => {
+                  // Check for active live cardio session
+                  try {
+                    const lc = JSON.parse(localStorage.getItem('tugympr_live_cardio'));
+                    if (lc && lc.accumulatedSec > 5) return lc;
+                  } catch {}
+                  return null;
+                })() ? (
+                  /* ── Live cardio in progress — green hero card ── */
+                  (() => {
+                    const lc = JSON.parse(localStorage.getItem('tugympr_live_cardio'));
+                    const mins = Math.floor((lc.accumulatedSec || 0) / 60);
+                    const secs = Math.floor((lc.accumulatedSec || 0) % 60);
+                    const typeName = t(`cardio.types.${lc.cardioType}`, lc.cardioType);
+                    return (
+                      <Link
+                        to="/cardio-live"
+                        className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/12 to-[#10B981]/[0.02] border border-[#10B981]/20 p-6 text-center active:scale-[0.99] transition-transform block"
+                      >
+                        <div className="w-14 h-14 rounded-2xl bg-[#10B981]/15 flex items-center justify-center mx-auto mb-4">
+                          <Activity size={28} className="text-[#10B981]" />
+                        </div>
+                        <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>
+                          {typeName} {t('cardio.inProgress', 'in progress')}
+                        </p>
+                        <p className="text-[32px] font-black tabular-nums mt-2 text-[#10B981]">
+                          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+                        </p>
+                        <p className="text-[13px] mt-3 font-semibold" style={{ color: '#10B981' }}>
+                          {t('dashboard.tapToResume')}
+                        </p>
+                      </Link>
+                    );
+                  })()
                 ) : isToday && todaysSessions.length > 0 && selectedRoutine && todaysSessions.some(s => s.routine_id === selectedRoutine.id) && !(activeSession && activeSession.routineId === selectedRoutine.id) ? (
                   <div className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/8 to-[#10B981]/[0.01] border border-[#10B981]/15 p-6 text-center">
                     <div className="w-14 h-14 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-4">

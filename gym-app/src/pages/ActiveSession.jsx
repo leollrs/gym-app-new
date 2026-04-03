@@ -1567,6 +1567,10 @@ const ActiveSession = () => {
   const currentSets     = currentExercise ? (loggedSets[currentExercise.id] || []) : [];
   const knownPR         = currentExercise ? livePRs.current[currentExercise.id] : null;
 
+  // Detect if current exercise is a cardio exercise (timer-based, no weight)
+  const currentLocalExForCardio = currentExercise ? localExercises.find(e => e.id === currentExercise.id) : null;
+  const isCurrentCardio = currentLocalExForCardio?.isCardio || currentLocalExForCardio?.category === 'Cardio' || currentLocalExForCardio?.muscle === 'Cardio';
+
   // ── Derived: is current set ready to complete? ─────────────────────────────
   const activeSetIndex = currentSets.findIndex(s => !s.completed);
   const activeSet = activeSetIndex >= 0 ? currentSets[activeSetIndex] : null;
@@ -1932,23 +1936,69 @@ const ActiveSession = () => {
                   </p>
                 </div>
               )}
-              <ExerciseCard
-                exercise={currentExercise}
-                currentSets={currentSets}
-                knownPR={knownPR}
-                onUpdateSet={handleUpdateSet}
-                onToggleComplete={handleToggleComplete}
-                onAddSet={handleAddSet}
-                onRemoveSet={handleRemoveSet}
-                onDuplicateLastSet={handleDuplicateLastSet}
-                onFillSuggestion={handleFillSuggestion}
-                onSwap={currentSets.some(s => s.completed) ? undefined : () => { setSwapSearch(''); setSwapSelectedReason(null); setShowSwapModal(true); }}
-                isPRCheck={isPR}
-                livePRs={livePRs.current}
-                nextInGroup={nextInGroup}
-                groupType={groupType}
-                adjustedRestSeconds={adjustedRestSeconds}
-              />
+              {isCurrentCardio ? (
+                /* Cardio exercise — timer-based card instead of weight/reps */
+                <div className="px-4 pt-3 pb-4">
+                  <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
+                    {/* Exercise info */}
+                    <div className="px-4 py-3.5 text-center">
+                      <h2 className="text-[18px] font-black leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {exName(currentExercise)}
+                      </h2>
+                      <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                        {currentExercise.targetSets} × {currentExercise.targetReps}
+                      </p>
+                    </div>
+                    {/* Timer */}
+                    <div className="px-4 pb-4">
+                      <WarmUpTimer
+                        key={`cardio-${currentExercise.id}`}
+                        durationSec={(() => {
+                          // Parse target_reps for duration (e.g. "20min" → 1200, "15min" → 900)
+                          const reps = String(currentExercise.targetReps || '20min');
+                          const minMatch = reps.match(/(\d+)\s*min/i);
+                          if (minMatch) return parseInt(minMatch[1]) * 60;
+                          const secMatch = reps.match(/(\d+)\s*s/i);
+                          if (secMatch) return parseInt(secMatch[1]);
+                          return 20 * 60; // default 20 min
+                        })()}
+                        onComplete={() => {
+                          // Auto-complete the current set when timer finishes
+                          if (currentSets.length > 0) {
+                            const incompleteIdx = currentSets.findIndex(s => !s.completed);
+                            if (incompleteIdx >= 0) {
+                              handleToggleComplete(
+                                currentExercise.id,
+                                incompleteIdx,
+                                exName(currentExercise),
+                                0 // no rest after cardio
+                              );
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <ExerciseCard
+                  exercise={currentExercise}
+                  currentSets={currentSets}
+                  knownPR={knownPR}
+                  onUpdateSet={handleUpdateSet}
+                  onToggleComplete={handleToggleComplete}
+                  onAddSet={handleAddSet}
+                  onRemoveSet={handleRemoveSet}
+                  onDuplicateLastSet={handleDuplicateLastSet}
+                  onFillSuggestion={handleFillSuggestion}
+                  onSwap={currentSets.some(s => s.completed) ? undefined : () => { setSwapSearch(''); setSwapSelectedReason(null); setShowSwapModal(true); }}
+                  isPRCheck={isPR}
+                  livePRs={livePRs.current}
+                  nextInGroup={nextInGroup}
+                  groupType={groupType}
+                  adjustedRestSeconds={adjustedRestSeconds}
+                />
+              )}
               {/* Connector line + next-in-group prompt */}
               {nextInGroup && groupType && !allSetsComplete && (
                 <div className="px-4 pb-2">
