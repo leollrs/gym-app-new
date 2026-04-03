@@ -1111,15 +1111,14 @@ const Dashboard = () => {
       {/* ── PLAN INFO MODAL ─────────────────────────────── */}
       {showPlanInfo && (() => {
         const prog = activeProgram;
+        const totalWeeks = prog?.duration_weeks || (prog ? Math.ceil((new Date(prog.expires_at) - new Date(prog.program_start)) / (7 * 86400000)) : 0);
         const weekNum = prog
-          ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, Math.ceil((new Date(prog.expires_at) - new Date(prog.program_start)) / (7 * 86400000)))
-          : 0;
-        const totalWeeks = prog
-          ? Math.ceil((new Date(prog.expires_at) - new Date(prog.program_start)) / (7 * 86400000))
+          ? Math.min(Math.floor((new Date() - new Date(prog.program_start)) / (7 * 86400000)) + 1, totalWeeks)
           : 0;
         const daysElapsed = prog ? Math.floor((new Date() - new Date(prog.program_start)) / 86400000) : 0;
-        const daysTotal = prog ? Math.max(1, Math.floor((new Date(prog.expires_at) - new Date(prog.program_start)) / 86400000)) : 1;
+        const daysTotal = prog ? Math.max(1, totalWeeks * 7) : 1;
         const progress = Math.min(Math.round((daysElapsed / daysTotal) * 100), 100);
+        const progStartDow = prog ? new Date(prog.program_start).getDay() : 1;
         // Find template to get week data and localized name
         const templateId = prog?.split_type ? `tmpl_${prog.split_type}` : null;
         const nameEntry = templateId ? programTemplateNames[templateId] : null;
@@ -1137,13 +1136,26 @@ const Dashboard = () => {
         const viewWeek = String(planWeek);
         const currentWeekDays = templateWeeks[viewWeek] || [];
         const canPrev = planWeek > 1;
-        const canNext = planWeek < (weekKeys.length || totalWeeks);
+        const canNext = planWeek < totalWeeks;
 
-        // Build 7-day view for current week
+        // Build 7-day view for current week, filtering partial first/last weeks
         const DAY_LABELS = [t('days.sunday', { ns: 'common' }), t('days.monday', { ns: 'common' }), t('days.tuesday', { ns: 'common' }), t('days.wednesday', { ns: 'common' }), t('days.thursday', { ns: 'common' }), t('days.friday', { ns: 'common' }), t('days.saturday', { ns: 'common' })];
         const fullWeek = DAY_LABELS.map((label, i) => {
           const isClosed = gymClosedDays.has(i);
           if (isClosed) return { label, name: label, exercises: [], isRest: false, isClosed: true };
+
+          // Partial week filtering for mid-week starts
+          if (progStartDow !== 1 && progStartDow !== 0) { // not Monday/Sunday start
+            if (planWeek === 1 && i < progStartDow) {
+              // First week: days before start day are not part of the program
+              return { label, name: label, exercises: [], isRest: true, isClosed: false };
+            }
+            if (planWeek === totalWeeks && i >= progStartDow) {
+              // Last week (extension): days from start day onward are not part of the program
+              return { label, name: label, exercises: [], isRest: true, isClosed: false };
+            }
+          }
+
           const workoutDay = currentWeekDays[i];
           if (workoutDay) return { label, name: (i18n.language === 'es' && workoutDay.name_es ? workoutDay.name_es : workoutDay.name), exercises: workoutDay.exercises || [], isRest: false, isClosed: false };
           return { label, name: label, exercises: [], isRest: true, isClosed: false };
@@ -1204,7 +1216,7 @@ const Dashboard = () => {
                             <ChevronLeft size={16} />
                           </button>
                           <span className="text-[14px] font-bold text-[var(--color-text-primary)]">
-                            {t('dashboard.weekLabel', { week: planWeek })} <span className="text-[var(--color-text-muted)] font-normal">{t('dashboard.ofTotal', { total: weekKeys.length })}</span>
+                            {t('dashboard.weekLabel', { week: planWeek })} <span className="text-[var(--color-text-muted)] font-normal">{t('dashboard.ofTotal', { total: totalWeeks })}</span>
                           </span>
                           <button
                             onClick={() => canNext && setPlanWeek(w => w + 1)}
@@ -1220,7 +1232,7 @@ const Dashboard = () => {
                         <div className="h-[2px] rounded-full bg-[var(--color-surface-hover)]">
                           <div
                             className="h-full rounded-full bg-[#10B981]/50 transition-all duration-300"
-                            style={{ width: `${(planWeek / weekKeys.length) * 100}%` }}
+                            style={{ width: `${(planWeek / totalWeeks) * 100}%` }}
                           />
                         </div>
                       </div>
