@@ -714,50 +714,8 @@ const Workouts = () => {
         logger.log(`Cleaned up ${oldIds.length} old Auto: routines`);
       }
 
-      // 3. Create a generated_programs entry for the template
+      // 3. Create a generated_programs entry (inserted after scheduleDays is computed below)
       const startDate = new Date();
-      const startDow = startDate.getDay();
-
-      // Calculate if starting mid-week pushes workouts into an extra week.
-      // E.g. 5-day program [Mon-Fri] starting on Wednesday: Wed,Thu,Fri this week
-      // then Mon,Tue next week = wraps, so add 1 extra week.
-      const sortedSched = [...scheduleDays].sort((a, b) => a - b);
-      const daysFromStart = sortedSched.filter(d => d >= startDow);
-      const daysWrapped = sortedSched.filter(d => d < startDow);
-      const needsExtraWeek = daysWrapped.length > 0; // some workouts wrap to next week
-      const baseDuration = selectedTemplate.durationWeeks || 6;
-      const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
-
-      const expiresAt = new Date(startDate);
-      expiresAt.setDate(expiresAt.getDate() + totalDurationWeeks * 7);
-
-      const insertData = {
-        profile_id: user.id,
-        gym_id: profile.gym_id,
-        split_type: selectedTemplate.id.replace('tmpl_', ''),
-        program_start: startDate.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        routines_a_count: selectedTemplate.daysPerWeek,
-        duration_weeks: totalDurationWeeks,
-      };
-
-      // Try with template columns first, fall back without them
-      let insertRes = await supabase.from('generated_programs').insert({
-        ...insertData,
-        template_id: selectedTemplate.id,
-        template_weeks: selectedTemplate.weeks,
-      }).select().single();
-
-      if (insertRes.error) {
-        logger.warn('Template columns not available, inserting without them:', insertRes.error.message);
-        insertRes = await supabase.from('generated_programs').insert(insertData).select().single();
-      }
-
-      if (insertRes.error) {
-        throw new Error('Failed to create program entry: ' + insertRes.error.message);
-      }
-
-      logger.log('Created program:', insertRes.data?.id);
 
       // 3. Create routines from the first week's workouts
       const fullFirstWeek = selectedTemplate.weeks['1'] || [];
@@ -811,6 +769,44 @@ const Workouts = () => {
         const beforeToday = sorted.filter(d => d < todayDow);
         scheduleDays = [...fromToday, ...beforeToday];
       }
+
+      // Now that scheduleDays is computed, calculate duration and create program entry
+      const startDow = startDate.getDay();
+      const sortedSched = [...scheduleDays].sort((a, b) => a - b);
+      const daysWrapped = sortedSched.filter(d => d < startDow);
+      const needsExtraWeek = daysWrapped.length > 0;
+      const baseDuration = selectedTemplate.durationWeeks || 6;
+      const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
+
+      const expiresAt = new Date(startDate);
+      expiresAt.setDate(expiresAt.getDate() + totalDurationWeeks * 7);
+
+      const insertData = {
+        profile_id: user.id,
+        gym_id: profile.gym_id,
+        split_type: selectedTemplate.id.replace('tmpl_', ''),
+        program_start: startDate.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        routines_a_count: selectedTemplate.daysPerWeek,
+        duration_weeks: totalDurationWeeks,
+      };
+
+      let insertRes = await supabase.from('generated_programs').insert({
+        ...insertData,
+        template_id: selectedTemplate.id,
+        template_weeks: selectedTemplate.weeks,
+      }).select().single();
+
+      if (insertRes.error) {
+        logger.warn('Template columns not available, inserting without them:', insertRes.error.message);
+        insertRes = await supabase.from('generated_programs').insert(insertData).select().single();
+      }
+
+      if (insertRes.error) {
+        throw new Error('Failed to create program entry: ' + insertRes.error.message);
+      }
+
+      logger.log('Created program:', insertRes.data?.id);
 
       // Check if workouts might extend past closing time (soft warning)
       const warnings = [];
