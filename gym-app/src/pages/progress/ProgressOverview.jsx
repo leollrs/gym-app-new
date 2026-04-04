@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Trophy, Zap, Activity, BarChart3, ChevronDown, ChevronRight, Clock, Dumbbell, Calendar,
-  Apple, Flame, MapPin,
+  Apple, Flame, MapPin, Trash2,
 } from 'lucide-react';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import Skeleton from '../../components/Skeleton';
@@ -12,8 +12,10 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { getUserPoints } from '../../lib/rewardsEngine';
 import { LevelCard } from '../../components/LevelBadge';
 import { ACHIEVEMENT_DEFS } from '../../lib/achievements';
@@ -470,8 +472,8 @@ const formatDuration = (seconds) => {
 };
 
 // ── Compact Session Row ──────────────────────────────────────────────────
-function SessionRow({ session }) {
-  const { i18n } = useTranslation('pages');
+function SessionRow({ session, onDelete }) {
+  const { t, i18n } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const exercises = session.session_exercises ?? [];
   const allSets = exercises.flatMap(e => e.session_sets ?? []).filter(s => s.is_completed);
@@ -480,9 +482,9 @@ function SessionRow({ session }) {
   const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
 
   return (
-    <div className="bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
       <button
-        className="w-full text-left px-4 py-3.5 flex items-start gap-3 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
+        className="w-full text-left px-4 pr-10 py-3.5 flex items-start gap-3 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setExpanded(e => !e)}
         aria-label={`Toggle details for ${sanitize(session.name)}`}
       >
@@ -524,6 +526,16 @@ function SessionRow({ session }) {
           }}
         />
       </button>
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(session.id, session.name); }}
+          className="absolute top-3 right-2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+          style={{ color: 'var(--color-text-muted)' }}
+          aria-label={t('dashboard.deleteSession', 'Delete session')}
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
       {expanded && (
         <div className="px-4 pb-3 border-t border-white/[0.06]">
           <div className="pt-2.5 flex flex-col gap-2.5">
@@ -566,7 +578,7 @@ function SessionRow({ session }) {
 }
 
 // ── Month Block ──────────────────────────────────────────────────────────
-function MonthBlock({ monthLabel, sessions, defaultOpen }) {
+function MonthBlock({ monthLabel, sessions, defaultOpen, onDelete }) {
   const { t } = useTranslation('pages');
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
@@ -593,7 +605,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
       {open && (
         <div className="ml-1 pl-4 border-l border-white/[0.06]">
           <div className="flex flex-col gap-2.5 pt-1 pb-3">
-            {visible.map(s => <SessionRow key={s.id} session={s} />)}
+            {visible.map(s => <SessionRow key={s.id} session={s} onDelete={onDelete} />)}
           </div>
           {hasMore && !showAll && (
             <button
@@ -619,7 +631,7 @@ function MonthBlock({ monthLabel, sessions, defaultOpen }) {
 }
 
 // ── Year Block (for past years) ──────────────────────────────────────────
-function YearBlock({ year, monthsData }) {
+function YearBlock({ year, monthsData, onDelete }) {
   const { t } = useTranslation('pages');
   const [open, setOpen] = useState(false);
   const totalSessions = Object.values(monthsData).reduce((sum, arr) => sum + arr.length, 0);
@@ -652,6 +664,7 @@ function YearBlock({ year, monthsData }) {
               key={monthIdx}
               monthLabel={t(`months.${MONTH_KEYS[monthIdx]}`)}
               sessions={monthsData[monthIdx]}
+              onDelete={onDelete}
               defaultOpen={false}
             />
           ))}
@@ -664,8 +677,24 @@ function YearBlock({ year, monthsData }) {
 // ── Monthly Timeline ─────────────────────────────────────────────────────
 function MonthlyTimeline({ userId }) {
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const handleDeleteSession = async () => {
+    if (!deleteConfirm) return;
+    const { error } = await supabase.from('workout_sessions').delete().eq('id', deleteConfirm.id);
+    if (error) {
+      showToast(t('dashboard.deleteError', 'Failed to delete'), 'error');
+    } else {
+      showToast(t('dashboard.sessionDeleted', 'Session deleted'), 'success');
+      setSessions(prev => prev.filter(s => s.id !== deleteConfirm.id));
+    }
+    setDeleteConfirm(null);
+  };
+
+  const onDelete = (id, name) => setDeleteConfirm({ id, name });
 
   useEffect(() => {
     if (!userId) return;
@@ -772,14 +801,55 @@ function MonthlyTimeline({ userId }) {
             monthLabel={t(`months.${MONTH_KEYS[monthIdx]}`)}
             sessions={monthSessions}
             defaultOpen={isActive}
+            onDelete={onDelete}
           />
         );
       })}
 
       {/* Past years (compressed) */}
       {pastYears.map(({ year, monthsData }) => (
-        <YearBlock key={year} year={year} monthsData={monthsData} />
+        <YearBlock key={year} year={year} monthsData={monthsData} onDelete={onDelete} />
       ))}
+
+      {/* Delete confirmation */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center px-6"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setDeleteConfirm(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl p-6 border"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }}
+            >
+              <p className="font-bold text-[16px] mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                {t('dashboard.deleteSessionTitle', 'Delete session?')}
+              </p>
+              <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-subtle)' }}>
+                <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
+              </p>
+              <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('dashboard.deleteSessionWarning', 'This will permanently remove this session and all its data. This cannot be undone.')}
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}>
+                  {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
+                </button>
+                <button onClick={handleDeleteSession}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-[13px] font-bold transition-colors">
+                  {t('dashboard.deleteConfirm', 'Delete')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

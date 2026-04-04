@@ -4,13 +4,14 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, ChevronRight, ChevronLeft, Apple, ClipboardList,
   Dumbbell, Pencil, Trophy, Play, Flame, QrCode, CheckCircle2, MessageCircle, CalendarCheck,
-  Activity, ArrowLeftRight,
+  Activity, ArrowLeftRight, Trash2,
 } from 'lucide-react';
 import { programTemplateNames } from '../data/programTemplateNames';
 import { isSameDay, isBefore, startOfDay, startOfWeek } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { runNotificationScheduler } from '../lib/notificationScheduler';
 import { getCached, setCache } from '../lib/queryCache';
 // getStreakWithProtections removed — streak_cache is now the single source of truth
@@ -120,11 +121,51 @@ const DashboardSkeleton = () => (
   </div>
 );
 
+/* ── Live Cardio Hero (with ticking timer) ───────────────── */
+const LiveCardioHeroCard = ({ liveCardioSession: lc, t }) => {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!lc?.running) return;
+    const id = setInterval(() => setTick(k => k + 1), 1000);
+    return () => clearInterval(id);
+  }, [lc?.running]);
+
+  let totalSec = lc.accumulatedSec || 0;
+  if (lc.running && lc.startedAt) {
+    totalSec += (Date.now() - new Date(lc.startedAt).getTime()) / 1000;
+  }
+  const mins = Math.floor(totalSec / 60);
+  const secs = Math.floor(totalSec % 60);
+  const typeName = t(`cardio.types.${lc.cardioType}`, lc.cardioType);
+
+  return (
+    <Link
+      to="/cardio-live"
+      className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/12 to-[#10B981]/[0.02] border border-[#10B981]/20 p-6 text-center active:scale-[0.99] transition-transform block"
+    >
+      <div className="w-14 h-14 rounded-2xl bg-[#10B981]/15 flex items-center justify-center mx-auto mb-4">
+        <Activity size={28} className="text-[#10B981]" />
+      </div>
+      <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>
+        {typeName} {t('cardio.inProgress', 'in progress')}
+      </p>
+      <p className="text-[32px] font-black tabular-nums mt-2 text-[#10B981]">
+        {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+      </p>
+      <p className="text-[13px] mt-3 font-semibold" style={{ color: '#10B981' }}>
+        {t('dashboard.tapToResume')}
+      </p>
+    </Link>
+  );
+};
+
 /* ── Main ────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile, gymConfig } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
+  const { showToast } = useToast();
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { type: 'workout'|'cardio', id, name }
 
   const [state, dispatch] = useReducer(dashReducer, initialState);
   const {
@@ -135,7 +176,7 @@ const Dashboard = () => {
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [todaysSessions, setTodaysSessions] = useState([]);
-  const [todayCardioSessions, setTodayCardioSessions] = useState([]);
+  const [weekCardioSessions, setWeekCardioSessions] = useState([]);
   const [todaysSessionsLoaded, setTodaysSessionsLoaded] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const [localSkipped, setLocalSkipped] = useState(false);
@@ -161,7 +202,7 @@ const Dashboard = () => {
   const readLiveCardio = () => {
     try {
       const lc = JSON.parse(localStorage.getItem('tugympr_live_cardio'));
-      if (lc && lc.accumulatedSec > 5) return lc;
+      if (lc && (lc.accumulatedSec > 0 || lc.running)) return lc;
     } catch {}
     return null;
   };
@@ -244,6 +285,7 @@ const Dashboard = () => {
   useEffect(() => {
     setActiveSession(readActiveSession());
     setAllActiveDrafts(readAllActiveSessions());
+    setLiveCardioSession(readLiveCardio());
     setRefreshKey(k => k + 1);
   }, [locationKey]);
 
@@ -286,13 +328,12 @@ const Dashboard = () => {
             .eq('booking_date', new Date().toISOString().split('T')[0])
             .in('status', ['confirmed', 'attended'])
         : Promise.resolve({ data: [] });
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const weekCardioStart = startOfWeek(new Date(), { weekStartsOn: 0 });
       const cardioPromise = supabase
         .from('cardio_sessions')
         .select('id, cardio_type, duration_seconds, calories_burned, distance_km, started_at')
         .eq('profile_id', user.id)
-        .gte('started_at', todayStart.toISOString());
+        .gte('started_at', weekCardioStart.toISOString());
 
       const [{ data: rpcData, error: rpcError }, { data: classBookings }, { data: cardioData }] = await Promise.all([rpcPromise, classPromise, cardioPromise]);
 
@@ -307,7 +348,7 @@ const Dashboard = () => {
 
       // Class bookings + cardio sessions already fetched in parallel above
       if (!cancelled) setTodayClassBookings(classBookings || []);
-      if (!cancelled) setTodayCardioSessions(cardioData || []);
+      if (!cancelled) setWeekCardioSessions(cardioData || []);
 
       const allSessions = rpcData?.sessions || [];
       const fetchedRoutines = rpcData?.routines || [];
@@ -335,8 +376,12 @@ const Dashboard = () => {
 
       const scheduleMap = {};
       const sMap = fetchedProgram?.schedule_map;
-      const isWeek1 = fetchedProgram && programStart
-        && Math.floor((today - programStart) / (7 * 86400000)) === 0;
+      const programWeekNum = fetchedProgram && programStart
+        ? Math.floor((today - programStart) / (7 * 86400000)) + 1 : 0;
+      const isWeek1 = programWeekNum === 1;
+      const totalProgramWeeks = fetchedProgram?.duration_weeks || 6;
+      const hasWrappedDays = (sMap?.wrapped_dows?.length ?? 0) > 0;
+      const isLastWeek = hasWrappedDays && programWeekNum === totalProgramWeeks;
 
       // Build a reverse map: normalDow → routineId from workout_schedule
       const normalDowToRoutineId = {};
@@ -353,10 +398,9 @@ const Dashboard = () => {
         }
       }
 
-      if (isWeek1 && sMap?.week1_map && sMap?.normal_dows) {
-        // Week 1: use the shifted DOW mapping from schedule_map
-        // week1_map has {routine_index, day_of_week} — map routine_index to routineId via normal_dows
-        for (const entry of sMap.week1_map) {
+      // Helper: build scheduleMap from a partial week map (week1 or last week)
+      const buildFromPartialMap = (partialMap) => {
+        for (const entry of partialMap) {
           const normalDow = sMap.normal_dows[entry.routine_index];
           const routineId = normalDow !== undefined ? normalDowToRoutineId[normalDow] : null;
           const routine = routineId ? fetchedRoutines.find(r => r.id === routineId) : null;
@@ -367,8 +411,16 @@ const Dashboard = () => {
             };
           }
         }
+      };
+
+      if (isWeek1 && sMap?.week1_map && sMap?.normal_dows) {
+        // Week 1: use the shifted DOW mapping
+        buildFromPartialMap(sMap.week1_map);
+      } else if (isLastWeek && sMap?.last_week_map && sMap?.normal_dows) {
+        // Last week: only the remaining routines from week 1's wrap
+        buildFromPartialMap(sMap.last_week_map);
       } else {
-        // Normal weeks: use workout_schedule directly
+        // Normal weeks: use workout_schedule directly (packed Mon-start)
         for (const row of scheduleData) {
           const routine = fetchedRoutines.find(r => r.id === row.routine_id);
           if (routine) {
@@ -439,6 +491,12 @@ const Dashboard = () => {
           const localKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           trainedDateSet.add(localKey);
         }
+      }
+      // Also mark days with cardio sessions as trained
+      for (const cs of (cardioData || [])) {
+        const d = new Date(cs.started_at);
+        const localKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        trainedDateSet.add(localKey);
       }
       const trainedDates = [...trainedDateSet];
 
@@ -605,6 +663,25 @@ const Dashboard = () => {
     setRefreshKey(k => k + 1);
   }, [stats.sessions]);
 
+  const handleDeleteSession = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const { type, id } = deleteConfirm;
+    const table = type === 'cardio' ? 'cardio_sessions' : 'workout_sessions';
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) {
+      showToast(t('dashboard.deleteError', 'Failed to delete'), 'error');
+    } else {
+      showToast(t('dashboard.sessionDeleted', 'Session deleted'), 'success');
+      if (type === 'cardio') {
+        setWeekCardioSessions(prev => prev.filter(s => s.id !== id));
+      } else {
+        setTodaysSessions(prev => prev.filter(s => s.id !== id));
+        setWeekSessions(prev => prev.filter(s => s.id !== id));
+      }
+    }
+    setDeleteConfirm(null);
+  }, [deleteConfirm, showToast, t]);
+
   /* ── Derived data ──────────────────────────────────────── */
   const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date())) && !isSameDay(selectedDate, new Date());
   const pastDaySessions = isPastDay
@@ -615,20 +692,24 @@ const Dashboard = () => {
     : [];
 
   const liftCount = selectedRoutineExercises.length;
-  // Always calculate from routine exercise data (sets × reps × rest)
+  // Same formula as WorkoutBuilder: sets × (rest + 45s work/transition per set)
   const estimatedMin = (() => {
     if (liftCount === 0) return 0;
     let totalSec = 0;
     for (const ex of selectedRoutineExercises) {
       const sets = ex.target_sets || 3;
-      const repsStr = String(ex.target_reps || '10');
-      const reps = parseInt(repsStr) || 10;
       const rest = ex.rest_seconds || 90;
-      totalSec += sets * reps * 4 + (sets - 1) * rest + 60;
+      totalSec += sets * (rest + 45);
     }
-    return Math.max(Math.round(totalSec / 60), liftCount * 6);
+    return Math.round(totalSec / 60);
   })();
   const estimatedCal = Math.round(estimatedMin * 5.2);
+
+  // Derive today's and selected-day cardio from week-wide fetch
+  const todayCardioSessions = weekCardioSessions.filter(cs => isSameDay(new Date(cs.started_at), new Date()));
+  const selectedDayCardioSessions = weekCardioSessions.filter(cs =>
+    new Date(cs.started_at).toLocaleDateString() === selectedDate.toLocaleDateString()
+  );
 
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const selectedDayName = t(`days.${DAY_KEYS[selectedDate.getDay()]}`, { ns: 'common' });
@@ -906,36 +987,7 @@ const Dashboard = () => {
                   <div className="w-full rounded-[20px] bg-white/[0.04] animate-pulse" style={{ aspectRatio: '9 / 10' }} />
                 ) : isToday && liveCardioSession ? (
                   /* ── Live cardio in progress — green hero card ── */
-                  (() => {
-                    const lc = liveCardioSession;
-                    // Calculate live elapsed (including time since last save if still running)
-                    let totalSec = lc.accumulatedSec || 0;
-                    if (lc.running && lc.startedAt) {
-                      totalSec += (Date.now() - new Date(lc.startedAt).getTime()) / 1000;
-                    }
-                    const mins = Math.floor(totalSec / 60);
-                    const secs = Math.floor(totalSec % 60);
-                    const typeName = t(`cardio.types.${lc.cardioType}`, lc.cardioType);
-                    return (
-                      <Link
-                        to="/cardio-live"
-                        className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/12 to-[#10B981]/[0.02] border border-[#10B981]/20 p-6 text-center active:scale-[0.99] transition-transform block"
-                      >
-                        <div className="w-14 h-14 rounded-2xl bg-[#10B981]/15 flex items-center justify-center mx-auto mb-4">
-                          <Activity size={28} className="text-[#10B981]" />
-                        </div>
-                        <p className="font-bold text-[18px]" style={{ color: 'var(--color-text-primary)' }}>
-                          {typeName} {t('cardio.inProgress', 'in progress')}
-                        </p>
-                        <p className="text-[32px] font-black tabular-nums mt-2 text-[#10B981]">
-                          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-                        </p>
-                        <p className="text-[13px] mt-3 font-semibold" style={{ color: '#10B981' }}>
-                          {t('dashboard.tapToResume')}
-                        </p>
-                      </Link>
-                    );
-                  })()
+                  <LiveCardioHeroCard liveCardioSession={liveCardioSession} t={t} />
                 ) : isToday && todaysSessions.length > 0 && selectedRoutine && todaysSessions.some(s => s.routine_id === selectedRoutine.id) && !(activeSession && activeSession.routineId === selectedRoutine.id) ? (
                   <div className="w-full rounded-2xl bg-gradient-to-br from-[#10B981]/8 to-[#10B981]/[0.01] border border-[#10B981]/15 p-6 text-center">
                     <div className="w-14 h-14 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-4">
@@ -953,30 +1005,39 @@ const Dashboard = () => {
                       const vol = parseFloat(doneSession.total_volume_lbs) || 0;
                       const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
                       return (
-                        <Link
-                          to="/session-summary"
-                          state={{
-                            routineName: doneSession.name,
-                            elapsedTime: doneSession.duration_seconds,
-                            totalVolume: vol,
-                            sessionId: doneSession.id,
-                            completedAt: doneSession.completed_at,
-                          }}
-                          className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-3 text-left"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                            <Trophy size={16} className="text-[#10B981]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{doneSession.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                              <span>{Math.round((doneSession.duration_seconds || 0) / 60)}m</span>
-                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                              <span>{volStr} lbs</span>
+                        <div className="relative mb-3">
+                          <Link
+                            to="/session-summary"
+                            state={{
+                              routineName: doneSession.name,
+                              elapsedTime: doneSession.duration_seconds,
+                              totalVolume: vol,
+                              sessionId: doneSession.id,
+                              completedAt: doneSession.completed_at,
+                            }}
+                            className="flex items-center gap-3 px-4 pr-11 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors text-left"
+                          >
+                            <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                              <Trophy size={16} className="text-[#10B981]" />
                             </div>
-                          </div>
-                          <span className="text-[10px] font-medium text-[#10B981]">{t('dashboard.viewSummary')}</span>
-                        </Link>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{doneSession.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{Math.round((doneSession.duration_seconds || 0) / 60)}m</span>
+                                <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span>{volStr} lbs</span>
+                              </div>
+                            </div>
+                          </Link>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: 'workout', id: doneSession.id, name: doneSession.name })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            aria-label={t('dashboard.deleteSession', 'Delete session')}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       );
                     })()}
 
@@ -993,31 +1054,40 @@ const Dashboard = () => {
                             const vol = parseFloat(session.total_volume_lbs) || 0;
                             const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
                             return (
-                              <Link
-                                key={session.id}
-                                to="/session-summary"
-                                state={{
-                                  routineName: session.name,
-                                  elapsedTime: session.duration_seconds,
-                                  totalVolume: vol,
-                                  sessionId: session.id,
-                                  completedAt: session.completed_at,
-                                }}
-                                className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-1.5 text-left"
-                              >
-                                <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                                  <Dumbbell size={13} className="text-[#D4AF37]" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
-                                  <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                                    <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                                    <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                                    <span>{volStr} lbs</span>
+                              <div key={session.id} className="relative mb-1.5">
+                                <Link
+                                  to="/session-summary"
+                                  state={{
+                                    routineName: session.name,
+                                    elapsedTime: session.duration_seconds,
+                                    totalVolume: vol,
+                                    sessionId: session.id,
+                                    completedAt: session.completed_at,
+                                  }}
+                                  className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors text-left"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                                    <Dumbbell size={13} className="text-[#D4AF37]" />
                                   </div>
-                                </div>
-                                <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
-                              </Link>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                                    <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                      <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
+                                      <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                      <span>{volStr} lbs</span>
+                                    </div>
+                                  </div>
+                                  <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
+                                </Link>
+                                <button
+                                  onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
+                                  className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/10 transition-colors flex-shrink-0"
+                                  style={{ color: 'var(--color-text-muted)' }}
+                                  aria-label={t('dashboard.deleteSession', 'Delete session')}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -1035,25 +1105,32 @@ const Dashboard = () => {
                           const cals = Math.round(cs.calories_burned || 0);
                           const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
                           return (
-                            <div
-                              key={cs.id}
-                              className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left"
-                            >
-                              <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                                <Activity size={13} className="text-[#10B981]" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
-                                <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                                  <span>{mins}m</span>
-                                  {cals > 0 && (
-                                    <>
-                                      <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                                      <span>{cals} kcal</span>
-                                    </>
-                                  )}
+                            <div key={cs.id} className="relative mb-1.5">
+                              <div className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] text-left">
+                                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                                  <Activity size={13} className="text-[#10B981]" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                                  <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                    <span>{mins}m</span>
+                                    {cals > 0 && (
+                                      <>
+                                        <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                        <span>{cals} kcal</span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
+                              <button
+                                onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
+                                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/10 transition-colors flex-shrink-0"
+                                style={{ color: 'var(--color-text-muted)' }}
+                                aria-label={t('dashboard.deleteSession', 'Delete session')}
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           );
                         })}
@@ -1139,20 +1216,27 @@ const Dashboard = () => {
                       const vol = parseFloat(session.total_volume_lbs) || 0;
                       const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
                       return (
-                        <Link key={session.id} to="/session-summary"
-                          state={{ routineName: session.name, elapsedTime: session.duration_seconds, totalVolume: vol, sessionId: session.id, completedAt: session.completed_at }}
-                          className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-1.5 text-left"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
-                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                              <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                              <span>{volStr} lbs</span>
+                        <div key={session.id} className="relative mb-1.5">
+                          <Link to="/session-summary"
+                            state={{ routineName: session.name, elapsedTime: session.duration_seconds, totalVolume: vol, sessionId: session.id, completedAt: session.completed_at }}
+                            className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                              <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
+                                <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span>{volStr} lbs</span>
+                              </div>
                             </div>
-                          </div>
-                          <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
-                        </Link>
+                            <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
+                          </Link>
+                          <button onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       );
                     })}
                     {todayCardioSessions.map(cs => {
@@ -1160,22 +1244,29 @@ const Dashboard = () => {
                       const cals = Math.round(cs.calories_burned || 0);
                       const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
                       return (
-                        <div key={cs.id} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left">
-                          <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                            <Activity size={13} className="text-[#10B981]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
-                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                              <span>{mins}m</span>
-                              {cals > 0 && (
-                                <>
-                                  <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                                  <span>{cals} kcal</span>
-                                </>
-                              )}
+                        <div key={cs.id} className="relative mb-1.5">
+                          <div className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] text-left">
+                            <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                              <Activity size={13} className="text-[#10B981]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                              <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{mins}m</span>
+                                {cals > 0 && (
+                                  <>
+                                    <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                    <span>{cals} kcal</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
+                          <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       );
                     })}
@@ -1185,7 +1276,7 @@ const Dashboard = () => {
                       {t('dashboard.doAnotherWorkout')}
                     </button>
                   </div>
-                ) : isPastDay && pastDaySessions.length > 0 ? (
+                ) : isPastDay && (pastDaySessions.length > 0 || selectedDayCardioSessions.length > 0) ? (
                   /* Past day WITH completed sessions — show summary */
                   <div className="w-full rounded-2xl bg-gradient-to-br from-[#C9A227]/8 to-[#C9A227]/[0.01] border border-[#C9A227]/15 p-5">
                     <div className="flex items-center gap-2 mb-3">
@@ -1196,31 +1287,68 @@ const Dashboard = () => {
                       const vol = parseFloat(session.total_volume_lbs) || 0;
                       const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
                       return (
-                        <Link
-                          key={session.id}
-                          to="/session-summary"
-                          state={{
-                            routineName: session.name,
-                            elapsedTime: session.duration_seconds,
-                            totalVolume: vol,
-                            sessionId: session.id,
-                            completedAt: session.completed_at,
-                          }}
-                          className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors mb-1.5 text-left"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-[#C9A227]/10 flex items-center justify-center flex-shrink-0">
-                            <Trophy size={16} className="text-[#C9A227]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                              <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
-                              <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                              <span>{volStr} lbs</span>
+                        <div key={session.id} className="relative mb-1.5">
+                          <Link
+                            to="/session-summary"
+                            state={{
+                              routineName: session.name,
+                              elapsedTime: session.duration_seconds,
+                              totalVolume: vol,
+                              sessionId: session.id,
+                              completedAt: session.completed_at,
+                            }}
+                            className="flex items-center gap-3 px-4 pr-11 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.08] transition-colors text-left"
+                          >
+                            <div className="w-9 h-9 rounded-lg bg-[#C9A227]/10 flex items-center justify-center flex-shrink-0">
+                              <Trophy size={16} className="text-[#C9A227]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{session.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{Math.round((session.duration_seconds || 0) / 60)}m</span>
+                                <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                <span>{volStr} lbs</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-medium text-[#C9A227]">{t('dashboard.viewSummary')}</span>
+                          </Link>
+                          <button onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {selectedDayCardioSessions.map(cs => {
+                      const mins = Math.round((cs.duration_seconds || 0) / 60);
+                      const cals = Math.round(cs.calories_burned || 0);
+                      const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
+                      return (
+                        <div key={cs.id} className="relative mb-1.5">
+                          <div className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] text-left">
+                            <div className="w-9 h-9 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                              <Activity size={13} className="text-[#10B981]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{mins}m</span>
+                                {cals > 0 && (
+                                  <>
+                                    <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                    <span>{cals} kcal</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          <span className="text-[10px] font-medium text-[#C9A227]">{t('dashboard.viewSummary')}</span>
-                        </Link>
+                          <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -1269,22 +1397,29 @@ const Dashboard = () => {
                       const cals = Math.round(cs.calories_burned || 0);
                       const typeName = t(`cardio.types.${cs.cardio_type}`, cs.cardio_type);
                       return (
-                        <div key={cs.id} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.06] mb-1.5 text-left">
-                          <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                            <Activity size={13} className="text-[#10B981]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
-                            <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
-                              <span>{mins}m</span>
-                              {cals > 0 && (
-                                <>
-                                  <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
-                                  <span>{cals} kcal</span>
-                                </>
-                              )}
+                        <div key={cs.id} className="relative mb-1.5">
+                          <div className="flex items-center gap-3 px-4 pr-11 py-2.5 rounded-xl bg-white/[0.06] text-left">
+                            <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                              <Activity size={13} className="text-[#10B981]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{typeName}</p>
+                              <div className="flex items-center gap-2 text-[10px]" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-subtle)' }}>
+                                <span>{mins}m</span>
+                                {cals > 0 && (
+                                  <>
+                                    <span style={{ color: 'var(--color-text-subtle)' }}>&middot;</span>
+                                    <span>{cals} kcal</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
+                          <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       );
                     })}
@@ -1704,6 +1839,54 @@ const Dashboard = () => {
 
       {/* ── NPS SURVEY MODAL ─────────────────────────────── */}
       <NPSSurveyModal />
+
+      {/* Delete session confirmation */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center px-6"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setDeleteConfirm(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl p-6 border"
+              style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }}
+            >
+              <p className="font-bold text-[16px] mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                {t('dashboard.deleteSessionTitle', 'Delete session?')}
+              </p>
+              <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-subtle)' }}>
+                <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
+              </p>
+              <p className="text-[12px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('dashboard.deleteSessionWarning', 'This will permanently remove this session and all its data. This cannot be undone.')}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+                >
+                  {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
+                </button>
+                <button
+                  onClick={handleDeleteSession}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-[13px] font-bold transition-colors"
+                >
+                  {t('dashboard.deleteConfirm', 'Delete')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

@@ -26,7 +26,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
   if (!exercise) return null;
 
   return (
-    <div className={`bg-white/[0.04] rounded-2xl border overflow-hidden hover:bg-white/[0.06] transition-colors duration-200 ${isSelected ? 'border-[#D4AF37]/50 bg-[#D4AF37]/[0.04]' : 'border-white/[0.06]'}`}>
+    <div className={`rounded-2xl overflow-hidden transition-colors duration-200 ${isSelected ? 'ring-1 ring-[#D4AF37]/50' : ''}`} style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
       {/* Top: name + reorder + delete — all 44px touch targets */}
       <div className="flex items-center gap-2 px-5 py-3">
         {/* Select checkbox for grouping */}
@@ -37,8 +37,9 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
             isSelected
               ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
-              : 'border-white/[0.15] text-transparent hover:border-white/[0.3]'
+              : 'text-transparent'
           }`}
+          style={!isSelected ? { borderColor: 'var(--color-border-strong)' } : undefined}
         >
           {isSelected && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
         </button>
@@ -86,55 +87,57 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
       </div>
 
       {/* Controls: sets / reps / rest */}
-      <div className="grid grid-cols-3 border-t border-white/[0.06]">
+      <div className="grid grid-cols-3" style={{ borderTop: '1px solid var(--color-border, rgba(255,255,255,0.05))', background: 'color-mix(in srgb, var(--color-bg-primary) 50%, var(--color-bg-card))' }}>
         {/* Sets */}
-        <div className="px-3 py-3">
-          <p className="text-[10px] uppercase font-bold tracking-wider mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.sets')}</p>
-          <div className="flex items-center justify-between">
+        <div className="px-3 py-3 flex flex-col items-center">
+          <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.sets')}</p>
+          <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => onChange(index, 'sets', Math.max(1, item.sets - 1))}
               aria-label="Decrease sets"
-              className="min-w-[44px] min-h-[44px] rounded-xl bg-white/[0.06] text-xl flex items-center justify-center hover:bg-white/[0.10] active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{ color: 'var(--color-text-primary)' }}
+              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >−</button>
-            <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{item.sets}</span>
+            <span className="font-bold text-[15px] tabular-nums w-5 text-center" style={{ color: 'var(--color-text-primary)' }}>{item.sets}</span>
             <button
               onClick={() => onChange(index, 'sets', Math.min(10, item.sets + 1))}
               aria-label="Increase sets"
-              className="min-w-[44px] min-h-[44px] rounded-xl bg-white/[0.06] text-xl flex items-center justify-center hover:bg-white/[0.10] active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-              style={{ color: 'var(--color-text-primary)' }}
+              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >+</button>
           </div>
         </div>
 
         {/* Reps */}
-        <div className="px-3 py-3 border-l border-r border-white/[0.06]">
-          <p className="text-[10px] uppercase font-bold tracking-wider mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.reps')}</p>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={item.reps}
-            onChange={e => {
-              const v = e.target.value;
-              if (v === '' || v === '-') return onChange(index, 'reps', v);
-              const n = parseInt(v, 10);
-              if (!isNaN(n) && n > 999) return onChange(index, 'reps', '999');
-              onChange(index, 'reps', (!isNaN(n) && n < 0) ? '0' : v);
-            }}
-            className="w-full border border-white/[0.06] rounded-xl px-2 py-2 text-[14px] font-semibold text-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
-            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-          />
+        <div className="px-3 py-3 flex flex-col items-center" style={{ borderLeft: '1px solid var(--color-border-subtle)', borderRight: '1px solid var(--color-border-subtle)' }}>
+          <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.reps')}</p>
+          <div className="flex items-center justify-center">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={item.reps}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === '' || v === '-') return onChange(index, 'reps', v);
+                const n = parseInt(v, 10);
+                if (!isNaN(n) && n > 999) return onChange(index, 'reps', '999');
+                onChange(index, 'reps', (!isNaN(n) && n < 0) ? '0' : v);
+              }}
+              className="w-16 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)' }}
+            />
+          </div>
         </div>
 
         {/* Rest */}
-        <div className="px-3 py-3">
-          <p className="text-[10px] uppercase font-bold tracking-wider mb-2" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.rest')}</p>
+        <div className="px-3 py-3 flex flex-col items-center">
+          <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.rest')}</p>
           <select
             value={item.restSeconds}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
-            className="w-full border border-white/[0.06] rounded-xl px-1 py-2 text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors appearance-none text-center"
-            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+            className="w-16 rounded-lg py-1.5 text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors appearance-none"
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)', textAlign: 'center', textAlignLast: 'center', paddingLeft: '0', paddingRight: '0' }}
           >
             {REST_OPTIONS.map(s => (
               <option key={s} value={s}>{s < 60 ? `${s}s` : `${s / 60}m`}</option>
@@ -462,8 +465,8 @@ const WorkoutBuilder = () => {
 
       {/* Header — safe area aware */}
       <header
-        className="flex-shrink-0 px-5 pb-3 border-b border-white/[0.06] flex items-center gap-3 backdrop-blur-xl"
-        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)', paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}
+        className="flex-shrink-0 px-5 pb-4 border-b border-white/[0.06] flex items-center gap-3"
+        style={{ background: 'var(--color-bg-primary)', paddingTop: 'max(0.875rem, var(--safe-area-top, env(safe-area-inset-top)))' }}
       >
         <button
           onClick={handleBack}
@@ -579,18 +582,24 @@ const WorkoutBuilder = () => {
       )}
 
       {/* Builder Content */}
-      <div className="container max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-6 md:pb-10">
+      <div className="container max-w-[480px] md:max-w-4xl mx-auto px-5 pb-8 md:pb-10" style={{ paddingTop: '2rem' }}>
 
-        {/* Summary bar */}
-        <div className="flex items-center gap-3 mb-8 text-[13px]" style={{ color: 'var(--color-text-subtle)' }}>
-          <span className="flex items-center gap-1.5">
-            <Dumbbell size={13} className="text-[#D4AF37]" />
-            {routineExercises.length} {routineExercises.length !== 1 ? t('workoutBuilder.exercises') : t('workoutBuilder.exercise')}
-          </span>
-          <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-          <span>{routineExercises.reduce((sum, e) => sum + e.sets, 0)} {t('workoutBuilder.totalSets')}</span>
-          <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-          <span>~{Math.round(routineExercises.reduce((sum, e) => sum + (e.sets * (e.restSeconds + 45)), 0) / 60)} min</span>
+        {/* Summary stats */}
+        <div className="flex items-center justify-between rounded-2xl px-2 py-3 mb-6" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.06) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.12)' }}>
+          <div className="flex-1 flex flex-col items-center gap-0.5">
+            <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{routineExercises.length}</span>
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{routineExercises.length !== 1 ? t('workoutBuilder.exercises') : t('workoutBuilder.exercise')}</span>
+          </div>
+          <div className="w-px h-8 rounded-full" style={{ background: 'rgba(212,175,55,0.15)' }} />
+          <div className="flex-1 flex flex-col items-center gap-0.5">
+            <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{routineExercises.reduce((sum, e) => sum + e.sets, 0)}</span>
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.totalSets')}</span>
+          </div>
+          <div className="w-px h-8 rounded-full" style={{ background: 'rgba(212,175,55,0.15)' }} />
+          <div className="flex-1 flex flex-col items-center gap-0.5">
+            <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>~{Math.round(routineExercises.reduce((sum, e) => sum + (e.sets * (e.restSeconds + 45)), 0) / 60)}</span>
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>min</span>
+          </div>
         </div>
 
         {/* Grouping toolbar */}
@@ -615,7 +624,7 @@ const WorkoutBuilder = () => {
 
         {/* Exercise list */}
         {routineExercises.length > 0 ? (
-          <div className="flex flex-col gap-4 mb-5">
+          <div className="flex flex-col gap-3 mb-5">
             {routineExercises.map((item, index) => {
               // Determine if this is the first in a group (show header)
               const isFirstInGroup = item.groupId && (index === 0 || routineExercises[index - 1]?.groupId !== item.groupId);
@@ -727,18 +736,18 @@ const WorkoutBuilder = () => {
       </div>{/* end scrollable body */}
 
       {/* Mobile bottom bar — flex-shrink-0 so it stays pinned at the bottom */}
-      <div className="md:hidden flex-shrink-0 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] backdrop-blur-xl border-t border-white/[0.06]" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+      <div className="md:hidden flex-shrink-0 px-5 pt-3 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] backdrop-blur-xl border-t border-white/[0.06]" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
         <div className="flex gap-3">
           <button
             onClick={() => setShowLibrary(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold text-[14px] py-3.5 rounded-2xl active:scale-95 transition-all"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all"
           >
-            <Plus size={18} strokeWidth={2.5} /> {t('workoutBuilder.add')}
+            <Plus size={16} strokeWidth={2.5} /> {t('workoutBuilder.add')}
           </button>
           <button
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
-            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-black font-bold text-[14px] py-3.5 rounded-2xl active:scale-95 transition-all flex items-center justify-center"
+            className="flex-1 bg-[#D4AF37] disabled:opacity-50 text-black font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>

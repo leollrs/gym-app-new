@@ -76,6 +76,7 @@ export default function LiveCardio() {
   const [submitting, setSubmitting] = useState(false);
 
   const bodyWeightLbs = profile?.weight_lbs ?? 165;
+  const sessionEndedRef = useRef(false);
 
   // Auto-resume if we have saved state
   useEffect(() => {
@@ -131,6 +132,8 @@ export default function LiveCardio() {
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      // Skip save if session was intentionally finished or discarded
+      if (sessionEndedRef.current) return;
       // Persist current state on unmount
       if (phase === 'tracking' || (phase === 'done' && accumRef.current > 0)) {
         const totalAccum = running && startRef.current
@@ -197,9 +200,10 @@ export default function LiveCardio() {
       });
       if (error) throw error;
 
+      sessionEndedRef.current = true;
       localStorage.removeItem(STORAGE_KEY);
       showToast(t('cardio.loggedSuccess', 'Cardio logged!'), 'success');
-      navigate(-1);
+      navigate('/', { replace: true });
     } catch (err) {
       console.error('Failed to log cardio:', err);
       showToast(t('cardio.logError', 'Failed to log. Try again.'), 'error');
@@ -211,18 +215,31 @@ export default function LiveCardio() {
 
   const handleBack = () => {
     if (phase === 'tracking' || (phase === 'done' && accumRef.current > 0)) {
-      // Active session — just navigate back, state is auto-saved on unmount
-      navigate(-1);
+      // Active session — save state explicitly, then navigate
+      const totalAccum = running && startRef.current
+        ? accumRef.current + (Date.now() - startRef.current) / 1000
+        : accumRef.current;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        cardioType,
+        accumulatedSec: totalAccum,
+        startedAt: running ? new Date().toISOString() : null,
+        running,
+        phase,
+      }));
+      sessionEndedRef.current = true; // prevent unmount from overwriting
+      navigate('/', { replace: true });
     } else {
       // Pick phase — nothing to save
+      sessionEndedRef.current = true;
       localStorage.removeItem(STORAGE_KEY);
-      navigate(-1);
+      navigate('/', { replace: true });
     }
   };
 
   const handleDiscard = () => {
+    sessionEndedRef.current = true;
     localStorage.removeItem(STORAGE_KEY);
-    navigate(-1);
+    navigate('/', { replace: true });
   };
 
   // Format time

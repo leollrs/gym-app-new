@@ -73,7 +73,13 @@
     "thisDayHasPassed": "Este día ya pasó",
     "noWorkoutLogged": "No se registró entrenamiento",
     "weekLabel": "Semana {{week}}",
-    "ofTotal": "de {{total}}"
+    "ofTotal": "de {{total}}",
+    "deleteSession": "Eliminar sesión",
+    "deleteSessionTitle": "¿Eliminar sesión?",
+    "deleteSessionWarning": "Esto eliminará permanentemente esta sesión y todos sus datos. No se puede deshacer.",
+    "deleteConfirm": "Eliminar",
+    "sessionDeleted": "Sesión eliminada",
+    "deleteError": "Error al eliminar"
   },
   "workoutHeroCard": {
     "startWorkout": "Empezar Entrenamiento",
@@ -771,7 +777,7 @@
     "avgHeartRate": "FC Promedio"
   },
   "activeSession": {
-    "finishWorkout": "Terminar Entrenamiento",
+    "finishWorkout": "Finalizar entrenamiento",
     "discard": "Descartar",
     "resume": "Reanudar",
     "endWorkout": "Finalizar Entrenamiento",
@@ -819,7 +825,6 @@
     "autoEndTitle": "Llevas 2 horas entrenando",
     "autoEndMessage": "¿Sigues entrenando? La sesión se finalizará automáticamente a las 3 horas.",
     "keepGoing": "Sí, seguir entrenando",
-    "finishWorkout": "Finalizar entrenamiento",
     "emptyWorkout": "Entrenamiento Libre",
     "addExercise": "Agregar Ejercicio",
     "addExercisePrompt": "Busca y agrega ejercicios a tu entrenamiento",
@@ -2634,7 +2639,6 @@
       "offerOptional": "Oferta (opcional)",
       "describeOffer": "Describe tu oferta…",
       "offerIncluded": "Oferta incluida en el mensaje",
-      "neverCheckedIn": "Nunca registrado",
       "notifPlaceholder": "¡Hola {{name}}, te extrañamos!"
     },
     "revenue": {
@@ -3436,7 +3440,7 @@
       "scoreWorkouts": "entrenos",
       "scorePRs": "PRs",
       "awardPrizes": "Otorgar Premios",
-      "prizesAwarded": "\u00a1Premios otorgados!",
+      "prizesAwarded": "¡Premios otorgados!",
       "selectProduct": "Seleccionar producto",
       "customPrize": "Premio personalizado",
       "noPrize": "Solo puntos"

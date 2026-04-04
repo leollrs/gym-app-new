@@ -73,7 +73,13 @@
     "thisDayHasPassed": "This day has passed",
     "noWorkoutLogged": "No workout was logged",
     "weekLabel": "Week {{week}}",
-    "ofTotal": "of {{total}}"
+    "ofTotal": "of {{total}}",
+    "deleteSession": "Delete session",
+    "deleteSessionTitle": "Delete session?",
+    "deleteSessionWarning": "This will permanently remove this session and all its data. This cannot be undone.",
+    "deleteConfirm": "Delete",
+    "sessionDeleted": "Session deleted",
+    "deleteError": "Failed to delete"
   },
   "workoutHeroCard": {
     "startWorkout": "Start Workout",
@@ -771,7 +777,7 @@
     "avgHeartRate": "Avg Heart Rate"
   },
   "activeSession": {
-    "finishWorkout": "Finish Workout",
+    "finishWorkout": "Finish workout",
     "discard": "Discard",
     "resume": "Resume",
     "endWorkout": "End Workout",
@@ -819,7 +825,6 @@
     "autoEndTitle": "You've been working out for 2 hours",
     "autoEndMessage": "Are you still going? The session will auto-finish at 3 hours.",
     "keepGoing": "Yes, keep going",
-    "finishWorkout": "Finish workout",
     "emptyWorkout": "Empty Workout",
     "addExercise": "Add Exercise",
     "addExercisePrompt": "Search and add exercises to your workout",
@@ -2631,7 +2636,6 @@
       "offerOptional": "Offer (optional)",
       "describeOffer": "Describe your offer…",
       "offerIncluded": "Offer included in message",
-      "neverCheckedIn": "Never checked in",
       "notifPlaceholder": "Hey {{name}}, we miss you!",
       "signal": "Signal",
       "tenureMonths": "{{count}}mo tenure",
