@@ -482,7 +482,7 @@ function SessionRow({ session, onDelete }) {
   const volStr = vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : `${Math.round(vol)}`;
 
   return (
-    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden hover:bg-white/[0.06] transition-colors duration-200">
+    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
       <button
         className="w-full text-left px-4 pr-10 py-3.5 flex items-start gap-3 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
         onClick={() => setExpanded(e => !e)}
@@ -530,7 +530,7 @@ function SessionRow({ session, onDelete }) {
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.id, session.name); }}
           className="absolute top-3 right-2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: '#EF4444' }}
           aria-label={t('dashboard.deleteSession', 'Delete session')}
         >
           <Trash2 size={13} />
@@ -842,7 +842,8 @@ function MonthlyTimeline({ userId }) {
                   {t('common.cancel', { ns: 'common', defaultValue: 'Cancel' })}
                 </button>
                 <button onClick={handleDeleteSession}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-[13px] font-bold transition-colors">
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-colors active:opacity-80"
+                  style={{ background: '#EF4444', color: '#fff' }}>
                   {t('dashboard.deleteConfirm', 'Delete')}
                 </button>
               </div>

@@ -1233,7 +1233,7 @@ const Dashboard = () => {
                           </Link>
                           <button onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -1264,7 +1264,7 @@ const Dashboard = () => {
                           </div>
                           <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -1314,7 +1314,7 @@ const Dashboard = () => {
                           </Link>
                           <button onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -1345,7 +1345,7 @@ const Dashboard = () => {
                           </div>
                           <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -1417,7 +1417,7 @@ const Dashboard = () => {
                           </div>
                           <button onClick={() => setDeleteConfirm({ type: 'cardio', id: cs.id, name: typeName })}
                             className="absolute top-1/2 right-2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition-colors"
-                            style={{ color: 'var(--color-text-muted)' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
+                            style={{ color: '#EF4444' }} aria-label={t('dashboard.deleteSession', 'Delete session')}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -1878,7 +1878,8 @@ const Dashboard = () => {
                 </button>
                 <button
                   onClick={handleDeleteSession}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-[13px] font-bold transition-colors"
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-colors active:opacity-80"
+                    style={{ background: '#EF4444', color: '#fff' }}
                 >
                   {t('dashboard.deleteConfirm', 'Delete')}
                 </button>
