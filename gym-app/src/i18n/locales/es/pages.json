@@ -1331,17 +1331,8 @@
     "apply": "Aplicar"
   },
   "generateWorkout": {
-    "bodyProfile": "Perfil corporal",
-    "bodyProfileDesc": "Se usa para personalizar tu división, volumen y prescripción de cardio.",
-    "heightCm": "Altura (cm)",
-    "weightKg": "Peso (kg)",
-    "age": "Edad",
-    "gender": "Género",
-    "genderOptions": {
-      "male": "Hombre",
-      "female": "Mujer",
-      "other": "Otro"
-    },
+    "customizeProgram": "Personaliza Tu Programa",
+    "customizeProgramDesc": "Configura tus preferencias de entrenamiento. Los datos corporales vienen de tu perfil.",
     "priorityMuscles": "Grupos musculares prioritarios",
     "priorityMusclesDesc": "Elige hasta 3. Estos reciben más volumen y prioridad.",
     "muscleOptions": {
@@ -1353,10 +1344,20 @@
       "biceps": "Brazos",
       "core": "Core"
     },
+    "trainingDays": "Días de entrenamiento por semana",
+    "sessionDuration": "Duración de la sesión",
+    "sessionDurationMin": "min",
+    "intensity": "Intensidad",
+    "intensityLow": "Baja",
+    "intensityModerate": "Moderada",
+    "intensityHigh": "Alta",
+    "programLength": "Duración del programa",
+    "weeks": "sem",
+    "targetAreas": "Áreas Objetivo",
     "daysPerWeek": "días/semana",
-    "minPerSession": "~{{min}} min/sesión · Programa de 6 semanas · Rotación semanal A/B",
-    "week1": "Semana 1 (A)",
-    "week2": "Semana 2 (B) — ejercicios diferentes",
+    "minPerSession": "~{{min}} min/sesión · Programa de {{weeks}} semanas · Rotación semanal A/B",
+    "week1": "Semana A",
+    "week2": "Semana B — ejercicios diferentes",
     "rest": "Descanso",
     "generateMyProgram": "Generar Mi Programa",
     "stepXOfY": "Paso {{current}} de {{total}}",
@@ -1365,12 +1366,7 @@
     "previewProgram": "Vista Previa del Programa",
     "back": "Atrás",
     "generating": "Generando...",
-    "somethingWentWrong": "Algo salió mal. Inténtalo de nuevo.",
-    "sessionLength": "Duración de la sesión",
-    "sessionStandard": "Estándar",
-    "sessionStandardDesc": "45-60 min, 5-7 ejercicios",
-    "sessionShort": "Corta",
-    "sessionShortDesc": "15-20 min, 3-4 compuestos"
+    "somethingWentWrong": "Algo salió mal. Inténtalo de nuevo."
   },
   "createRoutine": {
     "duration": {

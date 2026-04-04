@@ -1331,17 +1331,8 @@
     "apply": "Apply"
   },
   "generateWorkout": {
-    "bodyProfile": "Body profile",
-    "bodyProfileDesc": "Used to personalize your split, volume, and cardio prescription.",
-    "heightCm": "Height (cm)",
-    "weightKg": "Weight (kg)",
-    "age": "Age",
-    "gender": "Gender",
-    "genderOptions": {
-      "male": "Male",
-      "female": "Female",
-      "other": "Other"
-    },
+    "customizeProgram": "Customize Your Program",
+    "customizeProgramDesc": "Configure your training preferences. Body data is pulled from your profile.",
     "priorityMuscles": "Priority muscle groups",
     "priorityMusclesDesc": "Pick up to 3. These get extra volume and placement priority.",
     "muscleOptions": {
@@ -1353,10 +1344,20 @@
       "biceps": "Arms",
       "core": "Core"
     },
+    "trainingDays": "Training days per week",
+    "sessionDuration": "Session duration",
+    "sessionDurationMin": "min",
+    "intensity": "Intensity",
+    "intensityLow": "Low",
+    "intensityModerate": "Moderate",
+    "intensityHigh": "High",
+    "programLength": "Program length",
+    "weeks": "wk",
+    "targetAreas": "Target Areas",
     "daysPerWeek": "days/week",
-    "minPerSession": "~{{min}} min/session · 6-week program · A/B weekly rotation",
-    "week1": "Week 1 (A)",
-    "week2": "Week 2 (B) — different exercises",
+    "minPerSession": "~{{min}} min/session · {{weeks}}-week program · A/B weekly rotation",
+    "week1": "Week A",
+    "week2": "Week B — different exercises",
     "rest": "Rest",
     "generateMyProgram": "Generate My Program",
     "stepXOfY": "Step {{current}} of {{total}}",
@@ -1365,12 +1366,7 @@
     "previewProgram": "Preview Program",
     "back": "Back",
     "generating": "Generating...",
-    "somethingWentWrong": "Something went wrong. Please try again.",
-    "sessionLength": "Session length",
-    "sessionStandard": "Standard",
-    "sessionStandardDesc": "45-60 min, 5-7 exercises",
-    "sessionShort": "Short",
-    "sessionShortDesc": "15-20 min, 3-4 compounds"
+    "somethingWentWrong": "Something went wrong. Please try again."
   },
   "createRoutine": {
     "duration": {

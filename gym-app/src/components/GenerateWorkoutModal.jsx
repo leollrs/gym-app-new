@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle, Timer } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
 import logger from '../lib/logger';
-import { generateProgram, estimateDuration } from '../lib/workoutGenerator';
+import { generateProgram } from '../lib/workoutGenerator';
 import useFocusTrap from '../hooks/useFocusTrap';
+import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { exName, localizeRoutineName } from '../lib/exerciseName';
 
-const GENDER_OPTIONS = [
-  { value: 'male' },
-  { value: 'female' },
-  { value: 'other' },
-];
+const exerciseNameMap = Object.fromEntries(ALL_EXERCISES.map(e => [e.id, e]));
 
 const MUSCLE_OPTIONS = [
   { value: 'Chest' },
@@ -26,16 +24,16 @@ const MUSCLE_OPTIONS = [
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-// ── Step 1: Body Data ──────────────────────────────────────────────────────
-const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
+// ── Step 1: Customize Your Program ────────────────────────────────────────
+const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
   const { t } = useTranslation('pages');
   const set = (k, v) => onChange(k, v);
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-[17px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.bodyProfile')}</h2>
-        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.bodyProfileDesc')}</p>
+        <h2 className="text-[17px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.customizeProgram')}</h2>
+        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.customizeProgramDesc')}</p>
       </div>
 
       {/* Program type toggle */}
@@ -67,107 +65,94 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
         </div>
       </div>
 
-      {/* Session length toggle — only for strength/hybrid */}
-      {form.program_type !== 'cardio' && (
+      {/* Training days per week */}
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionLength')}</label>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.trainingDays')}</label>
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5, 6, 7].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => set('training_days', n)}
+              className="w-10 h-10 rounded-xl text-[14px] font-bold border transition-all flex items-center justify-center"
+              style={form.training_days === n
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
+                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+              }
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Session duration — free text input */}
+      <div>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDuration')}</label>
+        <div className="relative">
+          <input
+            type="number"
+            min="10"
+            placeholder="45"
+            value={form.session_duration_min}
+            onChange={e => set('session_duration_min', e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
+            className="w-full border rounded-xl px-3 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-[#D4AF37] pr-12"
+            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', borderColor: 'rgba(255,255,255,0.06)', fontSize: '16px' }}
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] pointer-events-none" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDurationMin', 'min')}</span>
+        </div>
+      </div>
+
+      {/* Intensity */}
+      <div>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.intensity')}</label>
         <div className="flex gap-2">
           {[
-            { value: false, icon: Dumbbell, label: t('generateWorkout.sessionStandard'), desc: t('generateWorkout.sessionStandardDesc') },
-            { value: true,  icon: Timer,    label: t('generateWorkout.sessionShort'),    desc: t('generateWorkout.sessionShortDesc') },
+            { value: 'low',      label: t('generateWorkout.intensityLow', 'Low') },
+            { value: 'moderate', label: t('generateWorkout.intensityModerate', 'Moderate') },
+            { value: 'high',     label: t('generateWorkout.intensityHigh', 'High') },
           ].map(opt => (
             <button
-              key={String(opt.value)}
+              key={opt.value}
               type="button"
-              onClick={() => set('short_workout', opt.value)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border transition-all ${
-                form.short_workout === opt.value
-                  ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50'
-                  : ''
-              }`}
-              style={form.short_workout !== opt.value ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)' } : undefined}
+              onClick={() => set('intensity', opt.value)}
+              className="flex-1 py-2.5 rounded-full text-[13px] font-semibold border transition-all"
+              style={form.intensity === opt.value
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
+                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+              }
             >
-              <opt.icon size={16} className={form.short_workout === opt.value ? 'text-[#D4AF37]' : ''} style={form.short_workout !== opt.value ? { color: 'var(--color-text-subtle)' } : undefined} />
-              <span className={`text-[13px] font-semibold ${form.short_workout === opt.value ? 'text-[#D4AF37]' : ''}`} style={form.short_workout !== opt.value ? { color: 'var(--color-text-subtle)' } : undefined}>{opt.label}</span>
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{opt.desc}</span>
+              {opt.label}
             </button>
           ))}
         </div>
       </div>
-      )}
 
-      {/* Height/Weight/Age/Gender/Priority — only for strength/hybrid */}
-      {form.program_type !== 'cardio' && (<>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightFt', 'Height (ft)')}</label>
-          <input
-            type="number" min="3" max="8" placeholder="5"
-            value={form.height_ft}
-            onChange={e => set('height_ft', e.target.value)}
-            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
-            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightIn', 'Height (in)')}</label>
-          <input
-            type="number" min="0" max="11" placeholder="9"
-            value={form.height_in}
-            onChange={e => set('height_in', e.target.value)}
-            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
-            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.weightLbs', 'Weight (lbs)')}</label>
-          <input
-            type="number" min="60" max="600" placeholder="175"
-            value={form.weight_lbs}
-            onChange={e => set('weight_lbs', e.target.value)}
-            className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
-            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-          />
-        </div>
-      </div>
-
-      {/* Age */}
+      {/* Program length */}
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.age')}</label>
-        <input
-          type="number" min="14" max="90" placeholder="e.g. 28"
-          value={form.age}
-          onChange={e => set('age', e.target.value)}
-          className="w-full border border-white/6 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37]"
-            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
-        />
-      </div>
-
-      {/* Gender */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.gender')}</label>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programLength')}</label>
         <div className="flex gap-2">
-          {GENDER_OPTIONS.map(g => (
+          {[4, 6, 8, 12].map(n => (
             <button
-              key={g.value}
+              key={n}
               type="button"
-              onClick={() => set('gender', g.value)}
-              className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
-                form.gender === g.value
-                  ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]'
-                  : ''
-              }`}
-              style={form.gender !== g.value ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' } : undefined}
+              onClick={() => set('program_weeks', n)}
+              className="flex-1 py-2.5 rounded-full text-[13px] font-semibold border transition-all"
+              style={form.program_weeks === n
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
+                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+              }
             >
-              {t(`generateWorkout.genderOptions.${g.value}`)}
+              {n} {t('generateWorkout.weeks', 'wk')}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Priority muscles — only for strength/hybrid */}
+      {/* Priority muscles / Target Areas — only for strength/hybrid */}
+      {form.program_type !== 'cardio' && (
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMuscles')}</label>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.targetAreas')}</label>
         <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
         <div className="flex flex-wrap gap-2">
           {MUSCLE_OPTIONS.map(m => {
@@ -180,12 +165,15 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
                 onClick={() => !atMax && onToggleMuscle(m.value)}
                 className={`text-[13px] font-semibold px-3 py-1.5 rounded-full border transition-all ${
                   active
-                    ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]'
+                    ? ''
                     : atMax
                     ? 'cursor-not-allowed opacity-40'
                     : ''
                 }`}
-                style={!active ? { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' } : undefined}
+                style={active
+                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
+                  : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+                }
               >
                 {t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}
               </button>
@@ -193,35 +181,14 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
           })}
         </div>
       </div>
-      </>)}
+      )}
 
-      {/* Cardio program config */}
+      {/* Cardio focus picker — only for cardio */}
       {form.program_type === 'cardio' && (
         <>
           <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, #10B981 20%, transparent)' }}>
             <p className="text-[13px] font-semibold" style={{ color: '#10B981' }}>{t('generateWorkout.cardioDesc', 'Cardio-focused program')}</p>
             <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioDescBody', 'Generates a mix of cardio exercises tailored to your schedule.')}</p>
-          </div>
-
-          {/* Session duration */}
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioSessionLength', 'Session Length')}</label>
-            <div className="flex gap-2">
-              {[
-                { value: 20, label: '20 min' },
-                { value: 30, label: '30 min' },
-                { value: 45, label: '45 min' },
-                { value: 60, label: '60 min' },
-              ].map(opt => (
-                <button key={opt.value} type="button" onClick={() => set('cardio_duration', opt.value)}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-all"
-                  style={form.cardio_duration === opt.value
-                    ? { backgroundColor: 'color-mix(in srgb, #10B981 15%, transparent)', borderColor: 'color-mix(in srgb, #10B981 50%, transparent)', color: '#10B981' }
-                    : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-                  }
-                >{opt.label}</button>
-              ))}
-            </div>
           </div>
 
           {/* Cardio focus */}
@@ -257,22 +224,148 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
   );
 };
 
-// ── Step 2: Preview ────────────────────────────────────────────────────────
-const StepPreview = ({ result, preferredTrainingDays }) => {
+// ── Step 2: Preview (Expandable Week View) ────────────────────────────────
+const StepPreview = ({ result, programWeeks }) => {
   const { t } = useTranslation('pages');
-  if (!result) return null;
-  const { splitLabel, routinesA, routinesB, cardio, dayTemplates } = result;
-  const DAY_LABELS = DAY_KEYS.map(k => t(`days.${k}`, { ns: 'common' }));
+  const [viewWeek, setViewWeek] = useState(1);
+  const [expandedDay, setExpandedDay] = useState(null);
 
-  // Build weekly schedule display
-  // Map routines to user's actual preferred training days
-  // Preview grid: 0=Mon, 1=Tue, ..., 6=Sun (matches DAY_KEYS order)
+  if (!result) return null;
+  const { splitLabel, template_weeks } = result;
+  const totalWeeks = programWeeks || result.durationWeeks || 6;
+
+  // Get days for the current viewing week
+  const weekDays = template_weeks?.[String(viewWeek)] || [];
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2 mb-0.5">
+          <h2 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(splitLabel)}</h2>
+        </div>
+      </div>
+
+      {/* Week navigator */}
+      <div className="rounded-2xl px-4 py-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setViewWeek(w => Math.max(1, w - 1))}
+              disabled={viewWeek <= 1}
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+              aria-label="Previous week"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div>
+              <h2 className="text-[20px] font-semibold tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                {t('workouts.weekXOfY', { current: viewWeek, total: totalWeeks })}
+              </h2>
+              <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                {viewWeek % 2 === 1 ? t('generateWorkout.week1') : t('generateWorkout.week2')}
+              </p>
+            </div>
+            <button
+              onClick={() => setViewWeek(w => Math.min(totalWeeks, w + 1))}
+              disabled={viewWeek >= totalWeeks}
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+              aria-label="Next week"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+          <div className="w-11 h-11 rounded-2xl bg-[#10B981]/10 flex items-center justify-center">
+            <Zap size={18} className="text-[#10B981]" />
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-6">
+          <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
+            <div
+              className="h-full rounded-full bg-[#10B981] transition-all"
+              style={{ width: `${Math.min((viewWeek / totalWeeks) * 100, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Expandable day list */}
+        <div className="space-y-2">
+          {weekDays.map((day, di) => {
+            const dayExpanded = expandedDay === `week-${viewWeek}-${di}`;
+            const exercises = day.exercises || [];
+            return (
+              <div key={di}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedDay(dayExpanded ? null : `week-${viewWeek}-${di}`)}
+                  className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-colors duration-200 text-left"
+                  style={{ backgroundColor: 'var(--color-surface-hover)' }}
+                >
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <Dumbbell size={15} style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[14px] truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(day.label) || t('workouts.dayN', { n: di + 1, defaultValue: `Day ${di + 1}` })}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{exercises.length} {t('workouts.exercises', 'exercises')}</p>
+                  </div>
+                  <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${dayExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
+                </button>
+                {dayExpanded && (
+                  <div className="mx-4 mb-2 px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--color-surface-hover)', borderColor: 'var(--color-border-subtle)' }}>
+                    <div className="space-y-1.5">
+                      {exercises.map((ex, i) => {
+                        const exId = typeof ex === 'string' ? ex : ex?.id || ex?.exerciseId;
+                        const resolved = exerciseNameMap[exId];
+                        const setsReps = ex.sets && ex.reps ? `${ex.sets}x${ex.reps}` : ex.sets ? `${ex.sets} ${t('workouts.sets', 'sets')}` : '';
+                        return (
+                          <div key={i} className="flex items-center justify-between">
+                            <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                              <span className="mr-1.5" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}.</span>
+                              {exName(resolved) ?? ex.name ?? exId}
+                            </p>
+                            {setsReps && <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{setsReps}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {weekDays.length === 0 && (
+            <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+              <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.generating')}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Cardio note */}
+      {result.cardio?.daysPerWeek > 0 && (
+        <div className="flex items-start gap-3 bg-emerald-500/6 border border-emerald-500/15 rounded-xl px-4 py-3">
+          <Heart size={15} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[13px] font-semibold text-emerald-400">{t('generateWorkout.cardioPerWeek', { count: result.cardio.daysPerWeek })}</p>
+            <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{result.cardio.description}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Helper: build template_weeks from routinesA/routinesB ─────────────────
+const buildTemplateWeeks = (routinesA, routinesB, programWeeks, preferredTrainingDays) => {
+  const weeks = {};
   const dayNameToPreviewIdx = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
   const userDays = (preferredTrainingDays || [])
     .map(d => dayNameToPreviewIdx[d.toLowerCase()])
     .filter(n => n !== undefined)
     .sort((a, b) => a - b);
-
   const daysCount = routinesA.length;
   const fallbackPatterns = {
     1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4],
@@ -282,107 +375,28 @@ const StepPreview = ({ result, preferredTrainingDays }) => {
     ? userDays.slice(0, daysCount)
     : (fallbackPatterns[Math.min(daysCount, 7)] || []);
 
-  const week1Days = DAY_LABELS.map((day, i) => {
-    const routineIdx = dayAssignments.indexOf(i);
-    if (routineIdx === -1) return { day, type: 'rest' };
-    return { day, type: 'workout', routine: routinesA[routineIdx % routinesA.length], variant: 'A' };
-  });
-
-  const week2Days = DAY_LABELS.map((day, i) => {
-    const routineIdx = dayAssignments.indexOf(i);
-    if (routineIdx === -1) return { day, type: 'rest' };
-    return { day, type: 'workout', routine: routinesB[routineIdx % routinesB.length], variant: 'B' };
-  });
-
-  const avgDuration = routinesA.length
-    ? Math.round(routinesA.reduce((s, r) => s + estimateDuration(r), 0) / routinesA.length)
-    : 0;
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <div className="flex items-center gap-2 mb-0.5">
-          <h2 className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{splitLabel}</h2>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37]">
-            {routinesA.length} {t('generateWorkout.daysPerWeek')}
-          </span>
-        </div>
-        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.minPerSession', { min: avgDuration })}</p>
-      </div>
-
-      {/* Week 1 */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week1')}</p>
-        <div className="grid grid-cols-7 gap-1">
-          {week1Days.map(({ day, type, routine }) => (
-            <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
-              type === 'rest' ? 'opacity-40' : 'bg-[#D4AF37]/8 border border-[#D4AF37]/20'
-            }`} style={type === 'rest' ? { background: 'var(--color-bg-card)' } : undefined}>
-              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-subtle)' }}>{day}</span>
-              {type === 'workout' ? (
-                <span className="text-[8px] font-semibold text-[#D4AF37] text-center leading-tight mt-1">
-                  {routine.label.replace(' Day', '')}
-                </span>
-              ) : (
-                <span className="text-[8px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.rest')}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Week 2 */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week2')}</p>
-        <div className="grid grid-cols-7 gap-1">
-          {week2Days.map(({ day, type, routine }) => (
-            <div key={day} className={`flex flex-col items-center rounded-xl py-2 px-1 ${
-              type === 'rest' ? 'opacity-40' : 'bg-white/4 border border-white/8'
-            }`} style={type === 'rest' ? { background: 'var(--color-bg-card)' } : undefined}>
-              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-subtle)' }}>{day}</span>
-              {type === 'workout' ? (
-                <span className="text-[8px] font-semibold text-center leading-tight mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  {routine.label.replace(' Day', '')}
-                </span>
-              ) : (
-                <span className="text-[8px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.rest')}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Routines preview */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.week1Routines')}</p>
-        <div className="space-y-2">
-          {routinesA.map((r, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-bg-card)' }}>
-              <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                <Dumbbell size={13} className="text-[#D4AF37]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{r.name}</p>
-                <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{r.exercises.length} {t('workouts.exercises')}</p>
-              </div>
-              <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>~{estimateDuration(r)}m</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Cardio */}
-      {cardio.daysPerWeek > 0 && (
-        <div className="flex items-start gap-3 bg-emerald-500/6 border border-emerald-500/15 rounded-xl px-4 py-3">
-          <Heart size={15} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-[13px] font-semibold text-emerald-400">{t('generateWorkout.cardioPerWeek', { count: cardio.daysPerWeek })}</p>
-            <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{cardio.description}</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  for (let w = 1; w <= programWeeks; w++) {
+    const routines = w % 2 === 1 ? routinesA : routinesB;
+    const weekDays = [];
+    for (let ri = 0; ri < routines.length; ri++) {
+      const r = routines[ri];
+      weekDays.push({
+        label: r.label || r.name,
+        name: r.name,
+        name_es: r.name_es,
+        exercises: r.exercises.map(ex => ({
+          id: ex.exerciseId || ex.id,
+          name: ex.name,
+          name_es: ex.name_es,
+          sets: ex.sets,
+          reps: ex.reps,
+          restSeconds: ex.restSeconds || ex.rest_seconds,
+        })),
+      });
+    }
+    weeks[String(w)] = weekDays;
+  }
+  return weeks;
 };
 
 // ── Main Modal ─────────────────────────────────────────────────────────────
@@ -395,23 +409,14 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   const [result, setResult] = useState(null);
   const focusTrapRef = useFocusTrap(true, onClose);
 
-  // Auto-fill from onboarding data: prefer imperial fields from onboarding, fall back to metric conversion
-  const initHeightInches = onboarding?.height_inches
-    || (onboarding?.height_cm ? Math.round(onboarding.height_cm / 2.54) : null);
-  const initWeightLbs = onboarding?.initial_weight_lbs
-    || (onboarding?.weight_kg ? Math.round(onboarding.weight_kg * 2.205) : null);
-
   const [form, setForm] = useState({
-    height_ft:       initHeightInches ? String(Math.floor(initHeightInches / 12)) : '',
-    height_in:       initHeightInches ? String(initHeightInches % 12) : '',
-    weight_lbs:      initWeightLbs ? String(initWeightLbs) : '',
-    age:             onboarding?.age         || '',
-    gender:          onboarding?.gender || onboarding?.sex || 'other',
-    priority_muscles: onboarding?.priority_muscles || [],
-    short_workout:   false,
-    program_type:    'strength',
-    cardio_duration: 30,
-    cardio_focus:    'mixed',
+    program_type:       'strength',
+    training_days:      onboarding?.training_days_per_week || 3,
+    session_duration_min: 45,
+    intensity:          'moderate',
+    program_weeks:      6,
+    priority_muscles:   onboarding?.priority_muscles || [],
+    cardio_focus:       'mixed',
   });
 
   const onChange = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
@@ -425,22 +430,14 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     };
   });
 
-  // Convert imperial form values to metric for the generator
-  const formToMetric = () => {
-    const totalInches = (parseInt(form.height_ft, 10) || 0) * 12 + (parseInt(form.height_in, 10) || 0);
-    const heightCm = totalInches > 0 ? Math.round(totalInches * 2.54) : 170;
-    const weightKg = form.weight_lbs ? Math.round(parseFloat(form.weight_lbs) / 2.205) : 70;
-    return { heightCm, weightKg };
-  };
-
   // Generate preview when moving to step 1
   useEffect(() => {
     if (step === 1) {
       try {
         if (form.program_type === 'cardio') {
           // Generate cardio-only program using user's settings
-          const days = onboarding?.training_days_per_week || 3;
-          const dur = form.cardio_duration || 30;
+          const days = form.training_days;
+          const dur = form.session_duration_min || 30;
           const focus = form.cardio_focus || 'mixed';
 
           // Exercise pools by focus
@@ -497,7 +494,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             const typeName = types[i % types.length];
             routines.push({ name: typeName, name_es: typeName, label: typeName, exercises: dayExercises });
           }
-          setResult({
+          const cardioResult = {
             split: 'cardio',
             splitLabel: 'Cardio Program',
             somatotype: 'balanced',
@@ -506,18 +503,18 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             routinesA: routines,
             routinesB: routines,
             cardio: { daysPerWeek: days, description: `${dur}min ${focus} cardio` },
-            durationWeeks: 6,
-          });
+            durationWeeks: form.program_weeks,
+          };
+          cardioResult.template_weeks = buildTemplateWeeks(cardioResult.routinesA, cardioResult.routinesB, form.program_weeks, profile?.preferred_training_days);
+          setResult(cardioResult);
         } else {
-          const { heightCm, weightKg } = formToMetric();
+          // Map intensity to short_workout flag
+          const shortWorkout = form.intensity === 'low';
           const r = generateProgram({
             ...onboarding,
-            height_cm:       heightCm,
-            weight_kg:       weightKg,
-            age:             parseInt(form.age, 10)       || 30,
-            gender:          form.gender,
+            training_days_per_week: form.training_days,
             priority_muscles: form.priority_muscles,
-            short_workout:   form.short_workout,
+            short_workout:   shortWorkout,
           });
           // For hybrid: append a cardio finisher to each routine
           if (form.program_type === 'hybrid') {
@@ -535,6 +532,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
               exercises: [...routine.exercises, { ...cardioFinishers[i % cardioFinishers.length] }],
             }));
           }
+          r.durationWeeks = form.program_weeks;
+          r.template_weeks = buildTemplateWeeks(r.routinesA, r.routinesB, form.program_weeks, profile?.preferred_training_days);
           setResult(r);
         }
       } catch (e) {
@@ -551,24 +550,6 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     setError('');
     setGymHoursWarnings([]);
     try {
-      // Convert imperial to metric for storage
-      const { heightCm, weightKg } = formToMetric();
-      const totalInches = (parseInt(form.height_ft, 10) || 0) * 12 + (parseInt(form.height_in, 10) || 0);
-
-      // Save updated body data to member_onboarding (both imperial + metric)
-      await supabase.from('member_onboarding').upsert({
-        profile_id:      user.id,
-        gym_id:          profile.gym_id,
-        height_cm:       heightCm || null,
-        weight_kg:       weightKg || null,
-        height_inches:   totalInches || null,
-        initial_weight_lbs: parseFloat(form.weight_lbs) || null,
-        age:             parseInt(form.age, 10)       || null,
-        gender:          form.gender,
-        sex:             form.gender,
-        priority_muscles: form.priority_muscles,
-      }, { onConflict: 'profile_id' });
-
       // Fetch gym hours to know which days are closed
       const { data: gymHours } = await supabase
         .from('gym_hours')
@@ -716,10 +697,10 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         }, { onConflict: 'profile_id,day_of_week' }).then(() => {}).catch(() => {});
       }
 
-      // Save generated_programs row
+      // Save generated_programs row — use form.program_weeks for expiry
       const programStart = new Date().toISOString().split('T')[0];
       const expiresDate  = new Date();
-      expiresDate.setDate(expiresDate.getDate() + 42);
+      expiresDate.setDate(expiresDate.getDate() + (form.program_weeks * 7));
       const expiresAt = expiresDate.toISOString().split('T')[0];
 
       await supabase.from('generated_programs').insert({
@@ -727,9 +708,11 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         gym_id:        profile.gym_id,
         program_start: programStart,
         expires_at:    expiresAt,
+        duration_weeks: form.program_weeks,
         split_type:    result.split,
         routines_a_count: result.routinesA.length,
         cardio_days:   result.cardio,
+        template_weeks: result.template_weeks,
       });
 
       clearCache(`dash:${user.id}`);
@@ -742,9 +725,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     }
   };
 
-  const canAdvance = step === 0
-    ? (!!form.height_ft && !!form.weight_lbs && !!form.age)
-    : true;
+  // Always allow advance from step 0 — body data comes from onboarding
+  const canAdvance = true;
 
   return (
     <div
@@ -786,10 +768,10 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {step === 0 && (
-            <StepBodyData form={form} onChange={onChange} onToggleMuscle={onToggleMuscle} />
+            <StepCustomize form={form} onChange={onChange} onToggleMuscle={onToggleMuscle} />
           )}
           {step === 1 && (
-            <StepPreview result={result} preferredTrainingDays={profile?.preferred_training_days} />
+            <StepPreview result={result} programWeeks={form.program_weeks} />
           )}
         </div>
 
