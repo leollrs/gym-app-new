@@ -29,193 +29,138 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
   const { t } = useTranslation('pages');
   const set = (k, v) => onChange(k, v);
 
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-[17px] font-bold mb-0.5" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.customizeProgram')}</h2>
-        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.customizeProgramDesc')}</p>
-      </div>
+  const accentSel = { backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', color: 'var(--color-accent)' };
+  const defaultSel = { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' };
 
-      {/* Program type toggle */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programType', 'Program Type')}</label>
-        <div className="flex gap-2">
-          {[
-            { value: 'strength', icon: Dumbbell, label: t('generateWorkout.typeStrength', 'Strength'), desc: t('generateWorkout.typeStrengthDesc', 'Weight training') },
-            { value: 'cardio',   icon: Heart,    label: t('generateWorkout.typeCardio', 'Cardio'), desc: t('generateWorkout.typeCardioDesc', 'Cardio sessions') },
-            { value: 'hybrid',   icon: Zap,      label: t('generateWorkout.typeHybrid', 'Hybrid'), desc: t('generateWorkout.typeHybridDesc', 'Lifting + Cardio') },
-          ].map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => set('program_type', opt.value)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border transition-all ${
-                form.program_type === opt.value ? 'border-opacity-50' : ''
-              }`}
-              style={form.program_type === opt.value
-                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)' }
-                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)' }
-              }
+  return (
+    <div className="space-y-4">
+      {/* Program type — prominent cards */}
+      <div className="flex gap-2">
+        {[
+          { value: 'strength', icon: Dumbbell, label: t('generateWorkout.typeStrength', 'Strength'), desc: t('generateWorkout.typeStrengthDesc', 'Weight training') },
+          { value: 'cardio',   icon: Heart,    label: t('generateWorkout.typeCardio', 'Cardio'), desc: t('generateWorkout.typeCardioDesc', 'Cardio sessions') },
+          { value: 'hybrid',   icon: Zap,      label: t('generateWorkout.typeHybrid', 'Hybrid'), desc: t('generateWorkout.typeHybridDesc', 'Lifting + Cardio') },
+        ].map(opt => {
+          const sel = form.program_type === opt.value;
+          return (
+            <button key={opt.value} type="button" onClick={() => set('program_type', opt.value)}
+              className="flex-1 flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 transition-all active:scale-[0.97]"
+              style={sel ? accentSel : defaultSel}
             >
-              <opt.icon size={16} style={{ color: form.program_type === opt.value ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
-              <span className="text-[13px] font-semibold" style={{ color: form.program_type === opt.value ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}>{opt.label}</span>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: sel ? 'color-mix(in srgb, var(--color-accent) 20%, transparent)' : 'rgba(255,255,255,0.04)' }}>
+                <opt.icon size={18} style={{ color: sel ? 'var(--color-accent)' : 'var(--color-text-muted)' }} />
+              </div>
+              <span className="text-[13px] font-bold" style={{ color: sel ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{opt.label}</span>
               <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{opt.desc}</span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* Training days per week */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.trainingDays')}</label>
-        <div className="flex gap-1.5">
-          {[1, 2, 3, 4, 5, 6, 7].map(n => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => set('training_days', n)}
-              className="w-10 h-10 rounded-xl text-[14px] font-bold border transition-all flex items-center justify-center"
-              style={form.training_days === n
-                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
-                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-              }
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Session duration — free text input */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDuration')}</label>
-        <div className="relative">
-          <input
-            type="number"
-            min="10"
-            placeholder="45"
-            value={form.session_duration_min}
-            onChange={e => set('session_duration_min', e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
-            className="w-full border rounded-xl px-3 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-[#D4AF37] pr-12"
-            style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', borderColor: 'rgba(255,255,255,0.06)', fontSize: '16px' }}
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] pointer-events-none" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDurationMin', 'min')}</span>
-        </div>
-      </div>
-
-      {/* Intensity */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.intensity')}</label>
-        <div className="flex gap-2">
-          {[
-            { value: 'low',      label: t('generateWorkout.intensityLow', 'Low') },
-            { value: 'moderate', label: t('generateWorkout.intensityModerate', 'Moderate') },
-            { value: 'high',     label: t('generateWorkout.intensityHigh', 'High') },
-          ].map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => set('intensity', opt.value)}
-              className="flex-1 py-2.5 rounded-full text-[13px] font-semibold border transition-all"
-              style={form.intensity === opt.value
-                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
-                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-              }
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Program length */}
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programLength')}</label>
-        <div className="flex gap-2">
-          {[4, 6, 8, 12].map(n => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => set('program_weeks', n)}
-              className="flex-1 py-2.5 rounded-full text-[13px] font-semibold border transition-all"
-              style={form.program_weeks === n
-                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
-                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-              }
-            >
-              {n} {t('generateWorkout.weeks', 'wk')}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Priority muscles / Target Areas — only for strength/hybrid */}
-      {form.program_type !== 'cardio' && (
-      <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.targetAreas')}</label>
-        <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
-        <div className="flex flex-wrap gap-2">
-          {MUSCLE_OPTIONS.map(m => {
-            const active = form.priority_muscles.includes(m.value);
-            const atMax  = !active && form.priority_muscles.length >= 3;
-            return (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => !atMax && onToggleMuscle(m.value)}
-                className={`text-[13px] font-semibold px-3 py-1.5 rounded-full border transition-all ${
-                  active
-                    ? ''
-                    : atMax
-                    ? 'cursor-not-allowed opacity-40'
-                    : ''
-                }`}
-                style={active
-                  ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)', color: 'var(--color-accent)' }
-                  : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-                }
-              >
-                {t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      )}
-
-      {/* Cardio focus picker — only for cardio */}
-      {form.program_type === 'cardio' && (
-        <>
-          <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, #10B981 20%, transparent)' }}>
-            <p className="text-[13px] font-semibold" style={{ color: '#10B981' }}>{t('generateWorkout.cardioDesc', 'Cardio-focused program')}</p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioDescBody', 'Generates a mix of cardio exercises tailored to your schedule.')}</p>
+      {/* Schedule section — grouped card */}
+      <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
+        {/* Training days */}
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.trainingDays')}</label>
+          <div className="flex gap-1.5">
+            {[1, 2, 3, 4, 5, 6, 7].map(n => (
+              <button key={n} type="button" onClick={() => set('training_days', n)}
+                className="flex-1 h-10 rounded-xl text-[14px] font-bold border transition-all"
+                style={form.training_days === n ? accentSel : defaultSel}
+              >{n}</button>
+            ))}
           </div>
+        </div>
 
-          {/* Cardio focus */}
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioFocus', 'Focus')}</label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { value: 'mixed', label: t('generateWorkout.cardioMixed', 'Mixed') },
-                { value: 'liss', label: 'LISS' },
-                { value: 'hiit', label: 'HIIT' },
-                { value: 'machines', label: t('generateWorkout.cardioMachines', 'Machines') },
-                { value: 'sports', label: t('generateWorkout.cardioSports', 'Sports') },
-              ].map(opt => (
-                <button key={opt.value} type="button" onClick={() => set('cardio_focus', opt.value)}
-                  className="px-3.5 py-2 rounded-xl text-[12px] font-semibold border transition-all"
-                  style={form.cardio_focus === opt.value
-                    ? { backgroundColor: 'color-mix(in srgb, #10B981 15%, transparent)', borderColor: 'color-mix(in srgb, #10B981 50%, transparent)', color: '#10B981' }
-                    : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
-                  }
-                >{opt.label}</button>
+        {/* Duration + Intensity row */}
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionDuration')}</label>
+            <div className="relative">
+              <input type="number" inputMode="numeric" min="10" placeholder="45"
+                value={form.session_duration_min}
+                onChange={e => set('session_duration_min', e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
+                className="w-full border rounded-xl px-3 py-2.5 outline-none pr-12"
+                style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', borderColor: 'rgba(255,255,255,0.06)', fontSize: '16px' }}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none" style={{ color: 'var(--color-text-muted)' }}>min</span>
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programLength')}</label>
+            <div className="flex gap-1">
+              {[4, 6, 8, 12].map(n => (
+                <button key={n} type="button" onClick={() => set('program_weeks', n)}
+                  className="flex-1 py-2.5 rounded-xl text-[12px] font-bold border transition-all"
+                  style={form.program_weeks === n ? accentSel : defaultSel}
+                >{n}w</button>
               ))}
             </div>
           </div>
-        </>
+        </div>
+
+        {/* Intensity */}
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.intensity')}</label>
+          <div className="flex gap-2">
+            {[
+              { value: 'low',      label: t('generateWorkout.intensityLow', 'Low') },
+              { value: 'moderate', label: t('generateWorkout.intensityModerate', 'Moderate') },
+              { value: 'high',     label: t('generateWorkout.intensityHigh', 'High') },
+            ].map(opt => (
+              <button key={opt.value} type="button" onClick={() => set('intensity', opt.value)}
+                className="flex-1 py-2.5 rounded-xl text-[12px] font-bold border transition-all"
+                style={form.intensity === opt.value ? accentSel : defaultSel}
+              >{opt.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Target Areas — strength/hybrid only */}
+      {form.program_type !== 'cardio' && (
+        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.targetAreas')}</label>
+          <p className="text-[10px] mb-3" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {MUSCLE_OPTIONS.map(m => {
+              const active = form.priority_muscles.includes(m.value);
+              const atMax  = !active && form.priority_muscles.length >= 3;
+              return (
+                <button key={m.value} type="button" onClick={() => !atMax && onToggleMuscle(m.value)}
+                  className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border transition-all ${atMax && !active ? 'opacity-30' : ''}`}
+                  style={active ? accentSel : defaultSel}
+                >{t(`generateWorkout.muscleOptions.${m.value.toLowerCase()}`)}</button>
+              );
+            })}
+          </div>
+        </div>
       )}
+
+      {/* Cardio focus — cardio only */}
+      {form.program_type === 'cardio' && (
+        <div className="rounded-2xl p-4" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <label className="block text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioFocus', 'Focus')}</label>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { value: 'mixed', label: t('generateWorkout.cardioMixed', 'Mixed') },
+              { value: 'liss', label: 'LISS' },
+              { value: 'hiit', label: 'HIIT' },
+              { value: 'machines', label: t('generateWorkout.cardioMachines', 'Machines') },
+              { value: 'sports', label: t('generateWorkout.cardioSports', 'Sports') },
+            ].map(opt => (
+              <button key={opt.value} type="button" onClick={() => set('cardio_focus', opt.value)}
+                className="px-3.5 py-2 rounded-xl text-[12px] font-semibold border transition-all"
+                style={form.cardio_focus === opt.value ? accentSel : defaultSel}
+              >{opt.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Hybrid info */}
       {form.program_type === 'hybrid' && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+        <div className="rounded-2xl p-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
           <p className="text-[13px] font-semibold" style={{ color: 'var(--color-accent)' }}>{t('generateWorkout.hybridDesc', 'Hybrid program')}</p>
           <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.hybridDescBody', 'Combines weight training with cardio finishers. Each session ends with 10-15 min cardio.')}</p>
         </div>
