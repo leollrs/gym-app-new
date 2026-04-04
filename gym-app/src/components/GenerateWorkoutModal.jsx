@@ -195,12 +195,57 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
       </div>
       </>)}
 
-      {/* Cardio program description */}
+      {/* Cardio program config */}
       {form.program_type === 'cardio' && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, #10B981 20%, transparent)' }}>
-          <p className="text-[13px] font-semibold" style={{ color: '#10B981' }}>{t('generateWorkout.cardioDesc', 'Cardio-focused program')}</p>
-          <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioDescBody', 'Generates a mix of cardio exercises — treadmill, cycling, rowing, HIIT, and more. Tailored to your training schedule.')}</p>
-        </div>
+        <>
+          <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, #10B981 20%, transparent)' }}>
+            <p className="text-[13px] font-semibold" style={{ color: '#10B981' }}>{t('generateWorkout.cardioDesc', 'Cardio-focused program')}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioDescBody', 'Generates a mix of cardio exercises tailored to your schedule.')}</p>
+          </div>
+
+          {/* Session duration */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioSessionLength', 'Session Length')}</label>
+            <div className="flex gap-2">
+              {[
+                { value: 20, label: '20 min' },
+                { value: 30, label: '30 min' },
+                { value: 45, label: '45 min' },
+                { value: 60, label: '60 min' },
+              ].map(opt => (
+                <button key={opt.value} type="button" onClick={() => set('cardio_duration', opt.value)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold border transition-all"
+                  style={form.cardio_duration === opt.value
+                    ? { backgroundColor: 'color-mix(in srgb, #10B981 15%, transparent)', borderColor: 'color-mix(in srgb, #10B981 50%, transparent)', color: '#10B981' }
+                    : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+                  }
+                >{opt.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cardio focus */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioFocus', 'Focus')}</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'mixed', label: t('generateWorkout.cardioMixed', 'Mixed') },
+                { value: 'liss', label: 'LISS' },
+                { value: 'hiit', label: 'HIIT' },
+                { value: 'machines', label: t('generateWorkout.cardioMachines', 'Machines') },
+                { value: 'sports', label: t('generateWorkout.cardioSports', 'Sports') },
+              ].map(opt => (
+                <button key={opt.value} type="button" onClick={() => set('cardio_focus', opt.value)}
+                  className="px-3.5 py-2 rounded-xl text-[12px] font-semibold border transition-all"
+                  style={form.cardio_focus === opt.value
+                    ? { backgroundColor: 'color-mix(in srgb, #10B981 15%, transparent)', borderColor: 'color-mix(in srgb, #10B981 50%, transparent)', color: '#10B981' }
+                    : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
+                  }
+                >{opt.label}</button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
       {form.program_type === 'hybrid' && (
         <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
@@ -365,6 +410,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     priority_muscles: onboarding?.priority_muscles || [],
     short_workout:   false,
     program_type:    'strength',
+    cardio_duration: 30,
+    cardio_focus:    'mixed',
   });
 
   const onChange = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
@@ -391,26 +438,64 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     if (step === 1) {
       try {
         if (form.program_type === 'cardio') {
-          // Generate cardio-only program
+          // Generate cardio-only program using user's settings
           const days = onboarding?.training_days_per_week || 3;
-          const cardioExercises = [
-            { id: 'ex_cd_treadmill', name: 'Treadmill', name_es: 'Caminadora', sets: 1, reps: '20min', rest_seconds: 0 },
-            { id: 'ex_cd_bike', name: 'Stationary Bike', name_es: 'Bicicleta estática', sets: 1, reps: '20min', rest_seconds: 0 },
-            { id: 'ex_cd_elliptical', name: 'Elliptical', name_es: 'Elíptica', sets: 1, reps: '15min', rest_seconds: 0 },
-            { id: 'ex_cd_rower', name: 'Rowing Machine', name_es: 'Máquina de remo', sets: 1, reps: '15min', rest_seconds: 0 },
-            { id: 'ex_cd_stairmaster', name: 'Stairmaster', name_es: 'Escaladora', sets: 1, reps: '15min', rest_seconds: 0 },
-            { id: 'ex_cd_jumprope', name: 'Jump Rope', name_es: 'Saltar la cuerda', sets: 1, reps: '10min', rest_seconds: 0 },
-            { id: 'ex_cd_hiit', name: 'HIIT', name_es: 'HIIT', sets: 1, reps: '20min', rest_seconds: 0 },
+          const dur = form.cardio_duration || 30;
+          const focus = form.cardio_focus || 'mixed';
+
+          // Exercise pools by focus
+          const machinePool = [
+            { id: 'ex_cd_treadmill', name: 'Treadmill', name_es: 'Caminadora' },
+            { id: 'ex_cd_bike', name: 'Stationary Bike', name_es: 'Bicicleta estática' },
+            { id: 'ex_cd_elliptical', name: 'Elliptical', name_es: 'Elíptica' },
+            { id: 'ex_cd_rower', name: 'Rowing Machine', name_es: 'Máquina de remo' },
+            { id: 'ex_cd_stairmaster', name: 'Stairmaster', name_es: 'Escaladora' },
           ];
+          const hiitPool = [
+            { id: 'ex_cd_hiit', name: 'HIIT', name_es: 'HIIT' },
+            { id: 'ex_cd_jumprope', name: 'Jump Rope', name_es: 'Saltar la cuerda' },
+            { id: 'ex_cd_boxing', name: 'Boxing', name_es: 'Boxeo' },
+          ];
+          const lissPool = [
+            { id: 'ex_cd_treadmill', name: 'Treadmill', name_es: 'Caminadora' },
+            { id: 'ex_cd_bike', name: 'Stationary Bike', name_es: 'Bicicleta estática' },
+            { id: 'ex_cd_walking', name: 'Walking', name_es: 'Caminar' },
+            { id: 'ex_cd_elliptical', name: 'Elliptical', name_es: 'Elíptica' },
+          ];
+          const sportsPool = [
+            { id: 'ex_cd_basketball', name: 'Basketball', name_es: 'Baloncesto' },
+            { id: 'ex_cd_soccer', name: 'Soccer', name_es: 'Fútbol' },
+            { id: 'ex_cd_tennis', name: 'Tennis', name_es: 'Tenis' },
+            { id: 'ex_cd_boxing', name: 'Boxing', name_es: 'Boxeo' },
+            { id: 'ex_cd_dance', name: 'Dance', name_es: 'Baile' },
+            { id: 'ex_cd_martial', name: 'Martial Arts', name_es: 'Artes Marciales' },
+          ];
+          const mixedPool = [...machinePool, ...hiitPool.slice(0, 1), { id: 'ex_cd_jumprope', name: 'Jump Rope', name_es: 'Saltar la cuerda' }];
+
+          const pool = focus === 'machines' ? machinePool : focus === 'hiit' ? hiitPool : focus === 'liss' ? lissPool : focus === 'sports' ? sportsPool : mixedPool;
+
+          // Calculate per-exercise duration
+          const exPerDay = dur <= 20 ? 2 : dur <= 30 ? 2 : 3;
+          const perExDur = Math.round(dur / exPerDay);
+
           const routines = [];
-          const types = ['LISS Cardio', 'HIIT Day', 'Mixed Cardio', 'Endurance', 'Recovery Cardio'];
+          const typesByFocus = {
+            mixed: ['Mixed Cardio', 'HIIT Day', 'Endurance', 'Recovery', 'Power Cardio'],
+            liss: ['Steady State', 'Easy Pace', 'Long Session', 'Recovery', 'Endurance'],
+            hiit: ['HIIT Blast', 'Tabata', 'Circuit', 'Sprint Intervals', 'Power Rounds'],
+            machines: ['Machine Circuit', 'Endurance', 'Interval', 'Recovery', 'Challenge'],
+            sports: ['Game Day', 'Agility', 'Sport Mix', 'Endurance', 'Active Fun'],
+          };
+          const types = typesByFocus[focus] || typesByFocus.mixed;
+
           for (let i = 0; i < days; i++) {
             const dayExercises = [];
-            // Pick 2-3 cardio exercises per day, rotating
-            for (let j = 0; j < 3; j++) {
-              dayExercises.push({ ...cardioExercises[(i * 3 + j) % cardioExercises.length] });
+            for (let j = 0; j < exPerDay; j++) {
+              const ex = pool[(i * exPerDay + j) % pool.length];
+              dayExercises.push({ ...ex, sets: 1, reps: `${perExDur}min`, rest_seconds: 0 });
             }
-            routines.push({ name: types[i % types.length], name_es: types[i % types.length], exercises: dayExercises });
+            const typeName = types[i % types.length];
+            routines.push({ name: typeName, name_es: typeName, label: typeName, exercises: dayExercises });
           }
           setResult({
             split: 'cardio',
@@ -420,7 +505,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             shortWorkout: false,
             routinesA: routines,
             routinesB: routines,
-            cardio: { daysPerWeek: days, description: 'Dedicated cardio program' },
+            cardio: { daysPerWeek: days, description: `${dur}min ${focus} cardio` },
             durationWeeks: 6,
           });
         } else {
