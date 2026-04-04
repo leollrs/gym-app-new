@@ -38,7 +38,37 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
         <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.bodyProfileDesc')}</p>
       </div>
 
-      {/* Session length toggle */}
+      {/* Program type toggle */}
+      <div>
+        <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.programType', 'Program Type')}</label>
+        <div className="flex gap-2">
+          {[
+            { value: 'strength', icon: Dumbbell, label: t('generateWorkout.typeStrength', 'Strength'), desc: t('generateWorkout.typeStrengthDesc', 'Weight training') },
+            { value: 'cardio',   icon: Heart,    label: t('generateWorkout.typeCardio', 'Cardio'), desc: t('generateWorkout.typeCardioDesc', 'Cardio sessions') },
+            { value: 'hybrid',   icon: Zap,      label: t('generateWorkout.typeHybrid', 'Hybrid'), desc: t('generateWorkout.typeHybridDesc', 'Lifting + Cardio') },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => set('program_type', opt.value)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-xl border transition-all ${
+                form.program_type === opt.value ? 'border-opacity-50' : ''
+              }`}
+              style={form.program_type === opt.value
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 50%, transparent)' }
+                : { backgroundColor: 'var(--color-bg-card)', borderColor: 'rgba(255,255,255,0.06)' }
+              }
+            >
+              <opt.icon size={16} style={{ color: form.program_type === opt.value ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
+              <span className="text-[13px] font-semibold" style={{ color: form.program_type === opt.value ? 'var(--color-accent)' : 'var(--color-text-subtle)' }}>{opt.label}</span>
+              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Session length toggle — only for strength/hybrid */}
+      {form.program_type !== 'cardio' && (
       <div>
         <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.sessionLength')}</label>
         <div className="flex gap-2">
@@ -64,8 +94,10 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
           ))}
         </div>
       </div>
+      )}
 
-      {/* Height (ft + in) + Weight (lbs) */}
+      {/* Height/Weight/Age/Gender/Priority — only for strength/hybrid */}
+      {form.program_type !== 'cardio' && (<>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.heightFt', 'Height (ft)')}</label>
@@ -133,7 +165,7 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
         </div>
       </div>
 
-      {/* Priority muscles */}
+      {/* Priority muscles — only for strength/hybrid */}
       <div>
         <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMuscles')}</label>
         <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.priorityMusclesDesc')}</p>
@@ -161,6 +193,21 @@ const StepBodyData = ({ form, onChange, onToggleMuscle }) => {
           })}
         </div>
       </div>
+      </>)}
+
+      {/* Cardio program description */}
+      {form.program_type === 'cardio' && (
+        <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, #10B981 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, #10B981 20%, transparent)' }}>
+          <p className="text-[13px] font-semibold" style={{ color: '#10B981' }}>{t('generateWorkout.cardioDesc', 'Cardio-focused program')}</p>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.cardioDescBody', 'Generates a mix of cardio exercises — treadmill, cycling, rowing, HIIT, and more. Tailored to your training schedule.')}</p>
+        </div>
+      )}
+      {form.program_type === 'hybrid' && (
+        <div className="rounded-xl p-4" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--color-accent)' }}>{t('generateWorkout.hybridDesc', 'Hybrid program')}</p>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('generateWorkout.hybridDescBody', 'Combines weight training with cardio finishers. Each session ends with 10-15 min cardio.')}</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -317,6 +364,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
     gender:          onboarding?.gender || onboarding?.sex || 'other',
     priority_muscles: onboarding?.priority_muscles || [],
     short_workout:   false,
+    program_type:    'strength',
   });
 
   const onChange = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
@@ -342,17 +390,68 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
   useEffect(() => {
     if (step === 1) {
       try {
-        const { heightCm, weightKg } = formToMetric();
-        const r = generateProgram({
-          ...onboarding,
-          height_cm:       heightCm,
-          weight_kg:       weightKg,
-          age:             parseInt(form.age, 10)       || 30,
-          gender:          form.gender,
-          priority_muscles: form.priority_muscles,
-          short_workout:   form.short_workout,
-        });
-        setResult(r);
+        if (form.program_type === 'cardio') {
+          // Generate cardio-only program
+          const days = onboarding?.training_days_per_week || 3;
+          const cardioExercises = [
+            { id: 'ex_cd_treadmill', name: 'Treadmill', name_es: 'Caminadora', sets: 1, reps: '20min', rest_seconds: 0 },
+            { id: 'ex_cd_bike', name: 'Stationary Bike', name_es: 'Bicicleta estática', sets: 1, reps: '20min', rest_seconds: 0 },
+            { id: 'ex_cd_elliptical', name: 'Elliptical', name_es: 'Elíptica', sets: 1, reps: '15min', rest_seconds: 0 },
+            { id: 'ex_cd_rower', name: 'Rowing Machine', name_es: 'Máquina de remo', sets: 1, reps: '15min', rest_seconds: 0 },
+            { id: 'ex_cd_stairmaster', name: 'Stairmaster', name_es: 'Escaladora', sets: 1, reps: '15min', rest_seconds: 0 },
+            { id: 'ex_cd_jumprope', name: 'Jump Rope', name_es: 'Saltar la cuerda', sets: 1, reps: '10min', rest_seconds: 0 },
+            { id: 'ex_cd_hiit', name: 'HIIT', name_es: 'HIIT', sets: 1, reps: '20min', rest_seconds: 0 },
+          ];
+          const routines = [];
+          const types = ['LISS Cardio', 'HIIT Day', 'Mixed Cardio', 'Endurance', 'Recovery Cardio'];
+          for (let i = 0; i < days; i++) {
+            const dayExercises = [];
+            // Pick 2-3 cardio exercises per day, rotating
+            for (let j = 0; j < 3; j++) {
+              dayExercises.push({ ...cardioExercises[(i * 3 + j) % cardioExercises.length] });
+            }
+            routines.push({ name: types[i % types.length], name_es: types[i % types.length], exercises: dayExercises });
+          }
+          setResult({
+            split: 'cardio',
+            splitLabel: 'Cardio Program',
+            somatotype: 'balanced',
+            recoveryTier: 'standard',
+            shortWorkout: false,
+            routinesA: routines,
+            routinesB: routines,
+            cardio: { daysPerWeek: days, description: 'Dedicated cardio program' },
+            durationWeeks: 6,
+          });
+        } else {
+          const { heightCm, weightKg } = formToMetric();
+          const r = generateProgram({
+            ...onboarding,
+            height_cm:       heightCm,
+            weight_kg:       weightKg,
+            age:             parseInt(form.age, 10)       || 30,
+            gender:          form.gender,
+            priority_muscles: form.priority_muscles,
+            short_workout:   form.short_workout,
+          });
+          // For hybrid: append a cardio finisher to each routine
+          if (form.program_type === 'hybrid') {
+            const cardioFinishers = [
+              { id: 'ex_cd_treadmill', name: 'Treadmill', name_es: 'Caminadora', sets: 1, reps: '10min', rest_seconds: 0 },
+              { id: 'ex_cd_bike', name: 'Stationary Bike', name_es: 'Bicicleta estática', sets: 1, reps: '10min', rest_seconds: 0 },
+              { id: 'ex_cd_rower', name: 'Rowing Machine', name_es: 'Máquina de remo', sets: 1, reps: '10min', rest_seconds: 0 },
+            ];
+            r.routinesA = r.routinesA.map((routine, i) => ({
+              ...routine,
+              exercises: [...routine.exercises, { ...cardioFinishers[i % cardioFinishers.length] }],
+            }));
+            r.routinesB = r.routinesB.map((routine, i) => ({
+              ...routine,
+              exercises: [...routine.exercises, { ...cardioFinishers[i % cardioFinishers.length] }],
+            }));
+          }
+          setResult(r);
+        }
       } catch (e) {
         logger.error('Generator error', e);
       }
