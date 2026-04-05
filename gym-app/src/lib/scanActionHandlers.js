@@ -24,29 +24,8 @@ export async function handleCheckinScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
   }
 
-  // Check for duplicate check-in (same day)
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: existing } = await supabase
-    .from('check_ins')
-    .select('id')
-    .eq('profile_id', member.id)
-    .eq('gym_id', gymId)
-    .gte('checked_in_at', `${today}T00:00:00`)
-    .limit(1);
-
-  if (existing?.length > 0) {
-    return {
-      success: true,
-      message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: member.full_name }),
-      memberName: member.full_name,
-      memberId: member.id,
-      avatarUrl: member.avatar_url,
-      data: { duplicate: true },
-      externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { duplicate: true } },
-    };
-  }
-
-  // Insert check-in
+  // Always record the check-in (members can visit multiple times per day)
+  // Points are limited to once per 24hr via add_reward_points_checked server-side
   const { error: insertErr } = await supabase
     .from('check_ins')
     .insert({ profile_id: member.id, gym_id: gymId, method: 'qr' });
