@@ -12,6 +12,7 @@ import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
 import { MEALS } from '../data/meals';
 import { isMealAllergenSafe, isMealDietaryCompliant } from '../lib/mealPreferences';
+import RewardPicker from '../components/RewardPicker';
 
 // ── DATA ───────────────────────────────────────────────────
 // values are stored in DB; labels come from translation files
@@ -168,6 +169,8 @@ const Onboarding = () => {
   // Invite code state
   const [inviteCode, setInviteCode] = useState('');
   const [inviteStatus, setInviteStatus] = useState('idle'); // idle | verifying | success | error
+  const [showRewardPicker, setShowRewardPicker] = useState(false);
+  const [referredRewardId, setReferredRewardId] = useState(null);
   const [inviteError, setInviteError] = useState('');
 
   const [data, setData] = useState({
@@ -286,8 +289,15 @@ const Onboarding = () => {
       }
       setInviteStatus('success');
       await refreshProfile();
-      // Auto-advance after 1.5s
-      setTimeout(() => setStep(1), 1500);
+
+      // Check if invite had a linked referral → show reward picker
+      if (result?.has_referral && result?.referred_reward_id) {
+        setReferredRewardId(result.referred_reward_id);
+        setTimeout(() => setShowRewardPicker(true), 1000);
+      } else {
+        // Auto-advance after 1.5s
+        setTimeout(() => setStep(1), 1500);
+      }
     } catch (err) {
       setInviteStatus('error');
       setInviteError(err.message || t('inviteCode.errors.invalidCode'));
@@ -814,13 +824,24 @@ const Onboarding = () => {
               )}
 
               {/* Success state */}
-              {inviteStatus === 'success' && (
+              {inviteStatus === 'success' && !showRewardPicker && (
                 <div className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3.5">
                   <Check size={18} className="text-emerald-400" />
                   <span className="text-[14px] font-semibold text-emerald-400">
                     {t('inviteCode.success')}
                   </span>
                 </div>
+              )}
+
+              {/* Referral reward picker — shown after invite claim if referral was linked */}
+              {showRewardPicker && referredRewardId && (
+                <RewardPicker
+                  rewardId={referredRewardId}
+                  gymId={profile?.gym_id}
+                  onChosen={() => { setShowRewardPicker(false); setTimeout(() => setStep(1), 800); }}
+                  onSkip={() => { setShowRewardPicker(false); setStep(1); }}
+                  className="w-full"
+                />
               )}
 
               {/* Error state */}

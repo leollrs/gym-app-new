@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { UserPlus, Copy, Check, Loader2, Share2, Link } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { UserPlus, Copy, Check, Loader2, Share2, Link, ScanLine, X, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { Capacitor } from '@capacitor/core';
@@ -7,6 +7,8 @@ import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import logger from '../../../lib/logger';
+import useScanClaim from '../../../hooks/useScanClaim';
+import { parseQRContent } from '../../../lib/scanRouter';
 
 export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
@@ -22,7 +24,84 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Referral linking
+  const [referrerInfo, setReferrerInfo] = useState(null); // { id, name, avatarUrl, codeId }
+  const [referralCode, setReferralCode] = useState('');
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralError, setReferralError] = useState(null);
+
   const inviteUrl = result?.code ? `https://tugympr.app/invite/${result.code}` : '';
+
+  // Handle scan input from physical scanner (claimed while modal is open)
+  const handleReferralScan = useCallback(async (rawText) => {
+    if (phase !== 'form') return;
+    setReferralError(null);
+    setReferralLoading(true);
+
+    try {
+      const trimmed = rawText.trim();
+
+      // Try parsing as structured QR (gym-referral:gymId:referrerId:code)
+      const parsed = parseQRContent(trimmed);
+
+      let referrerProfileId = null;
+      let referralCodeId = null;
+
+      if (parsed?.type === 'referral') {
+        referrerProfileId = parsed.referrerId;
+        // Look up the referral code record
+        const { data: codeRow } = await supabase
+          .from('referral_codes')
+          .select('id')
+          .eq('profile_id', parsed.referrerId)
+          .eq('gym_id', gymId)
+          .single();
+        referralCodeId = codeRow?.id;
+      } else {
+        // Try as a plain referral code string
+        const { data: codeRow } = await supabase
+          .from('referral_codes')
+          .select('id, profile_id')
+          .eq('code', trimmed.toUpperCase())
+          .eq('gym_id', gymId)
+          .single();
+        if (codeRow) {
+          referrerProfileId = codeRow.profile_id;
+          referralCodeId = codeRow.id;
+        }
+      }
+
+      if (!referrerProfileId || !referralCodeId) {
+        setReferralError(t('admin.createInvite.referralNotFound', 'Referral code not found'));
+        setReferralLoading(false);
+        return;
+      }
+
+      // Get referrer info
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('id', referrerProfileId)
+        .single();
+
+      if (!profile) {
+        setReferralError(t('admin.createInvite.referrerNotFound', 'Referrer not found'));
+        setReferralLoading(false);
+        return;
+      }
+
+      setReferrerInfo({ id: profile.id, name: profile.full_name, avatarUrl: profile.avatar_url, codeId: referralCodeId });
+      setReferralCode(trimmed);
+    } catch (err) {
+      logger.error('Referral scan error:', err);
+      setReferralError(err.message);
+    } finally {
+      setReferralLoading(false);
+    }
+  }, [phase, gymId, t]);
+
+  // Claim scanner while form phase is active
+  useScanClaim(handleReferralScan, phase === 'form');
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -34,6 +113,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
         p_member_name: name.trim(),
         p_phone: phone.trim() || null,
         p_email: email.trim() || null,
+        p_referral_code_id: referrerInfo?.codeId || null,
       });
       if (rpcError) throw rpcError;
       setResult(data);
@@ -106,6 +186,9 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setError(null);
     setCopiedCode(false);
     setCopiedLink(false);
+    setReferrerInfo(null);
+    setReferralCode('');
+    setReferralError(null);
   };
 
   const expiryDate = result?.expires_at
@@ -160,6 +243,54 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               placeholder={k('emailPlaceholder')}
               className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] transition-colors"
             />
+          </div>
+
+          {/* Referral — scan or type */}
+          <div>
+            <label className="block text-[12px] font-semibold text-[#9CA3AF] mb-1.5">
+              {t('admin.createInvite.referral', 'Referred by')}
+            </label>
+            {referrerInfo ? (
+              <div className="flex items-center gap-2.5 bg-[#10B981]/8 border border-[#10B981]/20 rounded-xl px-3 py-2.5">
+                {referrerInfo.avatarUrl ? (
+                  <img src={referrerInfo.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center">
+                    <span className="text-[12px] font-bold text-[#10B981]">{referrerInfo.name?.[0]?.toUpperCase()}</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[#10B981] truncate">{referrerInfo.name}</p>
+                  <p className="text-[10px] text-[#6B7280]">{t('admin.createInvite.referralLinked', 'Referral will be linked')}</p>
+                </div>
+                <button onClick={() => { setReferrerInfo(null); setReferralCode(''); setReferralError(null); }}
+                  className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#EF4444] transition-colors">
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && referralCode.trim()) { e.preventDefault(); handleReferralScan(referralCode); } }}
+                  placeholder={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
+                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 pr-10 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 transition-colors"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {referralLoading ? (
+                    <Loader2 size={14} className="animate-spin text-[#D4AF37]" />
+                  ) : (
+                    <ScanLine size={14} className="text-[#4B5563]" />
+                  )}
+                </div>
+              </div>
+            )}
+            {referralError && <p className="text-[11px] text-[#EF4444] mt-1">{referralError}</p>}
+            {!referrerInfo && !referralError && (
+              <p className="text-[10px] text-[#4B5563] mt-1">{t('admin.createInvite.referralHint', 'Scan a member\'s referral QR to link the referral automatically')}</p>
+            )}
           </div>
 
           {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}

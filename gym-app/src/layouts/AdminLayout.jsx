@@ -7,9 +7,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { ScanClaimProvider } from '../contexts/ScanClaimContext';
 import { supabase } from '../lib/supabase';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
+const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
 
 const NAV_SECTIONS = [
   {
@@ -212,6 +214,7 @@ export default function AdminLayout({ children }) {
   };
 
   return (
+    <ScanClaimProvider>
     <div className="min-h-screen admin-shell flex">
       {/* Admin onboarding wizard for first-time gym setup */}
       {showOnboardingWizard && (
@@ -219,6 +222,11 @@ export default function AdminLayout({ children }) {
           <AdminOnboardingWizard onComplete={() => setShowOnboardingWizard(false)} />
         </Suspense>
       )}
+
+      {/* Physical barcode/QR scanner feedback layer */}
+      <Suspense fallback={null}>
+        <ScanFeedback />
+      </Suspense>
 
       <a href="#main-content" className="skip-to-content">
         {t('adminNav.skipToMain')}
@@ -611,5 +619,6 @@ export default function AdminLayout({ children }) {
       </nav>
 
     </div>
+    </ScanClaimProvider>
   );
 }

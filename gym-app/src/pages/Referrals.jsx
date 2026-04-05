@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
-  CheckCircle, AlertCircle, UserPlus, Star, Coins,
+  CheckCircle, AlertCircle, UserPlus, Star, Coins, Maximize2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Capacitor } from '@capacitor/core';
@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
+import QRCodeModal from '../components/QRCodeModal';
 import { formatDistanceToNow } from 'date-fns';
 
 const REFERRAL_BASE_URL = 'https://tugympr.app/referral';
@@ -27,6 +28,7 @@ export default function Referrals() {
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   // ── Load referral data ──────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -208,16 +210,30 @@ export default function Referrals() {
 
             {/* QR Code */}
             {referralLink && (
-              <div className="bg-white p-4 rounded-xl mb-4">
-                <QRCodeSVG
-                  value={referralLink}
-                  size={180}
-                  level="H"
-                  includeMargin={false}
-                  bgColor="#FFFFFF"
-                  fgColor="#000000"
-                />
-              </div>
+              <>
+                <div className="bg-white p-4 rounded-xl mb-3">
+                  <QRCodeSVG
+                    value={referralLink}
+                    size={180}
+                    level="H"
+                    includeMargin={false}
+                    bgColor="#FFFFFF"
+                    fgColor="#000000"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowQRModal(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold mb-3 transition-all duration-200 active:scale-[0.97]"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                    border: '1.5px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                    color: 'var(--color-accent)',
+                  }}
+                >
+                  <Maximize2 size={15} />
+                  {t('referrals.openQR')}
+                </button>
+              </>
             )}
 
             <p className="text-[11px] mb-4" style={{ color: 'var(--color-text-subtle)' }}>{t('referrals.scanOrShare')}</p>
@@ -362,6 +378,18 @@ export default function Referrals() {
             )}
           </div>
         </>
+      )}
+
+      {/* Fullscreen QR modal for referral link */}
+      {showQRModal && referralLink && (
+        <QRCodeModal
+          payload={referralLink}
+          memberName={profile?.full_name}
+          displayFormat="qr_code"
+          gymName={gymName}
+          onClose={() => setShowQRModal(false)}
+          skipSigning
+        />
       )}
     </div>
   );

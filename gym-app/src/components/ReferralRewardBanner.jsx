@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import RewardPicker from './RewardPicker';
 
 // ── ReferralRewardBanner ────────────────────────────────────────────────────
 // Shows a gold celebration banner when the user has unseen referral rewards.
@@ -16,6 +17,7 @@ export default function ReferralRewardBanner() {
   const [rewards, setRewards] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   // Fetch unseen referral rewards on mount
   useEffect(() => {
@@ -25,9 +27,9 @@ export default function ReferralRewardBanner() {
       try {
         const { data, error } = await supabase
           .from('referral_rewards')
-          .select('id, reward_type, reward_value, referral_id, seen')
+          .select('id, reward_type, reward_value, referral_id, seen, choice_status, gym_id')
           .eq('profile_id', user.id)
-          .eq('seen', false)
+          .or('seen.eq.false,choice_status.eq.pending')
           .order('created_at', { ascending: false });
 
         if (!error && data?.length > 0) {
@@ -78,16 +80,15 @@ export default function ReferralRewardBanner() {
   const current = rewards[currentIndex];
   if (!current) return null;
 
-  const isReferrer = current.referrer_id === user.id;
-  const friendName = isReferrer
-    ? (current.referred?.full_name || current.referred?.username || '???')
-    : (current.referrer?.full_name || current.referrer?.username || '???');
-
-  const rewardDisplay = current.reward_type === 'points'
-    ? `${current.reward_value} pts`
-    : current.reward_value;
+  const isPendingChoice = current.choice_status === 'pending';
+  const rewardDisplay = isPendingChoice
+    ? t('referralReward.pickYourReward', 'Pick your reward!')
+    : current.reward_type === 'points'
+      ? `${current.reward_value?.points || current.reward_value} pts`
+      : (current.reward_value?.name || current.reward_value || '');
 
   return (
+    <>
     <AnimatePresence>
       {visible && (
         <motion.div
@@ -159,16 +160,16 @@ export default function ReferralRewardBanner() {
                 textShadow: '0 1px 2px rgba(0,0,0,0.15)',
               }}
             >
-              {isReferrer
-                ? t('referralReward.friendJoined', { name: friendName })
-                : t('referralReward.welcome', { name: friendName })}
+              {isPendingChoice
+                ? t('referralReward.referralComplete', 'Your referral is complete!')
+                : t('referralReward.youEarned', { reward: rewardDisplay })}
             </p>
 
-            {/* Reward amount */}
+            {/* Reward amount or pick prompt */}
             <p
               style={{
                 color: '#FFFFFF',
-                fontSize: 22,
+                fontSize: isPendingChoice ? 18 : 22,
                 fontWeight: 900,
                 textAlign: 'center',
                 lineHeight: 1.2,
@@ -177,14 +178,12 @@ export default function ReferralRewardBanner() {
                 textShadow: '0 2px 4px rgba(0,0,0,0.2)',
               }}
             >
-              {isReferrer
-                ? t('referralReward.youEarned', { reward: rewardDisplay })
-                : t('referralReward.youEarned', { reward: rewardDisplay })}
+              {rewardDisplay}
             </p>
 
-            {/* Claim button */}
+            {/* Action button */}
             <button
-              onClick={handleDismiss}
+              onClick={isPendingChoice ? () => setShowPicker(true) : handleDismiss}
               style={{
                 marginTop: 10,
                 padding: '8px 28px',
@@ -206,7 +205,7 @@ export default function ReferralRewardBanner() {
               onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             >
-              {t('referralReward.claim')}
+              {isPendingChoice ? t('referralReward.chooseNow', 'Choose Now') : t('referralReward.claim')}
             </button>
 
             {/* Multiple rewards indicator */}
@@ -237,5 +236,31 @@ export default function ReferralRewardBanner() {
         </motion.div>
       )}
     </AnimatePresence>
+
+      {/* Reward Picker Modal */}
+      {showPicker && current && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setShowPicker(false)}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="p-5">
+              <RewardPicker
+                rewardId={current.id}
+                gymId={current.gym_id}
+                onChosen={() => {
+                  setShowPicker(false);
+                  handleDismiss();
+                }}
+                onSkip={() => {
+                  setShowPicker(false);
+                  handleDismiss();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

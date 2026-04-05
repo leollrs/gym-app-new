@@ -589,11 +589,11 @@ export default function AdminMembers() {
             )}
             {(tab === 'members' || tab === 'invites') && (
               <>
-                <button onClick={() => setShowCreateInvite(true)}
+                <button onClick={() => setShowInvite(true)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors">
                   <Link size={13} /> {k('inviteMember')}
                 </button>
-                <button onClick={() => setShowInvite(true)}
+                <button onClick={() => setShowCreateInvite(true)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37] transition-colors"
                   style={{ color: '#000' }}>
                   <UserPlus size={13} /> {k('addMember')}

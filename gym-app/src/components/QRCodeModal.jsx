@@ -9,6 +9,25 @@ const WalletPass = registerPlugin('WalletPass');
 import { supabase } from '../lib/supabase';
 import { signQRPayload } from '../lib/qrSecurity';
 
+// Max brightness when showing QR so physical scanners can read easily
+async function setMaxBrightness() {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const { ScreenBrightness } = await import('@capacitor-community/screen-brightness');
+    const { brightness: original } = await ScreenBrightness.getBrightness();
+    await ScreenBrightness.setBrightness({ brightness: 1.0 });
+    return original;
+  } catch { return null; }
+}
+
+async function restoreBrightness(original) {
+  if (original == null || !Capacitor.isNativePlatform()) return;
+  try {
+    const { ScreenBrightness } = await import('@capacitor-community/screen-brightness');
+    await ScreenBrightness.setBrightness({ brightness: original });
+  } catch { /* best effort */ }
+}
+
 /**
  * Fullscreen modal that displays a member's QR code or barcode for scanning
  * at the gym's access system. Designed for maximum scanability:
@@ -19,23 +38,31 @@ import { signQRPayload } from '../lib/qrSecurity';
  * @param {string} displayFormat - 'qr_code' | 'barcode_128' | 'barcode_39'
  * @param {string} gymName       - Gym name for wallet pass
  * @param {function} onClose     - Close handler
+ * @param {boolean} skipSigning  - If true, display payload as-is without HMAC signing (for URLs like referral links)
  */
-export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose }) {
+export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_code', gymName, onClose, skipSigning = false }) {
   const { t } = useTranslation('pages');
   const codeRef = useRef(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
   const [signedPayload, setSignedPayload] = useState(null);
 
-  // Sign the QR payload with HMAC to prevent forgery
+  // Sign the QR payload with HMAC to prevent forgery (skip for raw URLs like referral links)
   useEffect(() => {
-    if (!payload) return;
+    if (!payload || skipSigning) return;
     let cancelled = false;
     signQRPayload(payload).then((signed) => {
       if (!cancelled) setSignedPayload(signed);
     });
     return () => { cancelled = true; };
-  }, [payload]);
+  }, [payload, skipSigning]);
+
+  // Max screen brightness while QR is displayed
+  const originalBrightnessRef = useRef(null);
+  useEffect(() => {
+    setMaxBrightness().then(orig => { originalBrightnessRef.current = orig; });
+    return () => { restoreBrightness(originalBrightnessRef.current); };
+  }, []);
 
   const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
   const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';

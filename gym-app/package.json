@@ -14,6 +14,7 @@
     "deploy:staging": "vite build && npx @capgo/cli bundle upload --channel staging"
   },
   "dependencies": {
+    "@capacitor-community/screen-brightness": "^8.0.0",
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
     "@capacitor/android": "^8.2.0",
     "@capacitor/app": "^8.0.1",

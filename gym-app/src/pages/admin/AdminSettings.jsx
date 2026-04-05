@@ -13,6 +13,7 @@ import { getAllPalettes, getPalette, DEFAULT_PALETTE } from '../../lib/palettes'
 import { analyzeColorPair, autoHarmonize } from '../../lib/themeGenerator';
 import { validateImageFile } from '../../lib/validateImage';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { clearIntegrationCache } from '../../lib/integrationBridge';
 import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 
@@ -204,6 +205,7 @@ function ConfigPill({ label, value, color }) {
 const TAB_GENERAL = 'general';
 const TAB_BRANDING = 'branding';
 const TAB_OPERATIONS = 'operations';
+const TAB_INTEGRATIONS = 'integrations';
 
 export default function AdminSettings() {
   const { profile, refreshProfile } = useAuth();
@@ -877,6 +879,7 @@ export default function AdminSettings() {
     { key: TAB_GENERAL, label: t('admin.settings.tabGeneral', 'General') },
     { key: TAB_BRANDING, label: t('admin.settings.tabBranding', 'Branding') },
     { key: TAB_OPERATIONS, label: t('admin.settings.tabOperations', 'Operations') },
+    { key: TAB_INTEGRATIONS, label: t('admin.settings.tabIntegrations', 'Integrations') },
   ];
 
   // ── Derived summary values ──
@@ -1919,6 +1922,25 @@ export default function AdminSettings() {
                           style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                         />
                       </div>
+
+                      {/* Reward choice days */}
+                      <div className="border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('admin.referral.choiceDays', 'Days to choose reward')}
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          value={referralConfig.reward_choice_days ?? 7}
+                          onChange={e => setReferralConfig(c => ({ ...c, reward_choice_days: e.target.value ? Number(e.target.value) : 7 }))}
+                          className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                        />
+                        <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-faint)' }}>
+                          {t('admin.referral.choiceDaysHint', 'Members can pick their referral reward within this window. After that, the default reward is auto-assigned.')}
+                        </p>
+                      </div>
                     </>
                   )}
                 </div>
@@ -2289,6 +2311,289 @@ export default function AdminSettings() {
           </FadeIn>
         </div>
       )}
+
+      {/* ── INTEGRATIONS TAB ─────────────────────────────── */}
+      {settingsTab === TAB_INTEGRATIONS && (
+        <IntegrationsPanel gymId={gymId} t={t} showToast={showToast} />
+      )}
     </AdminPageShell>
+  );
+}
+
+// ── Integrations Panel (extracted to keep main component manageable) ──
+
+const PROVIDERS = [
+  { value: 'none', label: 'None' },
+  { value: 'webhook', label: 'Generic Webhook' },
+  { value: 'mindbody', label: 'Mindbody' },
+  { value: 'clubready', label: 'ClubReady' },
+  { value: 'abc_fitness', label: 'ABC Fitness' },
+];
+
+const INTEGRATION_ACTIONS = [
+  { key: 'checkin', label: 'Check-in' },
+  { key: 'purchase', label: 'Purchase' },
+  { key: 'reward', label: 'Reward Redemption' },
+  { key: 'referral', label: 'Referral' },
+  { key: 'voucher', label: 'Win-Back Voucher' },
+];
+
+function IntegrationsPanel({ gymId, t, showToast }) {
+  const [provider, setProvider] = useState('none');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [actionsEnabled, setActionsEnabled] = useState(['checkin', 'purchase', 'reward', 'referral', 'voucher']);
+  const [isActive, setIsActive] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [integrationId, setIntegrationId] = useState(null);
+  const [queueCount, setQueueCount] = useState(0);
+  const [testing, setTesting] = useState(false);
+
+  // Load existing config
+  useEffect(() => {
+    if (!gymId) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('gym_integrations')
+          .select('*')
+          .eq('gym_id', gymId)
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setIntegrationId(data.id);
+          setProvider(data.provider || 'none');
+          setIsActive(data.is_active);
+          setActionsEnabled(data.actions_enabled || []);
+          if (data.config) {
+            setWebhookUrl(data.config.url || '');
+            setWebhookSecret(data.config.secret || '');
+          }
+        }
+
+        // Queue count
+        const { count } = await supabase
+          .from('integration_queue')
+          .select('id', { count: 'exact', head: true })
+          .eq('gym_id', gymId)
+          .in('status', ['pending', 'failed']);
+
+        setQueueCount(count ?? 0);
+      } catch { /* table may not exist yet */ }
+    })();
+  }, [gymId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const config = provider === 'webhook'
+        ? { url: webhookUrl, secret: webhookSecret }
+        : {};
+
+      const row = {
+        gym_id: gymId,
+        provider,
+        config,
+        is_active: isActive && provider !== 'none',
+        actions_enabled: actionsEnabled,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (integrationId) {
+        await supabase.from('gym_integrations').update(row).eq('id', integrationId);
+      } else {
+        const { data } = await supabase.from('gym_integrations').insert(row).select('id').single();
+        if (data) setIntegrationId(data.id);
+      }
+
+      clearIntegrationCache(gymId);
+      showToast(t('admin.settings.integrationSaved', 'Integration settings saved'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to save', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      if (!integrationId) {
+        showToast('Save the integration first', 'error');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('integration-webhook', {
+        body: {
+          integrationId,
+          action: 'test',
+          payload: { test: true, timestamp: new Date().toISOString(), gymId },
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        showToast(t('admin.settings.integrationTestSuccess', 'Connection successful!'), 'success');
+      } else {
+        showToast(`Test failed: ${data?.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Test failed: ${err.message}`, 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const toggleAction = (action) => {
+    setActionsEnabled(prev =>
+      prev.includes(action) ? prev.filter(a => a !== action) : [...prev, action]
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <FadeIn>
+        <AdminCard>
+          <SectionLabel>{t('admin.settings.integrationTitle', 'External System Integration')}</SectionLabel>
+          <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('admin.settings.integrationDesc', 'Connect your gym\'s existing software so scan actions (check-ins, purchases, etc.) are automatically synced.')}
+          </p>
+
+          {/* Provider */}
+          <div className="mb-4">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('admin.settings.provider', 'Provider')}
+            </label>
+            <select
+              value={provider}
+              onChange={e => setProvider(e.target.value)}
+              className="w-full rounded-xl px-3.5 py-2.5 text-[13px] outline-none"
+              style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+            >
+              {PROVIDERS.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Webhook config */}
+          {provider === 'webhook' && (
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.settings.webhookUrl', 'Webhook URL')}
+                </label>
+                <input
+                  type="url"
+                  value={webhookUrl}
+                  onChange={e => setWebhookUrl(e.target.value)}
+                  placeholder="https://your-system.com/webhook"
+                  className="w-full rounded-xl px-3.5 py-2.5 text-[13px] outline-none"
+                  style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.settings.webhookSecret', 'Signing Secret (optional)')}
+                </label>
+                <input
+                  type="password"
+                  value={webhookSecret}
+                  onChange={e => setWebhookSecret(e.target.value)}
+                  placeholder="hmac-secret"
+                  className="w-full rounded-xl px-3.5 py-2.5 text-[13px] outline-none"
+                  style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                />
+                <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-faint)' }}>
+                  {t('admin.settings.webhookSecretHint', 'Used to sign payloads with HMAC-SHA256. The signature is sent in the X-Webhook-Signature header.')}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Coming soon for specific providers */}
+          {['mindbody', 'clubready', 'abc_fitness'].includes(provider) && (
+            <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
+              <p className="text-[12px] font-medium" style={{ color: 'var(--color-accent)' }}>
+                {t('admin.settings.providerComingSoon', 'Direct {{provider}} integration is coming soon. For now, use the Generic Webhook option or contact us for custom setup.', { provider: PROVIDERS.find(p => p.value === provider)?.label })}
+              </p>
+            </div>
+          )}
+
+          {/* Actions to sync */}
+          {provider !== 'none' && (
+            <div className="mb-4">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('admin.settings.actionsToSync', 'Actions to Sync')}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {INTEGRATION_ACTIONS.map(a => (
+                  <button
+                    key={a.key}
+                    onClick={() => toggleAction(a.key)}
+                    className="px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-colors"
+                    style={{
+                      background: actionsEnabled.includes(a.key) ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-bg-input)',
+                      color: actionsEnabled.includes(a.key) ? 'var(--color-accent)' : 'var(--color-text-subtle)',
+                      border: `1px solid ${actionsEnabled.includes(a.key) ? 'color-mix(in srgb, var(--color-accent) 25%, transparent)' : 'var(--color-border-subtle)'}`,
+                    }}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active toggle */}
+          {provider !== 'none' && (
+            <div className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-xl" style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)' }}>
+              <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                {t('admin.settings.integrationActive', 'Integration Active')}
+              </span>
+              <button
+                onClick={() => setIsActive(p => !p)}
+                className="w-10 h-6 rounded-full transition-colors relative"
+                style={{ background: isActive ? 'var(--color-success)' : 'var(--color-border-default)' }}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          )}
+
+          {/* Queue status */}
+          {queueCount > 0 && (
+            <div className="mb-4 px-3 py-2.5 rounded-xl flex items-center justify-between"
+              style={{ background: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 15%, transparent)' }}>
+              <span className="text-[12px] font-medium" style={{ color: 'var(--color-warning)' }}>
+                {t('admin.settings.queuePending', '{{count}} pending sync items', { count: queueCount })}
+              </span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+            >
+              <Save size={16} />
+              {saving ? t('admin.settings.saving', 'Saving...') : t('admin.settings.saveIntegration', 'Save Integration')}
+            </button>
+            {provider === 'webhook' && integrationId && (
+              <button
+                onClick={handleTest}
+                disabled={testing || !webhookUrl}
+                className="px-5 py-3 rounded-xl font-bold text-[14px] transition-all disabled:opacity-50"
+                style={{ background: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+              >
+                {testing ? '...' : t('admin.settings.testConnection', 'Test')}
+              </button>
+            )}
+          </div>
+        </AdminCard>
+      </FadeIn>
+    </div>
   );
 }

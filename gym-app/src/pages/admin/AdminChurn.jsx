@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
   CheckCircle, MessageSquare, Download, Square, CheckSquare, Send,
-  UserPlus, X, Sparkles, FlaskConical, Trophy, StopCircle, Plus,
+  UserPlus, X, Sparkles, FlaskConical, Trophy, StopCircle, Plus, ChevronDown,
 } from 'lucide-react';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +20,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs } from '../../components/admin';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
 
-import { translateSignal } from '../../lib/churn/signalI18n';
+import { translateSignal, translateSignalName } from '../../lib/churn/signalI18n';
 
 // Sub-components
 import SendMessageModal from './components/SendMessageModal';
@@ -306,6 +306,8 @@ function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
 
 // ── Member Detail Panel (right pane for at-risk tab) ─────
 function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts, onMessage, onContact, onWinBack, t }) {
+  const [showHealthy, setShowHealthy] = useState(false);
+
   if (!member) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-6">
@@ -386,8 +388,63 @@ function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts,
         </div>
       </div>
 
-      {/* Key Signals — compact inline */}
-      {signals.length > 0 && (
+      {/* Signal Breakdown — full detail */}
+      {member.signals && (
+        <div className="px-4 py-2.5 border-b border-white/6">
+          {(() => {
+            const entries = Object.entries(member.signals);
+            const contributing = entries.filter(([, s]) => s.score > 0).sort((a, b) => (b[1].weightedScore ?? b[1].score) - (a[1].weightedScore ?? a[1].score));
+            const healthy = entries.filter(([, s]) => s.score <= 0);
+            return (
+              <>
+                {contributing.length > 0 && (
+                  <>
+                    <p className="text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churnSignals.contributingFactors', 'Contributing Factors')}</p>
+                    <div className="space-y-1.5">
+                      {contributing.map(([key, s]) => {
+                        const pct = s.maxPts > 0 ? Math.min(100, (s.score / s.maxPts) * 100) : 0;
+                        const barColor = pct >= 70 ? '#EF4444' : pct >= 40 ? '#F59E0B' : '#6B7280';
+                        return (
+                          <div key={key}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-semibold text-[#E5E7EB]">{translateSignalName(t, key)}</span>
+                              <span className="text-[9px] font-bold tabular-nums" style={{ color: barColor }}>{s.score}/{s.maxPts}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                            </div>
+                            <p className="text-[9px] text-[#6B7280] mt-0.5 truncate">{s.label}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                {healthy.length > 0 && (
+                  <div className="mt-2">
+                    <button onClick={() => setShowHealthy(p => !p)} className="flex items-center gap-1 text-[9px] font-semibold text-[#4B5563] uppercase tracking-wider hover:text-[#9CA3AF] transition-colors">
+                      {t('admin.churnSignals.healthySignals', 'Healthy Signals')} ({healthy.length})
+                      <ChevronDown size={10} className={`transition-transform ${showHealthy ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showHealthy && (
+                      <div className="space-y-1 mt-1.5">
+                        {healthy.map(([key, s]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#6B7280]">{translateSignalName(t, key)}</span>
+                            <span className="text-[9px] text-[#10B981] font-medium">{s.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+      {/* Fallback: key signal pills when detailed signals unavailable */}
+      {!member.signals && signals.length > 0 && (
         <div className="px-4 py-2.5 border-b border-white/6">
           <div className="flex flex-wrap gap-1">
             {signals.map((sig, i) => (
@@ -970,10 +1027,32 @@ export default function AdminChurn() {
                             )}
                           </div>
                           <div className="mb-2"><ScoreBar score={m.churnScore} /></div>
-                          <div className="mb-1 space-y-0.5">
-                            {(m.keySignals || [m.keySignal]).slice(0, 3).map((sig, i) => (
-                              <p key={i} className="text-[12px] text-[#9CA3AF]"><span className="text-[#6B7280]">{i === 0 ? `${t('admin.churn.signal', 'Signal')}: ` : '· '}</span>{translateSignal(t, sig)}</p>
-                            ))}
+                          <div className="mb-1 space-y-1">
+                            {m.signals ? (
+                              Object.entries(m.signals)
+                                .filter(([, s]) => s.score > 0)
+                                .sort((a, b) => (b[1].weightedScore ?? b[1].score) - (a[1].weightedScore ?? a[1].score))
+                                .slice(0, 4)
+                                .map(([key, s]) => {
+                                  const pct = s.maxPts > 0 ? Math.min(100, (s.score / s.maxPts) * 100) : 0;
+                                  const barColor = pct >= 70 ? '#EF4444' : pct >= 40 ? '#F59E0B' : '#6B7280';
+                                  return (
+                                    <div key={key}>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-medium text-[#9CA3AF]">{translateSignalName(t, key)}</span>
+                                        <span className="text-[9px] font-bold tabular-nums" style={{ color: barColor }}>{s.score}/{s.maxPts}</span>
+                                      </div>
+                                      <div className="h-1 rounded-full bg-white/6 overflow-hidden mt-0.5">
+                                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                            ) : (
+                              (m.keySignals || [m.keySignal]).slice(0, 3).map((sig, i) => (
+                                <p key={i} className="text-[12px] text-[#9CA3AF]"><span className="text-[#6B7280]">{i === 0 ? `${t('admin.churn.signal', 'Signal')}: ` : '· '}</span>{translateSignal(t, sig)}</p>
+                              ))
+                            )}
                           </div>
                           <p className="text-[11px] text-[#6B7280]">
                             {m.lastActivityAt

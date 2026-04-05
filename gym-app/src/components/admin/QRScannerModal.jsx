@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Camera, ScanLine } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
-import { verifyQRPayload } from '../../lib/qrSecurity';
+import { handleScannedValue as routerHandleScannedValue } from '../../lib/scanRouter';
 
 /**
  * QR scanner for admins.
@@ -157,59 +157,19 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
 
 /**
  * Verify signature server-side, then parse the payload.
+ * Thin wrapper around the shared scanRouter for backward-compatibility
+ * with the camera scanner's callback-based interface.
  * Returns true if onScan was called, false if the QR is invalid.
  */
 async function handleScannedValue(rawText, onScan, setError) {
   if (!rawText || typeof rawText !== 'string') return false;
-  const trimmed = rawText.trim();
 
-  // JSON payloads (password_reset) are not signed
-  if (trimmed.startsWith('{')) {
-    try {
-      const json = JSON.parse(trimmed);
-      if (json.type === 'password_reset' && json.request_id && json.token) {
-        onScan({ type: 'password_reset', request_id: json.request_id, token: json.token });
-        return true;
-      }
-    } catch { /* fall through */ }
+  const result = await routerHandleScannedValue(rawText, setError);
+  if (result) {
+    onScan(result);
+    return true;
   }
-
-  // Signed payloads: payload:timestamp|signature
-  // Verify signature + expiry server-side before trusting
-  const lastPipe = trimmed.lastIndexOf('|');
-  if (lastPipe !== -1) {
-    const { valid, payload } = await verifyQRPayload(trimmed);
-    if (!valid) {
-      setError('QR code signature invalid or expired. Ask member to refresh their QR.');
-      return true; // error was set, don't show generic error
-    }
-    // Parse the verified payload (strip the :timestamp suffix)
-    const withoutTimestamp = payload?.replace(/:\d+$/, '') || '';
-    const parsed = parseQRContent(withoutTimestamp);
-    if (parsed) { onScan(parsed); return true; }
-  }
-
-  // Unsigned legacy fallback — try parsing directly
-  const parsed = parseQRContent(trimmed);
-  if (parsed) { onScan(parsed); return true; }
-
+  // If setError was called inside routerHandleScannedValue (e.g. invalid sig),
+  // return true so caller doesn't show a generic error
   return false;
-}
-
-function parseQRContent(text) {
-  if (!text || typeof text !== 'string') return null;
-
-  if (text.startsWith('gym-purchase:')) {
-    const parts = text.split(':');
-    if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
-      return { type: 'purchase', gymId: parts[1], memberId: parts[2], productId: parts[3] };
-    }
-    return null;
-  }
-
-  if (text.length > 0) {
-    return { type: 'checkin', qrPayload: text };
-  }
-
-  return null;
 }

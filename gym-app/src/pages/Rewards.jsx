@@ -173,7 +173,7 @@ const RedeemModal = ({ reward, points, onConfirm, onClose, t }) => {
 // ── Redemption QR Modal ──────────────────────────────────────────────────────
 const RedemptionQRModal = ({ reward, redemptionId, userId, gymId, memberName, onClose }) => {
   const { t } = useTranslation('pages');
-  const payload = `gym-redeem:${gymId}:${userId}:${reward.id}:${redemptionId}`;
+  const payload = `gym-reward:${gymId}:${userId}:${redemptionId}`;
   const [signedPayload, setSignedPayload] = useState(null);
 
   useEffect(() => {
