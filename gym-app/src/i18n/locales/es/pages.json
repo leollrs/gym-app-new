@@ -2042,7 +2042,11 @@
       "unrecognized": "Código QR no reconocido",
       "scannerConnected": "Escáner",
       "processing": "Procesando escaneo...",
-      "duplicateNote": "Ya entró hoy"
+      "duplicateNote": "Ya entró hoy",
+      "confirmCheckin": "¿Confirmar check-in para este miembro?",
+      "confirmPurchase": "¿Confirmar esta compra?",
+      "approve": "Aprobar",
+      "deny": "Cancelar"
     },
     "challengeTypes": {
       "consistency": "Consistencia",
