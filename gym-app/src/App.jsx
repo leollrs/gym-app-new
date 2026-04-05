@@ -276,6 +276,40 @@ const MemberBlockedScreen = () => {
   );
 };
 
+// ── PROFILE UNAVAILABLE SCREEN ─────────────────────────────
+const ProfileUnavailableScreen = () => {
+  const { signOut } = useAuth();
+  return (
+    <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
+      <div className="max-w-md w-full text-center">
+        <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-6">
+          <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M3.055 19h17.89c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L1.323 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">We could not load your account</h1>
+        <p className="text-[14px] text-[#9CA3AF] mb-8">
+          This usually means your profile has not loaded yet or the network request failed.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-[#D4AF37] hover:bg-[#E6C766] text-black rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors"
+          >
+            Retry
+          </button>
+          <button
+            onClick={signOut}
+            className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-5 py-3 text-[13px] font-medium transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const isSuperAdmin = (profile) => profile?.role === 'super_admin';
 const isAdmin = (profile) => profile?.role === 'admin' || profile?.role === 'super_admin';
 const isTrainer = (profile) => profile?.role === 'trainer';
@@ -283,9 +317,9 @@ const isTrainer = (profile) => profile?.role === 'trainer';
 // ── PROTECTED ROUTE (member) ───────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
-  if (!profile) return null;
+  if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
   if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
@@ -300,9 +334,9 @@ const ProtectedRoute = ({ children }) => {
 // Redirects away if already onboarded.
 const OnboardingRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
-  if (!profile) return null;
+  if (!profile) return <ProfileUnavailableScreen />;
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
   if (profile.is_onboarded) {
@@ -317,9 +351,9 @@ const OnboardingRoute = ({ children }) => {
 // ── ADMIN ROUTE ────────────────────────────────────────────
 const AdminRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)            return <Navigate to="/login" replace />;
-  if (!profile)         return null;
+  if (!profile)         return <ProfileUnavailableScreen />;
   if (gymDeactivated)   return <GymDeactivatedScreen />;
   if (memberBlocked)    return <MemberBlockedScreen />;
   if (isSuperAdmin(profile)) return <Navigate to="/platform/operations" replace />;
@@ -330,9 +364,9 @@ const AdminRoute = ({ children }) => {
 // ── PLATFORM ROUTE (super_admin only) ─────────────────────
 const PlatformRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)                  return <Navigate to="/login" replace />;
-  if (!profile)               return null;
+  if (!profile)               return <ProfileUnavailableScreen />;
   if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
   return children;
 };
@@ -340,9 +374,9 @@ const PlatformRoute = ({ children }) => {
 // ── TRAINER ROUTE ──────────────────────────────────────────
 const TrainerRoute = ({ children }) => {
   const { user, profile, loading, gymDeactivated, memberBlocked } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)              return <Navigate to="/login" replace />;
-  if (!profile)           return null;
+  if (!profile)           return <ProfileUnavailableScreen />;
   if (gymDeactivated)     return <GymDeactivatedScreen />;
   if (memberBlocked)      return <MemberBlockedScreen />;
   if (!isTrainer(profile)) return <Navigate to="/" replace />;
@@ -353,7 +387,7 @@ const TrainerRoute = ({ children }) => {
 // Used for pages like TVDisplay that need auth but are accessible to all roles.
 const AuthenticatedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
   if (!user)   return <Navigate to="/login" replace />;
   return children;
 };
@@ -361,8 +395,8 @@ const AuthenticatedRoute = ({ children }) => {
 // ── PUBLIC ROUTE ───────────────────────────────────────────
 const PublicRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
-  if (loading) return null;
-  if (user && !profile) return null;
+  if (loading) return <LoadingScreen />;
+  if (user && !profile) return <ProfileUnavailableScreen />;
   if (user && profile && isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (user && profile?.is_onboarded) {

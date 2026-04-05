@@ -1,5 +1,6 @@
 // ── Referrals Page ──────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
@@ -94,6 +95,9 @@ export default function Referrals() {
   const totalPointsEarned = referrals.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
 
   const referralLink = referralCode ? `${REFERRAL_BASE_URL}/${referralCode}` : '';
+  const referralQrPayload = (referralCode && profile?.gym_id && user?.id)
+    ? `gym-referral:${profile.gym_id}:${user.id}:${referralCode}`
+    : '';
 
   // ── Copy code ───────────────────────────────────────────────────────────────
   const handleCopy = useCallback(async () => {
@@ -209,11 +213,11 @@ export default function Referrals() {
             )}
 
             {/* QR Code */}
-            {referralLink && (
+            {referralQrPayload && (
               <>
                 <div className="bg-white p-4 rounded-xl mb-3">
                   <QRCodeSVG
-                    value={referralLink}
+                    value={referralQrPayload}
                     size={180}
                     level="H"
                     includeMargin={false}
@@ -380,16 +384,16 @@ export default function Referrals() {
         </>
       )}
 
-      {/* Fullscreen QR modal for referral link */}
-      {showQRModal && referralLink && (
+      {/* Fullscreen QR modal for referral — portaled to body so fixed positioning works */}
+      {showQRModal && referralQrPayload && createPortal(
         <QRCodeModal
-          payload={referralLink}
+          payload={referralQrPayload}
           memberName={profile?.full_name}
           displayFormat="qr_code"
           gymName={gymName}
           onClose={() => setShowQRModal(false)}
-          skipSigning
-        />
+        />,
+        document.body
       )}
     </div>
   );

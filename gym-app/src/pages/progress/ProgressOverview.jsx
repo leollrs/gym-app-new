@@ -577,6 +577,59 @@ function SessionRow({ session, onDelete }) {
   );
 }
 
+// ── Cardio Session Row ──────────────────────────────────────────────────
+function CardioSessionRow({ session }) {
+  const { t, i18n } = useTranslation('pages');
+  const dur = formatDuration(session.duration_seconds);
+  const dist = session.distance_km ? `${parseFloat(session.distance_km).toFixed(1)} km` : null;
+  const cals = session.calories_burned ? `${session.calories_burned} kcal` : null;
+  const typeLabel = t(`cardio.types.${session.cardio_type}`, session.cardio_type.replace(/_/g, ' '));
+
+  return (
+    <div className="relative bg-white/[0.04] rounded-2xl border border-white/[0.06] overflow-hidden">
+      <div className="w-full text-left px-4 py-3.5 flex items-start gap-3">
+        <div className="flex-shrink-0 w-9 text-center pt-0.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-success)' }}>
+            {new Date(session.completed_at).toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'short' })}
+          </p>
+          <p className="text-[22px] font-bold leading-none" style={{ color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+            {new Date(session.completed_at).getDate()}
+          </p>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <Activity size={13} style={{ color: 'var(--color-success)' }} />
+            <p className="font-semibold text-[15px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
+              {typeLabel}
+            </p>
+          </div>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
+            <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              <Clock size={10} /> {dur}
+            </span>
+            {dist && (
+              <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                <MapPin size={10} /> {dist}
+              </span>
+            )}
+            {cals && (
+              <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                <Flame size={10} /> {cals}
+              </span>
+            )}
+            {session.intensity && (
+              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md"
+                style={{ background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)' }}>
+                {session.intensity}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Month Block ──────────────────────────────────────────────────────────
 function MonthBlock({ monthLabel, sessions, defaultOpen, onDelete }) {
   const { t } = useTranslation('pages');
@@ -605,7 +658,10 @@ function MonthBlock({ monthLabel, sessions, defaultOpen, onDelete }) {
       {open && (
         <div className="ml-1 pl-4 border-l border-white/[0.06]">
           <div className="flex flex-col gap-2.5 pt-1 pb-3">
-            {visible.map(s => <SessionRow key={s.id} session={s} onDelete={onDelete} />)}
+            {visible.map(s => s._type === 'cardio'
+              ? <CardioSessionRow key={s.id} session={s} />
+              : <SessionRow key={s.id} session={s} onDelete={onDelete} />
+            )}
           </div>
           {hasMore && !showAll && (
             <button
@@ -702,22 +758,39 @@ function MonthlyTimeline({ userId }) {
 
     const load = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('workout_sessions')
-        .select(`
-          id, name, completed_at, duration_seconds, total_volume_lbs,
-          session_exercises(
-            id, snapshot_name, position,
-            session_sets(set_number, weight_lbs, reps, is_completed, is_pr)
-          )
-        `)
-        .eq('profile_id', userId)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+      const [workoutRes, cardioRes] = await Promise.all([
+        supabase
+          .from('workout_sessions')
+          .select(`
+            id, name, completed_at, duration_seconds, total_volume_lbs,
+            session_exercises(
+              id, snapshot_name, position,
+              session_sets(set_number, weight_lbs, reps, is_completed, is_pr)
+            )
+          `)
+          .eq('profile_id', userId)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false }),
+        supabase
+          .from('cardio_sessions')
+          .select('id, cardio_type, started_at, duration_seconds, distance_km, calories_burned, intensity')
+          .eq('profile_id', userId)
+          .order('started_at', { ascending: false }),
+      ]);
 
       if (!cancelled) {
-        if (error) console.error('MonthlyTimeline: load error', error);
-        setSessions(data ?? []);
+        if (workoutRes.error) console.error('MonthlyTimeline: workout load error', workoutRes.error);
+        // Normalize cardio sessions to share the same shape keys used for grouping
+        const cardioSessions = (cardioRes.data ?? []).map(c => ({
+          ...c,
+          completed_at: c.started_at,
+          _type: 'cardio',
+        }));
+        const workoutSessions = (workoutRes.data ?? []).map(w => ({ ...w, _type: 'workout' }));
+        // Merge and sort descending by completed_at
+        const merged = [...workoutSessions, ...cardioSessions]
+          .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+        setSessions(merged);
         setLoading(false);
       }
     };

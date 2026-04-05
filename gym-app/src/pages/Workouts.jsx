@@ -799,64 +799,69 @@ const Workouts = () => {
         .sort((a, b) => a - b);
       const fallbackPattern = { 1: [1], 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
 
-      // Get ALL user's preferred training days that are NOT on closed gym days
-      const rawCandidates = userDbDays.length > 0 ? userDbDays : (fallbackPattern[firstWeek.length] || [1, 3, 5]);
-      const openCandidates = rawCandidates.filter(d => !closedDays.has(d));
-
-      // If not enough open preferred days, fill from other open days
-      let allAvailableDays = [...openCandidates];
-      if (allAvailableDays.length < firstWeek.length) {
-        const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !closedDays.has(d));
-        const used = new Set(allAvailableDays);
-        for (const d of allOpenDays) {
-          if (allAvailableDays.length >= firstWeek.length) break;
-          if (!used.has(d)) { allAvailableDays.push(d); used.add(d); }
-        }
-        allAvailableDays.sort((a, b) => a - b);
+      // Pick N consecutive open days (skip only gym-closed days, not user rest days).
+      // This ensures a 5-day program gets Mon-Fri (or wraps around closed days),
+      // with rest pushed to after the last workout day.
+      const allOpenDays = [1, 2, 3, 4, 5, 6, 0].filter(d => !closedDays.has(d));
+      let allAvailableDays = [];
+      // Start from Monday (1) and take the first N consecutive open days
+      for (const d of allOpenDays) {
+        if (allAvailableDays.length >= firstWeek.length) break;
+        allAvailableDays.push(d);
       }
+      allAvailableDays.sort((a, b) => a - b);
 
-      // Two schedule mappings:
-      // 1. "normalDays" = the steady-state DOW assignments (for week 2+), sorted calendar order
-      // 2. "week1Days" = rotated from start date (for the partial first week)
-      // IMPORTANT: both use the SAME set of DOWs, just ordered differently.
+      // Schedule mappings: week 1 (shifted), week 2+ (packed Mon-start), last week (remainder)
       const startDow = startDate.getDay();
+      const N = firstWeek.length;
 
-      // Rotate from start date to pick the N closest training days
+      // Rotate from start date to pick the N closest training days for week 1
       const sorted = [...allAvailableDays].sort((a, b) => a - b);
       const fromStart = sorted.filter(d => d >= startDow);
       const beforeStart = sorted.filter(d => d < startDow);
       const rotated = [...fromStart, ...beforeStart];
-      const week1AllDays = rotated.slice(0, firstWeek.length);
-
-      // Normal schedule: same DOWs as week1AllDays, but in calendar order (for week 2+)
-      const normalDays = [...week1AllDays].sort((a, b) => a - b);
+      const week1AllDays = rotated.slice(0, N);
 
       // Week 1 only contains days from startDow onward (this calendar week)
       const week1Dows = week1AllDays.filter(d => d >= startDow);
-      // Wrapped days go into last week
+      // Wrapped days → last week (routines that couldn't fit in week 1's calendar week)
       const wrappedDows = week1AllDays.filter(d => d < startDow);
       const needsExtraWeek = wrappedDows.length > 0;
       const baseDuration = selectedTemplate.durationWeeks || 6;
       const totalDurationWeeks = baseDuration + (needsExtraWeek ? 1 : 0);
 
+      // Week 2+ (packed): fill first N gym-open days starting from Monday
+      // Routine order: rotate so the routine that was on Monday in the shifted schedule comes first
+      const packedDays = sorted.slice(0, N); // first N open days in calendar order (Mon-start)
+      const monIdxInRotation = week1AllDays.indexOf(packedDays[0]); // where Monday's routine sits in shifted order
+      const rotationOffset = monIdxInRotation >= 0 ? monIdxInRotation : 0;
+
+      // normalDays[i] = the DOW for routine i in week 2+ (packed schedule)
+      const normalDays = Array.from({ length: N }, (_, i) =>
+        packedDays[(i - rotationOffset + N) % N]
+      );
+
       // The DB workout_schedule uses normalDays (the steady-state week 2+ mapping)
       let scheduleDays = normalDays;
 
-      // Build schedule_map with both mappings
+      // last_week_map: the wrapped routines placed on the first open days of that week
+      const wrappedRoutineIndices = wrappedDows.map(d => week1AllDays.indexOf(d));
+      const lastWeekEntries = wrappedRoutineIndices.map((routineIdx, i) => ({
+        routine_index: routineIdx,
+        day_of_week: packedDays[i], // first N_wrapped packed days
+      }));
+
+      // Build schedule_map with all three mappings
       const scheduleMapData = {
-        // routine_day_map = the NORMAL (week 2+) DOW assignments
+        // routine_day_map = PACKED (week 2+) DOW assignments
         routine_day_map: normalDays.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
-        // week1_map = the shifted DOW assignments for week 1 only
-        week1_map: week1Dows.map((dow, idx) => {
-          // Map week1 DOWs to routine indices based on position in the rotated order
+        // week1_map = shifted DOW assignments for week 1 only
+        week1_map: week1Dows.map((dow) => {
           const rotatedIdx = week1AllDays.indexOf(dow);
           return { routine_index: rotatedIdx, day_of_week: dow };
         }),
-        // last_week_map = wrapped days that form the last partial week
-        last_week_map: wrappedDows.map((dow) => {
-          const rotatedIdx = week1AllDays.indexOf(dow);
-          return { routine_index: rotatedIdx, day_of_week: dow };
-        }),
+        // last_week_map = remaining routines from week 1 placed on first packed days
+        last_week_map: lastWeekEntries,
         start_dow: startDow,
         week1_dows: week1Dows,
         wrapped_dows: wrappedDows,
