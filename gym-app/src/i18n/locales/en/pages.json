@@ -2020,6 +2020,7 @@
       "alreadyCheckedIn": "{{name}} already checked in today",
       "checkinFailed": "Check-in failed",
       "checkinSuccess": "{{name}} checked in! +{{pts}}pts",
+      "checkinSuccessNoPoints": "{{name}} checked in!",
       "wrongGym": "QR code is for a different gym",
       "purchaseFailed": "Purchase recording failed",
       "purchaseSuccess": "{{name}} — purchase recorded! +{{pts}}pts",

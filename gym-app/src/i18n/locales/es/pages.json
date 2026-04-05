@@ -2020,6 +2020,7 @@
       "alreadyCheckedIn": "{{name}} ya hizo check-in hoy",
       "checkinFailed": "Error al registrar check-in",
       "checkinSuccess": "{{name}} hizo check-in! +{{pts}}pts",
+      "checkinSuccessNoPoints": "{{name}} hizo check-in!",
       "wrongGym": "El código QR es de otro gimnasio",
       "purchaseFailed": "Error al registrar compra",
       "purchaseSuccess": "{{name}} — compra registrada! +{{pts}}pts",

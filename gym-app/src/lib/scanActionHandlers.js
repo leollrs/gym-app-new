@@ -56,18 +56,36 @@ export async function handleCheckinScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.checkinFailed', 'Check-in failed') };
   }
 
-  // Award points
+  // Award points (24hr limit enforced server-side via add_reward_points_checked)
   const pts = calculatePointsForAction('check_in');
-  await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
+  let pointsAwarded = pts;
+  try {
+    const { data: ptsResult } = await supabase.rpc('add_reward_points_checked', {
+      p_user_id: member.id,
+      p_gym_id: gymId,
+      p_action: 'check_in',
+      p_points: pts,
+      p_description: 'QR check-in',
+    });
+    // Returns 0 if points were already awarded in last 24h
+    if (ptsResult === 0) pointsAwarded = 0;
+  } catch {
+    // Fallback to regular addPoints if the new RPC doesn't exist yet
+    await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
+  }
+
+  const msg = pointsAwarded > 0
+    ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts: pointsAwarded })
+    : t('admin.scan.checkinSuccessNoPoints', '{{name}} checked in!', { name: member.full_name });
 
   return {
     success: true,
-    message: t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts }),
+    message: msg,
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned: pts },
-    externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pts } },
+    data: { pointsEarned: pointsAwarded },
+    externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
   };
 }
 
