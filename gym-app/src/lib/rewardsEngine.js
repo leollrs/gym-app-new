@@ -7,7 +7,7 @@ const POINTS_MAP = {
   workout_completed:     50,
   pr_hit:                20,   // capped at 5 per session (100 max) server-side
   check_in:              20,   // 24hr limit enforced server-side
-  streak_day:            10,   // multiplied by streak_length, capped at 200
+  streak_day:            20,   // tiered: 20 base, 25 after 7d, 30 after 14d, 35 after 30d (cap)
   challenge_completed:   500,
   achievement_unlocked:  75,
   weight_logged:         10,
@@ -33,8 +33,11 @@ export function calculatePointsForAction(action, metadata = {}) {
   if (base === undefined) return 0;
 
   if (action === 'streak_day') {
-    const streakLength = metadata.streakLength || 1;
-    return Math.min(base * streakLength, 200);
+    const streak = metadata.streakLength || 1;
+    if (streak >= 30) return 35;
+    if (streak >= 14) return 30;
+    if (streak >= 7)  return 25;
+    return 20;
   }
 
   return base;
