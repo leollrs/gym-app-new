@@ -151,18 +151,50 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.wrongGym', 'QR code is for a different gym') };
   }
 
-  // Fetch the redemption
-  const { data: redemption, error: fetchErr } = await supabase
+  // Try reward_redemptions first (points store redemptions)
+  const { data: redemption } = await supabase
     .from('reward_redemptions')
     .select('id, profile_id, reward_name, points_spent, status')
     .eq('id', parsed.redemptionId)
     .eq('gym_id', gymId)
-    .single();
+    .maybeSingle();
 
-  if (fetchErr || !redemption) {
+  // Fallback: try referral_rewards (referral reward choice)
+  const { data: referralReward } = !redemption
+    ? await supabase
+        .from('referral_rewards')
+        .select('id, profile_id, reward_type, reward_value, choice_status')
+        .eq('id', parsed.redemptionId)
+        .eq('gym_id', gymId)
+        .maybeSingle()
+    : { data: null };
+
+  if (!redemption && !referralReward) {
     return { success: false, message: t('admin.scan.redemptionNotFound', 'Redemption not found') };
   }
 
+  // Handle referral reward (pending choice)
+  if (referralReward) {
+    if (referralReward.choice_status === 'chosen' || referralReward.choice_status === 'auto_assigned') {
+      return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
+    }
+    // Referral rewards need to be claimed via the picker, not the scanner
+    const { data: member } = await supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', referralReward.profile_id)
+      .single();
+    return {
+      success: true,
+      message: t('admin.scan.referralRewardPending', '{{name}} has a pending referral reward to pick', { name: member?.full_name || 'Member' }),
+      memberName: member?.full_name,
+      memberId: referralReward.profile_id,
+      avatarUrl: member?.avatar_url,
+      data: { pendingChoice: true },
+    };
+  }
+
+  // Handle store redemption
   if (redemption.status === 'claimed') {
     return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
   }
@@ -171,7 +203,6 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.redemptionExpired', 'This redemption has expired') };
   }
 
-  // Verify member matches
   if (redemption.profile_id !== parsed.memberId) {
     return { success: false, message: t('admin.scan.memberMismatch', 'Redemption does not belong to this member') };
   }
