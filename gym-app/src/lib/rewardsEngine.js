@@ -4,14 +4,14 @@ import logger from './logger';
 
 // ── Points Configuration ─────────────────────────────────────────────────────
 const POINTS_MAP = {
-  workout_completed:     25,
-  pr_hit:                50,   // capped at 3 per session (150 max) server-side
+  workout_completed:     50,
+  pr_hit:                20,   // capped at 5 per session (100 max) server-side
   check_in:              20,   // 24hr limit enforced server-side
   streak_day:            10,   // multiplied by streak_length, capped at 200
   challenge_completed:   500,
   achievement_unlocked:  75,
   weight_logged:         10,
-  first_weekly_workout:  15,
+  first_weekly_workout:  25,
   streak_7:              200,
   streak_30:             1000,
 };

@@ -87,11 +87,11 @@ GRANT EXECUTE ON FUNCTION public.add_reward_points_checked(UUID, UUID, TEXT, INT
 CREATE TABLE IF NOT EXISTS gym_points_config (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   gym_id          UUID NOT NULL REFERENCES gyms(id) ON DELETE CASCADE UNIQUE,
-  workout_base    INT NOT NULL DEFAULT 25,
-  pr_hit          INT NOT NULL DEFAULT 50,
-  pr_max_per_session INT NOT NULL DEFAULT 3,
+  workout_base    INT NOT NULL DEFAULT 50,
+  pr_hit          INT NOT NULL DEFAULT 20,
+  pr_max_per_session INT NOT NULL DEFAULT 5,
   check_in        INT NOT NULL DEFAULT 20,
-  first_weekly    INT NOT NULL DEFAULT 15,
+  first_weekly    INT NOT NULL DEFAULT 25,
   streak_7        INT NOT NULL DEFAULT 200,
   streak_30       INT NOT NULL DEFAULT 1000,
   weight_logged   INT NOT NULL DEFAULT 10,
@@ -127,11 +127,11 @@ BEGIN
   SELECT * INTO cfg FROM gym_points_config WHERE gym_id = p_gym_id;
   IF NOT FOUND THEN
     RETURN jsonb_build_object(
-      'workout_base', 25,
-      'pr_hit', 50,
-      'pr_max_per_session', 3,
+      'workout_base', 50,
+      'pr_hit', 20,
+      'pr_max_per_session', 5,
       'check_in', 20,
-      'first_weekly', 15,
+      'first_weekly', 25,
       'streak_7', 200,
       'streak_30', 1000
     );
