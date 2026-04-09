@@ -103,30 +103,26 @@ export const AuthProvider = ({ children }) => {
       branding = null;
       gym = null;
 
-      // Update last_active_at for all roles (fallback path — RPC handles this in the happy path).
-      // Throttle: only update if null or more than 1 hour old to avoid excessive writes.
-      if (data?.id) {
-        const lastActive = data.last_active_at ? new Date(data.last_active_at) : null;
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        if (!lastActive || lastActive < oneHourAgo) {
-          supabase
-            .from('profiles')
-            .update({ last_active_at: new Date().toISOString() })
-            .eq('id', data.id)
-            .then(() => {})
-            .catch(() => {});
-        }
-      }
+      // last_active_at update handled after the if/else block for all paths
     } else {
       data = rpcResult.profile ?? null;
       branding = rpcResult.branding ?? null;
       gym = rpcResult.gym ?? null;
-      // Apply lifetime points and unread count from RPC
       setLifetimePoints(rpcResult.lifetime_points ?? 0);
       setUnreadNotifications(rpcResult.unread_count ?? 0);
     }
 
     setProfile(data ?? null);
+
+    // Update last_active_at for all roles (client-side, throttled once/hour)
+    if (data?.id) {
+      const lastActive = data.last_active_at ? new Date(data.last_active_at) : null;
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      if (!lastActive || lastActive < oneHourAgo) {
+        supabase.from('profiles').update({ last_active_at: new Date().toISOString() })
+          .eq('id', data.id).then(() => {}).catch(() => {});
+      }
+    }
 
     // Only fetch points separately if RPC didn't provide them (fallback path)
     if ((!rpcResult || rpcError) && data?.id) {

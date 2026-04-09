@@ -3,40 +3,30 @@
 --
 -- Problem: last_active_at was only updated inside complete_workout()
 -- which only members call. Admins and trainers never had their
--- last_active_at updated, so their activity was invisible in any
--- "last active" display across the platform.
+-- last_active_at updated.
 --
--- Fix: Replace get_auth_context() STABLE → VOLATILE and update
--- last_active_at on every call (login + session refresh).
--- Throttled to once per hour to avoid excessive writes.
+-- Fix: Keep get_auth_context() as STABLE (no writes — avoids
+-- auth slowdowns and connection pool issues). The last_active_at
+-- update is handled client-side in AuthContext.jsx with a
+-- throttled fire-and-forget UPDATE (once per hour).
+--
+-- This migration restores get_auth_context to STABLE after the
+-- VOLATILE version caused auth failures (11x spike) and slow
+-- API responses.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.get_auth_context()
 RETURNS JSON
 LANGUAGE plpgsql
-VOLATILE
+STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  _uid      UUID := auth.uid();
-  _result   JSON;
-  _last_active TIMESTAMPTZ;
+  _uid    UUID := auth.uid();
+  _result JSON;
 BEGIN
-  -- Update last_active_at for all roles (member, admin, trainer, super_admin).
-  -- Throttle to once per hour to avoid excessive writes on token refreshes.
-  SELECT last_active_at INTO _last_active
-    FROM profiles
-   WHERE id = _uid;
-
-  IF _last_active IS NULL OR _last_active < NOW() - INTERVAL '1 hour' THEN
-    UPDATE profiles
-       SET last_active_at = NOW()
-     WHERE id = _uid;
-  END IF;
-
   SELECT json_build_object(
-    -- Profile row (re-select after potential update so caller sees fresh value)
     'profile', (
       SELECT row_to_json(p)
         FROM (
@@ -51,8 +41,6 @@ BEGIN
            WHERE id = _uid
         ) p
     ),
-
-    -- Gym branding
     'branding', (
       SELECT row_to_json(b)
         FROM (
@@ -62,8 +50,6 @@ BEGIN
            INNER JOIN profiles pr ON pr.id = _uid AND pr.gym_id = gb.gym_id
         ) b
     ),
-
-    -- Gym basic info
     'gym', (
       SELECT row_to_json(g)
         FROM (
@@ -74,16 +60,12 @@ BEGIN
            INNER JOIN profiles pr ON pr.id = _uid AND pr.gym_id = gy.id
         ) g
     ),
-
-    -- Unread notification count
     'unread_count', (
       SELECT COUNT(*)::int
         FROM notifications
        WHERE profile_id = _uid
          AND read_at IS NULL
     ),
-
-    -- Lifetime points for level calculation
     'lifetime_points', (
       SELECT COALESCE(rp.lifetime_points, 0)
         FROM reward_points rp
@@ -95,5 +77,4 @@ BEGIN
 END;
 $$;
 
--- Grant execute to authenticated users (preserved from previous migration)
 GRANT EXECUTE ON FUNCTION public.get_auth_context() TO authenticated;
