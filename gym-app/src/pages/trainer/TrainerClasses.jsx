@@ -960,7 +960,8 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
           <button
             onClick={handleSubmit}
             disabled={!form.name.trim() || submitting}
-            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2 hover:brightness-110"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             {submitting ? (
               <div className="w-4 h-4 border-2 rounded-full animate-spin border-white/30 border-t-white" />
@@ -1040,7 +1041,8 @@ export default function TrainerClasses() {
           </h1>
           <button
             onClick={() => setShowProposeClass(true)}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[12px] transition-colors min-h-[44px] shrink-0"
+            className="flex items-center gap-1.5 px-3 py-2.5 font-bold rounded-xl text-[12px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             <Plus size={15} />
             <span className="hidden sm:inline">{t('trainerClasses.proposeClass', 'Propose New Class')}</span>
