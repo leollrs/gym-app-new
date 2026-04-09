@@ -357,7 +357,7 @@ export default function GymDetail() {
   const fetchChallenges = async () => { const { data } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); setChallenges(data ?? []); };
   const fetchPrograms = async () => { const { data } = await supabase.from('gym_programs').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); setPrograms(data ?? []); };
   const fetchAchievements = async () => { const { data } = await supabase.from('achievement_definitions').select('*, user_achievements(id)').eq('gym_id', gymId).order('created_at', { ascending: false }); setAchievements(data ?? []); };
-  const fetchRewards = async () => { try { const { data, error } = await supabase.from('reward_points').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (error) { setRewardsAvailable(false); } else { setRewardsAvailable(data ?? []); } } catch { setRewardsAvailable(false); } };
+  const fetchRewards = async () => { try { const { data, error } = await supabase.from('reward_points').select('profile_id, total_points, lifetime_points, last_updated').eq('gym_id', gymId).order('last_updated', { ascending: false }); if (error) { setRewardsAvailable(false); } else { setRewardsAvailable(data ?? []); } } catch { setRewardsAvailable(false); } };
 
   useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchGym(), fetchMembers(), fetchActivity(), fetchInvites(), fetchChallenges(), fetchPrograms(), fetchAchievements(), fetchRewards()]); setLoading(false); }; load(); }, [gymId]);
 
@@ -403,13 +403,21 @@ export default function GymDetail() {
         <div className="mb-6">
           <button onClick={() => navigate('/platform')} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#9CA3AF] text-sm mb-4 transition-colors"><ArrowLeft className="w-4 h-4" />Back to Platform</button>
           <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
-            <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {branding?.logo_url ? (
+                <img src={branding.logo_url} alt={gym.name} className="w-12 h-12 rounded-xl object-contain flex-shrink-0 border border-white/6" style={{ background: '#111827' }} />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
+                  <span className="text-[18px] font-bold text-[#D4AF37]">{(gym.name || 'G')[0]}</span>
+                </div>
+              )}
+              <div className="min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{gym.name}</h1>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${gymStatus === 'active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : gymStatus === 'paused' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{t(`platform.gymDetail.gymStatus.${gymStatus}`)}</span>
               </div>
               <p className="text-[#6B7280] text-xs mt-1 font-mono">/{gym.slug}</p>
-            </div>
+            </div></div>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative">
                 <button onClick={() => setEditingTier(!editingTier)} className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/20 transition-colors"><Crown className="w-3.5 h-3.5" />{(gym.subscription_tier ?? 'free').toUpperCase()}<ChevronDown className="w-3 h-3" /></button>
