@@ -13,5 +13,6 @@ struct WorkoutActivityAttributes: ActivityAttributes {
         var isResting: Bool
         var restEndDate: Date?
         var isRestFinished: Bool
+        var isPaused: Bool
     }
 }

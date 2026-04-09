@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +40,38 @@ const MEMBER_TABS = [
   { id: 'community', to: '/community', icon: Users, labelKey: 'nav.community' },
 ];
 
+// ── Sidebar nav sections for lg: desktop ──────────────────────────────────────
+const SIDEBAR_SECTIONS = [
+  {
+    labelKey: 'nav.sidebarMain',
+    defaultLabel: 'Main',
+    items: [
+      { id: 'home', to: '/', icon: Home, labelKey: 'nav.home', end: true },
+      { id: 'workouts', to: '/workouts', icon: Dumbbell, labelKey: 'nav.workouts' },
+      { id: 'exercises', to: '/exercises', icon: BookOpen, labelKey: 'nav.exercises', defaultLabel: 'Exercises' },
+      { id: 'progress', to: '/progress', icon: BarChart2, labelKey: 'nav.progress' },
+    ],
+  },
+  {
+    labelKey: 'nav.sidebarSocial',
+    defaultLabel: 'Social',
+    items: [
+      { id: 'community', to: '/community', icon: Users, labelKey: 'nav.community' },
+      { id: 'messages', to: '/messages', icon: MessageCircle, labelKey: 'nav.messages', defaultLabel: 'Messages' },
+    ],
+  },
+  {
+    labelKey: 'nav.sidebarYou',
+    defaultLabel: 'You',
+    items: [
+      { id: 'rewards', to: '/rewards', icon: Trophy, labelKey: 'nav.rewards', defaultLabel: 'Rewards' },
+      { id: 'checkin', to: '/checkin', icon: QrCode, labelKey: 'nav.checkIn', defaultLabel: 'Check In' },
+      { id: 'nutrition', to: '/progress?tab=nutrition', icon: Apple, labelKey: 'nav.nutrition', defaultLabel: 'Nutrition' },
+      { id: 'profile', to: '/profile', icon: User, labelKey: 'nav.profile', defaultLabel: 'Profile' },
+    ],
+  },
+];
+
 const Navigation = () => {
   const { gymName, gymLogoUrl, user, profile, unreadNotifications, gymConfig } = useAuth();
 
@@ -56,7 +88,6 @@ const Navigation = () => {
   const [streakData, setStreakData] = useState(null);
   const [showStreakModal, setShowStreakModal] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
-
   // Scroll locking for streak modal
   useEffect(() => {
     if (showStreakModal) {
@@ -250,8 +281,129 @@ const Navigation = () => {
 
   return (
   <>
-    {/* ── Desktop Top Navigation ──────────────────────────────────── */}
-    <nav aria-label="Main navigation" className="hidden md:block sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
+    {/* ── Desktop Sidebar (lg: and above) ───────────────────────────── */}
+    <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-[240px] z-50 border-r overflow-y-auto" style={{ backgroundColor: 'var(--color-bg-primary)', borderColor: 'var(--color-border-subtle)' }}>
+      {/* Brand */}
+      <div className="px-5 pt-5 pb-4">
+        <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
+          {gymLogoUrl && (
+            <img
+              src={gymLogoUrl}
+              alt={gymName || 'Gym logo'}
+              className="h-8 w-8 rounded-xl object-contain border border-white/10 bg-black/10 flex-shrink-0"
+            />
+          )}
+          <div
+            className="text-[19px] font-black tracking-tight truncate"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}
+          >
+            {gymName || 'GymApp'}
+          </div>
+        </Link>
+      </div>
+
+      {/* Record / Start CTA */}
+      <div className="px-4 mb-4">
+        <button
+          type="button"
+          onClick={() => navigate('/record')}
+          onMouseEnter={() => prefetchRoute('/record')}
+          aria-label={t('nav.start')}
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#D4AF37] text-black text-[13px] font-bold shadow-sm hover:bg-[#f2d36b] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+        >
+          <PlayCircle size={16} className="flex-shrink-0" />
+          {t('nav.start')}
+        </button>
+      </div>
+
+      {/* Nav sections */}
+      <nav aria-label="Sidebar navigation" className="flex-1 px-3 pb-3 overflow-y-auto">
+        {SIDEBAR_SECTIONS.map((section, idx) => (
+          <div key={section.labelKey} className={idx > 0 ? 'mt-5' : ''}>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-subtle)' }}>
+              {t(section.labelKey, { defaultValue: section.defaultLabel })}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map(({ id: itemId, to, icon: Icon, labelKey, defaultLabel, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  aria-label={t(labelKey, { defaultValue: defaultLabel })}
+                  onMouseEnter={() => prefetchRoute(to)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#D4AF37]/10 text-[#D4AF37] font-semibold'
+                        : 'hover:bg-white/[0.04]'
+                    }`
+                  }
+                  style={({ isActive }) => isActive ? undefined : { color: 'var(--color-text-muted)' }}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+                      <span className="flex-1">{t(labelKey, { defaultValue: defaultLabel })}</span>
+                      {itemId === 'messages' && unreadMessages > 0 && (
+                        <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+                          {unreadMessages > 9 ? '9+' : unreadMessages}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* Bottom actions */}
+      <div className="px-3 pb-4 pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <NavLink
+          to="/notifications"
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+              isActive ? 'bg-[#D4AF37]/10 text-[#D4AF37] font-semibold' : 'hover:bg-white/[0.04]'
+            }`
+          }
+          style={({ isActive }) => isActive ? undefined : { color: 'var(--color-text-muted)' }}
+        >
+          <Bell size={16} />
+          <span className="flex-1">{t('nav.notifications', { defaultValue: 'Notifications' })}</span>
+          {unreadNotifications > 0 && (
+            <span className="min-w-[18px] h-[18px] rounded-full bg-[#D4AF37] text-black text-[10px] font-bold flex items-center justify-center">
+              {unreadNotifications > 9 ? '9+' : unreadNotifications}
+            </span>
+          )}
+        </NavLink>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+              isActive ? 'bg-[#D4AF37]/10 text-[#D4AF37] font-semibold' : 'hover:bg-white/[0.04]'
+            }`
+          }
+          style={({ isActive }) => isActive ? undefined : { color: 'var(--color-text-muted)' }}
+        >
+          <Settings size={16} />
+          <span>{t('nav.settings', { defaultValue: 'Settings' })}</span>
+        </NavLink>
+        {/* Profile */}
+        <button
+          onClick={() => navigate('/profile')}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/[0.04] transition-colors mt-1"
+        >
+          <UserAvatar user={profile} size={28} />
+          <span className="flex-1 text-left text-[13px] font-medium truncate" style={{ color: 'var(--color-text-muted)' }}>
+            {profile?.full_name || 'Profile'}
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    {/* ── Desktop Top Navigation (md: only, hidden on lg: where sidebar shows) ── */}
+    <nav aria-label="Main navigation" className="hidden md:block lg:hidden sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
       <div className="container flex justify-between items-center py-3.5">
 
         {/* Brand */}
@@ -507,7 +659,7 @@ const Navigation = () => {
     </nav>
   {/* Streak Detail Modal */}
   {showStreakModal && createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowStreakModal(false)}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="button" tabIndex={-1} aria-label="Close streak details" onClick={() => setShowStreakModal(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowStreakModal(false); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" className="rounded-[20px] w-full max-w-sm border overflow-hidden flex flex-col" style={{ maxHeight: '85vh', background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
         {/* Header (fixed) */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">

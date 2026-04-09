@@ -7,9 +7,9 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // APNs — direct to Apple (for iOS)
-const APNS_KEY_ID      = Deno.env.get('APNS_KEY_ID') || '';      // 44PA6F2Z9K
-const APNS_TEAM_ID     = Deno.env.get('APNS_TEAM_ID') || '';     // J3L5DWU6FT
-const APNS_PRIVATE_KEY = Deno.env.get('APNS_PRIVATE_KEY') || ''; // .p8 file contents
+const APNS_KEY_ID      = Deno.env.get('APNS_KEY_ID') || '';
+const APNS_TEAM_ID     = Deno.env.get('APNS_TEAM_ID') || '';
+const APNS_PRIVATE_KEY = Deno.env.get('APNS_PRIVATE_KEY') || '';
 const APNS_BUNDLE_ID   = 'com.tugympr.app';
 // Use sandbox for dev builds, production for App Store
 const APNS_HOST = Deno.env.get('APNS_HOST') || 'api.sandbox.push.apple.com';
@@ -20,10 +20,10 @@ const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY  = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
+if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -32,6 +32,24 @@ function jsonResp(data: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// ── Timing-safe comparison (HMAC-based, no length leak) ─────────────────
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -173,8 +191,12 @@ async function sendAPNs(
           // Clean up invalid tokens
           if (res.status === 410 || res.status === 400) {
             const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-            await supabase.from('push_tokens').delete().eq('token', token);
-            console.log(`Removed invalid iOS token: ${token.substring(0, 10)}...`);
+            const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+            if (deleteErr) {
+              console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
+            } else {
+              console.log(`Removed invalid iOS token: ${token.substring(0, 10)}...`);
+            }
           }
           throw new Error(`APNs ${res.status}: ${errBody}`);
         }
@@ -299,9 +321,17 @@ async function sendFCM(
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           console.error(`FCM error: ${res.status}`, err?.error?.message);
+          // Invalidate FCM token cache on 401
+          if (res.status === 401) {
+            fcmTokenCache = null;
+            console.warn('FCM token expired, cache invalidated');
+          }
           if (res.status === 404 || res.status === 400) {
             const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-            await supabase.from('push_tokens').delete().eq('token', token);
+            const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+            if (deleteErr) {
+              console.error(`Failed to remove invalid FCM token ${token.substring(0, 10)}...: ${deleteErr.message}`);
+            }
           }
           throw new Error(err?.error?.message || `FCM ${res.status}`);
         }
@@ -331,41 +361,63 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
+  // Content-Type validation
+  const contentType = req.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return jsonResp({ error: 'Content-Type must be application/json' }, 415);
+  }
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonResp({ error: 'Unauthorized' }, 401);
 
-    // Auth client — uses anon key + user's JWT (same pattern as other edge functions)
-    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const authClient = createClient(SUPABASE_URL, ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authErr } = await authClient.auth.getUser();
-    if (authErr || !user) {
-      console.error('Auth failed:', authErr?.message);
-      return jsonResp({ error: 'Unauthorized' }, 401);
+    // Check for service role key (server-to-server calls) with timing-safe comparison
+    const token = authHeader.replace('Bearer ', '');
+    const isServiceRole = await timingSafeEqual(token, SUPABASE_SERVICE_KEY);
+
+    let user: { id: string } | null = null;
+
+    if (!isServiceRole) {
+      // Auth client — uses anon key + user's JWT
+      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const authClient = createClient(SUPABASE_URL, ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user: authUser }, error: authErr } = await authClient.auth.getUser();
+      if (authErr || !authUser) {
+        console.error('Auth failed:', authErr?.message);
+        return jsonResp({ error: 'Unauthorized' }, 401);
+      }
+      user = authUser;
     }
 
     // Service client — for reading all tokens (bypasses RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('role, gym_id')
-      .eq('id', user.id)
-      .single();
+    const { gym_id, title, body, data: pushData } = await req.json();
+    let targetGymId = gym_id;
 
-    if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
-      return jsonResp({ error: 'Forbidden — admin only' }, 403);
+    if (!isServiceRole) {
+      const { data: callerProfile } = await supabase
+        .from('profiles')
+        .select('role, gym_id')
+        .eq('id', user!.id)
+        .single();
+
+      if (!callerProfile || !['admin', 'super_admin', 'trainer'].includes(callerProfile.role)) {
+        return jsonResp({ error: 'Forbidden — admin only' }, 403);
+      }
+
+      targetGymId = gym_id || callerProfile.gym_id;
+
+      // Gym boundary check — non-super_admin callers can only send pushes to their own gym
+      if (callerProfile.role !== 'super_admin' && targetGymId !== callerProfile.gym_id) {
+        return jsonResp({ error: 'Forbidden — cannot send pushes to another gym' }, 403);
+      }
     }
 
-    const { gym_id, title, body, data: pushData } = await req.json();
-    const targetGymId = gym_id || callerProfile.gym_id;
-
-    // ── Gym boundary check ──────────────────────────────────────
-    // Non-super_admin callers can only send pushes to their own gym.
-    if (callerProfile.role !== 'super_admin' && targetGymId !== callerProfile.gym_id) {
-      return jsonResp({ error: 'Forbidden — cannot send pushes to another gym' }, 403);
+    if (!targetGymId) {
+      return jsonResp({ error: 'gym_id is required' }, 400);
     }
 
     // ── Rate limiting: max 10 broadcast pushes per hour per gym ─
@@ -441,7 +493,7 @@ serve(async (req) => {
     // Log broadcast for rate limiting (best-effort, don't fail the request)
     await supabase
       .from('admin_push_log')
-      .insert({ gym_id: targetGymId, sent_by: user.id, sent_at: new Date().toISOString(), total_sent: totalSent })
+      .insert({ gym_id: targetGymId, sent_by: user?.id || 'service_role', sent_at: new Date().toISOString(), total_sent: totalSent })
       .then(({ error: logErr }) => {
         if (logErr) console.warn('Failed to log push for rate limiting:', logErr.message);
       });

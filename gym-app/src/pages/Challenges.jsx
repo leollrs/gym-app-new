@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle } from 'lucide-react';
+import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -21,9 +21,12 @@ const statusOf = (c) => {
 };
 
 const TYPE_META = {
-  consistency: { labelKey: 'consistency', icon: Dumbbell, unitKey: 'consistency' },
-  volume:      { labelKey: 'volume',      icon: Zap,     unitKey: 'volume'      },
-  pr_count:    { labelKey: 'pr_count',    icon: Star,    unitKey: 'pr_count'    },
+  consistency:   { labelKey: 'consistency',   icon: Dumbbell, unitKey: 'consistency'   },
+  volume:        { labelKey: 'volume',        icon: Zap,      unitKey: 'volume'        },
+  pr_count:      { labelKey: 'pr_count',      icon: Star,     unitKey: 'pr_count'      },
+  specific_lift: { labelKey: 'specific_lift', icon: Dumbbell, unitKey: 'specific_lift' },
+  team:          { labelKey: 'team',          icon: Users,    unitKey: 'team'          },
+  milestone:     { labelKey: 'milestone',     icon: Target,   unitKey: 'milestone'     },
 };
 
 const MEDAL = ['🥇', '🥈', '🥉'];
@@ -62,7 +65,7 @@ const ParticipantList = ({ challengeId, t }) => {
   }, [challengeId]);
 
   if (loading) return (
-    <div className="py-5 flex justify-center">
+    <div className="py-5 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
       <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
     </div>
   );
@@ -179,7 +182,7 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
       )}
 
       {loading ? (
-        <div className="py-8 flex justify-center">
+        <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
           <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : entries.length === 0 ? (
@@ -249,6 +252,416 @@ const Leaderboard = ({ challenge, gymId, myId, t }) => {
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+// ── Team Leaderboard ──────────────────────────────────────
+const TeamLeaderboard = ({ challenge, gymId, myId, t }) => {
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedTeam, setExpandedTeam] = useState(null);
+  const status = statusOf(challenge);
+
+  const fetchTeams = useCallback(async () => {
+    const { data } = await supabase.rpc('get_team_leaderboard', { p_challenge_id: challenge.id });
+    setTeams(data || []);
+    setLoading(false);
+  }, [challenge.id]);
+
+  const debounceRef = useRef(null);
+  useEffect(() => {
+    fetchTeams();
+    const ch = supabase.channel(`team-lb-${challenge.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(fetchTeams, 2000);
+      })
+      .subscribe();
+    return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
+  }, [fetchTeams, challenge.id, gymId]);
+
+  const myTeam = teams.find(team => team.members?.some(m => m.profile_id === myId));
+  const metricLabel = t(`challenges.typeUnits.${challenge.scoring_metric || 'consistency'}`, '');
+
+  return (
+    <div className="mt-4">
+      {myTeam && (
+        <div className="flex items-center justify-between rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-5 py-4 mb-4">
+          <div>
+            <p className="text-[11px] text-[#D4AF37] font-semibold uppercase tracking-widest">{t('challenges.team.yourTeam', 'Your Team')}</p>
+            <p className="text-[18px] font-bold text-[#D4AF37] leading-tight mt-0.5">{myTeam.team_name}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] text-[var(--color-text-muted)] font-medium">{t('challenges.team.combinedScore', 'Combined Score')}</p>
+            <p className="text-[18px] font-bold text-[var(--color-text-primary)] mt-0.5">
+              {Math.round(myTeam.team_score).toLocaleString()} <span className="text-[13px] font-normal text-[var(--color-text-muted)]">{metricLabel}</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
+          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+        </div>
+      ) : teams.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('challenges.team.noTeamsYet', 'No teams yet')}</p>
+      ) : (
+        <div className="space-y-3">
+          {teams.map((team, i) => {
+            const isMyTeam = team.team_id === myTeam?.team_id;
+            const isExpanded = expandedTeam === team.team_id;
+            return (
+              <div key={team.team_id}
+                className={`rounded-2xl overflow-hidden transition-colors ${
+                  isMyTeam ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                }`}>
+                <button type="button" onClick={() => setExpandedTeam(isExpanded ? null : team.team_id)}
+                  className="w-full flex items-center gap-4 px-4 py-4 text-left">
+                  <div className="flex-shrink-0 w-8 text-center">
+                    {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[14px] font-semibold truncate ${isMyTeam ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                      {team.team_name}
+                      {isMyTeam && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
+                    </p>
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      <Users size={10} className="inline mr-1" />{team.member_count}/{challenge.team_size || '?'} {t('challenges.team.members', 'members')}
+                    </p>
+                  </div>
+                  <p className={`text-[14px] font-bold flex-shrink-0 ${isMyTeam ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                    {Math.round(team.team_score).toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-text-muted)]">{metricLabel}</span>
+                  </p>
+                  <ChevronDown size={16} className={`text-[var(--color-text-muted)] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+                {isExpanded && team.members && (
+                  <div className="px-4 pb-4 space-y-2 border-t border-[var(--color-border)]">
+                    {team.members.map(m => (
+                      <div key={m.profile_id} className="flex items-center gap-3 px-3 py-2">
+                        <div className="w-7 h-7 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                          {m.avatar_url ? <img src={m.avatar_url} alt={`${m.display_name || t('challenges.team.member', 'Team member')} avatar`} className="w-7 h-7 rounded-full object-cover" /> : <span className="text-[10px] font-bold text-[#D4AF37]">{(m.display_name || '?')[0]}</span>}
+                        </div>
+                        <p className={`flex-1 text-[13px] font-medium truncate ${m.profile_id === myId ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>{m.display_name || '—'}</p>
+                        <p className="text-[12px] text-[var(--color-text-muted)]">{Math.round(m.score || 0).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Club / Milestone Leaderboard ──────────────────────────
+const ClubLeaderboard = ({ challenge, gymId, myId, t }) => {
+  const rewards = parseRewards(challenge);
+  const hasCustomRewards = challenge.reward_description != null;
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const status = statusOf(challenge);
+  const threshold = challenge.milestone_target ? Number(challenge.milestone_target) : null;
+
+  const fetch = useCallback(async () => {
+    const { data } = await supabase
+      .from('challenge_participants')
+      .select('profile_id, score, profiles(full_name)')
+      .eq('challenge_id', challenge.id)
+      .order('score', { ascending: false })
+      .limit(100);
+    setEntries((data || []).map(p => ({
+      id: p.profile_id, name: p.profiles?.full_name ?? '—', score: Math.round(p.score ?? 0),
+    })));
+    setLoading(false);
+  }, [challenge.id]);
+
+  const debounceRef = useRef(null);
+  useEffect(() => {
+    fetch();
+    const ch = supabase.channel(`club-lb-${challenge.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(fetch, 2000);
+      })
+      .subscribe();
+    return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
+  }, [fetch, challenge.id, gymId]);
+
+  const myEntry = entries.find(e => e.id === myId);
+  const myRank = entries.findIndex(e => e.id === myId);
+  const madeClub = myEntry && threshold && myEntry.score >= threshold;
+
+  return (
+    <div className="mt-4">
+      {/* My progress card */}
+      {myEntry && (
+        <div className={`rounded-2xl px-5 py-4 mb-4 ${madeClub ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-[#D4AF37]/10 border border-[#D4AF37]/30'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className={`text-[11px] font-semibold uppercase tracking-widest ${madeClub ? 'text-emerald-400' : 'text-[#D4AF37]'}`}>
+                {madeClub ? t('challenges.club.achieved', 'Club Member!') : t('challenges.club.progress', 'Your Progress')}
+              </p>
+              <p className={`text-[24px] font-bold leading-tight mt-0.5 ${madeClub ? 'text-emerald-400' : 'text-[#D4AF37]'}`}>
+                {myEntry.score.toLocaleString()} <span className="text-[14px] font-normal">lbs</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] text-[var(--color-text-muted)]">#{myRank + 1} {t('challenges.club.overall', 'overall')}</p>
+              {madeClub && <span className="text-[20px]">🏆</span>}
+            </div>
+          </div>
+          {threshold && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.club.threshold', 'Club Threshold')}: {threshold.toLocaleString()} lbs</span>
+                <span className="text-[11px] text-[var(--color-text-muted)]">{Math.min(100, Math.round((myEntry.score / threshold) * 100))}%</span>
+              </div>
+              <div className="h-2 bg-[var(--color-bg-secondary)] rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${madeClub ? 'bg-emerald-500' : 'bg-[#D4AF37]'}`}
+                  style={{ width: `${Math.min(100, (myEntry.score / threshold) * 100)}%` }} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-8 flex justify-center" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
+          <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('challenges.noOneJoined')}</p>
+      ) : (
+        <div className="space-y-3">
+          {entries.slice(0, 20).map((e, i) => {
+            const isMe = e.id === myId;
+            const aboveThreshold = threshold && e.score >= threshold;
+            return (
+              <div key={e.id}
+                className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-colors ${
+                  isMe ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                }`}>
+                <div className="flex-shrink-0 w-8 text-center">
+                  {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
+                </div>
+                <p className={`flex-1 text-[14px] font-semibold truncate ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                  {e.name}
+                  {isMe && <span className="ml-1.5 text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
+                </p>
+                <p className={`text-[14px] font-bold flex-shrink-0 ${isMe ? 'text-[#D4AF37]' : 'text-[var(--color-text-primary)]'}`}>
+                  {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-text-muted)]">lbs</span>
+                </p>
+                {aboveThreshold && <span className="text-[14px] flex-shrink-0" title="Club member">✅</span>}
+              </div>
+            );
+          })}
+          {/* Threshold line indicator */}
+          {threshold && entries.some(e => e.score >= threshold) && entries.some(e => e.score < threshold) && (
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 h-px bg-[#D4AF37]/30" />
+              <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider whitespace-nowrap">— {threshold.toLocaleString()} lb {t('challenges.club.clubLine', 'Club')} —</span>
+              <div className="flex-1 h-px bg-[#D4AF37]/30" />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Team Formation Modal ──────────────────────────────────
+const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t }) => {
+  const [step, setStep] = useState('choose'); // 'choose' | 'create' | 'invites'
+  const [teamName, setTeamName] = useState('');
+  const [friends, setFriends] = useState([]);
+  const [selectedFriends, setSelectedFriends] = useState([]);
+  const [existingTeams, setExistingTeams] = useState([]);
+  const [myInvites, setMyInvites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const maxMembers = challenge.team_size || 2;
+
+  useEffect(() => {
+    const load = async () => {
+      const [teamsRes, friendsRes, invitesRes] = await Promise.all([
+        supabase.rpc('get_team_leaderboard', { p_challenge_id: challenge.id }),
+        supabase.from('friendships').select('requester_id, addressee_id, requester:profiles!friendships_requester_id_fkey(id, full_name, avatar_url), addressee:profiles!friendships_addressee_id_fkey(id, full_name, avatar_url)')
+          .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`).eq('status', 'accepted'),
+        supabase.from('challenge_team_invites').select('*, team:challenge_teams(id, name, challenge_id)')
+          .eq('invitee_id', userId).eq('status', 'pending'),
+      ]);
+      setExistingTeams((teamsRes.data || []).filter(t => t.member_count < maxMembers));
+      const friendList = (friendsRes.data || []).map(f => {
+        const friend = f.requester_id === userId ? f.addressee : f.requester;
+        return friend;
+      }).filter(Boolean);
+      setFriends(friendList);
+      setMyInvites((invitesRes.data || []).filter(inv => inv.team?.challenge_id === challenge.id));
+      setLoading(false);
+    };
+    load();
+  }, [challenge.id, userId, maxMembers]);
+
+  const handleCreateTeam = async () => {
+    if (!teamName.trim()) return;
+    setSaving(true);
+    // 1. Create team
+    const { data: team, error: teamErr } = await supabase.from('challenge_teams')
+      .insert({ challenge_id: challenge.id, name: teamName.trim(), captain_id: userId })
+      .select('id').single();
+    if (teamErr || !team) { setSaving(false); return; }
+    // 2. Join as participant with team_id
+    const { error: joinErr } = await supabase.from('challenge_participants')
+      .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: team.id, score: 0 });
+    if (joinErr) { setSaving(false); return; }
+    // 3. Send invites to selected friends
+    if (selectedFriends.length > 0) {
+      const invites = selectedFriends.map(fId => ({
+        team_id: team.id, inviter_id: userId, invitee_id: fId,
+      }));
+      await supabase.from('challenge_team_invites').insert(invites);
+      // Send notifications
+      for (const fId of selectedFriends) {
+        sendNotification({
+          profileId: fId, gymId, type: 'challenge',
+          title: t('challenges.team.inviteTitle', 'Team Invite!'),
+          body: t('challenges.team.inviteBody', { team: teamName.trim(), challenge: challenge.name }),
+          dedupKey: `team_invite_${team.id}_${fId}`,
+        }).catch(() => {});
+      }
+    }
+    setSaving(false);
+    onTeamJoined();
+    onClose();
+  };
+
+  const handleAcceptInvite = async (invite) => {
+    setSaving(true);
+    // Update invite status
+    await supabase.from('challenge_team_invites').update({ status: 'accepted' }).eq('id', invite.id);
+    // Join as participant with that team
+    await supabase.from('challenge_participants')
+      .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: invite.team_id, score: 0 });
+    setSaving(false);
+    onTeamJoined();
+    onClose();
+  };
+
+  const handleDeclineInvite = async (invite) => {
+    await supabase.from('challenge_team_invites').update({ status: 'declined' }).eq('id', invite.id);
+    setMyInvites(prev => prev.filter(i => i.id !== invite.id));
+  };
+
+  if (loading) return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={t('challenges.team.joinTeam', 'Join Team Challenge')}>
+      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-t-3xl p-6 pb-10">
+        <div className="flex justify-center py-8" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}><div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" /></div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')} onClick={onClose}>
+      <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-t-3xl p-6 pb-10 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[18px] font-bold text-[var(--color-text-primary)]">
+            {step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')}
+          </h3>
+          <button type="button" onClick={onClose} aria-label={t('common.close', 'Close')} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">✕</button>
+        </div>
+
+        {/* Incoming invites */}
+        {myInvites.length > 0 && step === 'choose' && (
+          <div className="mb-5">
+            <p className="text-[12px] font-semibold text-[#D4AF37] uppercase tracking-wider mb-3">{t('challenges.team.pendingInvites', 'Pending Invites')}</p>
+            {myInvites.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between bg-[#D4AF37]/5 border border-[#D4AF37]/20 rounded-xl px-4 py-3 mb-2">
+                <div>
+                  <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{inv.team?.name}</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.team.invitedYou', 'Invited you to join')}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => handleAcceptInvite(inv)} disabled={saving}
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[#D4AF37] text-black disabled:opacity-50">
+                    {t('challenges.team.accept', 'Accept')}
+                  </button>
+                  <button type="button" onClick={() => handleDeclineInvite(inv)}
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-white/5 text-[var(--color-text-muted)] border border-[var(--color-border)]">
+                    {t('challenges.team.decline', 'Decline')}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {step === 'choose' && (
+          <div className="space-y-3">
+            <button type="button" onClick={() => setStep('create')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#D4AF37]/5 border border-[#D4AF37]/20 hover:bg-[#D4AF37]/10 transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
+                <UserPlus size={18} className="text-[#D4AF37]" />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">{t('challenges.team.createNew', 'Create a New Team')}</p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">{t('challenges.team.createNewDesc', 'Name your team and invite friends')}</p>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {step === 'create' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('challenges.team.teamName', 'Team Name')}</label>
+              <input value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={30}
+                placeholder={t('challenges.team.teamNamePlaceholder', 'e.g. Iron Warriors')}
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[#D4AF37]/40" />
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">
+                {t('challenges.team.inviteFriends', 'Invite Friends')} ({selectedFriends.length}/{maxMembers - 1})
+              </label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {friends.length === 0 ? (
+                  <p className="text-[12px] text-[var(--color-text-muted)] py-3">{t('challenges.team.noFriends', 'Add friends first to invite them')}</p>
+                ) : friends.map(f => {
+                  const isSelected = selectedFriends.includes(f.id);
+                  const isFull = selectedFriends.length >= maxMembers - 1 && !isSelected;
+                  return (
+                    <button key={f.id} type="button" disabled={isFull}
+                      onClick={() => setSelectedFriends(prev => isSelected ? prev.filter(id => id !== f.id) : [...prev, f.id])}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
+                        isSelected ? 'bg-[#D4AF37]/10 border border-[#D4AF37]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)] hover:bg-white/5'
+                      } ${isFull ? 'opacity-40' : ''}`}>
+                      <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                        {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[#D4AF37]">{(f.full_name || '?')[0]}</span>}
+                      </div>
+                      <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{f.full_name}</p>
+                      {isSelected && <Check size={16} className="text-[#D4AF37]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setStep('choose')}
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-white/5 border border-[var(--color-border)]">
+                {t('common.back', 'Back')}
+              </button>
+              <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] disabled:opacity-50">
+                {saving ? '...' : t('challenges.team.create', 'Create & Join')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -432,11 +845,13 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
   const [open, setOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
   const status = statusOf(challenge);
   const meta = TYPE_META[challenge.type] ?? {};
   const Icon = meta.icon ?? Trophy;
   const cardRewards = parseRewards(challenge);
   const hasRewards = challenge.reward_description != null;
+  const isTeam = challenge.type === 'team';
 
   const statusStyle = {
     live:     'text-emerald-400 bg-emerald-500/10',
@@ -448,6 +863,10 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 
   const handleJoin = async (e) => {
     e.stopPropagation();
+    if (isTeam) {
+      setShowTeamModal(true);
+      return;
+    }
     setJoining(true);
     await onJoin(challenge.id);
     setJoining(false);
@@ -466,6 +885,8 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={open}
+        aria-label={`${sanitize(challenge.name)} - ${statusLabel}`}
         className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors cursor-pointer"
         onClick={() => setOpen(o => !o)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
@@ -482,6 +903,18 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           </div>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             <span className="text-[12px] text-[var(--color-text-muted)]">{t(`challenges.typeLabels.${meta.labelKey ?? challenge.type}`, meta.labelKey ?? '')}</span>
+            {challenge.type === 'team' && challenge.team_size && (
+              <>
+                <span className="text-[var(--color-text-muted)]">·</span>
+                <span className="text-[11px] text-[#D4AF37] font-medium">{challenge.team_size === 2 ? t('challenges.team.duos', 'Duos') : challenge.team_size === 3 ? t('challenges.team.trios', 'Trios') : `${challenge.team_size}-${t('challenges.team.person', 'person')}`}</span>
+              </>
+            )}
+            {challenge.type === 'milestone' && challenge.milestone_target && (
+              <>
+                <span className="text-[var(--color-text-muted)]">·</span>
+                <span className="text-[11px] text-[#D4AF37] font-medium">{Number(challenge.milestone_target).toLocaleString()} lb {t('challenges.club.clubLine', 'Club')}</span>
+              </>
+            )}
             {participantCount > 0 && (
               <>
                 <span className="text-[var(--color-text-muted)]">·</span>
@@ -570,9 +1003,28 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} t={t} />
-            : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+            : challenge.type === 'team'
+              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+              : challenge.type === 'milestone'
+                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
+                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} />
           }
         </div>
+      )}
+
+      {showTeamModal && (
+        <TeamFormationModal
+          challenge={challenge}
+          gymId={gymId}
+          userId={myId}
+          onTeamJoined={() => {
+            setShowTeamModal(false);
+            // Refresh participant data
+            onJoin(null); // Signal parent to refresh
+          }}
+          onClose={() => setShowTeamModal(false)}
+          t={t}
+        />
       )}
     </div>
   );
@@ -672,7 +1124,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenger?.avatar_url ? (
-                    <img src={duel.challenger.avatar_url} alt="" className="w-full h-full object-cover" />
+                    <img src={duel.challenger.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[12px] font-bold text-[#D4AF37]">{opponentName.charAt(0)}</span>
                   )}
@@ -688,6 +1140,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
               </div>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => handleDecline(duel)}
                   disabled={processing === duel.id}
                   className="flex-1 py-2.5 rounded-xl bg-white/[0.06] text-[12px] font-semibold text-[var(--color-text-muted)] transition-colors hover:bg-white/[0.08] min-h-[44px] flex items-center justify-center gap-1.5"
@@ -695,6 +1148,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
                   <XCircle size={13} /> {t('challenges.friendDuels.decline')}
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleAccept(duel)}
                   disabled={processing === duel.id}
                   className="flex-1 py-2.5 rounded-xl text-[12px] font-bold text-white transition-all min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-60"
@@ -715,7 +1169,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenged?.avatar_url ? (
-                    <img src={duel.challenged.avatar_url} alt="" className="w-full h-full object-cover" />
+                    <img src={duel.challenged.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[12px] font-bold text-[var(--color-text-muted)]">{opponentName.charAt(0)}</span>
                   )}
@@ -829,7 +1283,7 @@ export default function Challenges({ embedded = false }) {
 
     const load = async () => {
       const [{ data: cData }, { data: pData }] = await Promise.all([
-        supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id').eq('gym_id', profile.gym_id).order('start_date', { ascending: false }).limit(50),
+        supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target').eq('gym_id', profile.gym_id).order('start_date', { ascending: false }).limit(50),
         supabase.from('challenge_participants').select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500),
       ]);
       setChallenges(cData || []);
@@ -840,8 +1294,20 @@ export default function Challenges({ embedded = false }) {
   }, [profile?.gym_id, user?.id]);
 
   const handleJoin = async (challengeId) => {
+    // null challengeId = refresh signal from TeamFormationModal (team already joined)
+    if (!challengeId) {
+      const { data: pData } = await supabase.from('challenge_participants')
+        .select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500);
+      setParticipants(pData || []);
+      addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
+      return;
+    }
+
     const challenge = challenges.find(c => c.id === challengeId);
     if (!challenge) return;
+
+    // Team challenges handle their own join in TeamFormationModal
+    if (challenge.type === 'team') return;
 
     // Score starts at 0 — the DB trigger enforces this to prevent score injection.
     // Scores are updated server-side as workouts/PRs are logged.
@@ -852,7 +1318,6 @@ export default function Challenges({ embedded = false }) {
       .single();
     if (!error && data) {
       setParticipants(prev => [...prev, data]);
-      // Note: 'challenge_joined' must be added to the server-side add_reward_points whitelist
       addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
     }
   };
@@ -881,7 +1346,7 @@ export default function Challenges({ embedded = false }) {
       {/* Header */}
       {!embedded && (
       <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border)]">
-        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-5">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-6 pb-5">
           <div className="flex items-center gap-4 mb-5">
             <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center">
               <Trophy size={24} className="text-[#D4AF37]" strokeWidth={2} />
@@ -896,7 +1361,7 @@ export default function Challenges({ embedded = false }) {
       )}
 
       {/* Tab bar — always visible */}
-      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[480px] md:max-w-4xl mx-auto px-4'}`}>
+      <div className={`${embedded ? 'pt-2 pb-3' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4'}`}>
         {!embedded && <div className="h-0" />}
         <UnderlineTabs
           tabs={TABS.map(tabKey => ({
@@ -909,7 +1374,7 @@ export default function Challenges({ embedded = false }) {
         />
       </div>
 
-      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl mx-auto px-4 py-6'}`}>
+      <div className={`${embedded ? '' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-6'}`}>
         {tab === 'live' && user?.id && profile?.gym_id && (
           <DailyChallenge userId={user.id} gymId={profile.gym_id} t={t} />
         )}
@@ -922,7 +1387,9 @@ export default function Challenges({ embedded = false }) {
           />
         )}
         {loading ? (
-          <Skeleton variant="card" count={3} height="h-[90px]" />
+          <div role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}>
+            <Skeleton variant="card" count={3} height="h-[90px]" />
+          </div>
         ) : (
           <SwipeableTabView activeIndex={chalTabIndex} onChangeIndex={handleChalSwipe} tabKeys={TABS}>
             {TABS.map(tabKey => {
@@ -940,7 +1407,7 @@ export default function Challenges({ embedded = false }) {
                       description={tabKey === 'live' ? t('challenges.adminPostsHere') : undefined}
                     />
                   ) : (
-                    <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+                    <div className="space-y-4 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
                       {items.map(c => (
                         <ChallengeCard
                           key={c.id}

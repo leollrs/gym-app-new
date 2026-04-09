@@ -131,6 +131,7 @@ function ExerciseProgressChart({ exerciseId, exerciseName, onClose }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="w-8 h-8 rounded-full flex items-center justify-center mt-0.5 bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]"
           >
             <X size={16} />

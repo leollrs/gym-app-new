@@ -86,6 +86,7 @@ const SetNoteInput = ({ value, onChange, onClose, t }) => (
         value={value || ''}
         onChange={e => onChange(e.target.value)}
         placeholder={t?.('activeSession.notePlaceholder') ?? 'Add a note... (e.g. "felt easy", "elbow pain")'}
+        aria-label={t?.('activeSession.notePlaceholder') ?? 'Set note'}
         className="flex-1 text-[12px] bg-transparent placeholder:text-[#4B5563] focus:outline-none"
         style={{ color: 'var(--color-text-primary)' }}
         autoFocus
@@ -156,6 +157,7 @@ const ExerciseInfoCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, onSk
             <button
               onClick={() => setShowVideo(v => !v)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.12] transition-colors active:scale-95"
+              aria-label={showVideo ? (t?.('activeSession.hide') ?? 'Hide demo') : (t?.('activeSession.demo') ?? 'Show demo')}
             >
               {showVideo ? (
                 <>
@@ -397,6 +399,7 @@ const ExerciseCard = ({
                   if (v.length > 1 && v[0] === '0' && v[1] !== '.') v = String(Number(v));
                   onUpdateSet(activeExId, activeSetIndex, 'weight', v);
                 }}
+                onFocus={e => { const el = e.target; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300); }}
                 placeholder={suggestedWeight ? String(suggestedWeight) : '0'}
                 className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
                 style={{ color: 'var(--color-text-primary)' }}
@@ -437,6 +440,7 @@ const ExerciseCard = ({
                   if (v.length > 1 && v[0] === '0' && v[1] !== '.') v = String(Number(v));
                   onUpdateSet(activeExId, activeSetIndex, 'reps', v);
                 }}
+                onFocus={e => { const el = e.target; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300); }}
                 placeholder={suggestedReps ? String(suggestedReps) : '0'}
                 className="w-full text-center text-[24px] font-black bg-transparent tabular-nums focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg"
                 style={{ color: 'var(--color-text-primary)' }}

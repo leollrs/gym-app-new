@@ -5,6 +5,7 @@ import logger from '../../lib/logger';
 import { subDays, format, startOfWeek, startOfDay, endOfDay } from 'date-fns';
 import {
   AlertTriangle, Activity, MessageSquare, X, Trophy, Flame, Clock, Eye,
+  Users, TrendingUp, CalendarCheck, ShieldAlert,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -248,6 +249,34 @@ export default function TrainerDashboard() {
   const activeProfileIds = new Set(weekSessions.map((s) => s.profile_id));
   const activeThisWeek = activeProfileIds.size;
   const workoutsThisWeek = weekSessions.length;
+  const activeClientsPct = totalClients > 0 ? Math.round((activeThisWeek / totalClients) * 100) : 0;
+  const avgSessionsPerClient = totalClients > 0 ? (workoutsThisWeek / totalClients).toFixed(1) : '0.0';
+
+  // 30-day retention
+  const thirtyDaysAgo = subDays(new Date(), 30);
+  const activeIn30Days = clients.filter(c => c.last_active_at && new Date(c.last_active_at) >= thirtyDaysAgo).length;
+  const retentionPct = totalClients > 0 ? Math.round((activeIn30Days / totalClients) * 100) : 0;
+
+  // Needs Attention: 7+ days inactive OR churn >= 60
+  const sevenDaysAgoDate = subDays(new Date(), 7);
+  const needsAttentionClients = useMemo(() => {
+    return clients
+      .filter(c => {
+        const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
+        const isInactive = !lastActive || lastActive < sevenDaysAgoDate;
+        const churn = churnScores[c.id];
+        const isHighChurn = churn && churn.score >= 60;
+        return isInactive || isHighChurn;
+      })
+      .map(c => {
+        const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
+        const daysInactive = lastActive ? Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24)) : 30;
+        const churn = churnScores[c.id];
+        return { client: c, daysInactive, churnScore: churn ? Math.round(churn.score) : null };
+      })
+      .sort((a, b) => b.daysInactive - a.daysInactive)
+      .slice(0, 5);
+  }, [clients, churnScores, sevenDaysAgoDate]);
 
   const fourteenDaysAgo = subDays(new Date(), 14);
   const atRiskClients = clients
@@ -407,13 +436,36 @@ export default function TrainerDashboard() {
     ? t('trainerDashboard.subtitleSessions', { count: sessionsToday })
     : todayDate;
 
-  // KPI strip items
-  const kpis = [
-    { label: t('trainerDashboard.kpi.clients'), value: totalClients, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-    { label: t('trainerDashboard.kpi.activeWeek'), value: activeThisWeek, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    { label: t('trainerDashboard.kpi.atRisk'), value: atRiskClients.length, color: atRiskClients.length > 0 ? 'text-red-400' : 'text-[var(--color-text-secondary)]', bg: atRiskClients.length > 0 ? 'bg-red-500/10' : 'bg-white/[0.04]' },
-    { label: t('trainerDashboard.kpi.sessionsToday'), value: sessionsToday, color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },
-    { label: t('trainerDashboard.kpi.sessionsWeek'), value: workoutsThisWeek, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+  // KPI stat cards data
+  const statCards = [
+    {
+      icon: Users,
+      value: `${activeThisWeek}/${totalClients}`,
+      label: 'Active Clients',
+      sub: `${activeClientsPct}% this week`,
+      borderColor: '#3B82F6',
+    },
+    {
+      icon: TrendingUp,
+      value: avgSessionsPerClient,
+      label: 'Avg Sessions/Client',
+      sub: 'This week',
+      borderColor: '#10B981',
+    },
+    {
+      icon: ShieldAlert,
+      value: `${retentionPct}%`,
+      label: 'Client Retention',
+      sub: 'Last 30 days',
+      borderColor: retentionPct >= 80 ? '#10B981' : retentionPct >= 60 ? '#F59E0B' : '#EF4444',
+    },
+    {
+      icon: CalendarCheck,
+      value: workoutsThisWeek,
+      label: 'This Week',
+      sub: `${workoutsThisWeek} completed session${workoutsThisWeek !== 1 ? 's' : ''}`,
+      borderColor: '#8B5CF6',
+    },
   ];
 
   // Filter upcoming sessions to next 3 hours only
@@ -422,30 +474,92 @@ export default function TrainerDashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)]">
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 md:pb-12 space-y-8">
+      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 md:pb-12 space-y-6 sm:space-y-8">
 
         {/* ── Header ── */}
-        <div>
-          <h1 className="text-[22px] md:text-[28px] font-bold text-[var(--color-text-primary)] truncate">{t('trainerDashboard.title')}</h1>
-          <p className="text-[13px] md:text-[14px] text-[var(--color-text-secondary)] mt-0.5">{subtitle}</p>
+        <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4"
+          style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
+            {t('trainerDashboard.title', 'Dashboard')}
+          </p>
+          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+            {subtitle}
+          </h1>
         </div>
 
-        {/* ── Section 1: KPI Grid (no horizontal scroll) ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {kpis.map((kpi) => (
-            <div
-              key={kpi.label}
-              className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl p-4"
-            >
-              <span className={`text-[20px] lg:text-[24px] font-bold ${kpi.color} block`}>{kpi.value}</span>
-              <span className="text-[12px] text-[var(--color-text-muted)] mt-1 block">{kpi.label}</span>
+        {/* ══════════════ Section 1: KPI Stat Cards ══════════════ */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+          {statCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.label}
+                className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl p-4 border-l-2"
+                style={{ borderLeftColor: card.borderColor }}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[18px] sm:text-[22px] lg:text-[26px] font-bold text-[var(--color-text-primary)] leading-tight">{card.value}</p>
+                    <p className="text-[12px] font-medium text-[var(--color-text-muted)] mt-1.5 truncate">{card.label}</p>
+                    {card.sub && <p className="text-[11px] sm:text-[11px] text-[var(--color-text-muted)] mt-0.5 opacity-80">{card.sub}</p>}
+                  </div>
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 bg-white/[0.04]">
+                    <Icon size={16} style={{ color: card.borderColor }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ══════════════ Section 2: Needs Attention ══════════════ */}
+        {needsAttentionClients.length > 0 && (
+          <div>
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-400" />
+              Needs Attention
+            </h2>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
+              {needsAttentionClients.map((item) => {
+                const name = item.client.full_name || item.client.username || t('trainerDashboard.unknownFallback');
+                const hasHighChurn = item.churnScore !== null && item.churnScore >= 60;
+                return (
+                  <div key={item.client.id} className="flex items-center gap-3 px-4 py-3.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${hasHighChurn ? 'bg-red-500/10' : 'bg-orange-500/10'}`}>
+                      <span className={`text-[13px] font-semibold ${hasHighChurn ? 'text-red-400' : 'text-orange-400'}`}>
+                        {getInitial(name)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">{name}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[11px] text-orange-400">
+                          {item.daysInactive >= 30 ? '30+' : item.daysInactive} days inactive
+                        </span>
+                        {hasHighChurn && (
+                          <span className="text-[11px] font-bold text-red-400">
+                            Churn: {item.churnScore}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handlePush(item.client)}
+                      disabled={submittingAction === `push-${item.client.id}`}
+                      className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-blue-500/10 flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                    >
+                      <MessageSquare size={13} className="text-blue-400" />
+                      <span className="text-[11px] font-medium text-blue-400">Message</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* ── Schedule + Upcoming: side-by-side on lg desktop ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── Today's Schedule ── */}
+        {/* ══════════════ Section 3: Today's Sessions ══════════════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {todaySessions.length > 0 && (
           <div>
             <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
@@ -457,7 +571,7 @@ export default function TrainerDashboard() {
                 return (
                   <div
                     key={session.id}
-                    className={`flex items-center gap-3 px-4 py-3 transition-colors${isCompleted ? ' line-through opacity-50' : ''}`}
+                    className={`flex items-center gap-2.5 sm:gap-3 px-4 py-3 transition-colors${isCompleted ? ' line-through opacity-50' : ''}`}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">
@@ -483,7 +597,7 @@ export default function TrainerDashboard() {
           {nextThreeHours.length > 0 ? (
             <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
               {nextThreeHours.map((session) => (
-                <div key={session.id} className="flex items-center gap-3 px-4 py-3">
+                <div key={session.id} className="flex items-center gap-2.5 sm:gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">
                       {session.profiles?.full_name || t('trainerDashboard.clientFallback')}
@@ -506,9 +620,77 @@ export default function TrainerDashboard() {
         </div>
         </div>
 
-        {/* ── Priority Clients + Recent Wins: side-by-side on lg desktop ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── Priority Clients (ONLY if at-risk clients exist) ── */}
+        {/* ══════════════ Section 4: Recent PRs (Celebration) ══════════════ */}
+        {recentPRs.length > 0 && (
+          <div>
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+              <Trophy size={16} className="text-[#D4AF37]" />
+              <span>Recent PRs</span>
+            </h2>
+            <div className="bg-[var(--color-bg-card)] border rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]" style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}>
+              {recentPRs.map((pr) => {
+                const name = clientMap[pr.profile_id] || t('trainerDashboard.clientFallback');
+                return (
+                  <div key={pr.id} className="flex items-center gap-3 px-4 py-3.5 group hover:bg-[#D4AF37]/[0.03] transition-colors">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(212, 175, 55, 0.1)' }}>
+                      <Trophy size={15} className="text-[#D4AF37]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
+                        <span className="font-semibold">{name}</span>
+                        {' '}<span className="text-[#D4AF37] font-medium">{t('trainerDashboard.newPR')}</span>
+                      </p>
+                      <p className="text-[12px] text-[var(--color-text-muted)] truncate">
+                        {pr.exercises?.name || t('trainerDashboard.exerciseFallback')}
+                        <span className="mx-1.5 text-[var(--color-text-muted)]">&middot;</span>
+                        <span className="font-semibold text-[#D4AF37]">{pr.weight_lbs} lbs</span>
+                        <span className="text-[var(--color-text-muted)]"> x {pr.reps}</span>
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
+                      {format(new Date(pr.recorded_at), 'MMM d')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════ Section 5: Client Streaks ══════════════ */}
+        {activeStreaks.length > 0 && (
+          <div>
+            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+              <Flame size={16} className="text-orange-400" />
+              <span>Client Streaks</span>
+            </h2>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
+              {activeStreaks.map((s) => {
+                const name = clientMap[s.profile_id] || t('trainerDashboard.clientFallback');
+                return (
+                  <div key={`streak-${s.profile_id}`} className="flex items-center gap-3 px-4 py-3.5">
+                    <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                      <Flame size={14} className="text-orange-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
+                        <span className="font-medium">{name}</span>
+                      </p>
+                      <p className="text-[10px] text-[var(--color-text-muted)]">
+                        {t('trainerDashboard.streakDays', { count: s.current_streak })}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold text-orange-400">
+                      {s.current_streak}d
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Priority Clients (existing at-risk list) ── */}
         {priorityClients.length > 0 && (
           <div>
             <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
@@ -542,10 +724,10 @@ export default function TrainerDashboard() {
                     </div>
                     <button
                       onClick={() => navigate(`/trainer/clients/${item.client.id}`)}
-                      className="shrink-0 h-8 px-3 rounded-xl bg-[var(--color-accent)]/10 flex items-center gap-1.5 hover:bg-[var(--color-accent)]/20 transition-colors"
+                      className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-[var(--color-accent)]/10 flex items-center gap-1.5 hover:bg-[var(--color-accent)]/20 transition-colors"
                     >
                       <Eye size={13} className="text-[var(--color-accent)]" />
-                      <span className="text-[11px] font-medium text-[var(--color-accent)] hidden sm:inline">{t('trainerDashboard.view')}</span>
+                      <span className="text-[11px] font-medium text-[var(--color-accent)]">{t('trainerDashboard.view')}</span>
                     </button>
                   </div>
                 );
@@ -553,72 +735,17 @@ export default function TrainerDashboard() {
             </div>
           </div>
         )}
-
-        {/* ── Recent Wins ── */}
-        {(recentPRs.length > 0 || activeStreaks.length > 0) && (
-          <div>
-            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
-              {t('trainerDashboard.recentWins')}
-            </h2>
-            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
-              {recentPRs.map((pr) => {
-                const name = clientMap[pr.profile_id] || t('trainerDashboard.clientFallback');
-                return (
-                  <div key={pr.id} className="flex items-center gap-3 px-4 py-3.5">
-                    <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
-                      <Trophy size={14} className="text-[var(--color-accent)]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
-                        <span className="font-medium">{name}</span>
-                        {' '}<span className="text-emerald-400">{t('trainerDashboard.newPR')}</span>
-                      </p>
-                      <p className="text-[10px] text-[var(--color-text-muted)] truncate">
-                        {pr.exercises?.name || t('trainerDashboard.exerciseFallback')} — {pr.weight_lbs} lbs x {pr.reps}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
-                      {format(new Date(pr.recorded_at), 'MMM d')}
-                    </span>
-                  </div>
-                );
-              })}
-              {activeStreaks.map((s) => {
-                const name = clientMap[s.profile_id] || t('trainerDashboard.clientFallback');
-                return (
-                  <div key={`streak-${s.profile_id}`} className="flex items-center gap-3 px-4 py-3.5">
-                    <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
-                      <Flame size={14} className="text-orange-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-[var(--color-text-primary)] truncate">
-                        <span className="font-medium">{name}</span>
-                      </p>
-                      <p className="text-[10px] text-[var(--color-text-muted)]">
-                        {t('trainerDashboard.streakDays', { count: s.current_streak })}
-                      </p>
-                    </div>
-                    <span className="text-[11px] font-bold text-orange-400">
-                      {s.current_streak}d
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        </div>
       </div>
 
       {/* Call Note Modal */}
       {callModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] w-full max-w-[400px] p-6">
+          <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] w-full max-w-[400px] mx-4 sm:mx-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[16px] font-semibold text-[var(--color-text-primary)]">
                 {t('trainerDashboard.reachOut.logCall')}
               </h3>
-              <button onClick={() => setCallModal(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+              <button onClick={() => setCallModal(null)} className="p-2 -m-2 rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
                 <X size={18} />
               </button>
             </div>
@@ -654,14 +781,14 @@ export default function TrainerDashboard() {
             <div className="flex gap-3">
               <button
                 onClick={() => setCallModal(null)}
-                className="flex-1 py-2.5 rounded-lg border border-[var(--color-border-subtle)] text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+                className="flex-1 py-3 sm:py-2.5 rounded-lg border border-[var(--color-border-subtle)] text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
               >
                 {t('trainerDashboard.reachOut.cancel')}
               </button>
               <button
                 onClick={handleCallSubmit}
                 disabled={submittingAction === `call-${callModal.id}`}
-                className="flex-1 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-bg-primary)] text-[13px] font-semibold transition-colors disabled:opacity-50"
+                className="flex-1 py-3 sm:py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-bg-primary)] text-[13px] font-semibold transition-colors disabled:opacity-50"
               >
                 {submittingAction === `call-${callModal.id}` ? t('trainerDashboard.reachOut.saving') : t('trainerDashboard.reachOut.logCallBtn')}
               </button>

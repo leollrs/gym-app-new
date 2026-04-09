@@ -17,6 +17,8 @@ import {
   PageHeader, AdminPageShell, AdminCard, StatCard,
   FadeIn, CardSkeleton, SectionLabel,
 } from '../../components/admin';
+import AvatarPicker from '../../components/AvatarPicker';
+import UserAvatar from '../../components/UserAvatar';
 
 const ROLE_LABELS = {
   super_admin: { en: 'Super Admin', es: 'Super Admin' },
@@ -68,10 +70,10 @@ async function compressAvatar(file, maxSize = 256, quality = 0.85) {
 }
 
 export default function AdminProfile() {
-  const { profile, user, gymName, signOut } = useAuth();
+  const { profile, user, gymName, signOut, refreshProfile } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
-  const { addToast } = useToast();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
   const locale = i18n.language === 'es' ? esLocale : undefined;
@@ -81,6 +83,56 @@ export default function AdminProfile() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
   const [uploading, setUploading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+
+  const currentAvatar = profile?.avatar_url
+    ? { type: 'photo', value: profile.avatar_url }
+    : profile?.avatar_color
+      ? { type: 'color', value: profile.avatar_color }
+      : profile?.avatar_design
+        ? { type: 'design', value: profile.avatar_design }
+        : { type: 'color', value: '#6366F1' };
+
+  const handleAvatarSave = async ({ type, value, file }) => {
+    setUploading(true);
+    try {
+      if (type === 'photo' && file) {
+        const compressed = await compressAvatar(file);
+        const ext = file.name.split('.').pop() || 'jpg';
+        const path = `avatars/${profile.id}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('profile-photos').upload(path, compressed, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from('profile-photos').getPublicUrl(path);
+        const { error } = await supabase.from('profiles').update({
+          avatar_url: urlData.publicUrl + '?v=' + Date.now(),
+          avatar_color: null, avatar_design: null,
+        }).eq('id', profile.id);
+        if (error) throw error;
+      } else if (type === 'color') {
+        const { error } = await supabase.from('profiles').update({
+          avatar_color: value, avatar_design: null, avatar_url: null,
+        }).eq('id', profile.id);
+        if (error) throw error;
+      } else if (type === 'design') {
+        const { error } = await supabase.from('profiles').update({
+          avatar_design: value, avatar_color: null, avatar_url: null,
+        }).eq('id', profile.id);
+        if (error) throw error;
+      }
+      queryClient.invalidateQueries({ queryKey: adminKeys.overview(profile.gym_id) });
+      await refreshProfile();
+      showToast(t('admin.profile.avatarUpdated', 'Avatar actualizado'), 'success');
+      setShowAvatarPicker(false);
+    } catch (err) {
+      logger.error('Avatar save failed', err);
+      showToast(err.message || t('admin.profile.avatarError', 'Error al actualizar avatar'), 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const gymId = profile?.gym_id;
 
@@ -127,12 +179,12 @@ export default function AdminProfile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin'] });
-      addToast(t('admin.profile.updateSuccess', 'Profile updated'), 'success');
+      showToast(t('admin.profile.updateSuccess', 'Profile updated'), 'success');
       setEditing(false);
     },
     onError: (err) => {
       logger.error('Profile update failed', err);
-      addToast(t('admin.profile.updateError', 'Failed to update profile'), 'error');
+      showToast(t('admin.profile.updateError', 'Failed to update profile'), 'error');
     },
   });
 
@@ -143,7 +195,7 @@ export default function AdminProfile() {
 
     const validation = await validateImageFile(file);
     if (!validation.valid) {
-      addToast(validation.error, 'error');
+      showToast(validation.error, 'error');
       return;
     }
 
@@ -169,10 +221,10 @@ export default function AdminProfile() {
       if (updateError) throw updateError;
 
       queryClient.invalidateQueries({ queryKey: ['admin'] });
-      addToast(t('admin.profile.avatarUpdated', 'Avatar updated'), 'success');
+      showToast(t('admin.profile.avatarUpdated', 'Avatar updated'), 'success');
     } catch (err) {
       logger.error('Avatar upload failed', err);
-      addToast(t('admin.profile.avatarError', 'Failed to upload avatar'), 'error');
+      showToast(t('admin.profile.avatarError', 'Failed to upload avatar'), 'error');
     } finally {
       setUploading(false);
     }
@@ -181,11 +233,11 @@ export default function AdminProfile() {
   // ── Password change ──
   const handlePasswordChange = async () => {
     if (passwords.new.length < 8 || !/[A-Z]/.test(passwords.new) || !/[a-z]/.test(passwords.new) || !/[0-9]/.test(passwords.new)) {
-      addToast(t('admin.profile.passwordTooWeak', 'Password must be 8+ characters with uppercase, lowercase, and a number'), 'error');
+      showToast(t('admin.profile.passwordTooWeak', 'Password must be 8+ characters with uppercase, lowercase, and a number'), 'error');
       return;
     }
     if (passwords.new !== passwords.confirm) {
-      addToast(t('admin.profile.passwordMismatch', 'Passwords do not match'), 'error');
+      showToast(t('admin.profile.passwordMismatch', 'Passwords do not match'), 'error');
       return;
     }
     try {
@@ -195,18 +247,18 @@ export default function AdminProfile() {
         password: passwords.current,
       });
       if (reAuthError) {
-        addToast(t('admin.profile.currentPasswordWrong', 'Current password is incorrect'), 'error');
+        showToast(t('admin.profile.currentPasswordWrong', 'Current password is incorrect'), 'error');
         return;
       }
 
       const { error } = await supabase.auth.updateUser({ password: passwords.new });
       if (error) throw error;
-      addToast(t('admin.profile.passwordChanged', 'Password changed successfully'), 'success');
+      showToast(t('admin.profile.passwordChanged', 'Password changed successfully'), 'success');
       setChangingPassword(false);
       setPasswords({ current: '', new: '', confirm: '' });
     } catch (err) {
       logger.error('Password change failed', err);
-      addToast(err.message || t('admin.profile.passwordError', 'Failed to change password'), 'error');
+      showToast(err.message || t('admin.profile.passwordError', 'Failed to change password'), 'error');
     }
   };
 
@@ -231,25 +283,26 @@ export default function AdminProfile() {
             <div className="h-24 relative" style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 60%, #000) 100%)' }}>
               <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
                 <div className="relative group">
-                  <div className="w-24 h-24 rounded-2xl overflow-hidden border-4 shadow-xl"
-                       style={{ borderColor: 'var(--color-bg-card)', background: 'var(--color-bg-elevated)' }}>
-                    {profile?.avatar_url ? (
-                      <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <User className="w-10 h-10" style={{ color: 'var(--color-text-muted)' }} />
-                      </div>
-                    )}
+                  <div className="rounded-2xl overflow-hidden border-4 shadow-xl"
+                       style={{ borderColor: 'var(--color-bg-card)', width: 96, height: 96 }}>
+                    <UserAvatar
+                      user={{
+                        ...profile,
+                        avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
+                        avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
+                      }}
+                      size={88}
+                      rounded="2xl"
+                    />
                   </div>
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => setShowAvatarPicker(true)}
                     disabled={uploading}
                     className="absolute -bottom-1 -right-1 p-1.5 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
                     style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
                   >
                     <Camera className="w-3.5 h-3.5" />
                   </button>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                 </div>
               </div>
             </div>
@@ -262,6 +315,7 @@ export default function AdminProfile() {
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
+                    aria-label={t('admin.profile.fullName', 'Full name')}
                     className="text-lg font-bold text-center rounded-lg px-3 py-1.5 border transition-colors"
                     style={{
                       background: 'var(--color-bg-input, var(--color-bg-elevated))',
@@ -399,6 +453,7 @@ export default function AdminProfile() {
                       <input
                         type="password"
                         placeholder={t('admin.profile.newPassword', 'New password')}
+                        aria-label={t('admin.profile.newPassword', 'New password')}
                         value={passwords.new}
                         onChange={(e) => setPasswords(p => ({ ...p, new: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border text-sm transition-colors"
@@ -411,6 +466,7 @@ export default function AdminProfile() {
                       <input
                         type="password"
                         placeholder={t('admin.profile.confirmPassword', 'Confirm password')}
+                        aria-label={t('admin.profile.confirmPassword', 'Confirm password')}
                         value={passwords.confirm}
                         onChange={(e) => setPasswords(p => ({ ...p, confirm: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border text-sm transition-colors"
@@ -534,9 +590,82 @@ export default function AdminProfile() {
               <LogOut className="w-4 h-4" />
               {tc('adminNav.signOut', 'Sign out')}
             </button>
+
+            {/* Delete account */}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-semibold transition-colors mt-3"
+              style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {t('admin.profile.deleteAccount', 'Eliminar Cuenta')}
+            </button>
           </FadeIn>
         </div>
       </div>
+
+      {/* Delete account confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={18} style={{ color: '#EF4444' }} />
+                <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.profile.deleteAccount', 'Eliminar Cuenta')}</h3>
+              </div>
+              <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.profile.deleteWarning', 'Esta acción es permanente. Se eliminarán todos tus datos y no se puede deshacer.')}
+              </p>
+              <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.profile.deleteTypeConfirm', 'Escribe ELIMINAR para confirmar:')}
+              </p>
+              <input
+                type="text"
+                value={deleteInput}
+                onChange={e => setDeleteInput(e.target.value)}
+                placeholder="ELIMINAR"
+                className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none mb-4"
+                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+              />
+              <div className="flex gap-3">
+                <button onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors"
+                  style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
+                  {t('admin.profile.cancel', 'Cancelar')}
+                </button>
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await supabase.rpc('delete_own_account');
+                      await signOut();
+                    } catch (err) {
+                      logger.error('Account deletion failed', err);
+                      showToast(err.message || 'Error', 'error');
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleteInput.toLowerCase() !== 'eliminar' || deleting}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style={{ backgroundColor: '#EF4444', color: '#fff' }}>
+                  {deleting ? t('admin.profile.deleting', 'Eliminando...') : t('admin.profile.deleteConfirmBtn', 'Eliminar Cuenta')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avatar Picker */}
+      <AvatarPicker
+        isOpen={showAvatarPicker}
+        onClose={() => setShowAvatarPicker(false)}
+        currentAvatar={currentAvatar}
+        user={profile}
+        onSave={handleAvatarSave}
+        uploading={uploading}
+      />
     </AdminPageShell>
   );
 }

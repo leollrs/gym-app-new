@@ -47,6 +47,7 @@ export const updateLiveActivity = async ({
   currentExerciseName,
   isResting = false,
   restRemainingSeconds = 0,
+  isPaused = false,
 }) => {
   if (!isIOS()) return;
   const plugin = getPlugin();
@@ -58,6 +59,7 @@ export const updateLiveActivity = async ({
       currentExerciseName,
       isResting,
       restRemainingSeconds,
+      isPaused,
     });
   } catch (e) {
     console.warn('Live Activity update failed:', e);

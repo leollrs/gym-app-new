@@ -1,11 +1,14 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare } from 'lucide-react';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
+import { encryptMessage } from '../../lib/messageEncryption';
 import logger from '../../lib/logger';
 import { formatDistanceToNow, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import UnderlineTabs from '../../components/UnderlineTabs';
 
 // ── Client quick-preview modal ──────────────────────────────────────────────
 const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
@@ -36,7 +39,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="client-preview-title"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
@@ -75,7 +78,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-3 mx-5 mb-5">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 mx-5 mb-5">
           {/* Last active */}
           <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3">
             <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
@@ -284,6 +287,203 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   );
 };
 
+// ── Assign Program Modal ──────────────────────────────────────────────────
+const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
+  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
+  const [programs, setPrograms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from('gym_programs')
+      .select('id, name')
+      .eq('gym_id', gymId)
+      .eq('is_published', true)
+      .order('name')
+      .then(({ data }) => { setPrograms(data || []); setLoading(false); });
+  }, [gymId]);
+
+  const handleAssign = async () => {
+    if (!selectedProgram) return;
+    setAssigning(true);
+    try {
+      const rows = selectedClients.map(c => ({
+        profile_id: c.id,
+        program_id: selectedProgram,
+        gym_id: gymId,
+      }));
+      const { error } = await supabase.from('gym_program_enrollments').upsert(rows, { onConflict: 'program_id,profile_id' });
+      if (error) throw error;
+      showToast(t('trainerClients.programAssignedSuccess', 'Program assigned to {{count}} clients', { count: selectedClients.length }), 'success');
+      onDone();
+    } catch (err) {
+      logger.error('AssignProgram: error', err);
+      showToast(err.message, 'error');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+            {t('trainerClients.assignProgram', 'Assign Program')}
+          </h2>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="px-5 pb-2">
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            {t('trainerClients.assignProgramDesc', 'Select a program to assign to {{count}} selected clients', { count: selectedClients.length })}
+          </p>
+        </div>
+        <div className="px-5 pb-5 space-y-2 max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
+            </div>
+          ) : programs.length === 0 ? (
+            <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('trainerClients.noPrograms', 'No published programs')}</p>
+          ) : (
+            programs.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedProgram(p.id)}
+                className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
+                  selectedProgram === p.id
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-secondary)] hover:border-[var(--color-border-strong)]'
+                }`}
+              >
+                <p className={`text-[13px] font-semibold ${selectedProgram === p.id ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{p.name}</p>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="px-5 pb-5">
+          <button
+            onClick={handleAssign}
+            disabled={!selectedProgram || assigning}
+            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50"
+          >
+            {assigning ? (
+              <Loader2 size={16} className="animate-spin mx-auto" />
+            ) : (
+              t('trainerClients.assignProgram', 'Assign Program')
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Compose Message Modal (bulk DM) ──────────────────────────────────────
+const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => {
+  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    const text = message.trim();
+    if (!text) return;
+    setSending(true);
+    let successCount = 0;
+    try {
+      for (const client of selectedClients) {
+        try {
+          const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: client.id });
+          if (!convId) continue;
+          // Fetch encryption seed
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('encryption_seed')
+            .eq('id', convId)
+            .single();
+          const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
+          await supabase.from('direct_messages').insert({
+            conversation_id: convId,
+            sender_id: senderId,
+            body: encrypted,
+          });
+          successCount++;
+        } catch (err) {
+          logger.error('ComposeMessage: failed for client', client.id, err);
+        }
+      }
+      showToast(t('trainerClients.messageSentSuccess', 'Message sent to {{count}} clients', { count: successCount }), 'success');
+      onDone();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+            {t('trainerClients.messageAll', 'Message All')}
+          </h2>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="px-5 pb-2">
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            {t('trainerClients.messageAllDesc', 'Send a direct message to {{count}} selected clients', { count: selectedClients.length })}
+          </p>
+        </div>
+        <div className="px-5 pb-3">
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder={t('trainerClients.typeMessage', 'Type your message...')}
+            autoFocus
+            rows={3}
+            className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-3 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none min-h-[80px] sm:min-h-[100px]"
+          />
+        </div>
+        <div className="px-5 pb-5">
+          <button
+            onClick={handleSend}
+            disabled={!message.trim() || sending}
+            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {sending ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <>
+                <Send size={16} />
+                {t('trainerClients.sendToAll', 'Send to All')}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Filter / sort constants ──────────────────────────────────────────────────
 const FILTER_KEYS = ['all', 'active', 'at_risk', 'has_program', 'no_program'];
 const SORT_KEYS = ['last_active', 'name', 'workouts'];
@@ -293,6 +493,7 @@ export default function TrainerClients() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const [clients,  setClients]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState(null);
@@ -302,6 +503,24 @@ export default function TrainerClients() {
   const [churnScores, setChurnScores] = useState({});
   const [showAddClient, setShowAddClient] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Bulk selection
+  const [bulkSelected, setBulkSelected] = useState(new Set());
+  const [showAssignProgram, setShowAssignProgram] = useState(false);
+  const [showComposeMessage, setShowComposeMessage] = useState(false);
+
+  const toggleBulkSelect = (clientId) => {
+    setBulkSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
+  };
+
+  const bulkSelectedClients = useMemo(
+    () => clients.filter(c => bulkSelected.has(c.id)),
+    [clients, bulkSelected]
+  );
 
   function getChurnLevel(score) {
     if (score >= 80) return { label: t('trainerClients.churnCritical', 'Critical'), color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
@@ -419,23 +638,26 @@ export default function TrainerClients() {
   }, [clients, search, filter, sortBy, churnScores]);
 
   return (
-    <div className="px-4 md:px-6 py-6 w-full max-w-5xl mx-auto pb-28 md:pb-12">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-[22px] font-bold text-[var(--color-text-primary)] truncate">{t('trainerClients.title', 'My Clients')}</h1>
-          <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">
-            {clients.length === 1
-              ? t('trainerClients.assignedCountOne', '{{count}} assigned client', { count: clients.length })
-              : t('trainerClients.assignedCountOther', '{{count}} assigned clients', { count: clients.length })}
-          </p>
+    <div className="px-4 md:px-6 py-6 w-full max-w-5xl mx-auto pb-24 md:pb-12">
+      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
+        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
+          {clients.length === 1
+            ? t('trainerClients.assignedCountOne', '{{count}} assigned client', { count: clients.length })
+            : t('trainerClients.assignedCountOther', '{{count}} assigned clients', { count: clients.length })}
+        </p>
+        <div className="flex items-center justify-between">
+          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+            {t('trainerClients.title', 'My Clients')}
+          </h1>
+          <button
+            onClick={() => setShowAddClient(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0"
+          >
+            <UserPlus size={16} />
+            {t('trainerClients.addClient', 'Add Client')}
+          </button>
         </div>
-        <button
-          onClick={() => setShowAddClient(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0"
-        >
-          <UserPlus size={16} />
-          <span className="hidden sm:inline">{t('trainerClients.addClient', 'Add Client')}</span>
-        </button>
       </div>
 
       {/* Search + inline filter pills + sort cycle button */}
@@ -450,7 +672,7 @@ export default function TrainerClients() {
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('trainerClients.searchClients', 'Search clients…')}
                 aria-label={t('trainerClients.searchClients', 'Search clients')}
-                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[14px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
               />
             </div>
             <button
@@ -462,27 +684,16 @@ export default function TrainerClients() {
               title={`${t('trainerClients.sortPrefix', 'Sort')}: ${t('trainerClients.sort_' + sortBy, sortBy)}`}
             >
               <SortAsc size={14} />
-              <span className="hidden sm:inline">{t('trainerClients.sort_' + sortBy, sortBy)}</span>
+              <span>{t('trainerClients.sort_' + sortBy, sortBy)}</span>
             </button>
           </div>
 
-          {/* Always-visible compact filter pills */}
-          <div className="flex gap-1.5 flex-wrap overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible scrollbar-hide">
-            {FILTER_KEYS.map(fk => (
-              <button
-                key={fk}
-                onClick={() => setFilter(fk)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 md:shrink ${
-                  filter === fk
-                    ? 'text-[var(--color-accent)] font-semibold'
-                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
-                }`}
-                style={filter === fk ? { backgroundColor: 'var(--color-accent-glow)' } : undefined}
-              >
-                {t('trainerClients.filter_' + fk, fk)}
-              </button>
-            ))}
-          </div>
+          {/* Always-visible compact filter */}
+          <UnderlineTabs
+            tabs={FILTER_KEYS.map(fk => ({ key: fk, label: t('trainerClients.filter_' + fk, fk) }))}
+            activeIndex={Math.max(0, FILTER_KEYS.indexOf(filter))}
+            onChange={(i) => setFilter(FILTER_KEYS[i])}
+          />
         </div>
       )}
 
@@ -527,8 +738,22 @@ export default function TrainerClients() {
                 <button
                   key={c.id}
                   onClick={() => setSelected(c)}
-                  className="w-full flex items-center gap-3 px-3 sm:px-4 py-3.5 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)] transition-all text-left overflow-hidden"
+                  className={`w-full flex items-center gap-3 px-3.5 sm:px-4 py-4 sm:py-3.5 bg-[var(--color-bg-card)] border rounded-2xl hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)] transition-all text-left overflow-hidden ${
+                    bulkSelected.has(c.id) ? 'border-[var(--color-accent)]/40' : 'border-[var(--color-border-subtle)]'
+                  }`}
                 >
+                  {/* Bulk select checkbox */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleBulkSelect(c.id); }}
+                    aria-label={t('trainerClients.selectClient', 'Select')}
+                    className="min-w-[36px] min-h-[36px] sm:min-w-[28px] sm:min-h-[28px] flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors flex-shrink-0"
+                  >
+                    {bulkSelected.has(c.id) ? (
+                      <CheckSquare size={18} className="text-[var(--color-accent)]" />
+                    ) : (
+                      <Square size={18} />
+                    )}
+                  </button>
                   <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0 relative">
                     <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(c.full_name || 'U')[0]}</span>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-bg-primary)] ${
@@ -551,11 +776,19 @@ export default function TrainerClients() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                    <div className="text-right hidden md:block">
-                      <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('trainerClients.workoutsSummary', '{{count}}w / 14d', { count: c.recentWorkouts })}</p>
-                      {c.assigned_program_id && (
-                        <p className="text-[10px] text-[var(--color-accent)]">{t('trainerClients.programAssigned', 'Program assigned')}</p>
-                      )}
+                    {/* Condensed stat pill on mobile, full stat block on md+ */}
+                    <div className="text-right block">
+                      <div className="md:hidden">
+                        <span className="inline-flex items-center text-[10px] font-semibold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] px-1.5 py-0.5 rounded-full">
+                          {c.recentWorkouts}w
+                        </span>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('trainerClients.workoutsSummary', '{{count}}w / 14d', { count: c.recentWorkouts })}</p>
+                        {c.assigned_program_id && (
+                          <p className="text-[10px] text-[var(--color-accent)]">{t('trainerClients.programAssigned', 'Program assigned')}</p>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={async (e) => {
@@ -600,6 +833,61 @@ export default function TrainerClients() {
           onAdded={() => {
             setShowAddClient(false);
             setReloadKey(k => k + 1);
+          }}
+        />
+      )}
+
+      {/* Bulk action bar */}
+      {bulkSelected.size > 0 && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl shadow-lg backdrop-blur-sm">
+          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] mr-1">
+            {t('trainerClients.selectedCount', '{{count}} selected', { count: bulkSelected.size })}
+          </span>
+          <button
+            onClick={() => setShowAssignProgram(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[12px] transition-colors min-h-[36px]"
+          >
+            <ClipboardList size={14} />
+            {t('trainerClients.assignProgram', 'Assign Program')}
+          </button>
+          <button
+            onClick={() => setShowComposeMessage(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[12px] transition-colors min-h-[36px] border border-[var(--color-border-subtle)]"
+          >
+            <Send size={14} />
+            {t('trainerClients.messageAll', 'Message All')}
+          </button>
+          <button
+            onClick={() => setBulkSelected(new Set())}
+            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors rounded-lg"
+            aria-label={t('trainerClients.clearSelection', 'Clear selection')}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {showAssignProgram && (
+        <AssignProgramModal
+          selectedClients={bulkSelectedClients}
+          gymId={profile.gym_id}
+          onClose={() => setShowAssignProgram(false)}
+          onDone={() => {
+            setShowAssignProgram(false);
+            setBulkSelected(new Set());
+            setReloadKey(k => k + 1);
+          }}
+        />
+      )}
+
+      {showComposeMessage && (
+        <ComposeMessageModal
+          selectedClients={bulkSelectedClients}
+          senderId={profile.id}
+          onClose={() => setShowComposeMessage(false)}
+          onDone={() => {
+            setShowComposeMessage(false);
+            setBulkSelected(new Set());
           }}
         />
       )}

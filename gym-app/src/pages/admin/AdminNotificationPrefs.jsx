@@ -83,38 +83,41 @@ function EventRow({ pref, onToggle, onChannelsChange, t }) {
 
   return (
     <div className="py-3 border-b border-white/6 last:border-b-0">
-      {/* Title row — name + channel pills + toggle */}
-      <div className="flex items-center gap-2">
+      {/* Row 1: name + toggle */}
+      <div className="flex items-center gap-2 mb-2">
         <button
           onClick={() => setExpanded(e => !e)}
           className="flex-1 min-w-0 text-left md:pointer-events-none"
         >
-          <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{name}</p>
+          <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{name}</p>
         </button>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {CHANNELS.map(ch => {
-            const Icon = ch.icon;
-            const isOn = channels.includes(ch.key);
-            return (
-              <button
-                key={ch.key}
-                onClick={(e) => { e.stopPropagation(); toggleChannel(ch.key); }}
-                disabled={!pref.enabled}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all border min-h-[28px] ${
-                  isOn
-                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/40'
-                    : 'bg-[#111827] text-[#4B5563] border-white/8'
-                } ${!pref.enabled ? 'opacity-30 pointer-events-none' : 'active:scale-95'}`}
-                aria-label={t(`admin.notificationPrefs.channels.${ch.key}`)}
-                aria-pressed={isOn}
-              >
-                <Icon size={11} />
-                <span className="hidden sm:inline">{t(`admin.notificationPrefs.channels.${ch.key}`)}</span>
-              </button>
-            );
-          })}
-        </div>
         <Toggle checked={pref.enabled} onChange={(val) => onToggle(pref.id, val)} label={name} />
+      </div>
+      {/* Row 2: channel pills */}
+      <div className="flex items-center gap-1.5">
+        {CHANNELS.map(ch => {
+          const Icon = ch.icon;
+          const isOn = channels.includes(ch.key);
+          return (
+            <button
+              key={ch.key}
+              onClick={(e) => { e.stopPropagation(); toggleChannel(ch.key); }}
+              disabled={!pref.enabled}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all ${
+                !pref.enabled ? 'opacity-30 pointer-events-none' : 'active:scale-95'
+              }`}
+              style={isOn
+                ? { backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)', border: '2px solid color-mix(in srgb, var(--color-accent) 50%, transparent)' }
+                : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-subtle)', border: '2px solid var(--color-border-subtle)' }
+              }
+              aria-label={t(`admin.notificationPrefs.channels.${ch.key}`)}
+              aria-pressed={isOn}
+            >
+              <Icon size={13} />
+              {t(`admin.notificationPrefs.channels.${ch.key}`)}
+            </button>
+          );
+        })}
       </div>
 
       {/* Description — always visible on desktop, expandable on mobile */}
@@ -321,21 +324,30 @@ export default function AdminNotificationPrefs() {
           <>
             <button
               onClick={() => setShowResetConfirm(false)}
-              className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
+              className="flex-1 py-2 rounded-lg text-[12px] font-medium transition-colors whitespace-nowrap"
+              style={{
+                backgroundColor: 'var(--color-bg-deep)',
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
             >
               {tc('cancel')}
             </button>
             <button
               onClick={() => { setShowResetConfirm(false); resetMutation.mutate(); }}
               disabled={resetMutation.isPending}
-              className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap disabled:opacity-40"
+              className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors whitespace-nowrap disabled:opacity-40"
+              style={{
+                backgroundColor: 'var(--color-danger, #EF4444)',
+                color: '#FFFFFF',
+              }}
             >
               {t('admin.notificationPrefs.resetDefaults')}
             </button>
           </>
         }
       >
-        <p className="text-[12px] text-[#9CA3AF] text-center">
+        <p className="text-[12px] text-center" style={{ color: 'var(--color-text-muted)' }}>
           {t('admin.notificationPrefs.confirmResetMessage', { defaultValue: 'This will delete all your custom notification preferences and restore the default settings. This action cannot be undone.' })}
         </p>
       </AdminModal>

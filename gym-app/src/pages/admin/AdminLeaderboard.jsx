@@ -8,6 +8,7 @@ import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, AdminCard, FadeIn, FilterBar, AdminTabs } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
 const PERIOD_KEYS = ['7', '30', 'all'];
@@ -69,6 +70,20 @@ export default function AdminLeaderboard() {
     enabled: !!gymId,
   });
 
+  // Total member count for context
+  const { data: totalMembers } = useQuery({
+    queryKey: [...adminKeys.leaderboard(gymId), 'member-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('gym_id', gymId);
+      return count || 0;
+    },
+    enabled: !!gymId,
+    staleTime: 60_000,
+  });
+
   // Realtime subscription
   useEffect(() => {
     if (!gymId) return;
@@ -85,6 +100,17 @@ export default function AdminLeaderboard() {
 
   const scoreLabel = t(`admin.leaderboard.scoreLabel.${metric}`, 'pts');
   const metricLabel = t(`admin.leaderboard.metrics.${metric}`, metric);
+
+  // Unit label for score column header
+  const metricUnitMap = {
+    volume: t('admin.leaderboard.unitVolume', 'Volume (lbs)'),
+    workouts: t('admin.leaderboard.unitWorkouts', 'Workouts (#)'),
+    pr_count: t('admin.leaderboard.unitPRs', 'PRs (#)'),
+    checkins: t('admin.leaderboard.unitCheckins', 'Check-ins (#)'),
+    improved: t('admin.leaderboard.unitImproved', 'Improvement (%)'),
+    consistency: t('admin.leaderboard.unitConsistency', 'Consistency (%)'),
+  };
+  const columnUnit = metricUnitMap[metric] || metricLabel;
 
   const formatScore = (e) => {
     if (metric === 'improved') return `+${e.score}%`;
@@ -161,53 +187,82 @@ export default function AdminLeaderboard() {
       </div>
 
       {/* Table */}
-      <FadeIn>
-        <AdminCard className="overflow-hidden !p-0">
-          {isLoading ? (
-            <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="text-center py-16">
-              <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/4">
-              {entries.map((e, i) => (
-                <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
-                  <div className="w-8 text-center">
-                    {i < 3 ? (
-                      <span className="text-[18px]">{MEDAL[i]}</span>
-                    ) : (
-                      <span className="text-[13px] font-bold text-[#4B5563]">{i + 1}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                      {e.name}
-                    </p>
-                    {e.tier && (
-                      <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
-                    )}
-                  </div>
-                  <div className="hidden md:block w-24 flex-shrink-0">
-                    <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
+      <SwipeableTabContent
+        tabs={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
+        active={metric}
+        onChange={setMetric}
+      >
+        {() => (
+          <FadeIn>
+            {/* Member count context */}
+            {!isLoading && entries.length > 0 && totalMembers != null && (
+              <p className="text-[11px] text-[#6B7280] mb-2">
+                {t('admin.leaderboard.showingContext', {
+                  defaultValue: 'Showing top {{count}} of {{total}} members',
+                  count: entries.length,
+                  total: totalMembers,
+                })}
+              </p>
+            )}
+            <AdminCard className="overflow-hidden !p-0">
+              {isLoading ? (
+                <div className="flex justify-center py-16">
+                  <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+                </div>
+              ) : entries.length === 0 ? (
+                <div className="text-center py-16">
+                  <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
+                  <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/4">
+                  {/* Column header */}
+                  <div className="flex items-center gap-4 px-5 py-2 bg-white/[0.02]">
+                    <div className="w-8 text-center text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">#</div>
+                    <div className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
+                      {t('admin.leaderboard.member', 'Member')}
+                    </div>
+                    <div className="hidden md:block w-24" />
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563] flex-shrink-0">
+                      {columnUnit}
                     </div>
                   </div>
-                  <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
-                    {formatScore(e)}
-                    {!['improved', 'consistency'].includes(metric) && (
-                      <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
-                    )}
-                  </p>
+                  {entries.map((e, i) => (
+                    <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
+                      <div className="w-8 text-center">
+                        {i < 3 ? (
+                          <span className="text-[18px]">{MEDAL[i]}</span>
+                        ) : (
+                          <span className="text-[13px] font-bold text-[#4B5563]">{i + 1}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                          {e.name}
+                        </p>
+                        {e.tier && (
+                          <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
+                        )}
+                      </div>
+                      <div className="hidden md:block w-24 flex-shrink-0">
+                        <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
+                        </div>
+                      </div>
+                      <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
+                        {formatScore(e)}
+                        {!['improved', 'consistency'].includes(metric) && (
+                          <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
+                        )}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </AdminCard>
-      </FadeIn>
+              )}
+            </AdminCard>
+          </FadeIn>
+        )}
+      </SwipeableTabContent>
 
       <p className="text-[11px] text-[#4B5563] text-center mt-3">{t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}</p>
     </div>

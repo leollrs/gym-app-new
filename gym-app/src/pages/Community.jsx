@@ -58,7 +58,7 @@ export default function Community({ defaultTab = 'feed' }) {
       </div>
 
       {/* Tab content */}
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-4">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 lg:px-8 pt-4">
         {tab === 'feed' && <SocialFeed embedded />}
         {tab === 'challenges' && <Challenges embedded />}
         {tab === 'leaderboard' && <Leaderboard embedded />}

@@ -5,6 +5,7 @@ struct RPEInputView: View {
     let onSelect: (Int) -> Void
     let onSkip: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State private var selectedRPE: Int? = nil
 
     var body: some View {
@@ -12,13 +13,14 @@ struct RPEInputView: View {
             VStack(spacing: 10) {
                 // Header
                 Text("HOW HARD?")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.headline)
                     .foregroundColor(DS.gold)
                     .tracking(2)
                     .padding(.top, 4)
+                    .accessibilityAddTraits(.isHeader)
 
                 Text("Rate of Perceived Exertion")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundColor(DS.mutedText)
 
                 // RPE grid (2 columns x 5 rows)
@@ -34,14 +36,15 @@ struct RPEInputView: View {
                         )
                     }
                 }
+                .accessibilityHint("Rate perceived exertion from 1 to 10")
 
                 // Effort label for selected RPE
                 if let rpe = selectedRPE {
                     Text(effortLabel(for: rpe))
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption2.weight(.bold))
                         .foregroundColor(rpeColor(for: rpe))
                         .transition(.opacity)
-                        .animation(.easeOut(duration: 0.2), value: selectedRPE)
+                        .animation(reduceMotion ? .none : .easeOut(duration: 0.2), value: selectedRPE)
                 }
 
                 // Confirm button
@@ -59,7 +62,7 @@ struct RPEInputView: View {
                     onSkip()
                 }) {
                     Text("Skip")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundColor(DS.mutedText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
@@ -106,7 +109,7 @@ struct RPECell: View {
     var body: some View {
         Button(action: onTap) {
             Text("\(value)")
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.system(.body, design: .rounded).weight(.black))
                 .foregroundColor(isSelected ? .black : rpeColor(for: value))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)

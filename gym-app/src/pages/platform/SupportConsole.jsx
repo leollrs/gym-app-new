@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useTranslation } from 'react-i18next';
+import { logAdminAction } from '../../lib/adminAudit';
 import {
   Search, ChevronDown, ChevronUp, ExternalLink, Shield, UserCog, Eye, X,
   Building2, Mail, RefreshCw, KeyRound, UserX, UserCheck, Link2,
-  Activity, Clock, AlertTriangle, Dumbbell, ChevronRight,
+  Activity, Clock, AlertTriangle, Dumbbell, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -79,6 +82,8 @@ const churnTierColor = (tier) => {
 // ── Main component ───────────────────────────────────────────
 export default function SupportConsole() {
   const { profile } = useAuth();
+  const { showToast } = useToast();
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const inputRef = useRef(null);
 
@@ -208,6 +213,79 @@ export default function SupportConsole() {
     setDetailLoading(false);
   };
 
+  // ── Modal state ────────────────────────────────────────────
+  const [roleModal, setRoleModal] = useState(false);
+  const [statusModal, setStatusModal] = useState(false);
+  const [resetModal, setResetModal] = useState(false);
+  const [newRole, setNewRole] = useState('');
+  const [newStatus, setNewStatus] = useState('');
+  const [statusReason, setStatusReason] = useState('');
+  const [modalSaving, setModalSaving] = useState(false);
+  const [resetCode, setResetCode] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const openRoleModal = () => { setNewRole(selectedMember?.role || 'member'); setRoleModal(true); };
+  const openStatusModal = () => { setNewStatus(selectedMember?.membership_status || 'active'); setStatusReason(''); setStatusModal(true); };
+
+  const handleChangeRole = async () => {
+    if (!selectedMember || newRole === selectedMember.role) return;
+    setModalSaving(true);
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', selectedMember.id);
+    setModalSaving(false);
+    if (error) {
+      showToast(error.message, 'error');
+    } else {
+      logAdminAction('change_role', 'member', selectedMember.id, { from: selectedMember.role, to: newRole });
+      showToast(t('platform.support.roleChanged', 'Role changed successfully'), 'success');
+      setSelectedMember({ ...selectedMember, role: newRole });
+      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, role: newRole } : m));
+    }
+    setRoleModal(false);
+  };
+
+  const handleChangeStatus = async () => {
+    if (!selectedMember || newStatus === selectedMember.membership_status) return;
+    setModalSaving(true);
+    const updatePayload = { membership_status: newStatus };
+    if (statusReason.trim()) updatePayload.membership_status_reason = statusReason.trim();
+    const { error } = await supabase.from('profiles').update(updatePayload).eq('id', selectedMember.id);
+    setModalSaving(false);
+    if (error) {
+      showToast(error.message, 'error');
+    } else {
+      logAdminAction('change_status', 'member', selectedMember.id, { from: selectedMember.membership_status, to: newStatus });
+      showToast(t('platform.support.statusChanged', 'Status changed successfully'), 'success');
+      setSelectedMember({ ...selectedMember, membership_status: newStatus });
+      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, membership_status: newStatus } : m));
+    }
+    setStatusModal(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedMember) return;
+    setResetCode('');
+    setCopied(false);
+    setResetModal(true);
+    setModalSaving(true);
+    const { data, error } = await supabase.rpc('admin_generate_password_reset', { p_profile_id: selectedMember.id });
+    setModalSaving(false);
+    if (error) {
+      setResetModal(false);
+      showToast(error.message, 'error');
+    } else {
+      setResetCode(data || 'No code returned');
+      logAdminAction('reset_password', 'member', selectedMember.id, {});
+    }
+  };
+
+  const copyResetCode = async () => {
+    try {
+      await navigator.clipboard.writeText(resetCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  };
+
   const totalResults = members.length + gymResults.length + invites.length;
 
   return (
@@ -215,8 +293,8 @@ export default function SupportConsole() {
       {/* Header */}
       <FadeIn>
         <div className="mb-6">
-          <h1 className="text-[22px] font-bold text-[#E5E7EB]">Support</h1>
-          <p className="text-[12px] text-[#6B7280] mt-0.5">Search and repair member, admin, and gym issues</p>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB]">{t('platform.support.title', 'Support')}</h1>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">{t('platform.support.subtitle', 'Search and repair member, admin, and gym issues')}</p>
         </div>
       </FadeIn>
 
@@ -229,7 +307,7 @@ export default function SupportConsole() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, username, gym, or invite code..."
+            placeholder={t('platform.support.searchPlaceholder', 'Search by name, username, gym, or invite code...')}
             className="bg-[#111827] border border-white/6 rounded-xl pl-12 pr-10 py-3.5 text-[14px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 w-full transition-colors"
           />
           {query && (
@@ -254,7 +332,7 @@ export default function SupportConsole() {
               <div className="space-y-4">
                 {recentLookups.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-2">Recent Lookups</p>
+                    <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-2">{t('platform.support.recentLookups', 'Recent Lookups')}</p>
                     <div className="space-y-1">
                       {recentLookups.map((r) => (
                         <button
@@ -280,8 +358,8 @@ export default function SupportConsole() {
                   <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
                     <Search className="w-6 h-6 text-[#4B5563]" />
                   </div>
-                  <p className="text-[14px] text-[#6B7280]">Search for any member, gym, or invite code</p>
-                  <p className="text-[12px] text-[#4B5563] mt-1">Search by name, username, gym name, slug, or invite code</p>
+                  <p className="text-[14px] text-[#6B7280]">{t('platform.support.emptyTitle', 'Search for any member, gym, or invite code')}</p>
+                  <p className="text-[12px] text-[#4B5563] mt-1">{t('platform.support.emptySubtitle', 'Search by name, username, gym name, slug, or invite code')}</p>
                 </div>
               </div>
             </FadeIn>
@@ -290,7 +368,7 @@ export default function SupportConsole() {
           {!searching && hasSearched && totalResults === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Search className="w-10 h-10 text-[#1F2937] mb-3" />
-              <p className="text-[14px] text-[#6B7280]">No results for &ldquo;{query}&rdquo;</p>
+              <p className="text-[14px] text-[#6B7280]">{t('platform.support.noResults', 'No results for "{{query}}"', { query })}</p>
             </div>
           )}
 
@@ -303,7 +381,7 @@ export default function SupportConsole() {
               {members.length > 0 && (
                 <div>
                   <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-2 flex items-center gap-2">
-                    Members
+                    {t('platform.support.members', 'Members')}
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/5 text-[#6B7280]">{members.length}</span>
                   </p>
                   <div className="space-y-1">
@@ -349,7 +427,7 @@ export default function SupportConsole() {
               {gymResults.length > 0 && (
                 <div>
                   <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-2 flex items-center gap-2">
-                    Gyms
+                    {t('platform.support.gyms', 'Gyms')}
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/5 text-[#6B7280]">{gymResults.length}</span>
                   </p>
                   <div className="space-y-1">
@@ -369,7 +447,7 @@ export default function SupportConsole() {
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                           gym.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
                         }`}>
-                          {gym.is_active ? 'Active' : 'Inactive'}
+                          {gym.is_active ? t('platform.support.active', 'Active') : t('platform.support.inactive', 'Inactive')}
                         </span>
                         <ChevronRight size={14} className="text-[#4B5563] flex-shrink-0" />
                       </button>
@@ -382,7 +460,7 @@ export default function SupportConsole() {
               {invites.length > 0 && (
                 <div>
                   <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-2 flex items-center gap-2">
-                    Invites
+                    {t('platform.support.invites', 'Invites')}
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/5 text-[#6B7280]">{invites.length}</span>
                   </p>
                   <div className="space-y-1">
@@ -402,7 +480,7 @@ export default function SupportConsole() {
                             ? 'bg-red-500/15 text-red-400'
                             : 'bg-amber-500/15 text-amber-400'
                         }`}>
-                          {inv.is_used ? 'Claimed' : new Date(inv.expires_at) < new Date() ? 'Expired' : 'Pending'}
+                          {inv.is_used ? t('platform.support.claimed', 'Claimed') : new Date(inv.expires_at) < new Date() ? t('platform.support.expired', 'Expired') : t('platform.support.pending', 'Pending')}
                         </span>
                       </div>
                     ))}
@@ -420,7 +498,7 @@ export default function SupportConsole() {
               <button onClick={() => { setSelectedMember(null); setDetailData(null); }} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
                 <X size={20} />
               </button>
-              <span className="text-[14px] font-medium text-[#E5E7EB]">Member Details</span>
+              <span className="text-[14px] font-medium text-[#E5E7EB]">{t('platform.support.memberDetails', 'Member Details')}</span>
             </div>
 
             <div className="bg-[#0F172A] border border-white/6 rounded-none md:rounded-xl overflow-hidden">
@@ -466,49 +544,49 @@ export default function SupportConsole() {
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Total Sessions</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.totalSessions', 'Total Sessions')}</p>
                         <p className="text-[18px] font-bold text-[#E5E7EB]">{detailData.totalSessions}</p>
                       </div>
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Last 30 Days</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.last30Days', 'Last 30 Days')}</p>
                         <p className="text-[18px] font-bold text-[#E5E7EB]">{detailData.sessionsLast30d}</p>
                       </div>
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Total Volume</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.totalVolume', 'Total Volume')}</p>
                         <p className="text-[18px] font-bold text-[#E5E7EB]">
                           {detailData.totalVolume >= 1000 ? `${(detailData.totalVolume / 1000).toFixed(1)}k` : detailData.totalVolume}
                           <span className="text-[11px] font-normal text-[#6B7280] ml-1">lbs</span>
                         </p>
                       </div>
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Check-ins (30d)</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.checkIns30d', 'Check-ins (30d)')}</p>
                         <p className="text-[18px] font-bold text-[#E5E7EB]">{detailData.checkIns30d}</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Streak</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.streak', 'Streak')}</p>
                         <p className="text-[18px] font-bold text-[#D4AF37]">
                           {detailData.currentStreak} <span className="text-[11px] font-normal text-[#6B7280]">days</span>
                         </p>
                       </div>
                       <div className="bg-[#111827] rounded-lg p-3">
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">Churn Risk</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1">{t('platform.support.churnRisk', 'Churn Risk')}</p>
                         {detailData.churnScore !== null ? (
                           <div className="flex items-baseline gap-2">
                             <p className="text-[18px] font-bold text-[#E5E7EB]">{Math.round(detailData.churnScore * 100)}%</p>
                             <span className={`text-[11px] font-medium capitalize ${churnTierColor(detailData.churnTier)}`}>{detailData.churnTier}</span>
                           </div>
                         ) : (
-                          <p className="text-[13px] text-[#4B5563]">No data</p>
+                          <p className="text-[13px] text-[#4B5563]">{t('platform.support.noData', 'No data')}</p>
                         )}
                       </div>
                     </div>
 
                     {detailData.recentSessions.length > 0 && (
                       <div>
-                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">Recent Sessions</p>
+                        <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">{t('platform.support.recentSessions', 'Recent Sessions')}</p>
                         <div className="space-y-1">
                           {detailData.recentSessions.map((s) => (
                             <div key={s.id} className="flex items-center justify-between bg-[#111827] rounded-lg px-3 py-2">
@@ -525,27 +603,27 @@ export default function SupportConsole() {
 
                     {/* Support actions */}
                     <div className="pt-3 border-t border-white/6">
-                      <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">Quick Actions</p>
+                      <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-2">{t('platform.support.quickActions', 'Quick Actions')}</p>
                       <div className="grid grid-cols-2 gap-2">
                         {selectedMember.gyms?.id && (
                           <button onClick={() => navigate(`/platform/gym/${selectedMember.gyms.id}`)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                            <ExternalLink size={13} />View Gym
+                            <ExternalLink size={13} />{t('platform.support.viewGym', 'View Gym')}
                           </button>
                         )}
-                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                          <Shield size={13} />Change Role
+                        <button onClick={openRoleModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <Shield size={13} />{t('platform.support.changeRole', 'Change Role')}
                         </button>
-                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                          <UserCog size={13} />Change Status
+                        <button onClick={openStatusModal} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <UserCog size={13} />{t('platform.support.changeStatus', 'Change Status')}
                         </button>
-                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                          <RefreshCw size={13} />Reset Password
+                        <button onClick={handleResetPassword} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <RefreshCw size={13} />{t('platform.support.resetPassword', 'Reset Password')}
                         </button>
-                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
-                          <Mail size={13} />Resend Invite
+                        <button onClick={() => showToast(t('platform.support.comingSoon', 'Coming soon'), 'info')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors">
+                          <Mail size={13} />{t('platform.support.resendInvite', 'Resend Invite')}
                         </button>
-                        <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors">
-                          <UserX size={13} />Deactivate
+                        <button onClick={() => showToast(t('platform.support.comingSoon', 'Coming soon'), 'info')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111827] border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors">
+                          <UserX size={13} />{t('platform.support.deactivate', 'Deactivate')}
                         </button>
                       </div>
                     </div>
@@ -556,6 +634,147 @@ export default function SupportConsole() {
           </div>
         )}
       </div>
+
+      {/* ── Change Role Modal ──────────────────────────────── */}
+      {roleModal && selectedMember && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setRoleModal(false)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.support.changeRole', 'Change Role')}</h3>
+              <button onClick={() => setRoleModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.support.currentRole', 'Current Role')}</p>
+              <Badge label={selectedMember.role || 'member'} variant={roleBadge[selectedMember.role] || roleBadge.member} />
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.support.newRole', 'New Role')}</p>
+              <select
+                value={newRole}
+                onChange={e => setNewRole(e.target.value)}
+                className="w-full bg-[#111827] border border-white/10 rounded-lg px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              >
+                <option value="member">{t('platform.support.roleMember', 'Member')}</option>
+                <option value="trainer">{t('platform.support.roleTrainer', 'Trainer')}</option>
+                <option value="admin">{t('platform.support.roleAdmin', 'Admin')}</option>
+              </select>
+              <p className="text-[10px] text-[#4B5563]">{t('platform.support.superAdminNote', 'Super admin can only be assigned via database')}</p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setRoleModal(false)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                {t('platform.support.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleChangeRole}
+                disabled={modalSaving || newRole === selectedMember.role}
+                className="flex-1 px-3 py-2 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {modalSaving ? t('platform.support.saving', 'Saving...') : t('platform.support.confirm', 'Confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Change Status Modal ────────────────────────────── */}
+      {statusModal && selectedMember && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setStatusModal(false)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.support.changeStatus', 'Change Status')}</h3>
+              <button onClick={() => setStatusModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.support.currentStatus', 'Current Status')}</p>
+              <Badge label={selectedMember.membership_status || 'active'} variant={statusBadge[selectedMember.membership_status] || statusBadge.active} />
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.support.newStatus', 'New Status')}</p>
+              <div className="flex gap-2">
+                {['active', 'frozen', 'cancelled'].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setNewStatus(s)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
+                      newStatus === s
+                        ? `${statusBadge[s]} ring-1 ring-current`
+                        : 'bg-white/5 text-[#6B7280] hover:bg-white/10'
+                    }`}
+                  >
+                    {t(`platform.support.status_${s}`, s.charAt(0).toUpperCase() + s.slice(1))}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.support.reason', 'Reason')} <span className="normal-case text-[#4B5563]">({t('platform.support.optional', 'optional')})</span></p>
+              <textarea
+                value={statusReason}
+                onChange={e => setStatusReason(e.target.value)}
+                rows={2}
+                placeholder={t('platform.support.reasonPlaceholder', 'Why is this status changing?')}
+                className="w-full bg-[#111827] border border-white/10 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStatusModal(false)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                {t('platform.support.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleChangeStatus}
+                disabled={modalSaving || newStatus === selectedMember.membership_status}
+                className="flex-1 px-3 py-2 rounded-lg bg-[#D4AF37] text-[12px] font-medium text-[#0F172A] hover:bg-[#C4A030] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {modalSaving ? t('platform.support.saving', 'Saving...') : t('platform.support.confirm', 'Confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset Password Modal ───────────────────────────── */}
+      {resetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setResetModal(false)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.support.resetPassword', 'Reset Password')}</h3>
+              <button onClick={() => setResetModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+
+            {modalSaving ? (
+              <div className="flex justify-center py-6">
+                <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+              </div>
+            ) : resetCode ? (
+              <div className="space-y-3">
+                <p className="text-[12px] text-[#9CA3AF]">{t('platform.support.resetCodeLabel', 'Share this reset code with the member:')}</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-[#111827] border border-white/10 rounded-lg px-3 py-2.5 text-[15px] font-mono text-[#D4AF37] tracking-wider text-center select-all">
+                    {resetCode}
+                  </code>
+                  <button
+                    onClick={copyResetCode}
+                    className="p-2.5 rounded-lg bg-[#111827] border border-white/10 text-[#9CA3AF] hover:text-[#D4AF37] hover:border-[#D4AF37]/30 transition-colors"
+                  >
+                    {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <button onClick={() => setResetModal(false)} className="w-full px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
+              {t('platform.support.close', 'Close')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

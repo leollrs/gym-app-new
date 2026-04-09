@@ -115,20 +115,15 @@ function buildCSVRows(pages) {
   return rows;
 }
 
-function downloadCSV(rows) {
+async function downloadCSVRows(rows) {
   if (!rows.length) return;
+  const { downloadCSVString } = await import('../../lib/csvExport');
   const headers = Object.keys(rows[0]);
   const lines = [
     headers.join(','),
     ...rows.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',')),
   ];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `audit_log_${format(new Date(), 'yyyy-MM-dd')}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadCSVString(`audit_log_${format(new Date(), 'yyyy-MM-dd')}.csv`, lines.join('\n'));
 }
 
 // ── Detail Modal ─────────────────────────────────────────────────────────────
@@ -162,7 +157,7 @@ function AuditDetailModal({ entry, isOpen, onClose, t, dateFnsOpts }) {
           <SectionLabel icon={User}>{t('admin.audit.actor', { defaultValue: 'Actor' })}</SectionLabel>
           <div className="mt-2 flex items-center gap-3">
             {entry.profiles?.avatar_url ? (
-              <img src={entry.profiles.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/8" />
+              <img src={entry.profiles.avatar_url} alt={entry.profiles.full_name || "User avatar"} className="w-9 h-9 rounded-full object-cover border border-white/8" />
             ) : (
               <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
                 <span className="text-[12px] font-bold text-[#D4AF37]">
@@ -299,7 +294,7 @@ export default function AdminAuditLog() {
   const handleExport = useCallback(() => {
     if (!data?.pages) return;
     const rows = buildCSVRows(data.pages);
-    downloadCSV(rows);
+    downloadCSVRows(rows);
   }, [data]);
 
 
@@ -312,7 +307,7 @@ export default function AdminAuditLog() {
       render: (row) => (
         <div className="flex items-center gap-2.5">
           {row.profiles?.avatar_url ? (
-            <img src={row.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover border border-white/8" />
+            <img src={row.profiles.avatar_url} alt={row.profiles.full_name || "User avatar"} className="w-7 h-7 rounded-full object-cover border border-white/8" />
           ) : (
             <div className="w-7 h-7 rounded-full bg-[#D4AF37]/15 flex items-center justify-center border border-white/8">
               <span className="text-[10px] font-bold text-[#D4AF37]">
@@ -457,11 +452,13 @@ export default function AdminAuditLog() {
                   value={userSearch}
                   onChange={e => setUserSearch(e.target.value)}
                   placeholder={t('admin.audit.searchUser', { defaultValue: 'Search user...' })}
+                  aria-label={t('admin.audit.searchUser', { defaultValue: 'Search user...' })}
                   className="bg-white/[0.04] border border-white/6 rounded-lg pl-8 pr-8 py-1.5 text-[13px] text-[#E5E7EB] placeholder:text-[#6B7280] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50 w-[180px]"
                 />
                 {userSearch && (
                   <button
                     onClick={() => setUserSearch('')}
+                    aria-label={t('admin.audit.clearSearch', { defaultValue: 'Clear search' })}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF]"
                   >
                     <X size={12} />
@@ -472,23 +469,23 @@ export default function AdminAuditLog() {
 
             {/* Custom date inputs */}
             {datePreset === 'custom' && (
-              <div className="flex items-center gap-3 pt-3 border-t border-white/6">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-3 border-t border-white/6">
                 <div className="flex items-center gap-2">
-                  <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.from')}</label>
+                  <label className="text-[12px] text-[#6B7280] flex-shrink-0">{t('admin.audit.date.from')}</label>
                   <input
                     type="date"
                     value={customFrom}
                     onChange={e => setCustomFrom(e.target.value)}
-                    className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
+                    className="w-full sm:w-auto bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[12px] text-[#6B7280]">{t('admin.audit.date.to')}</label>
+                  <label className="text-[12px] text-[#6B7280] flex-shrink-0">{t('admin.audit.date.to')}</label>
                   <input
                     type="date"
                     value={customTo}
                     onChange={e => setCustomTo(e.target.value)}
-                    className="bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
+                    className="w-full sm:w-auto bg-white/[0.04] border border-white/6 rounded-lg px-2.5 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
                   />
                 </div>
               </div>

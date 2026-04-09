@@ -10,12 +10,14 @@ struct WorkoutSummaryView: View {
             VStack(spacing: 12) {
                 // Trophy icon
                 Image(systemName: session.endedPRs > 0 ? "trophy.fill" : "checkmark.seal.fill")
-                    .font(.system(size: 36))
+                    .font(.system(size: 36, weight: .regular, design: .default))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundColor(DS.gold)
                     .padding(.top, 4)
+                    .accessibilityLabel("Workout complete")
 
                 Text("Workout Complete!")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
 
                 // Stats grid

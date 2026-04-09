@@ -189,7 +189,7 @@ export default function PersonalRecords({ embedded = false }) {
       {/* Header */}
       {!embedded && (
       <div className="sticky top-0 z-30 backdrop-blur-2xl bg-[var(--color-bg-primary)]/95 border-b border-white/6">
-        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(-1)}
@@ -212,7 +212,7 @@ export default function PersonalRecords({ embedded = false }) {
       </div>
       )}
 
-      <div className={embedded ? '' : 'max-w-[480px] md:max-w-4xl mx-auto px-4 pt-4 pb-28 md:pb-12'}>
+      <div className={embedded ? '' : 'max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-4 pb-28 md:pb-12'}>
         {/* Search + Filter */}
         <div className="flex items-center gap-2 mb-5">
           <div className="relative flex-1">

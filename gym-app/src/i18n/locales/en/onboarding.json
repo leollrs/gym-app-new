@@ -233,6 +233,20 @@
     "mealCount": "{{count}} meals per day"
   },
 
+  "dataConsent": {
+    "title": "How We Use Your Data",
+    "subtitle": "We're committed to protecting your privacy",
+    "health": "We track your workouts and body measurements to personalize your training. Health data syncs with Apple Health / Google Fit.",
+    "location": "We use your location only to verify gym check-ins. We never track you in the background.",
+    "camera": "We use your camera for QR code scanning and food photo analysis. Photos are processed securely with metadata stripped.",
+    "analytics": "We collect anonymous usage data to improve the app. We never sell your data or use it for advertising.",
+    "privacyLink": "Read our full Privacy Policy",
+    "agree": "I Agree",
+    "decline": "Not Now",
+    "declineWarning": "Some features like health sync and auto check-in won't be available without these permissions.",
+    "changeAnytime": "You can change these permissions anytime in Settings"
+  },
+
   "disclaimer": "This app provides fitness tracking tools only and does not constitute medical advice. Consult a healthcare professional before beginning any exercise program.",
   "finish": "Got it, let's go!",
   "initialWeightNote": "Initial weight at signup"

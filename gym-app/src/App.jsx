@@ -100,6 +100,8 @@ const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'))
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
+const GymHealth          = lazy(() => import('./pages/platform/GymHealth'));
+const FeatureAdoption    = lazy(() => import('./pages/platform/FeatureAdoption'));
 
 // ── APPLY SAVED THEME PREFERENCE ────────────────────────────
 // Theme is now system-based — html.dark class managed by ThemeContext + index.html
@@ -746,6 +748,8 @@ function App() {
                 <Route path="/"             element={<GymsOverview />} />
                 <Route path="/gym/:gymId"   element={<GymDetail />} />
                 <Route path="/analytics"    element={<PlatformAnalytics />} />
+                <Route path="/gym-health"   element={<GymHealth />} />
+                <Route path="/adoption"     element={<FeatureAdoption />} />
                 <Route path="/support"      element={<SupportConsole />} />
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/audit-log"    element={<AuditLog />} />

@@ -121,7 +121,7 @@ async function exportMembers(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `members_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -145,7 +145,7 @@ async function exportWorkouts(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `workout_history_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -167,7 +167,7 @@ async function exportPRs(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `personal_records_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -194,7 +194,7 @@ async function exportAttendance(gymId, from, to) {
   });
   const csv = [header, ...rows].join('\n');
   const filename = `attendance_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -239,7 +239,7 @@ async function exportBodyMetrics(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `body_metrics_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -261,7 +261,7 @@ async function exportChallenges(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `challenge_results_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -283,7 +283,7 @@ async function exportPurchases(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `member_purchases_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -306,7 +306,7 @@ async function exportClassBookings(gymId, from, to) {
   ].map(esc).join(','));
   const csv = [header, ...rows].join('\n');
   const filename = `class_bookings_${todayISO()}.csv`;
-  downloadCSV(filename, csv);
+  await downloadCSV(filename, csv);
   return { filename, rows: rows.length };
 }
 
@@ -456,14 +456,14 @@ export default function AdminReports() {
               ))}
             </div>
             {rangeKey === 'custom' && (
-              <div className="flex flex-wrap gap-3 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 max-w-md">
                 <div className="flex flex-col gap-1">
                   <label className="text-[11px] text-[#6B7280] uppercase tracking-wide">{t('admin.reports.from')}</label>
                   <input
                     type="date"
                     value={customFrom}
                     onChange={e => setCustomFrom(e.target.value)}
-                    className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                    className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -472,7 +472,7 @@ export default function AdminReports() {
                     type="date"
                     value={customTo}
                     onChange={e => setCustomTo(e.target.value)}
-                    className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
+                    className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-1.5 text-[13px] text-[#E5E7EB] focus:outline-none focus:border-[#D4AF37]/50"
                   />
                 </div>
               </div>

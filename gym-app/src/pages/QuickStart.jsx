@@ -209,7 +209,7 @@ const QuickStart = () => {
   return (
     <FadeIn>
     <div className="min-h-screen px-4 pt-4 pb-28 md:pb-12" style={{ background: 'var(--color-bg-primary)' }}>
-      <div className="max-w-[480px] mx-auto space-y-5">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-5xl mx-auto space-y-5">
 
         {/* Header */}
         <div data-tour="tour-quickstart-page">
@@ -330,6 +330,7 @@ const QuickStart = () => {
                   <video
                     src={currentEx.video}
                     autoPlay loop muted playsInline
+                    aria-label={t('quickStart.exerciseDemo', { name: currentEx.name || 'Exercise' })}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -344,10 +345,13 @@ const QuickStart = () => {
 
             {/* Exercise dots */}
             {todayExercises.length > 1 && (
-              <div className="absolute top-4 right-4 z-10 flex items-center gap-1">
-                {todayExercises.map((_, i) => (
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-1" role="tablist" aria-label={t('quickStart.exerciseIndicators', 'Exercise indicators')}>
+                {todayExercises.map((ex, i) => (
                   <div
                     key={i}
+                    role="tab"
+                    aria-selected={i === cycleIndex}
+                    aria-label={`${ex.name || `Exercise ${i + 1}`}`}
                     className={`rounded-full transition-all duration-300 ${
                       i === cycleIndex ? 'w-4 h-1.5 bg-white/80' : 'w-1.5 h-1.5 bg-white/25'
                     }`}
@@ -373,13 +377,13 @@ const QuickStart = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.2 }}
-                  className="text-[13px] text-white/50 mt-1"
+                  className="text-[13px] text-white/70 mt-1"
                 >
                   {currentEx.name} — {currentEx.sets}×{currentEx.reps}
                 </motion.p>
               </AnimatePresence>
 
-              <p className="text-[12px] text-white/30 mt-1 mb-4">
+              <p className="text-[12px] text-white/60 mt-1 mb-4">
                 {todayExercises.length} {t('quickStart.exercises')}
               </p>
 
@@ -461,6 +465,7 @@ const QuickStart = () => {
                     <div key={r.id}>
                       <button
                         onClick={() => handleToggleExpand(r.id)}
+                        aria-expanded={isExpanded}
                         className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-colors text-left active:scale-[0.99] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
                           isExpanded ? 'border-[#D4AF37]/30' : 'border-white/[0.06] hover:border-white/[0.1]'
                         }`}

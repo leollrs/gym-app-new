@@ -62,10 +62,10 @@ struct GoldButton: View {
             HStack(spacing: 6) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 14))
+                        .font(.body)
                 }
                 Text(title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.headline)
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
@@ -92,10 +92,10 @@ struct SecondaryButton: View {
             HStack(spacing: 6) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 14))
+                        .font(.body)
                 }
                 Text(title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.headline)
             }
             .foregroundColor(DS.gold)
             .frame(maxWidth: .infinity)
@@ -115,15 +115,15 @@ struct StatCard: View {
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.body)
                 .foregroundColor(color)
             Text(value)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.headline)
                 .foregroundColor(.white)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.caption2)
                 .foregroundColor(.gray)
                 .textCase(.uppercase)
         }
@@ -131,5 +131,6 @@ struct StatCard: View {
         .padding(.vertical, 10)
         .background(DS.cardBg)
         .cornerRadius(10)
+        .accessibilityElement(children: .combine)
     }
 }

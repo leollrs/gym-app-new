@@ -1,47 +1,52 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Users, Activity, Settings, Search, Shield, Crown,
+  ArrowLeft, Users, Activity, Settings, Search, Shield, Crown, Building2,
   UserCog, ChevronDown, ToggleLeft, ToggleRight, Copy, ExternalLink,
   Dumbbell, MapPin, Clock, Globe, Palette, Link2, RefreshCw,
   Trophy, BookOpen, Award, Gift, Plus, X, Trash2, Edit3, ChevronRight,
-  UserPlus, Eye, EyeOff, QrCode, CalendarDays,
+  UserPlus, Eye, EyeOff, QrCode, CalendarDays, Smartphone,
+  Pause, Play, AlertTriangle, ShieldOff,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import logger from '../../lib/logger';
+import { logAdminAction } from '../../lib/adminAudit';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 
 // ── Role / status config ────────────────────────────────────
 const roleConfig = {
-  super_admin: { label: 'Super Admin', bg: 'bg-[#D4AF37]/10', text: 'text-[#D4AF37]', border: 'border-[#D4AF37]/20' },
-  admin:       { label: 'Admin',       bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20' },
-  trainer:     { label: 'Trainer',     bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' },
-  member:      { label: 'Member',      bg: 'bg-white/6',       text: 'text-[#9CA3AF]',  border: 'border-white/10' },
+  super_admin: { key: 'super_admin', bg: 'bg-[#D4AF37]/10', text: 'text-[#D4AF37]', border: 'border-[#D4AF37]/20' },
+  admin:       { key: 'admin',       bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20' },
+  trainer:     { key: 'trainer',     bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' },
+  member:      { key: 'member',      bg: 'bg-white/6',       text: 'text-[#9CA3AF]',  border: 'border-white/10' },
 };
 
 const statusConfig = {
-  active:      { label: 'Active',      bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-  frozen:      { label: 'Frozen',      bg: 'bg-amber-500/10',   text: 'text-amber-400',   border: 'border-amber-500/20' },
-  deactivated: { label: 'Deactivated', bg: 'bg-orange-500/10',  text: 'text-orange-400',  border: 'border-orange-500/20' },
-  cancelled:   { label: 'Cancelled',   bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
-  banned:      { label: 'Banned',      bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
+  active:      { key: 'active',      bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+  frozen:      { key: 'frozen',      bg: 'bg-amber-500/10',   text: 'text-amber-400',   border: 'border-amber-500/20' },
+  deactivated: { key: 'deactivated', bg: 'bg-orange-500/10',  text: 'text-orange-400',  border: 'border-orange-500/20' },
+  cancelled:   { key: 'cancelled',   bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
+  banned:      { key: 'banned',      bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-500/20' },
 };
 
 const RoleBadge = ({ role }) => {
+  const { t } = useTranslation('pages');
   const cfg = roleConfig[role] ?? roleConfig.member;
   return (
     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-      {cfg.label}
+      {t(`platform.gymDetail.roles.${cfg.key}`)}
     </span>
   );
 };
 
 const StatusBadge = ({ status }) => {
+  const { t } = useTranslation('pages');
   const cfg = statusConfig[status] ?? statusConfig.active;
   return (
     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-      {cfg.label}
+      {t(`platform.gymDetail.statuses.${cfg.key}`)}
     </span>
   );
 };
@@ -59,11 +64,126 @@ const CHALLENGE_STATUS_STYLES = {
 
 const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'];
 
+// ── SMS Usage Card (platform admin view) ─────────────────────
+function SmsUsageCard({ gymId }) {
+  const { t } = useTranslation('pages');
+  const [usage, setUsage] = useState(null);
+  const [recentSms, setRecentSms] = useState([]);
+  const [expanded, setExpanded] = useState(false);
+  const SMS_CAP = 200;
+
+  useEffect(() => {
+    if (!gymId) return;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    // Fetch current month usage
+    supabase.from('sms_usage_monthly')
+      .select('month, count')
+      .eq('gym_id', gymId)
+      .order('month', { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (data) setUsage(data);
+      });
+
+    // Fetch recent SMS sends
+    supabase.from('sms_log')
+      .select('id, phone_number, body, status, source, created_at')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => {
+        if (data) setRecentSms(data);
+      });
+  }, [gymId]);
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentUsage = usage?.find(u => u.month === currentMonth)?.count || 0;
+  const pct = Math.min(100, (currentUsage / SMS_CAP) * 100);
+
+  return (
+    <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
+            <Globe size={14} className="text-[#F59E0B]" />
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.smsUsage', 'SMS Usage')}</p>
+            <p className="text-[10px] text-[#6B7280]">{currentMonth}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-[18px] font-bold text-[#E5E7EB]">{currentUsage}<span className="text-[13px] font-normal text-[#6B7280]">/{SMS_CAP}</span></p>
+          <p className="text-[10px] text-[#6B7280]">≈ ${(currentUsage * 0.054).toFixed(2)} cost</p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full h-2 bg-white/6 rounded-full overflow-hidden mb-3">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${pct}%`,
+            backgroundColor: pct >= 90 ? '#EF4444' : pct >= 70 ? '#F59E0B' : '#10B981',
+          }}
+        />
+      </div>
+
+      {/* History */}
+      {usage && usage.length > 1 && (
+        <div className="flex gap-3 mb-3">
+          {usage.filter(u => u.month !== currentMonth).map(u => (
+            <div key={u.month} className="text-[10px] text-[#6B7280]">
+              {u.month}: <span className="text-[#9CA3AF] font-medium">{u.count}</span> SMS
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Recent sends */}
+      {recentSms.length > 0 && (
+        <div>
+          <button onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors mb-2">
+            <ChevronDown size={12} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            {t('platform.gymDetail.recentSends', 'Recent sends')} ({recentSms.length})
+          </button>
+          {expanded && (
+            <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+              {recentSms.map(sms => (
+                <div key={sms.id} className="flex items-start gap-2 text-[10px] p-2 bg-white/[0.02] rounded-lg">
+                  <span className={`flex-shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${sms.status === 'sent' ? 'bg-emerald-400' : sms.status === 'failed' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[#9CA3AF] font-mono truncate">{sms.phone_number}</span>
+                      <span className="text-[#4B5563] flex-shrink-0">{formatDistanceToNow(new Date(sms.created_at), { addSuffix: true })}</span>
+                    </div>
+                    <p className="text-[#6B7280] truncate mt-0.5">{sms.body}</p>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${sms.source === 'automated' ? 'bg-purple-500/10 text-purple-400' : sms.source === 'win_back' ? 'bg-red-500/10 text-red-400' : 'bg-white/6 text-[#6B7280]'}`}>
+                      {sms.source}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!usage?.length && !recentSms.length && (
+        <p className="text-[11px] text-[#4B5563] text-center py-2">{t('platform.gymDetail.noSmsActivity', 'No SMS activity yet')}</p>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────
 export default function GymDetail() {
   const { gymId } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
 
   const [gym, setGym] = useState(null);
   const [branding, setBranding] = useState(null);
@@ -77,7 +197,7 @@ export default function GymDetail() {
   const [contentSubTab, setContentSubTab] = useState('challenges');
   const [search, setSearch] = useState('');
   const [editingTier, setEditingTier] = useState(false);
-  const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '', classes_enabled: false, multi_admin_enabled: false, max_admin_seats: 1 });
+  const [editingGym, setEditingGym] = useState({ name: '', slug: '', qr_enabled: false, qr_payload_type: 'auto_id', qr_display_format: 'qr_code', qr_payload_template: '', classes_enabled: false, multi_admin_enabled: false, max_admin_seats: 1, sms_phone_number: '' });
   const [savingGym, setSavingGym] = useState(false);
 
   // New tab states
@@ -95,6 +215,12 @@ export default function GymDetail() {
   const [editingAchievement, setEditingAchievement] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { type, id }
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+
+  // Gym lifecycle modal states
+  const [lifecycleModal, setLifecycleModal] = useState(null); // 'pause' | 'reactivate' | 'delete'
+  const [pauseReason, setPauseReason] = useState('');
+  const [deleteGymConfirmName, setDeleteGymConfirmName] = useState('');
+  const [lifecycleProcessing, setLifecycleProcessing] = useState(false);
 
   // ── Fetch gym + branding ──────────────────────────────────
   const fetchGym = async () => {
@@ -115,6 +241,7 @@ export default function GymDetail() {
         classes_enabled: data.classes_enabled ?? false,
         multi_admin_enabled: data.multi_admin_enabled ?? false,
         max_admin_seats: data.max_admin_seats ?? 1,
+        sms_phone_number: data.sms_phone_number ?? '',
       });
     }
 
@@ -241,39 +368,99 @@ export default function GymDetail() {
     return { totalMembers, activeMembers, recentSessions, avgSessions };
   }, [members, sessions]);
 
+  // ── Gym lifecycle helpers ──────────────────────────────────
+  const gymStatus = !gym?.is_active && gym?.subscription_tier === 'cancelled'
+    ? 'deactivated'
+    : !gym?.is_active
+    ? 'paused'
+    : 'active';
+
   // ── Actions ───────────────────────────────────────────────
-  const [toggling, setToggling] = useState(false);
-  const toggleActive = async () => {
-    if (!gym || toggling) return;
-    const newActive = !gym.is_active;
+  const handlePauseGym = async () => {
+    if (!gym || lifecycleProcessing) return;
+    setLifecycleProcessing(true);
 
-    // Confirm before deactivating
-    if (!newActive && !window.confirm(
-      `Deactivate "${gym.name}"?\n\nAll members, trainers, and admins of this gym will be blocked from accessing the app.`
-    )) return;
-
-    setToggling(true);
-    // 1. Toggle the gym's is_active flag
     const { error: gymErr } = await supabase
       .from('gyms')
-      .update({ is_active: newActive })
+      .update({ is_active: false })
       .eq('id', gymId);
 
     if (!gymErr) {
-      // 2. Deactivate or reactivate all profiles belonging to this gym (except super_admins)
       const { error: profilesErr } = await supabase
         .from('profiles')
-        .update({ membership_status: newActive ? 'active' : 'deactivated' })
+        .update({ membership_status: 'deactivated' })
         .eq('gym_id', gymId)
         .neq('role', 'super_admin');
-
       if (profilesErr) logger.error('Failed to update member statuses:', profilesErr);
 
-      setGym(prev => ({ ...prev, is_active: newActive }));
-      // Refresh members list to reflect the new statuses
+      logAdminAction('pause_gym', 'gym', gymId, { gym_name: gym.name, reason: pauseReason || null });
+      setGym(prev => ({ ...prev, is_active: false }));
       await fetchMembers();
     }
-    setToggling(false);
+
+    setLifecycleProcessing(false);
+    setLifecycleModal(null);
+    setPauseReason('');
+  };
+
+  const handleReactivateGym = async () => {
+    if (!gym || lifecycleProcessing) return;
+    setLifecycleProcessing(true);
+
+    const updates = { is_active: true };
+    // If the gym was permanently deactivated (cancelled tier), restore to free tier
+    if (gym.subscription_tier === 'cancelled') {
+      updates.subscription_tier = 'free';
+    }
+
+    const { error: gymErr } = await supabase
+      .from('gyms')
+      .update(updates)
+      .eq('id', gymId);
+
+    if (!gymErr) {
+      const { error: profilesErr } = await supabase
+        .from('profiles')
+        .update({ membership_status: 'active' })
+        .eq('gym_id', gymId)
+        .neq('role', 'super_admin');
+      if (profilesErr) logger.error('Failed to update member statuses:', profilesErr);
+
+      logAdminAction('reactivate_gym', 'gym', gymId, { gym_name: gym.name });
+      setGym(prev => ({ ...prev, ...updates }));
+      await fetchMembers();
+    }
+
+    setLifecycleProcessing(false);
+    setLifecycleModal(null);
+  };
+
+  const handleDeleteGym = async () => {
+    if (!gym || lifecycleProcessing) return;
+    if (deleteGymConfirmName !== gym.name) return;
+    setLifecycleProcessing(true);
+
+    const { error: gymErr } = await supabase
+      .from('gyms')
+      .update({ is_active: false, subscription_tier: 'cancelled' })
+      .eq('id', gymId);
+
+    if (!gymErr) {
+      const { error: profilesErr } = await supabase
+        .from('profiles')
+        .update({ membership_status: 'deactivated' })
+        .eq('gym_id', gymId)
+        .neq('role', 'super_admin');
+      if (profilesErr) logger.error('Failed to update member statuses:', profilesErr);
+
+      logAdminAction('permanently_deactivate_gym', 'gym', gymId, { gym_name: gym.name });
+      setGym(prev => ({ ...prev, is_active: false, subscription_tier: 'cancelled' }));
+      await fetchMembers();
+    }
+
+    setLifecycleProcessing(false);
+    setLifecycleModal(null);
+    setDeleteGymConfirmName('');
   };
 
   const updateTier = async (tier) => {
@@ -332,6 +519,7 @@ export default function GymDetail() {
       classes_enabled: editingGym.classes_enabled,
       multi_admin_enabled: editingGym.multi_admin_enabled,
       max_admin_seats: editingGym.max_admin_seats,
+      sms_phone_number: editingGym.sms_phone_number || null,
     };
     const { error } = await supabase
       .from('gyms')
@@ -446,8 +634,8 @@ export default function GymDetail() {
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#05070B] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#05070B] flex items-center justify-center" aria-busy="true">
+        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" role="status" aria-label="Loading gym details" />
       </div>
     );
   }
@@ -490,11 +678,13 @@ export default function GymDetail() {
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{gym.name}</h1>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                  gym.is_active
+                  gymStatus === 'active'
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : gymStatus === 'paused'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                     : 'bg-red-500/10 text-red-400 border-red-500/20'
                 }`}>
-                  {gym.is_active ? 'Active' : 'Inactive'}
+                  {t(`platform.gymDetail.gymStatus.${gymStatus}`)}
                 </span>
               </div>
               <p className="text-[#6B7280] text-xs mt-1 font-mono">/{gym.slug}</p>
@@ -528,19 +718,24 @@ export default function GymDetail() {
                 )}
               </div>
 
-              {/* Toggle active */}
-              <button
-                onClick={toggleActive}
-                disabled={toggling}
-                className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-white/6 hover:bg-white/[0.03] text-[#9CA3AF] transition-colors disabled:opacity-50"
-              >
-                {toggling
-                  ? 'Processing...'
-                  : gym.is_active
-                    ? <><ToggleRight className="w-4 h-4 text-emerald-400" /> Deactivate</>
-                    : <><ToggleLeft className="w-4 h-4 text-red-400" /> Activate</>
-                }
-              </button>
+              {/* Lifecycle actions */}
+              {gymStatus === 'active' ? (
+                <button
+                  onClick={() => setLifecycleModal('pause')}
+                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 hover:bg-amber-500/10 text-amber-400 transition-colors"
+                >
+                  <Pause className="w-4 h-4" />
+                  {t('platform.gymDetail.lifecycle.pauseBtn')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setLifecycleModal('reactivate')}
+                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/10 text-emerald-400 transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  {t('platform.gymDetail.lifecycle.reactivateBtn')}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -588,7 +783,7 @@ export default function GymDetail() {
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
               <div className="flex items-start gap-4">
                 {branding?.logo_url ? (
-                  <img src={branding.logo_url} alt="" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+                  <img src={branding.logo_url} alt={`${gym.name} logo`} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
                 ) : (
                   <div className="w-14 h-14 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
                     <Building2 size={24} className="text-[#D4AF37]" />
@@ -688,6 +883,9 @@ export default function GymDetail() {
                 <p className="text-[12px] font-medium text-[#9CA3AF]">Gym Settings</p>
               </button>
             </div>
+
+            {/* SMS Usage */}
+            <SmsUsageCard gymId={gymId} />
           </div>
         )}
 
@@ -724,6 +922,7 @@ export default function GymDetail() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search members..."
+                  aria-label="Search members"
                   className="w-full bg-[#111827] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
                 />
               </div>
@@ -777,10 +976,11 @@ export default function GymDetail() {
                     <select
                       value={m.role ?? 'member'}
                       onChange={e => updateMemberRole(m.id, e.target.value)}
+                      aria-label="Member role"
                       className="bg-[#111827] border border-white/6 rounded px-1.5 py-0.5 text-[11px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
                     >
                       {ROLE_OPTIONS.map(r => (
-                        <option key={r} value={r}>{roleConfig[r]?.label ?? r}</option>
+                        <option key={r} value={r}>{t(`platform.gymDetail.roles.${r}`)}</option>
                       ))}
                     </select>
                   </div>
@@ -809,10 +1009,11 @@ export default function GymDetail() {
                     <select
                       value={m.membership_status ?? 'active'}
                       onChange={e => updateMemberStatus(m.id, e.target.value)}
+                      aria-label="Member status"
                       className="bg-[#111827] border border-white/6 rounded px-1.5 py-0.5 text-[11px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
                     >
                       {STATUS_ACTIONS.map(s => (
-                        <option key={s} value={s}>{statusConfig[s]?.label ?? s}</option>
+                        <option key={s} value={s}>{t(`platform.gymDetail.statuses.${s}`)}</option>
                       ))}
                     </select>
                   </div>
@@ -823,6 +1024,7 @@ export default function GymDetail() {
                       onClick={() => deleteMember(m)}
                       className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#4B5563] hover:text-red-400 transition-colors"
                       title="Delete member"
+                      aria-label="Delete member"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1033,12 +1235,14 @@ export default function GymDetail() {
                           <button
                             onClick={() => { setEditingChallenge(c); setShowChallengeModal(true); }}
                             className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                            aria-label="Edit challenge"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm({ type: 'challenge', id: c.id, name: c.name })}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                            aria-label="Delete challenge"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1104,6 +1308,7 @@ export default function GymDetail() {
                           onClick={() => toggleProgramPublish(p)}
                           className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
                           title={p.is_published ? 'Unpublish' : 'Publish'}
+                          aria-label={p.is_published ? 'Unpublish program' : 'Publish program'}
                         >
                           {p.is_published
                             ? <ToggleRight className="w-4 h-4 text-emerald-400" />
@@ -1113,12 +1318,14 @@ export default function GymDetail() {
                         <button
                           onClick={() => { setEditingProgram(p); setShowProgramModal(true); }}
                           className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                          aria-label="Edit program"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirm({ type: 'program', id: p.id, name: p.name })}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                          aria-label="Delete program"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1181,12 +1388,14 @@ export default function GymDetail() {
                           <button
                             onClick={() => { setEditingAchievement(a); setShowAchievementModal(true); }}
                             className="p-1.5 rounded-lg hover:bg-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
+                            aria-label="Edit achievement"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm({ type: 'achievement', id: a.id, name: a.name })}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#6B7280] hover:text-red-400 transition-colors"
+                            aria-label="Delete achievement"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1338,7 +1547,7 @@ export default function GymDetail() {
                       <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Logo</label>
                       <img
                         src={branding.logo_url}
-                        alt="Gym logo"
+                        alt={`${gym.name} logo`}
                         className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
                       />
                     </div>
@@ -1368,6 +1577,9 @@ export default function GymDetail() {
                 <button
                   onClick={() => setEditingGym(prev => ({ ...prev, qr_enabled: !prev.qr_enabled }))}
                   className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.qr_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
+                  role="switch"
+                  aria-checked={editingGym.qr_enabled}
+                  aria-label="Toggle QR codes"
                 >
                   <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.qr_enabled ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
@@ -1464,6 +1676,9 @@ export default function GymDetail() {
                 <button
                   onClick={() => setEditingGym(prev => ({ ...prev, classes_enabled: !prev.classes_enabled }))}
                   className={`relative w-11 h-6 rounded-full transition-colors ${editingGym.classes_enabled ? 'bg-[#D4AF37]' : 'bg-[#374151]'}`}
+                  role="switch"
+                  aria-checked={editingGym.classes_enabled}
+                  aria-label="Toggle class booking"
                 >
                   <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editingGym.classes_enabled ? 'left-[22px]' : 'left-0.5'}`} />
                 </button>
@@ -1479,6 +1694,9 @@ export default function GymDetail() {
                 </div>
                 <button onClick={() => setEditingGym(p => ({ ...p, multi_admin_enabled: !p.multi_admin_enabled }))}
                   className="w-10 h-5.5 rounded-full relative flex-shrink-0 transition-colors"
+                  role="switch"
+                  aria-checked={editingGym.multi_admin_enabled}
+                  aria-label="Toggle multi-admin"
                   style={{ backgroundColor: editingGym.multi_admin_enabled ? '#D4AF37' : '#6B7280' }}>
                   <span className="absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-transform"
                     style={{ left: editingGym.multi_admin_enabled ? 'calc(100% - 20px)' : '2px' }} />
@@ -1492,9 +1710,96 @@ export default function GymDetail() {
                   </div>
                   <input type="number" min="1" max="20" value={editingGym.max_admin_seats}
                     onChange={e => setEditingGym(p => ({ ...p, max_admin_seats: parseInt(e.target.value) || 1 }))}
+                    aria-label="Max admin seats"
                     className="w-16 bg-[#111827] border border-white/6 rounded-lg px-2 py-1.5 text-[13px] text-[#E5E7EB] text-center outline-none focus:border-[#D4AF37]/40" />
                 </div>
               )}
+            </div>
+
+            {/* SMS Configuration */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Smartphone size={14} className="text-[#D4AF37]" />
+                <div>
+                  <p className="text-[13px] font-medium text-[#E5E7EB]">{t('platform.gymDetail.smsConfig', 'SMS Configuration')}</p>
+                  <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.smsConfigDesc', 'Twilio phone number used to send SMS to members')}</p>
+                </div>
+              </div>
+              <div className="py-3 border-t border-white/4">
+                <input
+                  type="text"
+                  placeholder="+1XXXXXXXXXX"
+                  aria-label="SMS phone number"
+                  value={editingGym.sms_phone_number}
+                  onChange={e => setEditingGym(p => ({ ...p, sms_phone_number: e.target.value }))}
+                  className="w-full bg-[#111827] border rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none transition-colors"
+                  style={{
+                    borderColor: !editingGym.sms_phone_number
+                      ? 'rgba(255,255,255,0.06)'
+                      : /^\+1\d{10}$/.test(editingGym.sms_phone_number)
+                        ? '#10B981'
+                        : '#EF4444',
+                  }}
+                />
+                <p className="text-[10px] text-[#6B7280] mt-2">{t('platform.gymDetail.smsPhoneHelp', 'US format required. Leave empty to disable SMS for this gym.')}</p>
+              </div>
+            </div>
+
+            {/* ── Gym Lifecycle / Status ──────────────────────── */}
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4 lg:col-span-2">
+              <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
+                <ShieldOff className="w-4 h-4 text-[#D4AF37]" />
+                {t('platform.gymDetail.lifecycle.title')}
+              </h3>
+              <p className="text-[12px] text-[#6B7280]">{t('platform.gymDetail.lifecycle.description')}</p>
+
+              {/* Current status indicator */}
+              <div className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl border border-white/6">
+                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                  gymStatus === 'active' ? 'bg-emerald-400' : gymStatus === 'paused' ? 'bg-amber-400' : 'bg-red-400'
+                }`} />
+                <div>
+                  <p className="text-[13px] font-semibold text-[#E5E7EB]">
+                    {t('platform.gymDetail.lifecycle.currentStatus')}: {t(`platform.gymDetail.gymStatus.${gymStatus}`)}
+                  </p>
+                  <p className="text-[11px] text-[#6B7280]">
+                    {gymStatus === 'active' && t('platform.gymDetail.lifecycle.activeDesc')}
+                    {gymStatus === 'paused' && t('platform.gymDetail.lifecycle.pausedDesc')}
+                    {gymStatus === 'deactivated' && t('platform.gymDetail.lifecycle.deactivatedDesc')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-3">
+                {gymStatus === 'active' && (
+                  <button
+                    onClick={() => setLifecycleModal('pause')}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-amber-500/20 bg-amber-500/8 text-amber-400 hover:bg-amber-500/15 transition-colors"
+                  >
+                    <Pause className="w-4 h-4" />
+                    {t('platform.gymDetail.lifecycle.pauseBtn')}
+                  </button>
+                )}
+                {gymStatus !== 'active' && (
+                  <button
+                    onClick={() => setLifecycleModal('reactivate')}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-emerald-500/20 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+                  >
+                    <Play className="w-4 h-4" />
+                    {t('platform.gymDetail.lifecycle.reactivateBtn')}
+                  </button>
+                )}
+                {gymStatus !== 'deactivated' && (
+                  <button
+                    onClick={() => setLifecycleModal('delete')}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-red-500/20 bg-red-500/8 text-red-400 hover:bg-red-500/15 transition-colors"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    {t('platform.gymDetail.lifecycle.deleteBtn')}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Invite links */}
@@ -1579,7 +1884,7 @@ export default function GymDetail() {
       {/* ── Delete Confirmation ──────────────────────────────── */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => setDeleteConfirm(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setDeleteConfirm(null); }} />
           <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4">
             <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">Delete {deleteConfirm.type}?</h3>
             <p className="text-[13px] text-[#6B7280] mb-6">
@@ -1601,6 +1906,141 @@ export default function GymDetail() {
                 className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Gym Lifecycle Modals ──────────────────────────────── */}
+
+      {/* Pause Gym Modal */}
+      {lifecycleModal === 'pause' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => { setLifecycleModal(null); setPauseReason(''); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLifecycleModal(null); setPauseReason(''); } }} />
+          <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <Pause className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.lifecycle.pauseTitle')}</h3>
+                <p className="text-[11px] text-[#6B7280]">{gym.name}</p>
+              </div>
+            </div>
+            <div className="p-3 bg-amber-500/8 border border-amber-500/15 rounded-xl mb-4">
+              <p className="text-[12px] text-amber-300">{t('platform.gymDetail.lifecycle.pauseWarning')}</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">
+                {t('platform.gymDetail.lifecycle.pauseReasonLabel')}
+              </label>
+              <textarea
+                value={pauseReason}
+                onChange={e => setPauseReason(e.target.value)}
+                placeholder={t('platform.gymDetail.lifecycle.pauseReasonPlaceholder')}
+                rows={3}
+                className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-amber-400/40 resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setLifecycleModal(null); setPauseReason(''); }}
+                className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+              >
+                {t('platform.gymDetail.lifecycle.cancel')}
+              </button>
+              <button
+                onClick={handlePauseGym}
+                disabled={lifecycleProcessing}
+                className="px-4 py-2 text-[12px] font-semibold text-black bg-amber-500 hover:bg-amber-400 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmPause')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reactivate Gym Modal */}
+      {lifecycleModal === 'reactivate' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => setLifecycleModal(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setLifecycleModal(null); }} />
+          <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                <Play className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.lifecycle.reactivateTitle')}</h3>
+                <p className="text-[11px] text-[#6B7280]">{gym.name}</p>
+              </div>
+            </div>
+            <div className="p-3 bg-emerald-500/8 border border-emerald-500/15 rounded-xl mb-4">
+              <p className="text-[12px] text-emerald-300">{t('platform.gymDetail.lifecycle.reactivateWarning')}</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setLifecycleModal(null)}
+                className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+              >
+                {t('platform.gymDetail.lifecycle.cancel')}
+              </button>
+              <button
+                onClick={handleReactivateGym}
+                disabled={lifecycleProcessing}
+                className="px-4 py-2 text-[12px] font-semibold text-black bg-emerald-500 hover:bg-emerald-400 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmReactivate')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete / Permanently Deactivate Gym Modal */}
+      {lifecycleModal === 'delete' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLifecycleModal(null); setDeleteGymConfirmName(''); } }} />
+          <div className="relative bg-[#0F172A] border border-red-500/20 rounded-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-red-400">{t('platform.gymDetail.lifecycle.deleteTitle')}</h3>
+                <p className="text-[11px] text-[#6B7280]">{gym.name}</p>
+              </div>
+            </div>
+            <div className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl mb-4">
+              <p className="text-[12px] text-red-300">{t('platform.gymDetail.lifecycle.deleteWarning')}</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">
+                {t('platform.gymDetail.lifecycle.deleteConfirmLabel', { name: gym.name })}
+              </label>
+              <input
+                type="text"
+                value={deleteGymConfirmName}
+                onChange={e => setDeleteGymConfirmName(e.target.value)}
+                placeholder={gym.name}
+                aria-label="Type gym name to confirm deletion"
+                className="w-full bg-[#111827] border border-red-500/20 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-red-400/40"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }}
+                className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors"
+              >
+                {t('platform.gymDetail.lifecycle.cancel')}
+              </button>
+              <button
+                onClick={handleDeleteGym}
+                disabled={lifecycleProcessing || deleteGymConfirmName !== gym.name}
+                className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmDelete')}
               </button>
             </div>
           </div>
@@ -1639,13 +2079,13 @@ function ChallengeModal({ challenge, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
             {challenge ? 'Edit Challenge' : 'New Challenge'}
           </h3>
-          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1768,13 +2208,13 @@ function ProgramModal({ program, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
             {program ? 'Edit Program' : 'New Program'}
           </h3>
-          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1887,13 +2327,13 @@ function AchievementModal({ achievement, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB]">
             {achievement ? 'Edit Achievement' : 'New Achievement'}
           </h3>
-          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1969,6 +2409,7 @@ function AchievementModal({ achievement, onSave, onClose }) {
 
 // ── Add Member Modal Component ────────────────────────────────
 function AddMemberModal({ gymId, onClose, onCreated }) {
+  const { t } = useTranslation('pages');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -2027,14 +2468,14 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB] flex items-center gap-2">
             <UserPlus className="w-4 h-4 text-[#D4AF37]" />
             Add Member
           </h3>
-          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -2092,6 +2533,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF] transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -2102,9 +2544,9 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Role *</label>
             <div className="grid grid-cols-3 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
               {[
-                { value: 'member',  label: 'Member' },
-                { value: 'trainer', label: 'Trainer' },
-                { value: 'admin',   label: 'Admin' },
+                { value: 'member',  label: t('platform.gymDetail.roles.member') },
+                { value: 'trainer', label: t('platform.gymDetail.roles.trainer') },
+                { value: 'admin',   label: t('platform.gymDetail.roles.admin') },
               ].map(r => (
                 <button
                   key={r.value}

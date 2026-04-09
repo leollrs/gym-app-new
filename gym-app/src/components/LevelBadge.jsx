@@ -15,7 +15,7 @@ export function getLevel(totalPoints) {
 }
 
 // ── Compact badge (for nav, social cards, etc.) ──────────────────────────────
-export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
+export function LevelBadgeCompact({ totalPoints, size = 'sm', interactive = false }) {
   const { t } = useTranslation('pages');
   const { level } = getLevel(totalPoints);
   const tier = getRewardTier(totalPoints);
@@ -30,7 +30,7 @@ export function LevelBadgeCompact({ totalPoints, size = 'sm' }) {
 
   return (
     <div
-      className={`${sizes[size]} rounded-full flex items-center justify-center font-black flex-shrink-0 tabular-nums`}
+      className={`${sizes[size]} ${interactive ? 'min-w-[44px] min-h-[44px]' : ''} rounded-full flex items-center justify-center font-black flex-shrink-0 tabular-nums`}
       style={{
         backgroundColor: `${tier.color}20`,
         color: tier.color,

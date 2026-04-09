@@ -11,7 +11,7 @@ struct StatsView: View {
         ScrollView {
             VStack(spacing: 10) {
                 Text("TODAY")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.caption2.weight(.heavy))
                     .foregroundColor(.gray)
                     .tracking(2)
 
@@ -19,9 +19,10 @@ struct StatsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "flame.fill")
                         .foregroundColor(gold)
-                        .font(.system(size: 14))
+                        .font(.subheadline)
+                        .accessibilityLabel("Streak")
                     Text("\(session.streak) day streak")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundColor(.white)
                 }
                 .padding(.vertical, 8)
@@ -62,15 +63,15 @@ struct StatCard: View {
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundColor(color)
             Text(value)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.system(.body, design: .rounded).weight(.black))
                 .foregroundColor(.white)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundColor(.gray)
                 .textCase(.uppercase)
         }
@@ -78,5 +79,6 @@ struct StatCard: View {
         .padding(.vertical, 10)
         .background(Color(red: 15/255, green: 23/255, blue: 42/255))
         .cornerRadius(10)
+        .accessibilityElement(children: .combine)
     }
 }

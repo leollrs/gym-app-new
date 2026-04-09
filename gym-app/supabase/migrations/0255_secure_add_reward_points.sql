@@ -1,0 +1,63 @@
+-- Security fix: add authorization to add_reward_points
+-- Previously any authenticated user could award arbitrary points to any user in any gym
+
+CREATE OR REPLACE FUNCTION public.add_reward_points(
+  p_user_id     UUID,
+  p_gym_id      UUID,
+  p_action      TEXT,
+  p_points      INT,
+  p_description TEXT DEFAULT NULL
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_total    INT;
+  new_lifetime INT;
+BEGIN
+  -- Authorization: must be authenticated
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Authorization: only self or admin/trainer can award points
+  IF auth.uid() != p_user_id THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid()
+        AND gym_id = p_gym_id
+        AND role IN ('admin', 'trainer', 'super_admin')
+    ) THEN
+      RAISE EXCEPTION 'Unauthorized: cannot award points to other users';
+    END IF;
+  END IF;
+
+  -- Input validation
+  IF p_user_id IS NULL OR p_points IS NULL OR p_points = 0 THEN
+    RETURN json_build_object('total_points', 0, 'lifetime_points', 0);
+  END IF;
+
+  IF p_points < -10000 OR p_points > 100000 THEN
+    RAISE EXCEPTION 'Invalid points value: must be between -10000 and 100000';
+  END IF;
+
+  -- 1. Insert log entry
+  INSERT INTO reward_points_log (profile_id, gym_id, action, points, description, created_at)
+  VALUES (p_user_id, p_gym_id, p_action, p_points, COALESCE(p_description, p_action), NOW());
+
+  -- 2. Upsert totals in one atomic operation
+  INSERT INTO reward_points (profile_id, gym_id, total_points, lifetime_points, last_updated)
+  VALUES (p_user_id, p_gym_id, p_points, p_points, NOW())
+  ON CONFLICT (profile_id) DO UPDATE SET
+    total_points    = reward_points.total_points + p_points,
+    lifetime_points = reward_points.lifetime_points + p_points,
+    last_updated    = NOW()
+  RETURNING total_points, lifetime_points INTO new_total, new_lifetime;
+
+  RETURN json_build_object('total_points', new_total, 'lifetime_points', new_lifetime);
+END;
+$$;
+
+NOTIFY pgrst, 'reload schema';

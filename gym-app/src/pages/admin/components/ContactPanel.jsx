@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Mail, Bell, Phone, CheckCircle, X, Send, Gift } from 'lucide-react';
+import { MessageSquare, Mail, Bell, Phone, CheckCircle, X, Send, Gift, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
-import { createNotification } from '../../../lib/notifications';
+import { encryptMessage } from '../../../lib/messageEncryption';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { useToast } from '../../../contexts/ToastContext';
 import { AdminModal, Avatar, SectionLabel } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
+import { logAdminAction } from '../../../lib/adminAudit';
 
 export default function ContactPanel({
   member, gymId, adminId,
@@ -22,33 +23,14 @@ export default function ContactPanel({
   const [notifSent, setNotifSent] = useState(false);
   const [email, setEmail] = useState(null);
 
-  useEffect(() => {
-    supabase.rpc('admin_get_member_email', { p_member_id: member.id })
-      .then(({ data }) => { if (data) { setEmail(data); setEmailTo(data); } });
-  }, [member.id]);
+  // SMS state
+  const [smsMode, setSmsMode] = useState(false);
+  const [smsBody, setSmsBody] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsSent, setSmsSent] = useState(false);
+  const [smsUsage, setSmsUsage] = useState(null); // { used, limit }
 
-  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
-
-  const handleSendNotification = async () => {
-    if (!notifMsg.trim()) return;
-    setNotifSending(true);
-    try {
-      await createNotification({
-        profileId: member.id, gymId, type: 'admin_message',
-        title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: notifMsg,
-        data: { source: 'churn_contact_panel' },
-      });
-      setNotifSent(true);
-      onMarkContacted(member.id, 'push', notifMsg);
-      setTimeout(() => setNotifSent(false), 2000);
-      setNotifMsg('');
-    } catch (err) {
-      logger.error('ContactPanel: notification failed:', err);
-    } finally {
-      setNotifSending(false);
-    }
-  };
-
+  // Email state (must be before useEffect that references setEmailTo)
   const [emailMode, setEmailMode] = useState(false);
   const [emailTo, setEmailTo] = useState(email || '');
   const [emailSubject, setEmailSubject] = useState('');
@@ -56,6 +38,94 @@ export default function ContactPanel({
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [rewardType, setRewardType] = useState('none');
+
+  const memberPhone = member.phone_number || null;
+
+  useEffect(() => {
+    supabase.rpc('admin_get_member_email', { p_member_id: member.id })
+      .then(({ data }) => { if (data) { setEmail(data); setEmailTo(data); } });
+  }, [member.id]);
+
+  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
+
+  const handleSendMessage = async () => {
+    if (!notifMsg.trim()) return;
+    setNotifSending(true);
+    try {
+      // Create or get DM conversation with member
+      const { data: convoId, error: convoErr } = await supabase.rpc('get_or_create_conversation', { p_other_user: member.id });
+      if (convoErr) throw convoErr;
+
+      // Get encryption seed
+      const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
+      const seed = convo?.encryption_seed || convoId;
+
+      // Encrypt and send as DM
+      const encrypted = await encryptMessage(notifMsg.trim(), convoId, seed);
+      await supabase.from('direct_messages').insert({
+        conversation_id: convoId,
+        sender_id: adminId,
+        body: encrypted,
+      });
+      await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
+
+      // Also send push notification so phone buzzes
+      const { data: { session } } = await supabase.auth.getSession();
+      supabase.functions.invoke('send-push-user', {
+        body: {
+          profile_id: member.id,
+          gym_id: gymId,
+          title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }),
+          body: notifMsg.trim().substring(0, 100),
+          data: { type: 'direct_message', conversation_id: convoId },
+        },
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      }).catch(err => logger.warn('ContactPanel: push failed:', err));
+
+      logAdminAction('send_message', 'member', member.id);
+      setNotifSent(true);
+      onMarkContacted(member.id, 'message', notifMsg);
+      setTimeout(() => setNotifSent(false), 2000);
+      setNotifMsg('');
+      showToast(t('admin.churn.messageSent', 'Message sent!'), 'success');
+    } catch (err) {
+      logger.error('ContactPanel: message failed:', err);
+      showToast(t('admin.churn.messageFailed', 'Failed to send message'), 'error');
+    } finally {
+      setNotifSending(false);
+    }
+  };
+
+  const handleSendSms = async () => {
+    if (!smsBody.trim()) return;
+    setSmsSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('No active session');
+      const { data, error: fnError } = await supabase.functions.invoke('send-sms', {
+        body: { memberId: member.id, body: smsBody.trim(), source: 'manual' },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (fnError) throw fnError;
+      if (data?.error) {
+        showToast(data.error, 'error');
+        return;
+      }
+      logAdminAction('send_sms', 'member', member.id);
+      setSmsSent(true);
+      if (data?.usage) setSmsUsage(data.usage);
+      showToast(t('admin.churn.smsSent', 'SMS sent!'), 'success');
+      onMarkContacted(member.id, 'sms', smsBody.trim());
+      setTimeout(() => { setSmsSent(false); setSmsMode(false); setSmsBody(''); }, 1500);
+    } catch (err) {
+      logger.error('ContactPanel: send SMS failed:', err);
+      showToast(t('admin.churn.smsSendFailed', 'Failed to send SMS. Please try again.'), 'error');
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
+  const smsSegments = smsBody.length <= 160 ? 1 : 2;
 
   const rewardOptions = [
     { value: 'none', label: t('admin.churn.noReward', 'No reward') },
@@ -88,6 +158,7 @@ export default function ContactPanel({
       }
       const { data, error: fnError } = await supabase.functions.invoke('send-admin-email', { body: reqBody });
       if (fnError) throw fnError;
+      logAdminAction('send_email', 'member', member.id);
       setEmailSent(true);
       showToast(t('admin.churn.emailSentSuccess', 'Email sent successfully'), 'success');
       onMarkContacted(member.id, 'email', `${emailSubject.trim()}\n---\n${emailBody.trim()}`);
@@ -127,40 +198,52 @@ export default function ContactPanel({
         {/* Contact methods */}
         <div>
           <SectionLabel className="mb-2.5">{t('admin.churn.contactMethods', 'Contact Methods')}</SectionLabel>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {/* In-App Message */}
             <button onClick={handleMessageClick}
-              className="flex flex-col items-center gap-2 p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5 transition-all group">
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center group-hover:bg-[#D4AF37]/20 transition-colors">
+              className="flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5 transition-all group">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center group-hover:bg-[#D4AF37]/20 transition-colors">
                 <MessageSquare size={18} className="text-[#D4AF37]" />
               </div>
-              <div className="text-center">
-                <p className="text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactMessage', 'Message')}</p>
-                <p className="text-[10px] text-[#6B7280]">{t('admin.churn.contactInApp', 'In-app message')}</p>
+              <div className="text-center min-w-0 w-full">
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactMessage', 'Message')}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactInApp', 'In-app message')}</p>
               </div>
             </button>
 
             {/* Email */}
             <button onClick={() => setEmailMode(true)} disabled={!email}
-              className={`flex flex-col items-center gap-2 p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${emailMode ? 'border-[#60A5FA]/40 bg-[#60A5FA]/5' : 'border-white/6 hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5'}`}>
-              <div className="w-10 h-10 rounded-xl bg-[#60A5FA]/10 flex items-center justify-center group-hover:bg-[#60A5FA]/20 transition-colors">
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${emailMode ? 'border-[#60A5FA]/40 bg-[#60A5FA]/5' : 'border-white/6 hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5'}`}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#60A5FA]/10 flex items-center justify-center group-hover:bg-[#60A5FA]/20 transition-colors">
                 <Mail size={18} className="text-[#60A5FA]" />
               </div>
-              <div className="text-center">
-                <p className="text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactEmail', 'Email')}</p>
-                <p className="text-[10px] text-[#6B7280] truncate max-w-[120px]">{email || t('admin.churn.notOnFile', 'Not on file')}</p>
+              <div className="text-center min-w-0 w-full">
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactEmail', 'Email')}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{email || t('admin.churn.notOnFile', 'Not on file')}</p>
               </div>
             </button>
 
             {/* Push Notification */}
             <button onClick={() => document.getElementById('notif-input')?.focus()}
-              className="flex flex-col items-center gap-2 p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#10B981]/30 hover:bg-[#10B981]/5 transition-all group">
-              <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center group-hover:bg-[#10B981]/20 transition-colors">
+              className="flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border border-white/6 rounded-xl hover:border-[#10B981]/30 hover:bg-[#10B981]/5 transition-all group">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center group-hover:bg-[#10B981]/20 transition-colors">
                 <Bell size={18} className="text-[#10B981]" />
               </div>
-              <div className="text-center">
-                <p className="text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactNotification', 'Notification')}</p>
-                <p className="text-[10px] text-[#6B7280]">{t('admin.churn.contactPushToApp', 'Push to app')}</p>
+              <div className="text-center min-w-0 w-full">
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactNotification', 'Notification')}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{t('admin.churn.contactPushToApp', 'Push to app')}</p>
+              </div>
+            </button>
+
+            {/* SMS */}
+            <button onClick={() => setSmsMode(true)} disabled={!memberPhone}
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[#111827] border rounded-xl transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/6 disabled:hover:bg-[#111827] ${smsMode ? 'border-[#F59E0B]/40 bg-[#F59E0B]/5' : 'border-white/6 hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5'}`}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center group-hover:bg-[#F59E0B]/20 transition-colors">
+                <Smartphone size={18} className="text-[#F59E0B]" />
+              </div>
+              <div className="text-center min-w-0 w-full">
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[#E5E7EB]">{t('admin.churn.contactSms', 'SMS')}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{memberPhone || t('admin.churn.noPhone', 'No phone')}</p>
               </div>
             </button>
 
@@ -177,6 +260,7 @@ export default function ContactPanel({
                 type="email"
                 value={emailTo}
                 onChange={e => setEmailTo(e.target.value)}
+                aria-label={t('admin.churn.emailTo', 'Email recipient')}
                 className={`flex-1 bg-[#111827] border rounded-lg px-2 py-1 text-[12px] text-[#E5E7EB] outline-none transition-colors ${emailTo && !isValidEmail(emailTo) ? 'border-[#EF4444]/50 focus:border-[#EF4444]/70' : 'border-white/6 focus:border-[#60A5FA]/40'}`}
               />
               {emailTo && !isValidEmail(emailTo) && (
@@ -222,6 +306,7 @@ export default function ContactPanel({
                 value={emailSubject}
                 onChange={e => setEmailSubject(e.target.value)}
                 placeholder={t('admin.churn.emailSubjectPlaceholder', 'Subject...')}
+                aria-label={t('admin.churn.emailSubject', 'Email subject')}
                 className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#60A5FA]/40 transition-colors"
               />
               <textarea
@@ -261,25 +346,87 @@ export default function ContactPanel({
           </div>
         )}
 
-        {/* Quick notification compose */}
-        <div>
-          <SectionLabel icon={Bell} className="mb-2">{t('admin.churn.quickNotification', 'Quick Notification')}</SectionLabel>
-          <div className="flex gap-2">
-            <input id="notif-input" type="text" value={notifMsg} onChange={e => setNotifMsg(e.target.value)}
-              placeholder={t('admin.churn.notifPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you!` })}
-              onKeyDown={e => e.key === 'Enter' && handleSendNotification()}
-              className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
-            <button onClick={handleSendNotification} disabled={notifSending || !notifMsg.trim() || notifSent}
-              className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
-              style={{
-                background: notifSent ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.10)',
-                color: 'var(--color-success)',
-                border: `1px solid ${notifSent ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.2)'}`,
-              }}>
-              {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
-            </button>
+        {/* SMS compose */}
+        {smsMode && memberPhone && (
+          <div>
+            <SectionLabel icon={Smartphone} className="mb-2">{t('admin.churn.composeSms', 'Send SMS')}</SectionLabel>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[10px] text-[#6B7280] flex-shrink-0">{t('admin.churn.sendingTo', 'To:')}</span>
+              <span className="text-[12px] text-[#E5E7EB] font-mono">{memberPhone}</span>
+            </div>
+
+            {/* Quick SMS templates */}
+            {!smsBody && (
+              <div className="mb-3">
+                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    {
+                      label: t('admin.churn.tplMissYou', 'We miss you'),
+                      body: t('admin.churn.smsTplMissYou', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you at the gym! Come in this week, your spot is waiting.` }),
+                    },
+                    {
+                      label: t('admin.churn.tplCheckIn', 'Quick check-in'),
+                      body: t('admin.churn.smsTplCheckIn', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, just checking in. Need a new routine or schedule change? Let us know!` }),
+                    },
+                    {
+                      label: t('admin.churn.tplNewClasses', 'New classes/programs'),
+                      body: t('admin.churn.smsTplNewClasses', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we've added new classes you'd love. Come check them out!` }),
+                    },
+                  ].map((tpl, i) => (
+                    <button key={i} onClick={() => setSmsBody(tpl.body)}
+                      className="flex items-center gap-2 px-3 py-2 bg-[#111827] border border-white/6 rounded-lg text-left hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all">
+                      <Smartphone size={12} className="text-[#F59E0B] flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-[#E5E7EB]">{tpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="relative">
+                <textarea
+                  value={smsBody}
+                  onChange={e => { if (e.target.value.length <= 320) setSmsBody(e.target.value); }}
+                  rows={3}
+                  placeholder={t('admin.churn.smsBodyPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you at the gym...` })}
+                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#F59E0B]/40 transition-colors resize-none"
+                />
+                <div className="flex items-center justify-between mt-1 px-1">
+                  <span className={`text-[10px] ${smsBody.length > 160 ? 'text-[#F59E0B]' : 'text-[#4B5563]'}`}>
+                    {smsSegments === 1
+                      ? t('admin.churn.smsOneSegment', '1 segment')
+                      : t('admin.churn.smsTwoSegments', '2 segments')}
+                  </span>
+                  <span className={`text-[10px] ${smsBody.length > 300 ? 'text-[#EF4444]' : 'text-[#4B5563]'}`}>
+                    {smsBody.length}/320
+                  </span>
+                </div>
+              </div>
+
+              {smsUsage && (
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-[10px] text-[#6B7280]">
+                    {t('admin.churn.smsUsage', { used: smsUsage.used, limit: smsUsage.limit, defaultValue: '{{used}}/{{limit}} SMS this month' })}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button onClick={handleSendSms} disabled={smsSending || !smsBody.trim() || smsSent}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style={{ background: smsSent ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)', color: smsSent ? '#10B981' : '#F59E0B', border: `1px solid ${smsSent ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+                  {smsSent ? <><CheckCircle size={14} /> {t('admin.churn.smsSent', 'Sent!')}</> : smsSending ? '...' : <><Send size={14} /> {t('admin.churn.sendSms', 'Send SMS')}</>}
+                </button>
+                <button onClick={() => { setSmsMode(false); setSmsBody(''); }}
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#6B7280] hover:text-[#E5E7EB] bg-white/4 border border-white/6 transition-colors">
+                  {t('common:cancel', 'Cancel')}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Contacted status toggle */}
         <div className="flex items-center justify-between gap-3 p-3 bg-[#111827] border border-white/6 rounded-xl overflow-hidden">
@@ -309,6 +456,28 @@ export default function ContactPanel({
               </>
             )}
           </button>
+        </div>
+
+        {/* Quick message compose */}
+        <div>
+          <SectionLabel icon={MessageSquare} className="mb-2">{t('admin.churn.quickMessage', 'Send Message')}</SectionLabel>
+          <div className="flex gap-2">
+            <input id="notif-input" type="text" value={notifMsg} onChange={e => setNotifMsg(e.target.value)}
+              placeholder={t('admin.churn.msgPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you!` })}
+              aria-label={t('admin.churn.quickMessage', 'Send Message')}
+              onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+              className="flex-1 bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+            <button onClick={handleSendMessage} disabled={notifSending || !notifMsg.trim() || notifSent}
+              className="px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-colors disabled:opacity-40"
+              style={{
+                background: notifSent ? 'rgba(16,185,129,0.12)' : 'rgba(212,175,55,0.10)',
+                color: notifSent ? 'var(--color-success)' : '#D4AF37',
+                border: `1px solid ${notifSent ? 'rgba(16,185,129,0.3)' : 'rgba(212,175,55,0.2)'}`,
+              }}>
+              {notifSent ? <CheckCircle size={14} /> : notifSending ? '...' : <Send size={14} />}
+            </button>
+          </div>
+          <p className="text-[10px] text-[#4B5563] mt-1.5 px-1">{t('admin.churn.msgNote', 'Shows in member\'s Messages page + sends push notification')}</p>
         </div>
       </div>
     </AdminModal>

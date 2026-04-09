@@ -1,17 +1,9 @@
 import { supabase } from './supabase';
+import { downloadCSVString } from './csvExport';
 
-// ── Helper: trigger CSV download in browser ─────────────────────────────────
-export function downloadCSV(filename, csvContent) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+// ── Helper: trigger CSV download (native + web) ─────────────────────────────
+export async function downloadCSV(filename, csvContent) {
+  await downloadCSVString(filename, csvContent);
 }
 
 // ── Helper: escape a CSV field ──────────────────────────────────────────────

@@ -200,8 +200,9 @@ table tr:nth-child(even){background:#f8fafc}
 </body></html>`;
 
     const w = window.open('', '_blank', 'width=860,height=1060');
-    w.document.write(html);
+    w.document.open();
     w.document.close();
+    w.document.documentElement.innerHTML = html;
     setTimeout(() => w.print(), 400);
   };
 
@@ -224,7 +225,7 @@ table tr:nth-child(even){background:#f8fafc}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
               <ChevronLeft size={14} className="text-[var(--color-text-muted)]" />
             </button>
-            <span className="text-[13px] font-medium text-[var(--color-text-primary)] min-w-[120px] text-center">{s.label}</span>
+            <span className="text-[12px] md:text-[13px] font-medium text-[var(--color-text-primary)] min-w-[80px] md:min-w-[120px] text-center">{s.label}</span>
             <button onClick={() => setSummaryMonth(m => Math.max(0, m - 1))} disabled={summaryMonth === 0}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-30">
               <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
@@ -290,15 +291,15 @@ table tr:nth-child(even){background:#f8fafc}
               </div>
 
               {/* KPI row */}
-              <div className="grid grid-cols-4 gap-0 border-b border-[#e2e8f0]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 border-b border-[#e2e8f0]">
                 {[
                   { label: t('admin.analytics.reportTotalMembers', 'Total Members'), value: s.totalMembers, accent: false },
                   { label: t('admin.analytics.reportActiveMembers', 'Active Members'), value: s.uniqueActive, sub: t('admin.analytics.reportActiveOf', { pct: s.activeRate, defaultValue: '{{pct}}% active' }), accent: true },
                   { label: t('admin.analytics.reportNewMembers', 'New Members'), value: s.newMembers, accent: false },
                   { label: t('admin.analytics.reportGymCheckins', 'Gym Check-ins'), value: s.checkIns.toLocaleString(), accent: false },
                 ].map((k, i) => (
-                  <div key={i} className={`px-5 py-4 text-center ${i < 3 ? 'border-r border-[#e2e8f0]' : ''} ${k.accent ? 'bg-[#fefce8]' : ''}`}>
-                    <p className="text-[24px] font-extrabold text-[#0f172a] leading-none tabular-nums truncate">{k.value}</p>
+                  <div key={i} className={`px-4 md:px-5 py-3 md:py-4 text-center ${i < 3 ? 'sm:border-r border-[#e2e8f0]' : ''} ${i < 2 ? 'border-b sm:border-b-0 border-[#e2e8f0]' : ''} ${k.accent ? 'bg-[#fefce8]' : ''}`}>
+                    <p className="text-[20px] md:text-[24px] font-extrabold text-[#0f172a] leading-none tabular-nums truncate">{k.value}</p>
                     <p className="text-[10px] text-[#64748b] uppercase tracking-wider font-semibold mt-1.5 truncate">{k.label}</p>
                     {k.sub && <p className="text-[10px] text-[#92700c] font-medium mt-0.5">{k.sub}</p>}
                   </div>
@@ -374,10 +375,10 @@ table tr:nth-child(even){background:#f8fafc}
                 <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-lg px-4 py-3.5">
                   <p className="text-[11px] font-semibold text-[#14532d] mb-1">{t('admin.analytics.reportKeyHighlights', 'Key Highlights')}</p>
                   <p className="text-[11px] text-[#166534] leading-relaxed">
-                    {s.uniqueActive} of {s.totalMembers} members were active this month ({s.activeRate}% active rate).
-                    Members completed {s.totalWorkouts.toLocaleString()} workouts totaling {fmtVol} lbs of volume
-                    and {fmtTime} of training. {s.prs} personal record{s.prs !== 1 ? 's were' : ' was'} set
-                    and {s.newMembers} new member{s.newMembers !== 1 ? 's' : ''} joined.
+                    {isEs
+                      ? `${s.uniqueActive} de ${s.totalMembers} miembros estuvieron activos este mes (${s.activeRate}% tasa de actividad). Completaron ${s.totalWorkouts.toLocaleString()} entrenos con un volumen total de ${fmtVol} lbs y ${fmtTime} de entrenamiento. Se establecieron ${s.prs} récords personales y se unieron ${s.newMembers} miembro${s.newMembers !== 1 ? 's' : ''} nuevo${s.newMembers !== 1 ? 's' : ''}.`
+                      : `${s.uniqueActive} of ${s.totalMembers} members were active this month (${s.activeRate}% active rate). Members completed ${s.totalWorkouts.toLocaleString()} workouts totaling ${fmtVol} lbs of volume and ${fmtTime} of training. ${s.prs} personal record${s.prs !== 1 ? 's were' : ' was'} set and ${s.newMembers} new member${s.newMembers !== 1 ? 's' : ''} joined.`
+                    }
                   </p>
                 </div>
               </div>

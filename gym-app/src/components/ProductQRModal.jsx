@@ -32,6 +32,7 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
         {/* Close */}
         <button
           onClick={onClose}
+          aria-label="Close"
           className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 text-[#6B7280] hover:text-[#E5E7EB] transition-colors"
         >
           <X size={18} />

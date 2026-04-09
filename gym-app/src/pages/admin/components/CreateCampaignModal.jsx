@@ -134,6 +134,7 @@ export default function CreateCampaignModal({ gymId, onClose, onCreated }) {
           <SectionLabel className="mb-2">{t('admin.churn.campaign.name', 'Campaign Name')}</SectionLabel>
           <input type="text" value={name} onChange={e => setName(e.target.value)}
             placeholder={t('admin.churn.campaign.namePlaceholder', 'e.g. March Win-Back Test')}
+            aria-label={t('admin.churn.campaign.name', 'Campaign Name')}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-3.5 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
         </div>
         <div>

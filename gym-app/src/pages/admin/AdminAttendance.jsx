@@ -116,7 +116,37 @@ export default function AdminAttendance() {
         });
       }
 
-      return { dailyData, summaryStats, heatmap: heat };
+      // Compute deltas: compare second half of period to first half
+      const midpoint = Math.floor(interval.length / 2);
+      const firstHalfCheckins = dailyData.slice(0, midpoint).reduce((s, d) => s + d.checkins, 0);
+      const secondHalfCheckins = dailyData.slice(midpoint).reduce((s, d) => s + d.checkins, 0);
+      const firstHalfWorkouts = dailyData.slice(0, midpoint).reduce((s, d) => s + d.workouts, 0);
+      const secondHalfWorkouts = dailyData.slice(midpoint).reduce((s, d) => s + d.workouts, 0);
+
+      const calcDelta = (curr, prev) => {
+        if (!prev) return curr > 0 ? 100 : 0;
+        return Math.round(((curr - prev) / prev) * 100);
+      };
+
+      const deltas = {
+        checkins: calcDelta(secondHalfCheckins, firstHalfCheckins),
+        workouts: calcDelta(secondHalfWorkouts, firstHalfWorkouts),
+      };
+
+      // Find peak hour
+      let peakKey = null;
+      let peakVal = 0;
+      Object.entries(heat).forEach(([key, val]) => {
+        if (val > peakVal) { peakKey = key; peakVal = val; }
+      });
+
+      let peakSummary = null;
+      if (peakKey) {
+        const [dayIdx, hour] = peakKey.split('-').map(Number);
+        peakSummary = { dayIdx, hour, count: peakVal };
+      }
+
+      return { dailyData, summaryStats, heatmap: heat, deltas, peakSummary };
     },
     enabled: !!gymId,
   });
@@ -125,6 +155,23 @@ export default function AdminAttendance() {
   const summaryStats = data?.summaryStats ?? { totalCheckins: 0, totalWorkouts: 0, uniqueVisitors: 0, avgPerDay: 0 };
   const heatmap = data?.heatmap ?? {};
   const maxHeat = Math.max(1, ...Object.values(heatmap));
+  const deltas = data?.deltas ?? { checkins: 0, workouts: 0 };
+  const peakSummary = data?.peakSummary ?? null;
+
+  const formatDelta = (val) => {
+    if (val === 0) return null;
+    const arrow = val > 0 ? '\u2191' : '\u2193';
+    return `${arrow} ${Math.abs(val)}% ${t('admin.attendance.vsPrev', 'vs prev')}`;
+  };
+
+  const peakLabel = peakSummary
+    ? (() => {
+        const dayName = DAYS[peakSummary.dayIdx] || '';
+        const h = peakSummary.hour;
+        const hourStr = `${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}`;
+        return `${t('admin.attendance.peak', 'Peak')}: ${dayName} ${hourStr} (${peakSummary.count} ${t('admin.attendance.checkins', 'check-ins')})`;
+      })()
+    : null;
 
   const heatColor = (val) => {
     if (!val) return 'bg-white/4';
@@ -164,7 +211,8 @@ export default function AdminAttendance() {
           />
           <button
             onClick={handleExport}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px]"
+            disabled={isLoading || !dailyData.length}
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors min-h-[44px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={t('admin.attendance.export', 'Export CSV')}
           >
             <Download size={13} />
@@ -188,6 +236,7 @@ export default function AdminAttendance() {
             <StatCard
               label={t('admin.attendance.totalCheckins', 'Total Check-ins')}
               value={summaryStats.totalCheckins}
+              sub={formatDelta(deltas.checkins)}
               borderColor="#8B5CF6"
               icon={CalendarCheck}
               delay={0}
@@ -195,6 +244,7 @@ export default function AdminAttendance() {
             <StatCard
               label={t('admin.attendance.totalWorkouts', 'Total Workouts')}
               value={summaryStats.totalWorkouts}
+              sub={formatDelta(deltas.workouts)}
               borderColor="#D4AF37"
               icon={Dumbbell}
               delay={0.05}
@@ -268,15 +318,69 @@ export default function AdminAttendance() {
 
           {/* Peak hours heatmap */}
           <FadeIn delay={0.2}>
-            <AdminCard hover padding="p-5" className="overflow-x-auto">
+            <AdminCard hover padding="p-5" className="overflow-hidden">
               <SectionLabel icon={CalendarCheck} className="mb-1">
                 {t('admin.attendance.peakHours', 'Peak Hours')}
               </SectionLabel>
-              <p className="text-[11px] text-[#6B7280] mb-4 ml-6">
-                {t('admin.attendance.basedOn', 'Based on gym check-ins')}
-              </p>
-              <div className="min-w-[520px] md:min-w-0">
-                {/* Hour labels */}
+              <div className="flex items-center gap-3 mb-4 ml-6 flex-wrap">
+                <p className="text-[11px] text-[#6B7280]">
+                  {t('admin.attendance.basedOn', 'Based on gym check-ins')}
+                </p>
+                {peakLabel && (
+                  <span className="text-[11px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-0.5 rounded-full">
+                    {peakLabel}
+                  </span>
+                )}
+              </div>
+              {/* Mobile: condensed time blocks */}
+              <div className="md:hidden">
+                {(() => {
+                  const BLOCKS = [
+                    { label: '6-9a', hours: [6, 7, 8] },
+                    { label: '9-12p', hours: [9, 10, 11] },
+                    { label: '12-3p', hours: [12, 13, 14] },
+                    { label: '3-6p', hours: [15, 16, 17] },
+                    { label: '6-9p', hours: [18, 19, 20] },
+                    { label: '9-12a', hours: [21, 22, 23] },
+                  ];
+                  return (
+                    <>
+                      <div className="flex mb-1.5 ml-10">
+                        {BLOCKS.map(b => (
+                          <div key={b.label} className="flex-1 text-center text-[9px] text-[#4B5563]">{b.label}</div>
+                        ))}
+                      </div>
+                      {DAYS.map((day, di) => (
+                        <div key={day} className="flex items-center mb-1">
+                          <span className="w-10 text-[10px] text-[#6B7280] flex-shrink-0">{day}</span>
+                          {BLOCKS.map(b => {
+                            const val = b.hours.reduce((sum, h) => sum + (heatmap[`${di}-${h}`] || 0), 0);
+                            return (
+                              <div key={b.label} className="flex-1 px-0.5">
+                                <div className={`h-7 rounded-[4px] transition-colors flex items-center justify-center ${heatColor(val)}`}
+                                  title={`${day} ${b.label} — ${val}`}>
+                                  {val > 0 && <span className="text-[8px] font-bold text-white/70">{val}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-2 mt-3 justify-end">
+                        <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.less', 'Menos')}</span>
+                        {[0, 0.25, 0.5, 0.75, 1].map(v => (
+                          <div key={v} className={`w-5 h-4 rounded-[3px] ${
+                            v === 0 ? 'bg-white/4' : v <= 0.25 ? 'bg-[#D4AF37]/15' : v <= 0.5 ? 'bg-[#D4AF37]/35' : v <= 0.75 ? 'bg-[#D4AF37]/70' : 'bg-[#D4AF37]'
+                          }`} />
+                        ))}
+                        <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.more', 'Más')}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              {/* Desktop: full 24-hour grid */}
+              <div className="hidden md:block">
                 <div className="flex mb-1.5 ml-10">
                   {HOURS.map(h => (
                     <div key={h} className="flex-1 text-center text-[9px] text-[#4B5563]">
@@ -284,7 +388,6 @@ export default function AdminAttendance() {
                     </div>
                   ))}
                 </div>
-                {/* Grid */}
                 {DAYS.map((day, di) => (
                   <div key={day} className="flex items-center mb-1">
                     <span className="w-10 text-[10px] text-[#6B7280] flex-shrink-0">{day}</span>
@@ -301,15 +404,15 @@ export default function AdminAttendance() {
                     })}
                   </div>
                 ))}
-                {/* Legend */}
                 <div className="flex items-center gap-2 mt-3 justify-end">
-                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.less', 'Less')}</span>
+                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.less', 'Menos')}</span>
                   {[0, 0.25, 0.5, 0.75, 1].map(v => (
                     <div key={v} className={`w-5 h-4 rounded-[3px] ${
                       v === 0 ? 'bg-white/4' : v <= 0.25 ? 'bg-[#D4AF37]/15' : v <= 0.5 ? 'bg-[#D4AF37]/35' : v <= 0.75 ? 'bg-[#D4AF37]/70' : 'bg-[#D4AF37]'
                     }`} />
                   ))}
-                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.more', 'More')}</span>
+                  <span className="text-[10px] text-[#4B5563]">{t('admin.attendance.more', 'Más')}</span>
+                  <span className="text-[10px] text-[#4B5563] ml-1 tabular-nums">({t('admin.attendance.max', 'máx')}: {maxHeat})</span>
                 </div>
               </div>
             </AdminCard>

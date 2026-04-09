@@ -6,8 +6,11 @@ import {
   TrendingUp, TrendingDown, AlertTriangle, ArrowUpDown,
   Download, Calendar,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
+import { logAdminAction } from '../../lib/adminAudit';
 import logger from '../../lib/logger';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 
@@ -60,22 +63,22 @@ const StatCard = ({ label, value, icon: Icon, borderColor, suffix, delay = 0 }) 
 };
 
 const PLAN_COLORS = {
-  starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', label: 'Starter' },
-  pro:        { bg: 'bg-[#D4AF37]/15', text: 'text-[#D4AF37]', label: 'Pro' },
-  lifetime:   { bg: 'bg-[#A855F7]/15', text: 'text-[#C084FC]', label: 'Lifetime' },
-  enterprise: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: 'Enterprise' },
-  free:       { bg: 'bg-[#6B7280]/15', text: 'text-[#9CA3AF]', label: 'Free' },
+  starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', labelKey: 'platform.gyms.planStarter',    fallback: 'Starter' },
+  pro:        { bg: 'bg-[#D4AF37]/15', text: 'text-[#D4AF37]', labelKey: 'platform.gyms.planPro',        fallback: 'Pro' },
+  lifetime:   { bg: 'bg-[#A855F7]/15', text: 'text-[#C084FC]', labelKey: 'platform.gyms.planLifetime',   fallback: 'Lifetime' },
+  enterprise: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', labelKey: 'platform.gyms.planEnterprise', fallback: 'Enterprise' },
+  free:       { bg: 'bg-[#6B7280]/15', text: 'text-[#9CA3AF]', labelKey: 'platform.gyms.planFree',       fallback: 'Free' },
 };
 
-const TierBadge = ({ tier, isFounding }) => {
-  const t = PLAN_COLORS[tier] || PLAN_COLORS.starter;
+const TierBadge = ({ tier, isFounding, t: translate }) => {
+  const plan = PLAN_COLORS[tier] || PLAN_COLORS.starter;
   return (
     <span className="flex items-center gap-1">
-      <span className={`${t.bg} ${t.text} text-[11px] font-semibold px-2 py-0.5 rounded-full`}>
-        {t.label}
+      <span className={`${plan.bg} ${plan.text} text-[11px] font-semibold px-2 py-0.5 rounded-full`}>
+        {translate(plan.labelKey, plan.fallback)}
       </span>
       {isFounding && (
-        <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full font-medium">Founding</span>
+        <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded-full font-medium">{translate('platform.gyms.founding', 'Founding')}</span>
       )}
     </span>
   );
@@ -83,28 +86,35 @@ const TierBadge = ({ tier, isFounding }) => {
 
 // Health score: 0-100 based on activity
 const getHealthScore = (gym, memberCount, sessionCount30d) => {
-  if (!gym.is_active) return { label: 'Inactive', color: 'text-red-400', bg: 'bg-red-500/15' };
+  if (!gym.is_active) return { labelKey: 'platform.gyms.healthInactive', fallback: 'Inactive', color: 'text-red-400', bg: 'bg-red-500/15' };
   const members = memberCount || 0;
   const sessions = sessionCount30d || 0;
-  if (members === 0) return { label: 'New', color: 'text-blue-400', bg: 'bg-blue-500/15' };
+  if (members === 0) return { labelKey: 'platform.gyms.healthNew', fallback: 'New', color: 'text-blue-400', bg: 'bg-blue-500/15' };
   const sessionsPerMember = sessions / members;
-  if (sessionsPerMember >= 4) return { label: 'Thriving', color: 'text-emerald-400', bg: 'bg-emerald-500/15' };
-  if (sessionsPerMember >= 1.5) return { label: 'Healthy', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
-  if (sessionsPerMember >= 0.5) return { label: 'Moderate', color: 'text-amber-400', bg: 'bg-amber-500/15' };
-  return { label: 'At Risk', color: 'text-red-400', bg: 'bg-red-500/15' };
+  if (sessionsPerMember >= 4) return { labelKey: 'platform.gyms.healthThriving', fallback: 'Thriving', color: 'text-emerald-400', bg: 'bg-emerald-500/15' };
+  if (sessionsPerMember >= 1.5) return { labelKey: 'platform.gyms.healthHealthy', fallback: 'Healthy', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
+  if (sessionsPerMember >= 0.5) return { labelKey: 'platform.gyms.healthModerate', fallback: 'Moderate', color: 'text-amber-400', bg: 'bg-amber-500/15' };
+  return { labelKey: 'platform.gyms.healthAtRisk', fallback: 'At Risk', color: 'text-red-400', bg: 'bg-red-500/15' };
 };
 
-const FILTERS = ['all', 'active', 'inactive', 'at risk'];
+const FILTERS = [
+  { value: 'all',      labelKey: 'platform.gyms.filterAll',      fallback: 'All' },
+  { value: 'active',   labelKey: 'platform.gyms.filterActive',   fallback: 'Active' },
+  { value: 'inactive', labelKey: 'platform.gyms.filterInactive', fallback: 'Inactive' },
+  { value: 'at risk',  labelKey: 'platform.gyms.filterAtRisk',   fallback: 'At Risk' },
+];
 const SORT_OPTIONS = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'largest', label: 'Largest' },
-  { value: 'most-active', label: 'Most Active' },
-  { value: 'name', label: 'Name' },
+  { value: 'newest',      labelKey: 'platform.gyms.sortNewest',     fallback: 'Newest' },
+  { value: 'largest',     labelKey: 'platform.gyms.sortLargest',    fallback: 'Largest' },
+  { value: 'most-active', labelKey: 'platform.gyms.sortMostActive', fallback: 'Most Active' },
+  { value: 'name',        labelKey: 'platform.gyms.sortName',       fallback: 'Name' },
 ];
 
 export default function GymsOverview() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
 
   const [gyms, setGyms] = useState([]);
   const [memberCounts, setMemberCounts] = useState({});
@@ -184,7 +194,7 @@ export default function GymsOverview() {
     if (filter === 'at risk') {
       list = list.filter((g) => {
         const h = getHealthScore(g, memberCounts[g.id], sessionCounts[g.id]);
-        return h.label === 'At Risk' || h.label === 'Moderate';
+        return h.fallback === 'At Risk' || h.fallback === 'Moderate';
       });
     }
     if (search.trim()) {
@@ -223,7 +233,7 @@ export default function GymsOverview() {
   const strugglingGyms = useMemo(() => {
     return gyms.filter(g => {
       const h = getHealthScore(g, memberCounts[g.id], sessionCounts[g.id]);
-      return h.label === 'At Risk';
+      return h.fallback === 'At Risk';
     }).length;
   }, [gyms, memberCounts, sessionCounts]);
 
@@ -241,8 +251,8 @@ export default function GymsOverview() {
       <FadeIn>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[22px] font-bold text-[#E5E7EB]">Gyms</h1>
-            <p className="text-[12px] text-[#6B7280] mt-0.5">Platform customers and account status</p>
+            <h1 className="text-[22px] font-bold text-[#E5E7EB]">{t('platform.gyms.title', 'Gyms')}</h1>
+            <p className="text-[12px] text-[#6B7280] mt-0.5">{t('platform.gyms.subtitle', 'Platform customers and account status')}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -250,7 +260,7 @@ export default function GymsOverview() {
               className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap"
             >
               <Plus size={14} />
-              Create Gym
+              {t('platform.gyms.newGym', 'New Gym')}
             </button>
           </div>
         </div>
@@ -285,15 +295,15 @@ export default function GymsOverview() {
             <div className="flex gap-1 bg-[#0F172A] border border-white/6 rounded-lg p-1 overflow-x-auto">
               {FILTERS.map((f) => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors capitalize whitespace-nowrap ${
-                    filter === f
+                  key={f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={`px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap ${
+                    filter === f.value
                       ? 'bg-[#D4AF37]/15 text-[#D4AF37]'
                       : 'text-[#6B7280] hover:text-[#9CA3AF]'
                   }`}
                 >
-                  {f === 'at risk' ? 'At Risk' : f}
+                  {t(f.labelKey, f.fallback)}
                 </button>
               ))}
             </div>
@@ -306,7 +316,7 @@ export default function GymsOverview() {
               style={{ backgroundImage: 'none' }}
             >
               {SORT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.labelKey, o.fallback)}</option>
               ))}
             </select>
           </div>
@@ -351,16 +361,16 @@ export default function GymsOverview() {
 
                   {/* Mobile meta row */}
                   <div className="flex items-center md:hidden gap-2 flex-wrap">
-                    <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} />
+                    <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} t={t} />
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.bg} ${health.color}`}>
-                      {health.label}
+                      {t(health.labelKey, health.fallback)}
                     </span>
                     <span className="text-[11px] text-[#6B7280]">{memberCounts[gym.id] || 0} members</span>
                   </div>
 
                   {/* Desktop: Plan */}
                   <div className="hidden md:flex items-center">
-                    <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} />
+                    <TierBadge tier={gym.plan_type || gym.subscription_tier} isFounding={gym.is_founding} t={t} />
                   </div>
 
                   {/* Desktop: Members */}
@@ -371,7 +381,7 @@ export default function GymsOverview() {
                   {/* Desktop: Health */}
                   <div className="hidden md:flex items-center justify-center">
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.bg} ${health.color}`}>
-                      {health.label}
+                      {t(health.labelKey, health.fallback)}
                     </span>
                   </div>
 
@@ -405,6 +415,9 @@ export default function GymsOverview() {
         <CreateGymModal
           onClose={() => setShowCreateModal(false)}
           onCreated={() => { setShowCreateModal(false); fetchData(); }}
+          t={t}
+          showToast={showToast}
+          profile={profile}
         />
       )}
 
@@ -420,14 +433,16 @@ export default function GymsOverview() {
   );
 }
 
-function CreateGymModal({ onClose, onCreated }) {
+function CreateGymModal({ onClose, onCreated, t, showToast, profile }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminName, setAdminName] = useState('');
   const [tier, setTier] = useState('starter');
-  const [isFounding, setIsFounding] = useState(false);
-  const [ownerEmail, setOwnerEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const PLAN_OPTIONS = ['starter', 'pro', 'enterprise', 'free'];
 
   const autoSlug = (val) => {
     setName(val);
@@ -435,31 +450,58 @@ function CreateGymModal({ onClose, onCreated }) {
   };
 
   const handleCreate = async () => {
-    if (!name.trim() || !slug.trim()) { setError('Name and slug are required'); return; }
+    if (!name.trim()) { setError(t('platform.gyms.errorNameRequired', 'Gym name is required')); return; }
+    if (!adminEmail.trim()) { setError(t('platform.gyms.errorAdminEmailRequired', 'Admin email is required')); return; }
+    if (!adminName.trim()) { setError(t('platform.gyms.errorAdminNameRequired', 'Admin name is required')); return; }
     setSaving(true);
     setError('');
     try {
-      let ownerUserId = null;
-      if (ownerEmail.trim()) {
-        const cleanEmail = ownerEmail.trim().replace(/[%_\\,()."']/g, '');
-        const { data: ownerProfile } = await supabase
-          .from('profiles').select('id').ilike('full_name', cleanEmail).maybeSingle();
-        if (!ownerProfile) {
-          const { data: byEmail } = await supabase
-            .from('profiles').select('id').eq('email', ownerEmail.trim().toLowerCase()).maybeSingle();
-          if (byEmail) ownerUserId = byEmail.id;
-        } else {
-          ownerUserId = ownerProfile.id;
-        }
-      }
-      const { error: insertErr } = await supabase.from('gyms').insert({
-        name: name.trim(), slug: slug.trim(), subscription_tier: tier, plan_type: tier,
-        is_founding: isFounding, owner_user_id: ownerUserId, is_active: true,
-      });
+      const finalSlug = slug.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+      // 1. Insert gym
+      const { data: newGym, error: insertErr } = await supabase.from('gyms').insert({
+        name: name.trim(), slug: finalSlug, subscription_tier: tier, plan_type: tier,
+        is_active: true,
+      }).select('id').single();
       if (insertErr) { setError(insertErr.message); setSaving(false); return; }
+
+      const newGymId = newGym.id;
+
+      // 2. Create admin invite in gym_invites
+      let inviteCode = null;
+      try {
+        const { data: invite, error: inviteErr } = await supabase.from('gym_invites').insert({
+          gym_id: newGymId,
+          created_by: profile.id,
+          email: adminEmail.trim().toLowerCase(),
+          member_name: adminName.trim(),
+          role: 'member', // DB constraint only allows member/trainer; admin role assigned after claim
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }).select('token, invite_code').single();
+        if (!inviteErr && invite) {
+          inviteCode = invite.invite_code || invite.token;
+        }
+      } catch (invErr) {
+        logger.error('Failed to create admin invite:', invErr);
+      }
+
+      // 3. Log the action
+      logAdminAction('create_gym', 'gym', newGymId, {
+        name: name.trim(),
+        admin_email: adminEmail.trim().toLowerCase(),
+        admin_name: adminName.trim(),
+        plan: tier,
+      });
+
+      // 4. Show success toast with invite code
+      const successMsg = inviteCode
+        ? t('platform.gyms.createSuccessWithCode', { code: inviteCode, defaultValue: `Gym created! Invite code: ${inviteCode}` })
+        : t('platform.gyms.createSuccess', 'Gym created successfully');
+      showToast(successMsg, 'success');
+
       onCreated();
     } catch (err) {
-      setError(err.message || 'Failed to create gym');
+      setError(err.message || t('platform.gyms.createFailed', 'Failed to create gym'));
       setSaving(false);
     }
   };
@@ -469,45 +511,56 @@ function CreateGymModal({ onClose, onCreated }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-xl w-full max-w-md p-6 animate-fade-in-up">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[16px] font-bold text-[#E5E7EB]">Create Gym</h2>
+          <h2 className="text-[16px] font-bold text-[#E5E7EB]">{t('platform.gyms.createTitle', 'Create Gym')}</h2>
           <button onClick={onClose} className="text-[#6B7280] hover:text-[#9CA3AF] transition-colors"><X size={18} /></button>
         </div>
         <div className="space-y-4">
+          {/* Gym Name */}
           <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Gym Name</label>
+            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.gymName', 'Gym Name')} *</label>
             <input value={name} onChange={(e) => autoSlug(e.target.value)} placeholder="Iron Forge Fitness"
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
           </div>
+
+          {/* Admin Email */}
           <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Slug</label>
-            <input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="iron-forge-fitness"
+            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.adminEmail', 'Admin Email')} *</label>
+            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@gym.com"
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
           </div>
+
+          {/* Admin Name */}
           <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Plan Type</label>
-            <div className="grid grid-cols-3 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
-              {['starter', 'pro', 'lifetime'].map((t) => (
-                <button key={t} onClick={() => setTier(t)}
+            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.adminName', 'Admin Name')} *</label>
+            <input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="John Smith"
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+          </div>
+
+          {/* Plan Tier */}
+          <div>
+            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">{t('platform.gyms.planTier', 'Plan')}</label>
+            <div className="grid grid-cols-4 gap-1.5 bg-[#111827] border border-white/6 rounded-lg p-1">
+              {PLAN_OPTIONS.map((p) => (
+                <button key={p} onClick={() => setTier(p)}
                   className={`px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors capitalize ${
-                    tier === t ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#9CA3AF]'
-                  }`}>{t}</button>
+                    tier === p ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'text-[#6B7280] hover:text-[#9CA3AF]'
+                  }`}>{t(`platform.gyms.plan${p.charAt(0).toUpperCase() + p.slice(1)}`, p)}</button>
               ))}
             </div>
           </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={isFounding} onChange={(e) => setIsFounding(e.target.checked)} className="accent-[#D4AF37] w-4 h-4" />
-            <span className="text-[12px] text-[#9CA3AF]">Founding gym (price locked for life)</span>
-          </label>
-          <div>
-            <label className="block text-[12px] text-[#9CA3AF] mb-1.5">Owner Email (optional)</label>
-            <input value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} placeholder="owner@example.com"
-              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors" />
+
+          {/* Invite note */}
+          <div className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2.5">
+            <p className="text-[11px] text-[#6B7280] leading-relaxed">
+              {t('platform.gyms.inviteNote', 'An invite will be sent to the admin email. After claiming the invite, promote them to admin role from the gym detail page.')}
+            </p>
           </div>
+
           {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}
           <button onClick={handleCreate} disabled={saving}
             className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] disabled:opacity-50 rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors">
             {saving && <Loader2 size={14} className="animate-spin" />}
-            {saving ? 'Creating...' : 'Create Gym'}
+            {saving ? t('platform.gyms.creating', 'Creating...') : t('platform.gyms.createGym', 'Create Gym')}
           </button>
         </div>
       </div>

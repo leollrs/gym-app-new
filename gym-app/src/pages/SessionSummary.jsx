@@ -48,16 +48,40 @@ const SessionSummary = () => {
     routineName    = 'Workout',
     elapsedTime    = 0,
     totalVolume    = 0,
-    completedSets  = 0,
-    totalSets      = 0,
-    totalExercises = 0,
+    completedSets: initialCompletedSets  = 0,
+    totalSets: initialTotalSets      = 0,
+    totalExercises: initialTotalExercises = 0,
     sessionPRs     = [],
     completedAt    = new Date().toISOString(),
     xpEarned       = 0,
     heartRate      = null,
     streak         = 0,
     workedMuscleGroups = [],
+    sessionId      = null,
   } = location.state ?? {};
+
+  // If navigate state has 0 sets but we have a sessionId, fetch from DB
+  const [completedSets, setCompletedSets] = useState(initialCompletedSets);
+  const [totalSets, setTotalSets] = useState(initialTotalSets);
+  const [totalExercises, setTotalExercises] = useState(initialTotalExercises);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current || !sessionId || initialCompletedSets > 0) return;
+    fetchedRef.current = true;
+    (async () => {
+      const { data } = await supabase
+        .from('session_exercises')
+        .select('id, session_sets(id)')
+        .eq('session_id', sessionId);
+      if (data?.length) {
+        const sets = data.reduce((sum, ex) => sum + (ex.session_sets?.length || 0), 0);
+        setCompletedSets(sets);
+        setTotalSets(sets);
+        setTotalExercises(data.length);
+      }
+    })();
+  }, [sessionId, initialCompletedSets]);
 
   // Entrance animation
   useEffect(() => {
@@ -129,7 +153,7 @@ const SessionSummary = () => {
       const now = new Date().toISOString();
       const { data: myParticipations } = await supabase
         .from('challenge_participants')
-        .select('id, challenge_id, score, challenges(type, start_date, end_date, status)')
+        .select('id, challenge_id, score, challenges(type, start_date, end_date, status, exercise_id, scoring_metric, exercise_ids, milestone_target)')
         .eq('profile_id', user.id)
         .eq('gym_id', profile.gym_id);
 
@@ -140,11 +164,56 @@ const SessionSummary = () => {
       });
 
       for (const p of active) {
-        const type = p.challenges.type;
+        const c = p.challenges;
+        const type = c.type;
         let delta = 0;
-        if (type === 'consistency') delta = 1;
-        else if (type === 'volume')  delta = totalVolume ?? 0;
-        else if (type === 'pr_count') delta = sessionPRs?.length ?? 0;
+
+        if (type === 'consistency') {
+          delta = 1;
+        } else if (type === 'volume') {
+          delta = totalVolume ?? 0;
+        } else if (type === 'pr_count') {
+          delta = sessionPRs?.length ?? 0;
+        } else if (type === 'team') {
+          // Team challenges use the base metric from scoring_metric
+          const metric = c.scoring_metric || 'consistency';
+          if (metric === 'consistency') delta = 1;
+          else if (metric === 'volume')  delta = totalVolume ?? 0;
+          else if (metric === 'pr_count') delta = sessionPRs?.length ?? 0;
+        } else if (type === 'specific_lift' && c.exercise_id) {
+          const metric = c.scoring_metric || 'volume';
+          if (metric === 'volume' && sessionId) {
+            // Query per-exercise volume from this session
+            const { data: exSets } = await supabase
+              .from('session_sets')
+              .select('weight_lbs, reps, session_exercises!inner(exercise_id)')
+              .eq('session_exercises.session_id', sessionId)
+              .eq('session_exercises.exercise_id', c.exercise_id)
+              .eq('is_completed', true);
+            delta = (exSets || []).reduce((sum, s) => sum + (s.weight_lbs || 0) * (s.reps || 0), 0);
+          } else if (metric === '1rm') {
+            // Count PRs for this specific exercise
+            const matchingPRs = (sessionPRs || []).filter(pr => pr.exerciseId === c.exercise_id);
+            delta = matchingPRs.length;
+          }
+        } else if (type === 'milestone' && c.exercise_ids?.length > 0) {
+          // Club challenge: set score to combined 1RM total across exercises
+          const { data: prs } = await supabase
+            .from('personal_records')
+            .select('exercise_id, estimated_1rm')
+            .eq('profile_id', user.id)
+            .in('exercise_id', c.exercise_ids);
+          const combinedTotal = (prs || []).reduce((sum, pr) => sum + (pr.estimated_1rm || 0), 0);
+          // Set absolute score (not delta)
+          if (combinedTotal > 0) {
+            await supabase.rpc('set_challenge_score', {
+              p_participant_id: p.id,
+              p_score: combinedTotal,
+            });
+          }
+          continue; // skip the increment below
+        }
+
         if (delta === 0) continue;
         await supabase.rpc('increment_challenge_score', {
           p_participant_id: p.id,
@@ -255,7 +324,7 @@ const SessionSummary = () => {
       />
 
       <div
-        className="relative min-h-screen flex flex-col items-center px-4 py-12 pb-28 md:pb-12 transition-all duration-300 max-w-[480px] md:max-w-4xl mx-auto"
+        className="relative min-h-screen flex flex-col items-center px-4 py-12 pb-28 md:pb-12 transition-all duration-300 max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto"
         style={{ opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(20px)' }}
       >
         {/* ── Checkmark ──────────────────────────────────────────── */}

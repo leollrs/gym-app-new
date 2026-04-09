@@ -75,12 +75,15 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="class-rating-title"
         className="w-full max-w-[360px] rounded-2xl p-6 space-y-5"
         style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          <h3 id="class-rating-title" className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
             {t('classes.rateTitle')}
           </h3>
           <button
@@ -106,6 +109,7 @@ function ClassRatingModal({ open, onClose, bookingId, className: classTitle, onS
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder={t('classes.addNote')}
+          aria-label={t('classes.addNote')}
           rows={3}
           className="w-full rounded-xl px-4 py-3 text-[13px] resize-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{
@@ -138,6 +142,9 @@ function WorkoutPromptModal({ open, onClose, onStartWorkout, onJustCheckIn }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workout-prompt-title"
         className="w-full max-w-[360px] rounded-2xl p-6 space-y-5"
         style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
       >
@@ -145,7 +152,7 @@ function WorkoutPromptModal({ open, onClose, onStartWorkout, onJustCheckIn }) {
           <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
             <Dumbbell size={20} style={{ color: 'var(--color-accent)' }} />
           </div>
-          <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+          <h3 id="workout-prompt-title" className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
             {t('classes.hasWorkout')}
           </h3>
         </div>
@@ -419,7 +426,7 @@ export default function Classes() {
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
           <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 -ml-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
             <ChevronLeft size={24} strokeWidth={2} />
           </button>
@@ -427,7 +434,7 @@ export default function Classes() {
         </div>
       </div>
 
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-5 space-y-5">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5 space-y-5">
 
         {/* Day Strip */}
         <div className="flex items-center justify-between rounded-2xl p-3" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
@@ -513,7 +520,7 @@ export default function Classes() {
                   {imgUrl && (
                     <img
                       src={imgUrl}
-                      alt={cls.name}
+                      alt={`${cls.name} class`}
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   )}

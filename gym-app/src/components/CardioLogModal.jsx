@@ -317,6 +317,7 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
                 <button
                   type="button"
                   onClick={() => setDuration(d => Math.max(1, (d || 1) - 5))}
+                  aria-label="Decrease duration"
                   className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors active:scale-95"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
@@ -344,6 +345,7 @@ export default function CardioLogModal({ isOpen, onClose, onLogged }) {
                 <button
                   type="button"
                   onClick={() => setDuration(d => Math.min(300, (d || 0) + 5))}
+                  aria-label="Increase duration"
                   className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors active:scale-95"
                   style={{ color: 'var(--color-text-primary)' }}
                 >

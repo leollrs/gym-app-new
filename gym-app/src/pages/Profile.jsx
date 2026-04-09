@@ -7,7 +7,7 @@ import {
   UtensilsCrossed, QrCode, Gift, Settings, ChevronRight, Trash2, AlertTriangle, Heart,
   Camera, X, Loader2, Sprout, Zap, Activity, Sparkles, Building2,
   Target, TrendingUp, UserPlus, Users, Brain, Medal, Gem, Rocket, RotateCw, CalendarCheck, Weight,
-  Share2, Copy, Link,
+  Share2, Copy, Link, Clock,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -128,7 +128,7 @@ const Profile = () => {
   const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('achievements');
+  const [activeTab, setActiveTab] = useState('activity');
 
   useEffect(() => { document.title = 'Profile | TuGymPR'; }, []);
 
@@ -161,6 +161,9 @@ const Profile = () => {
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  // Activity pagination
+  const [visibleActivity, setVisibleActivity] = useState(10);
+
   // Friend code & referral state
   const [friendCode, setFriendCode] = useState(profile?.friend_code ?? null);
   const [friendLinkCopied, setFriendLinkCopied] = useState(false);
@@ -173,7 +176,7 @@ const Profile = () => {
 
   // Name / username editing state
   const [editingIdentity, setEditingIdentity] = useState(false);
-  const [identityDraft, setIdentityDraft] = useState({ full_name: '', username: '' });
+  const [identityDraft, setIdentityDraft] = useState({ full_name: '', username: '', phone_number: '' });
   const [savingIdentity, setSavingIdentity] = useState(false);
 
   useEffect(() => {
@@ -220,7 +223,7 @@ const Profile = () => {
       // 2. Recent completed sessions (capped for performance)
       const { data: sessionData } = await supabase
         .from('workout_sessions')
-        .select('id, completed_at, total_volume_lbs')
+        .select('id, name, completed_at, total_volume_lbs, duration_seconds')
         .eq('profile_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false })
@@ -436,9 +439,18 @@ const Profile = () => {
 
     setSavingIdentity(true);
     try {
+      const updatePayload = { full_name: trimmedName };
+      const phone = identityDraft.phone_number?.trim() || null;
+      if (phone && !/^\+1\d{10}$/.test(phone)) {
+        showToast(t('profile.phoneInvalid', 'Phone must be +1 followed by 10 digits'), 'error');
+        setSavingIdentity(false);
+        return;
+      }
+      updatePayload.phone_number = phone;
+
       const { error } = await supabase
         .from('profiles')
-        .update({ full_name: trimmedName })
+        .update(updatePayload)
         .eq('id', user.id);
       if (error) {
         if (error.message?.includes('unique') || error.code === '23505') {
@@ -484,7 +496,7 @@ const Profile = () => {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12">
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pt-6 pb-8">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 lg:px-8 pt-6 pb-8">
 
       {/* ── Profile header card ──────────────────────────────────────────── */}
       <div className="rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] mb-6 overflow-hidden" data-tour="tour-profile-page">
@@ -526,6 +538,14 @@ const Profile = () => {
                   className="bg-[var(--color-bg-input)] border border-white/10 rounded-lg px-3 py-1.5 text-[16px] font-bold text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] w-full max-w-[200px]"
                 />
                 <p className="text-[13px] text-[var(--color-text-muted)]">@{profile?.username}</p>
+                <input
+                  type="tel"
+                  value={identityDraft.phone_number}
+                  onChange={e => setIdentityDraft(d => ({ ...d, phone_number: e.target.value }))}
+                  placeholder={t('profile.phonePlaceholder', '+1 (787) 555-1234')}
+                  aria-label={t('profile.phoneNumber', 'Phone number')}
+                  className="bg-[var(--color-bg-input)] border border-white/10 rounded-lg px-3 py-1.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] w-full max-w-[200px] mt-1"
+                />
                 <div className="flex items-center gap-2 mt-1">
                   <button
                     type="button"
@@ -567,6 +587,7 @@ const Profile = () => {
                 setIdentityDraft({
                   full_name: profile?.full_name ?? '',
                   username: profile?.username ?? '',
+                  phone_number: profile?.phone_number ?? '',
                 });
                 setEditingIdentity(true);
               }}
@@ -649,7 +670,7 @@ const Profile = () => {
       </button>
 
       {/* ── Quick-access cards ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-6 stagger-fade-in">
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 mb-6 stagger-fade-in">
         {[
           { to: '/checkin',    icon: QrCode,           label: t('profile.checkIn'),       color: 'var(--color-blue)' },
           { to: '/my-gym',     icon: Building2,        label: t('profile.myGym'),         color: 'var(--color-accent)' },
@@ -695,6 +716,7 @@ const Profile = () => {
       {/* ── Pill tabs ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 mb-6 bg-[var(--color-bg-deep)] p-1 rounded-xl">
         {[
+          { key: 'activity',     label: t('profile.recentActivity') },
           { key: 'achievements', label: t('profile.achievements') },
           { key: 'goals',        label: t('profile.goals') },
         ].map(t => (
@@ -712,6 +734,90 @@ const Profile = () => {
           </button>
         ))}
       </div>
+
+      {/* ── Activity Tab ────────────────────────────────────────────────── */}
+      {activeTab === 'activity' && (
+        <div className="flex flex-col gap-3 animate-fade-in">
+          {loading ? (
+            <div className="flex flex-col gap-3" aria-busy={true} aria-label="Loading activity">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-20 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] animate-pulse" />
+              ))}
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] px-5 py-8 text-center">
+              <Dumbbell size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
+              <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('profile.noActivityYet')}</p>
+            </div>
+          ) : (
+            <>
+              {/* Counter */}
+              <div className="flex items-center justify-between px-1 mb-1">
+                <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('profile.recentActivity')}
+                </p>
+                <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('profile.showingCount', { visible: Math.min(visibleActivity, sessions.length), total: sessions.length })}
+                </p>
+              </div>
+
+              {/* Session list */}
+              {sessions.slice(0, visibleActivity).map((s) => {
+                const date = new Date(s.completed_at);
+                const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                const volume = parseFloat(s.total_volume_lbs) || 0;
+                const durationMin = s.duration_seconds ? Math.round(s.duration_seconds / 60) : null;
+                return (
+                  <div
+                    key={s.id}
+                    className="rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] px-4 py-3.5 flex items-center gap-3.5"
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'var(--color-accent-alpha, rgba(212,175,55,0.12))' }}
+                    >
+                      <Dumbbell size={18} style={{ color: 'var(--color-accent, #D4AF37)' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {s.name || t('profile.workouts')}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {dateStr} {timeStr}
+                        </span>
+                        {durationMin != null && (
+                          <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                            <Clock size={11} /> {durationMin} min
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {volume > 0 && (
+                      <p className="text-[13px] font-bold flex-shrink-0" style={{ color: 'var(--color-accent, #D4AF37)' }}>
+                        {formatStatNumber(Math.round(volume))} <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Show more button */}
+              {visibleActivity < sessions.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleActivity(prev => prev + 10)}
+                  className="w-full py-3.5 rounded-2xl border border-[var(--color-border-subtle)] text-[14px] font-semibold hover:bg-white/[0.04] transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t('profile.showMore')}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Achievements Tab ─────────────────────────────────────────────── */}
       {activeTab === 'achievements' && (
@@ -749,7 +855,7 @@ const Profile = () => {
           )}
 
           {loading ? (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4" aria-busy={true} aria-label="Loading achievements">
               {[1, 2, 3].map(i => (
                 <div key={i} className="h-24 rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] animate-pulse" />
               ))}
@@ -1056,7 +1162,7 @@ const Profile = () => {
             /* ── VIEW MODE ─────────────────────────────────────────────── */
             <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
               {loading ? (
-                <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
+                <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4" aria-busy={true} aria-label="Loading goals">
                   {[1, 2, 3, 4].map(i => (
                     <div key={i} className="h-20 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] animate-pulse" />
                   ))}
@@ -1212,11 +1318,11 @@ const Profile = () => {
 
       {/* ── Gym Info Modal ──────────────────────────────────────────────── */}
       {showGymInfo && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowGymInfo(false)}>
-          <div className="w-full max-w-md mx-4 rounded-[24px] bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="presentation" onClick={() => setShowGymInfo(false)}>
+          <div className="w-full max-w-md mx-4 rounded-[24px] bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden" role="dialog" aria-modal="true" aria-label={t('profile.gymInfo')} onClick={e => e.stopPropagation()}>
             <div className="relative flex justify-center pt-4 pb-3">
               <div className="w-8 h-[3px] rounded-full bg-white/[0.08]" />
-              <button onClick={() => setShowGymInfo(false)} className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[var(--color-text-muted)]">
+              <button type="button" onClick={() => setShowGymInfo(false)} aria-label="Close" className="absolute right-4 top-3 w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center text-[var(--color-text-muted)]">
                 <X size={16} />
               </button>
             </div>

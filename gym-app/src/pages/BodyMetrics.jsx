@@ -392,7 +392,7 @@ export default function BodyMetrics() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -428,6 +428,7 @@ export default function BodyMetrics() {
                   });
                   setEditingPersonal(true);
                 }}
+                aria-label="Edit personal info"
                 className="text-[11px] font-medium transition-colors"
                 style={{ color: 'var(--color-text-subtle)' }}
               >
@@ -484,8 +485,9 @@ export default function BodyMetrics() {
 
                 {/* Age */}
                 <div className="mb-4">
-                  <label className="text-[11px] font-medium mb-1.5 block" style={{ color: 'var(--color-text-subtle)' }}>Age</label>
+                  <label className="text-[11px] font-medium mb-1.5 block" htmlFor="personal-age-input" style={{ color: 'var(--color-text-subtle)' }}>Age</label>
                   <input
+                    id="personal-age-input"
                     type="number" min="13" max="99" placeholder="25"
                     value={personalDraft.age}
                     onChange={e => setPersonalDraft(d => ({ ...d, age: e.target.value }))}
@@ -502,6 +504,7 @@ export default function BodyMetrics() {
                       <input
                         type="number" min="3" max="8" placeholder="5"
                         value={personalDraft.height_feet}
+                        aria-label="Height in feet"
                         onChange={e => setPersonalDraft(d => ({ ...d, height_feet: e.target.value }))}
                         className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] outline-none focus:bg-white/[0.06]"
                     style={{ color: 'var(--color-text-primary)' }}
@@ -512,6 +515,7 @@ export default function BodyMetrics() {
                       <input
                         type="number" min="0" max="11" placeholder="10"
                         value={personalDraft.height_inches_part}
+                        aria-label="Height in inches"
                         onChange={e => setPersonalDraft(d => ({ ...d, height_inches_part: e.target.value }))}
                         className="w-full bg-white/[0.04] rounded-xl px-4 py-2.5 text-[13px] outline-none focus:bg-white/[0.06]"
                     style={{ color: 'var(--color-text-primary)' }}
@@ -580,6 +584,8 @@ export default function BodyMetrics() {
                   <button
                     key={opt.label}
                     onClick={() => setPeriod(opt.days)}
+                    aria-label={`Show ${opt.days} day trend`}
+                    aria-pressed={period === opt.days}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
                     style={period === opt.days
                       ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
@@ -854,6 +860,8 @@ export default function BodyMetrics() {
                         {/* Collapsed row — date + photo count + chevron */}
                         <button
                           onClick={() => setExpandedDate(isOpen ? null : day)}
+                          aria-expanded={isOpen}
+                          aria-label={`${isOpen ? 'Collapse' : 'Expand'} photos from ${format(new Date(day + 'T12:00:00'), 'MMMM d, yyyy')}`}
                           className="w-full flex items-center justify-between py-3 px-1 active:opacity-70 transition-opacity"
                         >
                           <div className="flex items-center gap-3">
@@ -887,12 +895,13 @@ export default function BodyMetrics() {
                                   <button
                                     key={angle}
                                     onClick={() => setViewingPhoto(photo)}
+                                    aria-label={`View ${angle} progress photo from ${day}`}
                                     className="relative w-full rounded-xl overflow-hidden active:scale-95 transition-transform"
                                     style={{ aspectRatio: '3/4', background: 'var(--color-bg-deep)' }}
                                   >
                                     <img
                                       src={photo.url}
-                                      alt={`${angle} ${day}`}
+                                      alt={`Progress photo - ${angle} view, ${day}`}
                                       className="w-full h-full object-cover"
                                       onError={e => { e.target.style.display = 'none'; }}
                                     />
@@ -936,6 +945,7 @@ export default function BodyMetrics() {
               <button
                 onClick={() => handleDeletePhoto(viewingPhoto)}
                 disabled={deletingId === viewingPhoto.id}
+                aria-label="Delete photo"
                 className="px-3 py-1.5 rounded-xl text-[12px] font-semibold text-red-400 border border-red-800/60 disabled:opacity-50"
               >
                 {deletingId === viewingPhoto.id ? 'Deleting…' : 'Delete'}
@@ -950,7 +960,7 @@ export default function BodyMetrics() {
           <div className="flex-1 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <img
               src={viewingPhoto.url}
-              alt=""
+              alt={`Progress photo - ${viewingPhoto.view_angle} view, ${format(new Date(viewingPhoto.taken_at), 'MMMM d, yyyy')}`}
               className="max-h-full max-w-full object-contain rounded-2xl"
             />
           </div>

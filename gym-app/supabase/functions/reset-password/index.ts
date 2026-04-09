@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
 
     // Helper: record a failed attempt and lock after MAX_FAILED_ATTEMPTS
     async function recordFailedAttempt(requestId: string) {
+      const ip = req.headers.get('x-forwarded-for') || 'unknown';
+      console.warn(`Password reset failed attempt: request_id=${requestId}, ip=${ip}`);
       await adminClient.rpc('increment_failed_reset_attempts', { request_id: requestId });
       // Re-fetch the current count
       const { data: row } = await adminClient
@@ -78,6 +80,7 @@ Deno.serve(async (req) => {
         .eq('id', requestId)
         .single();
       if (row && row.failed_attempts >= MAX_FAILED_ATTEMPTS) {
+        console.warn(`Password reset locked out: request_id=${requestId}, attempts=${row.failed_attempts}, ip=${ip}`);
         await adminClient
           .from('password_reset_requests')
           .update({ status: 'locked' })
@@ -104,6 +107,7 @@ Deno.serve(async (req) => {
         return jsonResp({ error: 'Invalid or expired code' }, 400);
       }
       if (data.status === 'locked' || data.failed_attempts >= MAX_FAILED_ATTEMPTS) {
+        console.warn(`Password reset blocked (locked): request_id=${data.id}, ip=${req.headers.get('x-forwarded-for') || 'unknown'}`);
         return jsonResp({ error: 'This reset request has been locked due to too many failed attempts' }, 429);
       }
       // Verify the code matches the expected status for this flow
@@ -127,6 +131,7 @@ Deno.serve(async (req) => {
         return jsonResp({ error: 'Invalid or expired reset request' }, 400);
       }
       if (data.status === 'locked' || data.failed_attempts >= MAX_FAILED_ATTEMPTS) {
+        console.warn(`Password reset blocked (locked): request_id=${data.id}, ip=${req.headers.get('x-forwarded-for') || 'unknown'}`);
         return jsonResp({ error: 'This reset request has been locked due to too many failed attempts' }, 429);
       }
       request = data;

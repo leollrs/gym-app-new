@@ -63,8 +63,12 @@ export default function AdminRevenue() {
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
 
   const [period, setPeriod] = useState('30d');
+  const [visibleCanjes, setVisibleCanjes] = useState(10);
 
   useEffect(() => { document.title = t('admin.revenue.pageTitle', 'Admin - Revenue | TuGymPR'); }, [t]);
+
+  // Reset canjes pagination when period filter changes
+  useEffect(() => { setVisibleCanjes(10); }, [period]);
 
   const periodDays = PERIOD_OPTIONS.find(p => p.key === period)?.days;
   const cutoffDate = periodDays ? subDays(new Date(), periodDays).toISOString() : null;
@@ -218,7 +222,7 @@ export default function AdminRevenue() {
 
   const recentRedemptions = useMemo(() => {
     if (!purchases) return [];
-    return purchases.slice(0, 20);
+    return purchases;
   }, [purchases]);
 
   const isLoading = loadingPoints || loadingPurchases || loadingProducts;
@@ -485,9 +489,16 @@ export default function AdminRevenue() {
 
       {/* Recent Redemptions */}
       <FadeIn delay={420}>
-        <SectionLabel className="mb-3">
-          {t('admin.revenue.recentRedemptions', 'Recent Redemptions')}
-        </SectionLabel>
+        <div className="flex items-center justify-between mb-3">
+          <SectionLabel>
+            {t('admin.revenue.recentRedemptions', 'Recent Redemptions')}
+          </SectionLabel>
+          {!isLoading && recentRedemptions.length > 0 && (
+            <span className="text-[11px] text-[#6B7280] tabular-nums">
+              {Math.min(visibleCanjes, recentRedemptions.length)} / {recentRedemptions.length}
+            </span>
+          )}
+        </div>
         <AdminCard>
           {isLoading ? (
             <CardSkeleton className="h-[300px]" />
@@ -496,33 +507,43 @@ export default function AdminRevenue() {
               {t('admin.revenue.noRecentRedemptions', 'No recent redemptions')}
             </p>
           ) : (
-            <div className="space-y-0">
-              {recentRedemptions.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors border-b border-white/[0.03] last:border-0"
+            <>
+              <div className="space-y-0">
+                {recentRedemptions.slice(0, visibleCanjes).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.02] transition-colors border-b border-white/[0.03] last:border-0"
+                  >
+                    <span className="text-[16px] flex-shrink-0">{r.gym_products?.emoji_icon || '\uD83D\uDED2'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[#E5E7EB] truncate">
+                        {r.profiles?.full_name || t('admin.revenue.unknownMember', 'Unknown')}
+                      </p>
+                      <p className="text-[11px] text-[#6B7280] truncate">
+                        {r.quantity > 1 ? `${r.quantity}x ` : ''}{r.gym_products?.name || t('admin.revenue.unknownProduct', 'Unknown product')}
+                        {r.is_free_reward && ` (${t('admin.revenue.free')})`}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[13px] font-medium text-[#D4AF37] tabular-nums">
+                        ${parseFloat(r.total_price || 0).toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-[#6B7280]">
+                        {format(parseISO(r.created_at), 'MMM dd', dateFnsLocale)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {visibleCanjes < recentRedemptions.length && (
+                <button
+                  onClick={() => setVisibleCanjes(prev => prev + 10)}
+                  className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/8 hover:bg-[#D4AF37]/15 transition-colors"
                 >
-                  <span className="text-[16px] flex-shrink-0">{r.gym_products?.emoji_icon || '\uD83D\uDED2'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] text-[#E5E7EB] truncate">
-                      {r.profiles?.full_name || t('admin.revenue.unknownMember', 'Unknown')}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280] truncate">
-                      {r.quantity > 1 ? `${r.quantity}x ` : ''}{r.gym_products?.name || t('admin.revenue.unknownProduct', 'Unknown product')}
-                      {r.is_free_reward && ` (${t('admin.revenue.free')})`}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-[13px] font-medium text-[#D4AF37] tabular-nums">
-                      ${parseFloat(r.total_price || 0).toFixed(2)}
-                    </p>
-                    <p className="text-[10px] text-[#6B7280]">
-                      {format(parseISO(r.created_at), 'MMM dd', dateFnsLocale)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  {t('admin.revenue.showMore', 'Mostrar m\u00e1s')}
+                </button>
+              )}
+            </>
           )}
         </AdminCard>
       </FadeIn>

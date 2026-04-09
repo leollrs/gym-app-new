@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2, Bell, BellOff } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle, AlertTriangle, Trash2, Bell, BellOff, Repeat } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -58,6 +58,10 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   const [duration, setDuration] = useState(session?.duration_mins || 60);
   const [status, setStatus]     = useState(session?.status || 'scheduled');
   const [sendReminder, setSendReminder] = useState(session?.send_reminder ?? true);
+  const [recurring, setRecurring]       = useState(false);
+  const [frequency, setFrequency]       = useState('weekly'); // 'weekly' | 'biweekly'
+  const defaultEndDate = format(addWeeks(new Date(), 8), 'yyyy-MM-dd');
+  const [endDate, setEndDate]           = useState(defaultEndDate);
   const [saving, setSaving]     = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -94,11 +98,30 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       updated_at: new Date().toISOString(),
     };
 
-    const { error: err } = isEdit
-      ? await supabase.from('trainer_sessions').update(updatePayload).eq('id', session.id)
-      : await supabase.from('trainer_sessions').insert(insertPayload);
-
-    if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    // ── Recurring session support ─────────────────────────────────────────
+    if (!isEdit && recurring) {
+      const recurrenceGroup = crypto.randomUUID();
+      const step = frequency === 'biweekly' ? 2 : 1;
+      const baseDate = new Date(`${dateVal}T${timeVal}`);
+      const endLimit = endDate ? new Date(`${endDate}T23:59:59`) : addWeeks(baseDate, 8);
+      const rows = [];
+      let cursor = baseDate;
+      while (cursor <= endLimit) {
+        rows.push({
+          ...insertPayload,
+          scheduled_at: cursor.toISOString(),
+          recurrence_group: recurrenceGroup,
+        });
+        cursor = addWeeks(cursor, step);
+      }
+      const { error: err } = await supabase.from('trainer_sessions').insert(rows);
+      if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    } else {
+      const { error: err } = isEdit
+        ? await supabase.from('trainer_sessions').update(updatePayload).eq('id', session.id)
+        : await supabase.from('trainer_sessions').insert(insertPayload);
+      if (err) { setError(err.message); setSaving(false); showToast(err.message, 'error'); return; }
+    }
 
     // Schedule session reminder notification (1 hour before)
     if (sendReminder && clientId && status !== 'cancelled') {
@@ -123,7 +146,17 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       }
     }
 
-    showToast(isEdit ? t('pages:trainerCalendar.sessionUpdated') : t('pages:trainerCalendar.sessionScheduled'), 'success');
+    if (!isEdit && recurring) {
+      const step = frequency === 'biweekly' ? 2 : 1;
+      const baseDate = new Date(`${dateVal}T${timeVal}`);
+      const endLimit = endDate ? new Date(`${endDate}T23:59:59`) : addWeeks(baseDate, 8);
+      let count = 0;
+      let cur = baseDate;
+      while (cur <= endLimit) { count++; cur = addWeeks(cur, step); }
+      showToast(t('pages:trainerCalendar.recurringSessionsCreated', { count }), 'success');
+    } else {
+      showToast(isEdit ? t('pages:trainerCalendar.sessionUpdated') : t('pages:trainerCalendar.sessionScheduled'), 'success');
+    }
     onSaved();
   };
 
@@ -135,7 +168,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl md:rounded-2xl w-full max-w-none md:max-w-xl max-h-[92vh] md:max-h-[88vh] flex flex-col overflow-hidden md:mx-4"
+      <div role="dialog" aria-modal="true" aria-labelledby="session-modal-title" className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl md:rounded-2xl w-full max-w-none md:max-w-xl max-h-[92vh] md:max-h-[88vh] flex flex-col overflow-hidden md:mx-4 pb-[env(safe-area-inset-bottom)]"
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-border-subtle)] flex-shrink-0">
@@ -162,26 +195,26 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           </div>
 
           {/* Date & Time */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.dateLabel')}</label>
               <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.timeLabel')}</label>
               <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
             </div>
           </div>
 
           {/* Duration */}
           <div>
             <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.durationLabel')}</label>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {DURATIONS.map(d => (
                 <button key={d} onClick={() => setDuration(d)}
-                  className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
+                  className={`min-h-[44px] py-2 rounded-xl text-[12px] font-semibold transition-colors ${
                     duration === d ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]'
                   }`}>
                   {d}m
@@ -194,10 +227,10 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           {isEdit && (
             <div>
               <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.statusLabel')}</label>
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="grid grid-cols-3 sm:flex gap-1.5">
                 {Object.entries(STATUS_COLORS).map(([key, val]) => (
                   <button key={key} onClick={() => setStatus(key)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                    className={`px-3 py-1.5 min-h-[36px] rounded-lg text-[11px] font-semibold transition-colors ${
                       status === key ? `${val.bg} ${val.text}` : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]'
                     }`}>
                     {val.label}
@@ -226,6 +259,56 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
             </button>
           </div>
 
+          {/* Recurring toggle (new sessions only) */}
+          {!isEdit && (
+            <>
+              <div className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-2">
+                  <Repeat size={14} className={recurring ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
+                  <div>
+                    <p className="text-[12px] font-medium text-[var(--color-text-secondary)]">{t('pages:trainerCalendar.recurring')}</p>
+                    <p className="text-[10px] text-[var(--color-text-muted)]">{t('pages:trainerCalendar.recurringHint')}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRecurring(!recurring)}
+                  className={`relative w-10 h-[22px] rounded-full transition-colors ${recurring ? 'bg-[var(--color-accent)]' : 'bg-white/10'}`}
+                  aria-label="Toggle recurring"
+                >
+                  <span className={`absolute top-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform ${recurring ? 'translate-x-[20px]' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+
+              {recurring && (
+                <div className="space-y-3 pl-6 border-l-2 border-[var(--color-accent)]/20 ml-1.5">
+                  {/* Frequency pills */}
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.frequencyLabel')}</label>
+                    <div className="flex gap-2">
+                      {['weekly', 'biweekly'].map(f => (
+                        <button key={f} onClick={() => setFrequency(f)}
+                          className={`flex-1 min-h-[44px] py-2 rounded-xl text-[12px] font-semibold transition-colors ${
+                            frequency === f ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]'
+                          }`}>
+                          {t(`pages:trainerCalendar.frequency_${f}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* End date */}
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.endDateLabel')}</label>
+                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                      className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{t('pages:trainerCalendar.endDateHint')}</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
           {/* Notes */}
           <div>
             <label className="block text-[12px] font-medium text-[var(--color-text-secondary)] mb-1.5">{t('pages:trainerCalendar.notesLabel')}</label>
@@ -236,34 +319,34 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           {error && <p className="text-[12px] text-red-400">{error}</p>}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 p-4 md:p-5 border-t border-[var(--color-border-subtle)] flex-shrink-0">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 p-4 pb-6 sm:pb-4 md:p-5 border-t border-[var(--color-border-subtle)] flex-shrink-0">
           {isEdit && (
             confirmDelete ? (
               <div className="flex items-center gap-1.5">
                 <span className="text-[12px] text-[var(--color-text-secondary)]">{t('pages:trainerCalendar.deleteSessionConfirm')}</span>
                 <button onClick={handleDelete} disabled={deleting}
-                  className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                  className="px-3 py-1.5 min-h-[44px] rounded-lg text-[12px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
                   {deleting ? t('pages:trainerCalendar.deleting') : t('pages:trainerCalendar.confirm')}
                 </button>
                 <button onClick={() => setConfirmDelete(false)}
-                  className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-white/5 text-[var(--color-text-secondary)] hover:bg-white/10 transition-colors">
+                  className="px-3 py-1.5 min-h-[44px] rounded-lg text-[12px] font-semibold bg-white/5 text-[var(--color-text-secondary)] hover:bg-white/10 transition-colors">
                   {t('pages:trainerCalendar.cancel')}
                 </button>
               </div>
             ) : (
               <button onClick={() => setConfirmDelete(true)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
                 <Trash2 size={14} /> {t('pages:trainerCalendar.delete')}
               </button>
             )
           )}
-          <div className="flex-1" />
+          <div className="hidden sm:block flex-1" />
           <button onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
+            className="px-4 py-2.5 min-h-[44px] rounded-xl text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors order-last sm:order-none">
             {t('pages:trainerCalendar.cancel')}
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-bold bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-black transition-colors disabled:opacity-50">
+            className="px-5 py-2.5 min-h-[44px] rounded-xl text-[13px] font-bold bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-black transition-colors disabled:opacity-50">
             {saving ? t('pages:trainerCalendar.saving') : isEdit ? t('pages:trainerCalendar.update') : t('pages:trainerCalendar.create')}
           </button>
         </div>
@@ -468,7 +551,7 @@ export default function TrainerSchedule() {
   return (
     <div className="min-h-screen pb-28 md:pb-12 overflow-x-hidden" style={{ background: 'var(--color-bg-primary)' }}>
       {/* ── Sticky PageHeader with tabs (Community pattern) ──────────── */}
-      <PageHeader title={t('trainerCalendar.title', 'Calendar')}>
+      <PageHeader title={t('trainerCalendar.title', 'Calendar')} accentLabel={t('trainerCalendar.accentLabel', 'Schedule')}>
         <UnderlineTabs
           tabs={viewTabs}
           activeIndex={viewTabIndex}
@@ -488,7 +571,7 @@ export default function TrainerSchedule() {
           </button>
 
           <div className="flex-1 text-center min-w-0">
-            <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{subLabel}</p>
+            <p className="text-[14px] sm:text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>{subLabel}</p>
           </div>
 
           <button onClick={handleNext}
@@ -516,7 +599,7 @@ export default function TrainerSchedule() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-bold transition-colors flex-shrink-0 whitespace-nowrap"
             style={{ background: 'var(--color-accent)', color: '#000' }}
           >
-            <Plus size={15} /> {t('trainerCalendar.newSession', 'New')}
+            <Plus size={15} /> <span className="text-[11px] sm:text-[12px]">{t('trainerCalendar.newSession', 'New')}</span>
           </button>
         </div>
 
@@ -550,7 +633,10 @@ export default function TrainerSchedule() {
                         <CalendarDays size={18} className={sc.text} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{s.profiles?.full_name || t('trainerCalendar.client')}</p>
+                        <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate flex items-center gap-1.5">
+                          {s.profiles?.full_name || t('trainerCalendar.client')}
+                          {s.recurrence_group && <Repeat size={12} className="text-[var(--color-text-muted)] flex-shrink-0" />}
+                        </p>
                         <p className="text-[12px] text-[var(--color-text-muted)]">{s.title}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -588,7 +674,10 @@ export default function TrainerSchedule() {
                           <CalendarDays size={14} className={sc.text} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{s.profiles?.full_name || t('trainerCalendar.client')}</p>
+                          <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate flex items-center gap-1">
+                            {s.profiles?.full_name || t('trainerCalendar.client')}
+                            {s.recurrence_group && <Repeat size={11} className="text-[var(--color-text-muted)] flex-shrink-0" />}
+                          </p>
                           <p className="text-[11px] text-[var(--color-text-muted)]">{s.title}</p>
                         </div>
                         <div className="text-right flex-shrink-0">
@@ -608,7 +697,7 @@ export default function TrainerSchedule() {
                 <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-7 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
                 {days.map(day => {
                   const key = format(day, 'yyyy-MM-dd');
                   const daySessions = weekSessionsByDay[key] || [];
@@ -650,8 +739,9 @@ export default function TrainerSchedule() {
                             return (
                               <button key={s.id} onClick={() => setModal({ session: s })}
                                 className={`w-full text-left px-2.5 py-2 rounded-lg ${sc.bg} hover:opacity-80 transition-opacity`}>
-                                <p className={`text-[11px] font-semibold ${sc.text} truncate`}>
+                                <p className={`text-[11px] font-semibold ${sc.text} truncate flex items-center gap-1`}>
                                   {s.profiles?.full_name || t('trainerCalendar.client')}
+                                  {s.recurrence_group && <Repeat size={10} className="flex-shrink-0 opacity-60" />}
                                 </p>
                                 <p className="text-[10px] text-[var(--color-text-muted)]">
                                   {format(new Date(s.scheduled_at), 'h:mm a')} · {s.duration_mins}m
@@ -703,7 +793,7 @@ export default function TrainerSchedule() {
                       <button
                         key={key + idx}
                         onClick={() => handleMonthDayClick(day)}
-                        className="text-left transition-colors cursor-pointer group min-h-[64px] md:min-h-[80px]"
+                        className="text-left transition-colors cursor-pointer group min-h-[72px] sm:min-h-[64px] md:min-h-[80px]"
                         style={{
                           borderBottom: '1px solid var(--color-border-subtle)',
                           borderRight: (idx % 7 !== 6) ? '1px solid var(--color-border-subtle)' : 'none',
@@ -711,7 +801,7 @@ export default function TrainerSchedule() {
                           opacity: inMonth ? 1 : 0.3,
                         }}
                       >
-                        <div className="p-1 md:p-1.5 h-full flex flex-col group-hover:bg-white/[0.04] rounded-sm transition-colors">
+                        <div className="p-1.5 md:p-2 h-full flex flex-col group-hover:bg-white/[0.04] rounded-sm transition-colors">
                           {/* Day number */}
                           <div className="flex items-start justify-center md:justify-start mb-0.5">
                             {today ? (
@@ -734,8 +824,9 @@ export default function TrainerSchedule() {
                             {daySessions.slice(0, 2).map(s => {
                               const sc = STATUS_BG[s.status] || STATUS_BG.scheduled;
                               return (
-                                <div key={s.id} className="text-[9px] truncate px-1 py-0.5 rounded mt-0.5"
+                                <div key={s.id} className="text-[9px] truncate px-1 py-0.5 rounded mt-0.5 flex items-center gap-0.5"
                                   style={{ background: sc.bg, color: sc.text }}>
+                                  {s.recurrence_group && <Repeat size={8} className="flex-shrink-0 opacity-60" />}
                                   {format(new Date(s.scheduled_at), 'HH:mm')}{' '}
                                   {s.profiles?.full_name?.split(' ')[0] || s.title}
                                 </div>

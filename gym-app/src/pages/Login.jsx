@@ -83,13 +83,13 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: "var(--color-bg-primary)" }}>
+    <main className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[400px]">
 
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-5">
-            <Dumbbell size={26} className="text-[#D4AF37]" strokeWidth={2} />
+            <Dumbbell size={26} className="text-[#D4AF37]" strokeWidth={2} aria-hidden="true" />
           </div>
           <h1 className="text-[26px] font-bold" style={{ color: "var(--color-text-primary)" }}>
             {forgotMode ? t('resetPassword') : t('welcomeBack')}
@@ -106,16 +106,16 @@ const Login = () => {
             <>
               {/* Reset success */}
               {resetSuccess && (
-                <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 mb-6">
-                  <CheckCircle size={15} className="text-emerald-400 flex-shrink-0" />
+                <div role="status" className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 mb-6">
+                  <CheckCircle size={15} className="text-emerald-400 flex-shrink-0" aria-hidden="true" />
                   <p className="text-[13px] text-emerald-400">{t('resetSuccess')}</p>
                 </div>
               )}
 
               {/* Reset error */}
               {resetError && (
-                <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" />
+                <div role="alert" className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
+                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" aria-hidden="true" />
                   <p className="text-[13px] text-red-400">{resetError}</p>
                 </div>
               )}
@@ -123,12 +123,13 @@ const Login = () => {
               <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
                 {/* Email */}
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  <label htmlFor="reset-email" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                     {t('email')}
                   </label>
                   <div className="relative">
-                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
                     <input
+                      id="reset-email"
                       type="email"
                       value={resetEmail}
                       onChange={e => setResetEmail(e.target.value)}
@@ -155,7 +156,7 @@ const Login = () => {
                 onClick={exitForgotMode}
                 className="mt-4 w-full flex items-center justify-center gap-1.5 text-[13px] text-[#D4AF37] hover:text-[#E6C766] font-semibold transition-colors"
               >
-                <ArrowLeft size={14} />
+                <ArrowLeft size={14} aria-hidden="true" />
                 {t('backToLogin')}
               </button>
             </>
@@ -163,8 +164,8 @@ const Login = () => {
             <>
               {/* Error */}
               {error && (
-                <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" />
+                <div role="alert" className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
+                  <AlertCircle size={15} className="text-red-400 flex-shrink-0" aria-hidden="true" />
                   <p className="text-[13px] text-red-400">{error}</p>
                 </div>
               )}
@@ -173,12 +174,13 @@ const Login = () => {
 
                 {/* Email */}
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  <label htmlFor="login-email" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                     {t('email')}
                   </label>
                   <div className="relative">
-                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+                    <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
                     <input
+                      id="login-email"
                       type="email"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
@@ -192,7 +194,7 @@ const Login = () => {
                 {/* Password */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                    <label htmlFor="login-password" className="block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
                       {t('password')}
                     </label>
                     <button
@@ -204,8 +206,9 @@ const Login = () => {
                     </button>
                   </div>
                   <div className="relative">
-                    <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" />
+                    <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B5563]" aria-hidden="true" />
                     <input
+                      id="login-password"
                       type="password"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
@@ -242,7 +245,7 @@ const Login = () => {
           <a href="/terms" className="hover:underline" style={{ color: "var(--color-text-muted)" }}>{t('common:termsOfService')}</a>
         </p>
       </div>
-    </div>
+    </main>
   );
 };
 

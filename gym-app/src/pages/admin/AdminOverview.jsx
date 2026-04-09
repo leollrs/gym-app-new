@@ -19,6 +19,8 @@ import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, Page
 
 // Sub-components (kept)
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
+import MemberDetail from './components/MemberDetail';
+import SendMessageModal from './components/SendMessageModal';
 
 // ── Helpers ──────────────────────────────────────────────
 import { getRiskTier } from '../../lib/churnScore';
@@ -189,13 +191,25 @@ async function fetchOverviewData(gymId) {
   // Onboarding gaps (members not onboarded in last 48h)
   const onboardingGaps = notOnboardedRes.data || [];
 
+  // Delta: yesterday's check-ins (from the 30-day check-in data)
+  const yesterdayStr = format(subDays(now, 1), 'yyyy-MM-dd');
+  const checkInsYesterday = checkInDayCounts[yesterdayStr] || 0;
+
+  // Delta: new members last month (for comparison)
+  const lastMonthStart = subDays(startOfMonth(now), 1); // last day of prev month
+  const prevMonthStart = new Date(lastMonthStart.getFullYear(), lastMonthStart.getMonth(), 1).toISOString();
+  const prevMonthEnd = startOfMonth(now).toISOString();
+  const newMembersPrevMonth = members.filter(m => m.created_at >= prevMonthStart && m.created_at < prevMonthEnd).length;
+
   return {
     stats: {
       totalMembers: total,
       atRiskCount: riskTiers.critical + riskTiers.high,
       criticalCount: riskTiers.critical,
       checkInsToday: todayCheckinsData.length,
+      checkInsYesterday,
       newMembersMonth,
+      newMembersPrevMonth,
       activeThisWeek: activeThisWeekIds.size,
       classesToday: new Set((classSchedules || []).map(s => s.gym_class?.id).filter(Boolean)).size,
       avgDailyCheckins,
@@ -254,11 +268,11 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
 }
 
 // ── Activity Feed Item ──────────────────────────────────
-function ActivityItem({ item, dateFnsLocale }) {
+function ActivityItem({ item, dateFnsLocale, t }) {
   const actionMap = {
-    checkin: { label: 'checked in', color: '#8B5CF6', icon: CalendarCheck },
-    workout: { label: 'completed workout', color: '#3B82F6', icon: Dumbbell },
-    signup: { label: 'joined', color: '#10B981', icon: UserPlus },
+    checkin: { label: t('admin.overview.checkedIn', 'checked in'), color: '#8B5CF6', icon: CalendarCheck },
+    workout: { label: t('admin.overview.completedWorkout', 'completed workout'), color: '#3B82F6', icon: Dumbbell },
+    signup: { label: t('admin.overview.joined', 'joined'), color: '#10B981', icon: UserPlus },
   };
   const meta = actionMap[item.type] || actionMap.checkin;
   const Icon = meta.icon;
@@ -291,11 +305,17 @@ function ActivityItem({ item, dateFnsLocale }) {
 }
 
 // ── Watchlist Row ────────────────────────────────────────
-function WatchlistRow({ member, t }) {
+function WatchlistRow({ member, t, onTap, onMessage }) {
   const tier = getRiskTier(member.score);
   return (
-    <div className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
-      -mx-1 px-1 rounded-lg transition-colors duration-150">
+    <div
+      className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
+        -mx-1 px-1 rounded-lg transition-colors duration-150 cursor-pointer"
+      onClick={() => onTap?.(member)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter') onTap?.(member); }}
+    >
       <Avatar name={member.full_name} size="sm" src={member.avatar_url} />
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] font-medium text-[#E5E7EB] dark:text-[#E5E7EB] truncate">{member.full_name}</p>
@@ -305,6 +325,17 @@ function WatchlistRow({ member, t }) {
             : t('admin.overview.daysInactive', { count: member.daysInactive })}
         </p>
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onMessage?.(member); }}
+        className="flex-shrink-0 w-7 h-7 rounded-lg bg-white/[0.04] border border-white/[0.06]
+          flex items-center justify-center
+          hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/20
+          active:scale-95 transition-all duration-150"
+        title={t('admin.overview.navMessages', 'Message')}
+        aria-label={t('admin.overview.messageMember', { name: member.full_name, defaultValue: 'Message {{name}}' })}
+      >
+        <MessageSquare size={12} className="text-[#6B7280] hover:text-[#D4AF37]" />
+      </button>
       <span
         className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full flex-shrink-0 tabular-nums"
         style={{ color: tier.color, background: tier.bg }}
@@ -315,13 +346,38 @@ function WatchlistRow({ member, t }) {
   );
 }
 
+// ── Delta Indicator Helper ───────────────────────────────
+function formatDelta(current, previous, label) {
+  if (previous === 0 && current === 0) return null;
+  if (previous === 0) return { text: `↑ ${label}`, positive: true };
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return { text: `— ${label}`, positive: null };
+  return {
+    text: `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)}% ${label}`,
+    positive: pct > 0,
+  };
+}
+
+function DeltaSub({ delta, invert = false }) {
+  if (!delta) return null;
+  const isPositive = invert ? !delta.positive : delta.positive;
+  const color = delta.positive === null
+    ? '#6B7280'
+    : isPositive ? '#10B981' : '#EF4444';
+  return (
+    <span className="text-[10.5px] font-medium tabular-nums" style={{ color }}>
+      {delta.text}
+    </span>
+  );
+}
+
 // ── Quick Action Button ──────────────────────────────────
 function QuickActionButton({ icon: Icon, label, onClick, disabled = false }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold
+      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold shrink-0
         border transition-all duration-200
         ${disabled
           ? 'text-[#4B5563] bg-white/[0.02] border-white/[0.04] cursor-not-allowed opacity-50'
@@ -348,6 +404,8 @@ export default function AdminOverview() {
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [resetApprovalId, setResetApprovalId] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [messageMember, setMessageMember] = useState(null);
 
   // Fetch pending password reset requests
   const { data: pendingResets = [], refetch: refetchResets } = useQuery({
@@ -497,18 +555,18 @@ export default function AdminOverview() {
         <PageHeader
           title={t('admin.overview.title')}
           subtitle={`${format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)} · ${stats.checkInsToday} ${t('admin.overview.glanceCheckins').toLowerCase()}`}
-          actions={
-            <div className="flex items-center gap-2 flex-wrap">
-              <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
-              <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
-              {classesEnabled && (
-                <QuickActionButton icon={BookOpen} label={t('admin.overview.navClasses')} onClick={() => navigate('/admin/classes')} />
-              )}
-              <QuickActionButton icon={MessageSquare} label={t('admin.overview.navMessages')} onClick={() => navigate('/admin/messages')} />
-            </div>
-          }
-          className="mb-8"
+          className="mb-4"
         />
+      </FadeIn>
+      <FadeIn delay={20}>
+        <div className="flex items-center justify-center gap-2 overflow-x-auto scrollbar-hide mb-8">
+          <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
+          <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
+          {classesEnabled && (
+            <QuickActionButton icon={BookOpen} label={t('admin.overview.navClasses')} onClick={() => navigate('/admin/classes')} />
+          )}
+          <QuickActionButton icon={MessageSquare} label={t('admin.overview.navMessages')} onClick={() => navigate('/admin/messages')} />
+        </div>
       </FadeIn>
 
       {/* ════════════════════════════════════════════════════
@@ -520,14 +578,60 @@ export default function AdminOverview() {
           {t('admin.overview.todayGlance', 'Today at a Glance')}
         </p>
       </FadeIn>
-      <div className={`grid gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
-        <FadeIn delay={60}><StatCard label={t('admin.overview.glanceCheckins')} value={stats.checkInsToday} icon={CalendarCheck} borderColor="#8B5CF6" /></FadeIn>
-        <FadeIn delay={80}><StatCard label={t('admin.overview.glanceActiveWeek')} value={stats.activeThisWeek} icon={Activity} borderColor="#3B82F6" /></FadeIn>
+      <div className={`grid gap-3 md:gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
+        <FadeIn delay={60}>
+          <StatCard
+            label={t('admin.overview.glanceCritical', 'Critical')}
+            value={stats.criticalCount}
+            icon={AlertTriangle}
+            borderColor="#EF4444"
+            sub={stats.criticalCount > 0
+              ? <span className="text-[10.5px] font-medium text-[#EF4444]">{t('admin.overview.needsAction', 'Needs action')}</span>
+              : <span className="text-[10.5px] font-medium text-[#10B981]">{t('admin.overview.allClear', 'All clear')}</span>}
+          />
+        </FadeIn>
+        <FadeIn delay={80}>
+          <StatCard
+            label={t('admin.overview.glanceAtRisk')}
+            value={stats.atRiskCount}
+            icon={Activity}
+            borderColor="#F59E0B"
+            sub={stats.atRiskCount > 0
+              ? <span className="text-[10.5px] font-medium text-[#F59E0B]">{t('admin.overview.actionFollowUp', 'Follow up')}</span>
+              : <span className="text-[10.5px] font-medium text-[#10B981]">{t('admin.overview.everyoneActive', 'Everyone active')}</span>}
+          />
+        </FadeIn>
+        <FadeIn delay={100}>
+          <StatCard
+            label={t('admin.overview.glanceCheckins')}
+            value={stats.checkInsToday}
+            icon={CalendarCheck}
+            borderColor="#8B5CF6"
+            sub={<DeltaSub delta={formatDelta(stats.checkInsToday, stats.checkInsYesterday, t('admin.overview.vsYesterday', 'vs yesterday'))} />}
+          />
+        </FadeIn>
         {classesEnabled && (
-          <FadeIn delay={100}><StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" /></FadeIn>
+          <FadeIn delay={110}>
+            <StatCard label={t('admin.overview.glanceClasses')} value={stats.classesToday} icon={BookOpen} borderColor="#D4AF37" />
+          </FadeIn>
         )}
-        <FadeIn delay={120}><StatCard label={t('admin.overview.glanceNewMonth')} value={stats.newMembersMonth} icon={UserPlus} borderColor="#10B981" /></FadeIn>
-        <FadeIn delay={140}><StatCard label={t('admin.overview.glanceTotal')} value={stats.totalMembers} icon={Users} borderColor="#6366F1" /></FadeIn>
+        <FadeIn delay={120}>
+          <StatCard
+            label={t('admin.overview.glanceNewMonth')}
+            value={stats.newMembersMonth}
+            icon={UserPlus}
+            borderColor="#10B981"
+            sub={<DeltaSub delta={formatDelta(stats.newMembersMonth, stats.newMembersPrevMonth, t('admin.overview.vsLastMonth', 'vs last month'))} />}
+          />
+        </FadeIn>
+        <FadeIn delay={140}>
+          <StatCard
+            label={t('admin.overview.glanceTotal')}
+            value={stats.totalMembers}
+            icon={Users}
+            borderColor="#6366F1"
+          />
+        </FadeIn>
       </div>
 
       {/* ════════════════════════════════════════════════════
@@ -577,7 +681,7 @@ export default function AdminOverview() {
                   </div>
                   <div className="divide-y divide-white/[0.04]">
                     {atRisk.slice(0, 3).map(m => (
-                      <WatchlistRow key={m.id} member={m} t={t} />
+                      <WatchlistRow key={m.id} member={m} t={t} onTap={() => setSelectedMember(m)} onMessage={() => setMessageMember(m)} />
                     ))}
                   </div>
                 </div>
@@ -628,7 +732,7 @@ export default function AdminOverview() {
             ) : (
               <div className="divide-y divide-white/[0.04]">
                 {recentActivity.map((item, i) => (
-                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} />
+                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} t={t} />
                 ))}
               </div>
             )}
@@ -672,7 +776,7 @@ export default function AdminOverview() {
                 </p>
                 <div className="divide-y divide-white/[0.04]">
                   {atRisk.map(m => (
-                    <WatchlistRow key={m.id} member={m} t={t} />
+                    <WatchlistRow key={m.id} member={m} t={t} onTap={() => setSelectedMember(m)} onMessage={() => setMessageMember(m)} />
                   ))}
                 </div>
               </>
@@ -680,6 +784,28 @@ export default function AdminOverview() {
           </AdminCard>
         </FadeIn>
       </div>
+
+      {/* Member detail modal — opens when tapping a watchlist row */}
+      {selectedMember && (
+        <MemberDetail
+          member={selectedMember}
+          gymId={gymId}
+          onClose={() => setSelectedMember(null)}
+          onNoteSaved={() => {}}
+          onStatusChanged={() => {}}
+        />
+      )}
+
+      {/* Quick message modal — opens when tapping message icon */}
+      {messageMember && (
+        <SendMessageModal
+          member={messageMember}
+          gymId={gymId}
+          adminId={profile?.id}
+          onClose={() => setMessageMember(null)}
+          onSent={() => setMessageMember(null)}
+        />
+      )}
     </AdminPageShell>
   );
 }

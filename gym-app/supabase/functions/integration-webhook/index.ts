@@ -4,9 +4,26 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
+
+// SSRF protection: block internal/private network URLs
+function isInternalUrl(urlStr: string): boolean {
+  try {
+    const url = new URL(urlStr);
+    const h = url.hostname.toLowerCase();
+    if (
+      h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' ||
+      h.startsWith('10.') || h.startsWith('192.168.') || h.startsWith('172.') ||
+      h.endsWith('.local') || h.endsWith('.internal') || url.protocol === 'file:'
+    ) return true;
+    return false;
+  } catch { return true; }
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
 
 function jsonResp(data: unknown, status = 200) {
@@ -14,6 +31,24 @@ function jsonResp(data: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Timing-safe comparison (HMAC-based, no length leak)
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
 }
 
 // ── Adapters ─────────────────────────────────────────────
@@ -31,6 +66,7 @@ async function webhookAdapter(
 ): Promise<AdapterResult> {
   const url = config.url as string;
   if (!url) return { status: 400, body: 'No webhook URL configured' };
+  if (isInternalUrl(url)) return { status: 400, body: 'Internal URLs are not allowed for webhooks' };
 
   const bodyStr = JSON.stringify({ action, payload, timestamp: new Date().toISOString() });
 
@@ -73,9 +109,56 @@ serve(async (req: Request) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
+  // Content-Type validation
+  const ct = req.headers.get('content-type') || '';
+  if (req.method === 'POST' && !ct.includes('application/json')) {
+    return new Response(JSON.stringify({ error: 'Content-Type must be application/json' }), {
+      status: 415, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   const start = Date.now();
 
   try {
+    // ── Auth: require valid cron secret OR admin JWT ──
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
+    const authHeader = req.headers.get('Authorization') ?? '';
+
+    const isCronAuth = !!(cronSecret && incomingSecret && (await timingSafeEqual(cronSecret, incomingSecret)));
+
+    if (!isCronAuth) {
+      // Check for valid admin JWT or service-role key
+      const token = authHeader.replace('Bearer ', '');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+      let isServiceRole = false;
+      if (token && serviceKey) {
+        isServiceRole = await timingSafeEqual(token, serviceKey);
+      }
+
+      if (!isServiceRole) {
+        // Try JWT auth — verify the token and check for admin role
+        let isAdmin = false;
+        if (token) {
+          const authClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+          const { data: { user } } = await authClient.auth.getUser(token);
+          if (user) {
+            const { data: profile } = await authClient
+              .from('profiles')
+              .select('role')
+              .eq('id', user.id)
+              .single();
+            isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
+          }
+        }
+
+        if (!isAdmin) {
+          return jsonResp({ error: 'Unauthorized' }, 401);
+        }
+      }
+    }
+
     const { integrationId, action, payload } = await req.json();
     if (!integrationId || !action || !payload) {
       return jsonResp({ error: 'Missing integrationId, action, or payload' }, 400);

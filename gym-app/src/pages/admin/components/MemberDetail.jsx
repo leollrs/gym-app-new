@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Trophy, FileText, Save, Send, UserCheck, UserX, Ban, X, QrCode, KeyRound, Copy, Check, Share2, AlertTriangle, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
-import { createNotification } from '../../../lib/notifications';
+import { encryptMessage } from '../../../lib/messageEncryption';
+import { useAuth } from '../../../contexts/AuthContext';
 import logger from '../../../lib/logger';
 import { getRiskTier } from '../../../lib/churnScore';
+import { logAdminAction } from '../../../lib/adminAudit';
 import { Avatar, SectionLabel, AdminModal } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 
@@ -38,6 +40,8 @@ function getStatusActions(status) {
 }
 
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
+  const { user: authUser } = useAuth();
+  const adminId = authUser?.id;
   const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
   const isEs = i18n.language?.startsWith('es');
@@ -64,6 +68,20 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [externalId, setExternalId] = useState(member.qr_external_id ?? '');
   const [externalIdSaving, setExternalIdSaving] = useState(false);
 
+  const [memberName, setMemberName] = useState(member.full_name ?? '');
+  const [memberUsername, setMemberUsername] = useState(member.username ?? '');
+  const [memberEmail, setMemberEmail] = useState(member.email ?? '');
+  const originalEmailRef = useRef(member.email ?? '');
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [memberPhone, setMemberPhone] = useState('');
+  const originalPhoneRef = useRef('');
+  const [infoSaving, setInfoSaving] = useState(false);
+  const [infoSaved, setInfoSaved] = useState(false);
+
+  // Workouts "see more" toggle
+  const [showAllWorkouts, setShowAllWorkouts] = useState(false);
+
   // Password reset state
   const [resetCode, setResetCode] = useState(null);
   const [resetLoading, setResetLoading] = useState(false);
@@ -86,13 +104,24 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     const load = async () => {
       const [sessRes, prRes, chalRes] = await Promise.all([
         supabase.from('workout_sessions').select('id, name, started_at, duration_seconds, total_volume_lbs').eq('profile_id', member.id).eq('status', 'completed').order('started_at', { ascending: false }).limit(10),
-        supabase.from('personal_records').select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name)').eq('profile_id', member.id).order('estimated_1rm', { ascending: false }).limit(8),
+        supabase.from('personal_records').select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name)').eq('profile_id', member.id).order('achieved_at', { ascending: false }).limit(20),
         supabase.from('challenge_participants').select('id', { count: 'exact', head: true }).eq('profile_id', member.id),
       ]);
       if (sessRes.error) logger.error('MemberModal: sessions:', sessRes.error);
       if (prRes.error) logger.error('MemberModal: PRs:', prRes.error);
       setSessions(sessRes.data || []);
-      setPrs(prRes.data || []);
+      // Filter out PRs with missing data and deduplicate by exercise (keep best per exercise)
+      const rawPrs = prRes.data || [];
+      const bestByExercise = new Map();
+      rawPrs.forEach(pr => {
+        const existing = bestByExercise.get(pr.exercise_id);
+        if (!existing || (pr.estimated_1rm || 0) > (existing.estimated_1rm || 0)) {
+          bestByExercise.set(pr.exercise_id, pr);
+        }
+      });
+      const dedupedPrs = Array.from(bestByExercise.values())
+        .sort((a, b) => (b.estimated_1rm || 0) - (a.estimated_1rm || 0));
+      setPrs(dedupedPrs);
       setChallenges(chalRes.count ?? 0);
 
       if (isFollowupCandidate) {
@@ -110,6 +139,26 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         supabase.from('referrals').select('id, referred_id, status, created_at, profiles!referrals_referred_id_fkey(full_name)').eq('referrer_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(50),
       ]);
       if (refProfileRes.data?.referral_code) setReferralCode(refProfileRes.data.referral_code);
+
+      // Fetch phone_number separately (column may not exist yet pre-migration)
+      try {
+        const { data: phoneData } = await supabase.from('profiles').select('phone_number').eq('id', member.id).single();
+        if (phoneData?.phone_number) {
+          setMemberPhone(phoneData.phone_number);
+          originalPhoneRef.current = phoneData.phone_number;
+        }
+      } catch { /* column not deployed yet — ignore */ }
+
+      // Fetch email from auth.users via RPC
+      if (!member.email) {
+        try {
+          const { data: emailData } = await supabase.rpc('admin_get_member_email', { p_member_id: member.id });
+          if (emailData) {
+            setMemberEmail(emailData);
+            originalEmailRef.current = emailData;
+          }
+        } catch {}
+      }
       const refList = refListRes.data || [];
       setReferrals(refList);
       setReferralCount(refList.length);
@@ -122,6 +171,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const handleSaveNote = async () => {
     setNoteSaving(true);
     await supabase.from('profiles').update({ admin_note: note || null }).eq('id', member.id).eq('gym_id', gymId);
+    logAdminAction('update_note', 'member', member.id, { note: note?.substring(0, 100) });
     setNoteSaving(false);
     onNoteSaved(member.id, note);
   };
@@ -134,6 +184,40 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       qr_code_payload: payload,
     }).eq('id', member.id).eq('gym_id', gymId);
     setExternalIdSaving(false);
+  };
+
+  const handleSaveInfo = async () => {
+    setInfoSaving(true);
+    setInfoSaved(false);
+    const updates = {};
+    if (memberName.trim() && memberName !== member.full_name) updates.full_name = memberName.trim();
+    if (memberUsername.trim() && memberUsername !== member.username) updates.username = memberUsername.trim();
+    const phoneVal = memberPhone.trim() || null;
+    if (phoneVal !== (originalPhoneRef.current || null)) updates.phone_number = phoneVal;
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('profiles').update(updates).eq('id', member.id).eq('gym_id', gymId);
+      logAdminAction('update_info', 'member', member.id);
+    }
+    setInfoSaving(false);
+    setInfoSaved(true);
+    setTimeout(() => setInfoSaved(false), 2000);
+  };
+
+  const handleSaveEmail = async () => {
+    if (!memberEmail.trim() || memberEmail === originalEmailRef.current) return;
+    setEmailSaving(true);
+    setEmailSaved(false);
+    try {
+      // Update email in profiles table
+      await supabase.from('profiles').update({ email: memberEmail.trim() }).eq('id', member.id).eq('gym_id', gymId);
+      logAdminAction('update_email', 'member', member.id, { email: memberEmail.trim() });
+      originalEmailRef.current = memberEmail.trim();
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 2000);
+    } catch (err) {
+      logger.error('Failed to update email:', err);
+    }
+    setEmailSaving(false);
   };
 
   const handleGenerateResetCode = async () => {
@@ -167,11 +251,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     if (!pendingAction) return;
     setStatusSaving(true);
     const nextStatus = statusActionMap[pendingAction].next;
+    const oldStatus = memberStatus;
     await supabase.from('profiles').update({
       membership_status: nextStatus,
       membership_status_updated_at: new Date().toISOString(),
       membership_status_reason: statusReason || null,
     }).eq('id', member.id).eq('gym_id', gymId);
+    logAdminAction('change_status', 'member', member.id, { from: oldStatus, to: nextStatus });
     setMemberStatus(nextStatus);
     setPendingAction(null);
     setShowStatusConfirm(false);
@@ -182,9 +268,28 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSendFollowup = async () => {
     setFollowupSending(true);
-    await createNotification({ profileId: member.id, gymId, type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: followupMsg, data: { source: 'admin_followup' } });
+    try {
+      const { data: convoId } = await supabase.rpc('get_or_create_conversation', { p_other_user: member.id });
+      if (convoId) {
+        const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
+        const seed = convo?.encryption_seed || convoId;
+        const encrypted = await encryptMessage(followupMsg, convoId, seed);
+        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
+        await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
+
+        // Push notification
+        const { data: { session } } = await supabase.auth.getSession();
+        supabase.functions.invoke('send-push-user', {
+          body: { profile_id: member.id, gym_id: gymId, title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: followupMsg.substring(0, 100), data: { type: 'direct_message', conversation_id: convoId } },
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        }).catch(() => {});
+      }
+    } catch (err) {
+      logger.error('Followup DM failed:', err);
+    }
     const now = new Date().toISOString();
     if (churnRowId) await supabase.from('churn_risk_scores').update({ followup_sent_at: now }).eq('id', churnRowId);
+    logAdminAction('send_followup', 'member', member.id);
     setFollowupSentAt(now);
     setFollowupSending(false);
   };
@@ -193,6 +298,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     if (!churnRowId) return;
     setOutcomeSaving(true);
     await supabase.from('churn_risk_scores').update({ followup_outcome: outcome }).eq('id', churnRowId);
+    logAdminAction('set_outcome', 'member', member.id, { outcome });
     setFollowupOutcome(outcome);
     setOutcomeSaving(false);
   };
@@ -257,7 +363,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               <p className="text-[13px] text-[#6B7280] text-center py-6">{t('admin.memberDetail.noWorkouts', 'No workouts logged')}</p>
             ) : (
               <div className="space-y-2">
-                {sessions.map(s => (
+                {(showAllWorkouts ? sessions : sessions.slice(0, 3)).map(s => (
                   <div key={s.id} className="flex items-center justify-between gap-3 p-3 bg-[#111827] rounded-xl overflow-hidden">
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{s.name || t('admin.memberDetail.workout', 'Workout')}</p>
@@ -269,6 +375,20 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                     </div>
                   </div>
                 ))}
+                {sessions.length > 3 && !showAllWorkouts && (
+                  <button onClick={() => setShowAllWorkouts(true)}
+                    className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
+                    style={{ color: 'var(--color-accent)', background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+                    {t('admin.memberDetail.seeMore', { count: sessions.length - 3, defaultValue: 'See {{count}} more' })}
+                  </button>
+                )}
+                {sessions.length > 3 && showAllWorkouts && (
+                  <button onClick={() => setShowAllWorkouts(false)}
+                    className="w-full py-2 text-[12px] font-semibold rounded-xl transition-colors"
+                    style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                    {t('admin.memberDetail.showLess', 'Show less')}
+                  </button>
+                )}
               </div>
             )
           ) : tab === 'prs' ? (
@@ -277,7 +397,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             ) : (
               <div className="space-y-2">
                 {prs.map((pr, i) => (
-                  <div key={pr.exercise_id} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
+                  <div key={`${pr.exercise_id}-${pr.achieved_at || i}`} className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl">
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${i < 3 ? 'bg-[#D4AF37]/12' : 'bg-white/4'}`}>
                       <Trophy size={13} className={i < 3 ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
                     </div>
@@ -351,6 +471,50 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             </div>
           ) : null}
 
+          {/* Member Info */}
+          <div>
+            <SectionLabel icon={User} className="mb-3">{t('admin.memberDetail.memberInfo', 'Member Info')}</SectionLabel>
+            <div className="bg-[#111827] border border-white/6 rounded-xl p-3 space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.fullName', 'Full Name')}</label>
+                <input type="text" value={memberName} onChange={e => setMemberName(e.target.value)}
+                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.username', 'Username')}</label>
+                <input type="text" value={memberUsername} onChange={e => setMemberUsername(e.target.value)}
+                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.email', 'Email')}</label>
+                <div className="flex gap-2">
+                  <input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)}
+                    className="flex-1 bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
+                  <button onClick={handleSaveEmail}
+                    disabled={emailSaving || !memberEmail.trim() || memberEmail === originalEmailRef.current}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+                    <Save size={12} />
+                    {emailSaving ? t('admin.memberDetail.saving', 'Saving...') : emailSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.save', 'Save')}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#6B7280] mb-1">{t('admin.memberDetail.phoneNumber', 'Phone Number')}</label>
+                <input type="tel" value={memberPhone} onChange={e => setMemberPhone(e.target.value)}
+                  placeholder="+1XXXXXXXXXX"
+                  className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40" />
+              </div>
+              <button onClick={handleSaveInfo}
+                disabled={infoSaving || (memberName === (member.full_name ?? '') && memberUsername === (member.username ?? '') && memberPhone === originalPhoneRef.current)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+                <Save size={12} />
+                {infoSaving ? t('admin.memberDetail.saving', 'Saving…') : infoSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.saveInfo', 'Save Info')}
+              </button>
+            </div>
+          </div>
+
           {/* Membership */}
           <div>
             <SectionLabel icon={UserCheck} className="mb-3">{t('admin.memberDetail.membership', 'Membership')}</SectionLabel>
@@ -372,6 +536,18 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Admin note */}
+          <div>
+            <SectionLabel icon={FileText} className="mb-2">{t('admin.memberDetail.adminNote', 'Admin Note')}</SectionLabel>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={t('admin.memberDetail.adminNotePlaceholder', 'e.g. Reached out Jan 5 \u2014 no response. At risk of churning.')}
+              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
+            <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+              <Save size={12} /> {noteSaving ? t('admin.memberDetail.saving', 'Saving\u2026') : t('admin.memberDetail.saveNote', 'Save Note')}
+            </button>
           </div>
 
           {/* QR / External ID */}
@@ -501,17 +677,6 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             </div>
           )}
 
-          {/* Admin note */}
-          <div>
-            <SectionLabel icon={FileText} className="mb-2">{t('admin.memberDetail.adminNote', 'Admin Note')}</SectionLabel>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder={t('admin.memberDetail.adminNotePlaceholder', 'e.g. Reached out Jan 5 \u2014 no response. At risk of churning.')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors" />
-            <button onClick={handleSaveNote} disabled={noteSaving || note === (member.admin_note ?? '')}
-              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-40"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-              <Save size={12} /> {noteSaving ? t('admin.memberDetail.saving', 'Saving\u2026') : t('admin.memberDetail.saveNote', 'Save Note')}
-            </button>
-          </div>
         </div>
 
         {/* Status action confirmation modal */}
@@ -552,6 +717,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               value={statusReason}
               onChange={e => setStatusReason(e.target.value)}
               placeholder={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
+              aria-label={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
           </div>

@@ -144,8 +144,9 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
           {selected === 'custom' && (
             <div className="px-4 pt-2 pb-3 space-y-3">
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.from')}</label>
+                <label htmlFor="daterange-from" className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.from')}</label>
                 <input
+                  id="daterange-from"
                   type="date"
                   value={customFrom}
                   onChange={(e) => setCustomFrom(e.target.value)}
@@ -155,8 +156,9 @@ export default function DateRangePicker({ defaultPreset = '30d', onChange }) {
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.to')}</label>
+                <label htmlFor="daterange-to" className="block text-xs text-[#9CA3AF] mb-1">{t('dateRange.to')}</label>
                 <input
+                  id="daterange-to"
                   type="date"
                   value={customTo}
                   onChange={(e) => setCustomTo(e.target.value)}

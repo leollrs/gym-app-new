@@ -17,7 +17,7 @@ export default function TierFilter({ active, onChange }) {
           key={tp.key ?? 'all'}
           type="button"
           onClick={() => onChange(tp.key)}
-          className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+          className={`px-3 py-1.5 min-h-[44px] min-w-[44px] rounded-lg text-[11px] font-semibold transition-all ${
             active === tp.key
               ? 'bg-white/[0.08] text-[#E5E7EB]'
               : 'text-[#4B5563] hover:text-[#6B7280]'

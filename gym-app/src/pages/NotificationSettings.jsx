@@ -39,7 +39,7 @@ export default function NotificationSettings() {
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto flex items-center gap-3 px-4 py-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => navigate(-1)}
             aria-label="Go back"
             className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
@@ -53,7 +53,7 @@ export default function NotificationSettings() {
         </div>
       </div>
 
-      <div className="px-4 pt-5 max-w-[480px] md:max-w-4xl mx-auto space-y-4">
+      <div className="px-4 pt-5 max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto space-y-4">
         {/* Status Card */}
         <div className="rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
           <div className="flex items-center gap-3 mb-4">

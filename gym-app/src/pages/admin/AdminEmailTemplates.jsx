@@ -11,6 +11,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { PageHeader, AdminCard, FadeIn, AdminModal, AdminTabs } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 // ── XSS helpers ───────────────────────────────────────────────
 function escHtml(s) {
@@ -305,7 +306,7 @@ ${header.text ? `<h1 style="margin:0;font-size:22px;font-weight:700;color:${safe
 ${hero.enabled ? (() => { const safeImageUrl = hero.imageUrl && /^https:\/\//i.test(hero.imageUrl) ? escHtml(hero.imageUrl) : ''; return `<!-- Hero -->
 <tr><td style="padding:0;">
 ${safeImageUrl
-  ? `<img src="${safeImageUrl}" alt="" style="width:100%;display:block;max-height:280px;object-fit:cover;" />`
+  ? `<img src="${safeImageUrl}" alt="Email hero image" style="width:100%;display:block;max-height:280px;object-fit:cover;" />`
   : `<div class="hero-pad" style="background:linear-gradient(135deg,${safeColor(c.primary)} 0%,${safeColor(c.primary)}cc 50%,${safeColor(c.primary)}99 100%);padding:56px ${pad}px;text-align:center;">
 <h2 style="margin:0 0 10px;font-size:32px;font-weight:800;color:#ffffff;letter-spacing:-0.03em;line-height:1.15;">${escHtml(replaceVariables(hero.headline, gymName))}</h2>
 ${hero.subtitle ? `<p style="margin:0;font-size:17px;color:rgba(255,255,255,0.88);line-height:1.5;font-weight:400;">${escHtml(replaceVariables(hero.subtitle, gymName))}</p>` : ''}
@@ -469,7 +470,7 @@ function LivePreview({ template, gymName, gymLogoUrl }) {
           {/* Hero */}
           {template.hero.enabled && (
             template.hero.imageUrl ? (
-              <img src={template.hero.imageUrl} alt="" style={{ width: '100%', display: 'block', maxHeight: 240, objectFit: 'cover' }} />
+              <img src={template.hero.imageUrl} alt="Email hero banner" style={{ width: '100%', display: 'block', maxHeight: 240, objectFit: 'cover' }} />
             ) : (
               <div style={{ background: `linear-gradient(135deg, ${c.primary}, ${c.primary}cc, ${c.primary}99)`, padding: '48px 32px', textAlign: 'center' }}>
                 <h2 style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.15 }}>
@@ -1278,85 +1279,91 @@ export default function AdminEmailTemplates() {
         className="mb-5"
       />
 
-      {/* My Templates tab */}
-      {listTab === 'mine' && (
-        <FadeIn>
-          {isLoading ? (
-            <AdminCard>
-              <div className="flex items-center justify-center py-8">
-                <Loader2 size={24} className="animate-spin text-[#6B7280]" />
-              </div>
-            </AdminCard>
-          ) : sortedTemplates.length === 0 ? (
-            <AdminCard>
-              <div className="text-center py-12">
-                <Mail size={32} className="mx-auto text-[#6B7280] mb-3" />
-                <p className="text-[14px] text-[#9CA3AF]">{t('admin.emailTemplates.noTemplates')}</p>
-                <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.emailTemplates.noTemplatesHint')}</p>
-                <button onClick={handleNewTemplate}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[var(--color-accent)] hover:brightness-90 transition-colors">
-                  <Plus size={14} /> {t('admin.emailTemplates.createNew')}
-                </button>
-              </div>
-            </AdminCard>
-          ) : (
+      <SwipeableTabContent
+        tabs={[
+          { key: 'mine', label: t('admin.emailTemplates.tabMine', 'My Templates'), count: templates.length },
+          { key: 'recent', label: t('admin.emailTemplates.tabRecent', 'Recent'), count: recentTemplates.length },
+          { key: 'prebuilt', label: t('admin.emailTemplates.tabPrebuilt', 'Prebuilt'), count: prebuiltTemplates.length },
+        ]}
+        active={listTab}
+        onChange={setListTab}
+      >
+        {(tabKey) => {
+          if (tabKey === 'mine') return (
+            <>
+              {isLoading ? (
+                <AdminCard>
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={24} className="animate-spin text-[#6B7280]" />
+                  </div>
+                </AdminCard>
+              ) : sortedTemplates.length === 0 ? (
+                <AdminCard>
+                  <div className="text-center py-12">
+                    <Mail size={32} className="mx-auto text-[#6B7280] mb-3" />
+                    <p className="text-[14px] text-[#9CA3AF]">{t('admin.emailTemplates.noTemplates')}</p>
+                    <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.emailTemplates.noTemplatesHint')}</p>
+                    <button onClick={handleNewTemplate}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[var(--color-accent)] hover:brightness-90 transition-colors">
+                      <Plus size={14} /> {t('admin.emailTemplates.createNew')}
+                    </button>
+                  </div>
+                </AdminCard>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {sortedTemplates.map(tpl => (
+                    <TemplateCard
+                      key={tpl.id}
+                      template={tpl}
+                      onEdit={setEditing}
+                      onDelete={id => setDeleteConfirm(id)}
+                      onDuplicate={handleDuplicate}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+          if (tabKey === 'recent') return (
+            <>
+              {recentTemplates.length === 0 ? (
+                <AdminCard>
+                  <div className="text-center py-8">
+                    <p className="text-[13px] text-[#6B7280]">{t('admin.emailTemplates.noRecent', 'No recently edited templates')}</p>
+                  </div>
+                </AdminCard>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {recentTemplates.map(tpl => (
+                    <TemplateCard
+                      key={tpl.id}
+                      template={tpl}
+                      onEdit={setEditing}
+                      onDelete={id => setDeleteConfirm(id)}
+                      onDuplicate={handleDuplicate}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+          if (tabKey === 'prebuilt') return (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {sortedTemplates.map(tpl => (
-                <TemplateCard
+              {prebuiltTemplates.map(tpl => (
+                <PrebuiltCard
                   key={tpl.id}
                   template={tpl}
-                  onEdit={setEditing}
-                  onDelete={id => setDeleteConfirm(id)}
-                  onDuplicate={handleDuplicate}
+                  onUse={handleUsePrebuilt}
                   t={t}
                 />
               ))}
             </div>
-          )}
-        </FadeIn>
-      )}
-
-      {/* Recent tab */}
-      {listTab === 'recent' && (
-        <FadeIn>
-          {recentTemplates.length === 0 ? (
-            <AdminCard>
-              <div className="text-center py-8">
-                <p className="text-[13px] text-[#6B7280]">{t('admin.emailTemplates.noRecent', 'No recently edited templates')}</p>
-              </div>
-            </AdminCard>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {recentTemplates.map(tpl => (
-                <TemplateCard
-                  key={tpl.id}
-                  template={tpl}
-                  onEdit={setEditing}
-                  onDelete={id => setDeleteConfirm(id)}
-                  onDuplicate={handleDuplicate}
-                  t={t}
-                />
-              ))}
-            </div>
-          )}
-        </FadeIn>
-      )}
-
-      {/* Prebuilt tab */}
-      {listTab === 'prebuilt' && (
-        <FadeIn>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {prebuiltTemplates.map(tpl => (
-              <PrebuiltCard
-                key={tpl.id}
-                template={tpl}
-                onUse={handleUsePrebuilt}
-                t={t}
-              />
-            ))}
-          </div>
-        </FadeIn>
-      )}
+          );
+          return null;
+        }}
+      </SwipeableTabContent>
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (

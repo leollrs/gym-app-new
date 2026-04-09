@@ -1,28 +1,32 @@
 import { useState, useCallback } from 'react';
-import { UserPlus, Copy, Check, Loader2, Share2, Link, ScanLine, X, Users } from 'lucide-react';
+import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { QRCodeSVG } from 'qrcode.react';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import logger from '../../../lib/logger';
+import { logAdminAction } from '../../../lib/adminAudit';
 import useScanClaim from '../../../hooks/useScanClaim';
 import { parseQRContent } from '../../../lib/scanRouter';
 
+/**
+ * CreateInviteModal — "Add Member" (Agregar Miembro)
+ * Directly creates a member profile + generates a link code
+ * so the member can set their password on first app open.
+ */
 export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
   const k = (key) => t(`admin.createInvite.${key}`);
 
-  const [phase, setPhase] = useState('form');
+  const [phase, setPhase] = useState('form'); // 'form' | 'result'
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null); // { profileId, code, name }
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   // Referral linking
   const [referrerInfo, setReferrerInfo] = useState(null); // { id, name, avatarUrl, codeId }
@@ -30,7 +34,17 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralError, setReferralError] = useState(null);
 
-  const inviteUrl = result?.code ? `https://tugympr.app/invite/${result.code}` : '';
+  // Generate a random 6-char alphanumeric code (excludes ambiguous chars)
+  const generateCode = () => {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let code = '';
+    const array = new Uint8Array(6);
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 6; i++) {
+      code += chars[array[i] % chars.length];
+    }
+    return code;
+  };
 
   // Handle scan input from physical scanner (claimed while modal is open)
   const handleReferralScan = useCallback(async (rawText) => {
@@ -40,8 +54,6 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
     try {
       const trimmed = rawText.trim();
-
-      // Try parsing as structured QR (gym-referral:gymId:referrerId:code)
       const parsed = parseQRContent(trimmed);
 
       let referrerProfileId = null;
@@ -49,7 +61,6 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
       if (parsed?.type === 'referral') {
         referrerProfileId = parsed.referrerId;
-        // Look up the referral code record
         const { data: codeRow } = await supabase
           .from('referral_codes')
           .select('id')
@@ -58,7 +69,6 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
           .single();
         referralCodeId = codeRow?.id;
       } else {
-        // Try as a plain referral code string
         const { data: codeRow } = await supabase
           .from('referral_codes')
           .select('id, profile_id')
@@ -77,7 +87,6 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
         return;
       }
 
-      // Get referrer info
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url')
@@ -104,19 +113,57 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   useScanClaim(handleReferralScan, phase === 'form');
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !email.trim() || !phone.trim()) return;
     setLoading(true);
     setError(null);
+
     try {
-      const { data, error: rpcError } = await supabase.rpc('admin_create_invite_code', {
-        p_gym_id: gymId,
-        p_member_name: name.trim(),
-        p_phone: phone.trim() || null,
-        p_email: email.trim() || null,
-        p_referral_code_id: referrerInfo?.codeId || null,
+      // 1. Create profile directly
+      const { data: newProfile, error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          gym_id: gymId,
+          full_name: name.trim(),
+          email: email.trim().toLowerCase(),
+          role: 'member',
+          membership_status: 'active',
+          is_onboarded: false,
+        })
+        .select('id')
+        .single();
+
+      if (profileError) throw profileError;
+
+      // 2. Generate a link code and insert into gym_invites (marked as claimed)
+      const linkCode = generateCode();
+
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error: inviteError } = await supabase
+        .from('gym_invites')
+        .insert({
+          gym_id: gymId,
+          created_by: user.id,
+          invite_code: linkCode,
+          member_name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || null,
+          role: 'member',
+          used_by: newProfile.id,
+          used_at: new Date().toISOString(),
+          referral_code_id: referrerInfo?.codeId || null,
+        });
+
+      if (inviteError) throw inviteError;
+
+      // 3. Log admin action
+      logAdminAction('add_member', 'member', newProfile.id, {
+        name: name.trim(),
+        email: email.trim(),
+        has_referral: !!referrerInfo,
       });
-      if (rpcError) throw rpcError;
-      setResult(data);
+
+      setResult({ profileId: newProfile.id, code: linkCode, name: name.trim() });
       setPhase('result');
       if (onCreated) onCreated();
     } catch (err) {
@@ -138,36 +185,24 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     }
   };
 
-  const handleCopyLink = async () => {
-    if (!inviteUrl) return;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch (err) {
-      logger.error('Failed to copy link:', err);
-    }
-  };
-
   const handleShare = async () => {
-    if (!inviteUrl) return;
+    if (!result?.code) return;
+    const shareText = `${k('shareText')} ${result.code}`;
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
           title: k('shareTitle'),
-          text: `${k('shareText')} ${result.code}`,
-          url: inviteUrl,
+          text: shareText,
           dialogTitle: k('shareTitle'),
         });
       } else {
         if (navigator.share) {
           await navigator.share({
             title: k('shareTitle'),
-            text: `${k('shareText')} ${result.code}`,
-            url: inviteUrl,
+            text: shareText,
           });
         } else {
-          handleCopyLink();
+          handleCopyCode();
         }
       }
     } catch (err) {
@@ -180,91 +215,113 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const handleAddAnother = () => {
     setPhase('form');
     setName('');
-    setPhone('');
     setEmail('');
+    setPhone('');
     setResult(null);
     setError(null);
     setCopiedCode(false);
-    setCopiedLink(false);
     setReferrerInfo(null);
     setReferralCode('');
     setReferralError(null);
   };
 
-  const expiryDate = result?.expires_at
-    ? new Date(result.expires_at).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : null;
-
   return (
-    <AdminModal isOpen onClose={onClose} title={k('title')} titleIcon={UserPlus} size="sm">
+    <AdminModal isOpen onClose={onClose} title={k('addMemberTitle') || k('title')} titleIcon={UserPlus} size="sm">
       {phase === 'form' ? (
         <div className="space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-[12px] font-semibold text-[#9CA3AF] mb-1.5">
-              {k('memberName')} <span className="text-[#EF4444]">*</span>
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {k('memberName')} <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={k('memberNamePlaceholder')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] transition-colors"
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{
+                background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
             />
           </div>
 
-          {/* Phone */}
+          {/* Email (required) */}
           <div>
-            <label className="block text-[12px] font-semibold text-[#9CA3AF] mb-1.5">
-              {k('phone')}
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder={k('phonePlaceholder')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] transition-colors"
-            />
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="block text-[12px] font-semibold text-[#9CA3AF] mb-1.5">
-              {k('email')}
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {k('email')} <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={k('emailPlaceholder')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] transition-colors"
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{
+                background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
+            />
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              {k('phone')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder={k('phonePlaceholder')}
+              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+              style={{
+                background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
+              }}
             />
           </div>
 
           {/* Referral — scan or type */}
           <div>
-            <label className="block text-[12px] font-semibold text-[#9CA3AF] mb-1.5">
+            <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
               {t('admin.createInvite.referral', 'Referred by')}
             </label>
             {referrerInfo ? (
-              <div className="flex items-center gap-2.5 bg-[#10B981]/8 border border-[#10B981]/20 rounded-xl px-3 py-2.5">
+              <div
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-success) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-success) 20%, transparent)',
+                }}
+              >
                 {referrerInfo.avatarUrl ? (
-                  <img src={referrerInfo.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                  <img src={referrerInfo.avatarUrl} alt={referrerInfo.name || 'Referrer avatar'} className="w-8 h-8 rounded-full object-cover" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center">
-                    <span className="text-[12px] font-bold text-[#10B981]">{referrerInfo.name?.[0]?.toUpperCase()}</span>
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ background: 'color-mix(in srgb, var(--color-success) 20%, transparent)' }}
+                  >
+                    <span className="text-[12px] font-bold" style={{ color: 'var(--color-success)' }}>
+                      {referrerInfo.name?.[0]?.toUpperCase()}
+                    </span>
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#10B981] truncate">{referrerInfo.name}</p>
-                  <p className="text-[10px] text-[#6B7280]">{t('admin.createInvite.referralLinked', 'Referral will be linked')}</p>
+                  <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-success)' }}>{referrerInfo.name}</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('admin.createInvite.referralLinked', 'Referral will be linked')}
+                  </p>
                 </div>
-                <button onClick={() => { setReferrerInfo(null); setReferralCode(''); setReferralError(null); }}
-                  className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#EF4444] transition-colors">
+                <button
+                  onClick={() => { setReferrerInfo(null); setReferralCode(''); setReferralError(null); }}
+                  className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: 'var(--color-text-subtle)' }}
+                >
                   <X size={14} />
                 </button>
               </div>
@@ -276,30 +333,38 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                   onChange={(e) => setReferralCode(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && referralCode.trim()) { e.preventDefault(); handleReferralScan(referralCode); } }}
                   placeholder={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
-                  className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 pr-10 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 transition-colors"
+                  aria-label={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
+                  className="w-full rounded-xl px-3 py-2.5 pr-10 text-[13px] outline-none transition-colors"
+                  style={{
+                    background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                    border: '1px solid var(--color-border-subtle)',
+                    color: 'var(--color-text-primary)',
+                  }}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {referralLoading ? (
-                    <Loader2 size={14} className="animate-spin text-[#D4AF37]" />
+                    <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
                   ) : (
-                    <ScanLine size={14} className="text-[#4B5563]" />
+                    <ScanLine size={14} style={{ color: 'var(--color-text-subtle)' }} />
                   )}
                 </div>
               </div>
             )}
-            {referralError && <p className="text-[11px] text-[#EF4444] mt-1">{referralError}</p>}
+            {referralError && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{referralError}</p>}
             {!referrerInfo && !referralError && (
-              <p className="text-[10px] text-[#4B5563] mt-1">{t('admin.createInvite.referralHint', 'Scan a member\'s referral QR to link the referral automatically')}</p>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('admin.createInvite.referralHint', "Scan a member's referral QR to link the referral automatically")}
+              </p>
             )}
           </div>
 
-          {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}
+          {error && <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{error}</p>}
 
           <button
             onClick={handleCreate}
-            disabled={!name.trim() || loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold bg-[#D4AF37] disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-            style={{ color: '#000' }}
+            disabled={!name.trim() || !email.trim() || !phone.trim() || loading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
             {loading ? (
               <>
@@ -309,7 +374,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
             ) : (
               <>
                 <UserPlus size={14} />
-                {k('createInvite')}
+                {k('addMember') || k('createInvite')}
               </>
             )}
           </button>
@@ -317,89 +382,93 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
       ) : (
         <div className="space-y-5">
           {/* Success heading */}
-          <p className="text-center text-[14px] font-semibold text-[#10B981]">
-            {k('inviteCreated')}
-          </p>
-
-          {/* Prominent code display */}
-          <div className="bg-[#111827] border border-[#D4AF37]/20 rounded-xl py-5 px-4 text-center overflow-hidden">
-            <p className="text-[32px] font-bold tracking-[0.25em] text-[#D4AF37] font-mono select-all">
-              {result?.code}
+          <div className="text-center">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+              style={{ background: 'color-mix(in srgb, var(--color-success) 12%, transparent)' }}
+            >
+              <Check size={24} style={{ color: 'var(--color-success)' }} />
+            </div>
+            <p className="text-[14px] font-semibold" style={{ color: 'var(--color-success)' }}>
+              {k('memberCreated') || k('inviteCreated')}
             </p>
-            <p className="text-[11px] text-[#6B7280] mt-2">{name}</p>
+            <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              {result?.name}
+            </p>
           </div>
 
-          {/* QR Code */}
-          {inviteUrl && (
-            <div className="flex justify-center">
-              <div className="bg-white p-4 rounded-xl">
-                <QRCodeSVG
-                  value={inviteUrl}
-                  size={160}
-                  level="H"
-                  includeMargin={false}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Invite URL */}
-          <div className="bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-center">
-            <p className="text-[11px] text-[#6B7280] mb-1">{k('inviteLink')}</p>
-            <p className="text-[12px] text-[#D4AF37] font-mono break-all select-all">{inviteUrl}</p>
+          {/* Prominent code display */}
+          <div
+            className="rounded-xl py-5 px-4 text-center overflow-hidden"
+            style={{
+              background: 'var(--color-bg-input, var(--color-bg-elevated))',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)',
+            }}
+          >
+            <p
+              className="text-[32px] font-bold tracking-[0.25em] font-mono select-all"
+              style={{ color: 'var(--color-accent)' }}
+            >
+              {result?.code}
+            </p>
+            <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-subtle)' }}>
+              {k('linkCodeDescription') || t('admin.createInvite.linkCodeDescription', 'The member can use this code to set their password and access the app')}
+            </p>
           </div>
 
           {/* Action buttons row */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleCopyCode}
-              className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold transition-colors ${
-                copiedCode
-                  ? 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20'
-                  : 'bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15'
-              }`}
+              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold transition-colors"
+              style={copiedCode ? {
+                background: 'color-mix(in srgb, var(--color-success) 12%, transparent)',
+                color: 'var(--color-success)',
+                border: '1px solid color-mix(in srgb, var(--color-success) 20%, transparent)',
+              } : {
+                background: 'color-mix(in srgb, var(--color-text-primary) 4%, transparent)',
+                border: '1px solid var(--color-border-subtle)',
+                color: 'var(--color-text-muted)',
+              }}
             >
               {copiedCode ? <Check size={14} /> : <Copy size={14} />}
               {copiedCode ? k('copied') : k('copyCode')}
             </button>
             <button
-              onClick={handleCopyLink}
-              className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold transition-colors ${
-                copiedLink
-                  ? 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20'
-                  : 'bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15'
-              }`}
-            >
-              {copiedLink ? <Check size={14} /> : <Link size={14} />}
-              {copiedLink ? k('copied') : k('copyLink')}
-            </button>
-            <button
               onClick={handleShare}
-              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
+              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold transition-colors"
+              style={{
+                background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                color: 'var(--color-accent)',
+                border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+              }}
             >
               <Share2 size={14} />
               {k('share')}
             </button>
           </div>
 
-          {/* Expiry */}
-          {expiryDate && (
-            <p className="text-center text-[12px] text-[#6B7280]">
-              {k('expires')} {expiryDate}
-            </p>
-          )}
-
           {/* Bottom actions */}
           <div className="flex gap-3">
             <button
               onClick={handleAddAnother}
-              className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-[#111827] text-[#9CA3AF] border border-white/6 hover:bg-[#1a2235] transition-colors"
+              className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              style={{
+                background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
             >
               {k('addAnother')}
             </button>
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
+              className="flex-1 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              style={{
+                background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                color: 'var(--color-accent)',
+                border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+              }}
             >
               {k('done')}
             </button>

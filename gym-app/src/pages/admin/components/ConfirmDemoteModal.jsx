@@ -1,40 +1,45 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AdminModal } from '../../../components/admin';
 
 export default function ConfirmDemoteModal({ isOpen, onClose, trainer, clientCount, onConfirm }) {
+  const { t } = useTranslation('pages');
   if (!trainer) return null;
 
   return (
     <AdminModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Remove Trainer"
+      title={t('admin.trainers.removeTrainerTitle', 'Quitar Entrenador')}
       titleIcon={AlertTriangle}
       size="sm"
       footer={
         <>
           <button
             onClick={onClose}
-            className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
+            className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors"
+            style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
           >
-            Cancel
+            {t('admin.trainers.cancel', 'Cancelar')}
           </button>
           <button
             onClick={() => onConfirm(trainer.id)}
-            className="flex-1 py-2 rounded-lg text-[12px] font-semibold bg-[#EF4444] text-white hover:bg-[#DC2626] transition-colors whitespace-nowrap"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+            style={{ backgroundColor: '#EF4444', color: '#fff' }}
           >
-            Remove Trainer
+            <Trash2 size={14} />
+            {t('admin.trainers.removeTrainerConfirm', 'Quitar Entrenador')}
           </button>
         </>
       }
     >
       <div className="text-center">
-        <p className="text-[12px] text-[#9CA3AF]">
-          This will demote <span className="font-semibold text-[#E5E7EB]">{trainer.name}</span> back to a regular member.
+        <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+          {t('admin.trainers.demoteDesc', 'Esto degradará a')} <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{trainer.name}</span> {t('admin.trainers.demoteDescEnd', 'a miembro regular.')}
         </p>
         {clientCount > 0 && (
-          <p className="text-[11px] text-[#F59E0B] mt-2 bg-[#F59E0B]/10 rounded-lg px-3 py-1.5 inline-block">
-            {clientCount} client{clientCount !== 1 ? 's' : ''} will be unassigned
+          <p className="text-[12px] mt-3 rounded-lg px-3 py-2 inline-block" style={{ backgroundColor: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}>
+            {clientCount} {clientCount !== 1 ? t('admin.trainers.clientsWillUnassign', 'clientes serán desasignados') : t('admin.trainers.clientWillUnassign', 'cliente será desasignado')}
           </p>
         )}
       </div>

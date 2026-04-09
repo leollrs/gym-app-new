@@ -233,6 +233,20 @@
     "mealCount": "{{count}} comidas por d\u00eda"
   },
 
+  "dataConsent": {
+    "title": "C\u00f3mo Usamos Tus Datos",
+    "subtitle": "Estamos comprometidos con proteger tu privacidad",
+    "health": "Registramos tus entrenamientos y medidas corporales para personalizar tu entrenamiento. Los datos de salud se sincronizan con Apple Health / Google Fit.",
+    "location": "Usamos tu ubicaci\u00f3n solo para verificar check-ins en el gimnasio. Nunca te rastreamos en segundo plano.",
+    "camera": "Usamos tu c\u00e1mara para escanear c\u00f3digos QR y analizar fotos de comida. Las fotos se procesan de forma segura y se eliminan los metadatos.",
+    "analytics": "Recopilamos datos de uso an\u00f3nimos para mejorar la app. Nunca vendemos tus datos ni los usamos para publicidad.",
+    "privacyLink": "Lee nuestra Pol\u00edtica de Privacidad completa",
+    "agree": "Acepto",
+    "decline": "Ahora No",
+    "declineWarning": "Algunas funciones como sincronizaci\u00f3n de salud y check-in autom\u00e1tico no estar\u00e1n disponibles sin estos permisos.",
+    "changeAnytime": "Puedes cambiar estos permisos en cualquier momento en Configuraci\u00f3n"
+  },
+
   "disclaimer": "Esta aplicaci\u00f3n provee herramientas de seguimiento fitness \u00fanicamente y no constituye consejo m\u00e9dico. Consulta a un profesional de salud antes de comenzar cualquier programa de ejercicios.",
   "finish": "\u00a1Listo, vamos!",
   "initialWeightNote": "Peso inicial al registrarse"

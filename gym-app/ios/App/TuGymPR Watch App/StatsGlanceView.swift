@@ -8,25 +8,28 @@ struct FriendsActiveView: View {
             VStack(spacing: 10) {
                 // Header
                 Text("FRIENDS")
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.caption2)
+                    .fontWeight(.heavy)
                     .foregroundColor(DS.mutedText)
                     .tracking(1.5)
                     .padding(.top, 4)
+                    .accessibilityAddTraits(.isHeader)
 
                 if session.activeFriends.isEmpty {
                     // Empty state
                     VStack(spacing: 8) {
                         Image(systemName: "person.2.fill")
-                            .font(.system(size: 28))
+                            .font(.title3)
                             .foregroundColor(Color(white: 0.25))
                             .padding(.top, 16)
 
                         Text("No friends active")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.body)
+                            .fontWeight(.semibold)
                             .foregroundColor(Color(white: 0.4))
 
                         Text("Your gym friends' activity\nwill show up here")
-                            .font(.system(size: 11))
+                            .font(.caption)
                             .foregroundColor(Color(white: 0.3))
                             .multilineTextAlignment(.center)
                     }
@@ -58,13 +61,15 @@ struct FriendRow: View {
                     .fill(isActive ? DS.gold.opacity(0.2) : DS.cardBg)
                     .frame(width: 32, height: 32)
                 Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.caption)
+                    .fontWeight(.bold)
                     .foregroundColor(isActive ? DS.gold : DS.mutedText)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.caption)
+                    .fontWeight(.bold)
                     .foregroundColor(.white)
                     .lineLimit(1)
 
@@ -73,12 +78,15 @@ struct FriendRow: View {
                         Circle()
                             .fill(Color.green)
                             .frame(width: 5, height: 5)
+                            .accessibilityLabel("Currently working out")
                         Text("Working out")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.caption2)
+                            .fontWeight(.medium)
                             .foregroundColor(.green)
                     } else {
                         Text(status)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.caption2)
+                            .fontWeight(.medium)
                             .foregroundColor(DS.mutedText)
                     }
                 }

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug,
-  Activity, HeadphonesIcon, AlertTriangle,
+  Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,8 @@ const NAV_SECTIONS = [
       { to: '/platform',             labelKey: 'platformNav.gyms',       icon: Building2, exact: true },
       { to: '/platform/support',     labelKey: 'platformNav.support',    icon: HeadphonesIcon },
       { to: '/platform/analytics',   labelKey: 'platformNav.analytics',  icon: BarChart3 },
+      { to: '/platform/gym-health',  labelKey: 'platformNav.gymHealth',  icon: HeartPulse },
+      { to: '/platform/adoption',    labelKey: 'platformNav.adoption',   icon: Puzzle },
     ],
   },
   {
@@ -91,7 +93,7 @@ export default function PlatformLayout({ children }) {
   return (
     <div className="min-h-screen bg-[#05070B] flex">
       <a href="#main-content" className="skip-to-content">
-        Skip to main content
+        {t('platformLayout.skipToContent', 'Skip to main content')}
       </a>
 
       {/* Desktop sidebar */}
@@ -103,9 +105,9 @@ export default function PlatformLayout({ children }) {
             </div>
             <div className="min-w-0">
               <p className="text-[14px] font-semibold text-[#E5E7EB] truncate leading-tight">
-                Platform Admin
+                {t('platformLayout.platformAdmin', 'Platform Admin')}
               </p>
-              <p className="text-[11px] text-[#D4AF37] leading-tight">Super Admin</p>
+              <p className="text-[11px] text-[#D4AF37] leading-tight">{t('platformLayout.superAdmin', 'Super Admin')}</p>
             </div>
           </div>
           <div className="mt-4 border-b border-white/[0.06]" />
@@ -148,7 +150,7 @@ export default function PlatformLayout({ children }) {
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[#6B7280] hover:text-[#EF4444] hover:bg-red-500/5 transition-colors duration-200"
           >
             <LogOut size={14} />
-            Sign out
+            {t('platformLayout.signOut', 'Sign out')}
           </button>
         </div>
       </aside>
@@ -188,7 +190,7 @@ export default function PlatformLayout({ children }) {
       >
         <div className="bg-[#0F172A] border-t border-white/[0.06] rounded-t-2xl px-4 pt-3 pb-4 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[13px] font-semibold text-[#9CA3AF]">More Pages</p>
+            <p className="text-[13px] font-semibold text-[#9CA3AF]">{t('platformLayout.morePages', 'More Pages')}</p>
             <button
               onClick={() => setMoreMenuOpen(false)}
               className="w-11 h-11 flex items-center justify-center rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors duration-200"

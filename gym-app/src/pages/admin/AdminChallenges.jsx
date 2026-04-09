@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trophy, ChevronDown, Users, Gift, Pencil, Trash2, Award } from 'lucide-react';
+import { Plus, Trophy, ChevronDown, Users, Gift, Pencil, Trash2, Award, BarChart3, Flame, Dumbbell, Zap, TrendingUp, Timer, Crown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,8 +8,11 @@ import { format, isPast, isFuture } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { logAdminAction } from '../../lib/adminAudit';
 import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
+import ChallengeSuggestionCard from './components/ChallengeSuggestionCard';
 
 // ── Participant list panel ─────────────────────────────────
 const ParticipantList = ({ challengeId, gymId }) => {
@@ -54,6 +57,29 @@ const ParticipantList = ({ challengeId, gymId }) => {
     </div>
   );
 };
+
+const CHALLENGE_COVERS = {
+  fire:      { icon: Flame,      gradient: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)' },
+  power:     { icon: Dumbbell,   gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
+  endurance: { icon: Zap,        gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
+  growth:    { icon: TrendingUp, gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
+  compete:   { icon: Trophy,     gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
+  team:      { icon: Users,      gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
+  speed:     { icon: Timer,      gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
+  champion:  { icon: Crown,      gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
+};
+
+function ChallengeCoverBadge({ preset }) {
+  if (!preset) return null;
+  const cover = CHALLENGE_COVERS[preset];
+  if (!cover) return null;
+  const Icon = cover.icon;
+  return (
+    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: cover.gradient }}>
+      <Icon size={17} className="text-white/90" />
+    </div>
+  );
+}
 
 const statusBadge = (c) => {
   if (isFuture(new Date(c.start_date))) return { labelKey: 'admin.challenges.upcoming', color: 'text-blue-400 bg-blue-500/10' };
@@ -167,6 +193,7 @@ export default function AdminChallenges() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [tab, setTab] = useState('active');
   const [awardingId, setAwardingId] = useState(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState({});
 
   useEffect(() => { document.title = t('admin.challenges.title', 'Challenges') + ' | TuGymPR'; }, [t]);
 
@@ -205,7 +232,8 @@ export default function AdminChallenges() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, challengeId) => {
+      logAdminAction('award_prizes', 'challenge', challengeId);
       queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
       showToast(t('admin.challenges.prizesAwarded', 'Prizes awarded!'), 'success');
       setAwardingId(null);
@@ -220,7 +248,8 @@ export default function AdminChallenges() {
       const { error } = await supabase.from('challenges').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, challengeId) => {
+      logAdminAction('delete_challenge', 'challenge', challengeId);
       queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
       showToast(t('admin.challenges.challengeDeleted', 'Challenge deleted'), 'success');
       setDeleteConfirm(null);
@@ -243,6 +272,35 @@ export default function AdminChallenges() {
         className="mb-6"
       />
 
+      {/* AI Suggestion */}
+      <ChallengeSuggestionCard
+        gymId={gymId}
+        onCreateFromSuggestion={async (suggestion) => {
+          try {
+            const now = new Date();
+            const endDate = new Date(now);
+            endDate.setDate(endDate.getDate() + (suggestion.duration_days || 14));
+            const payload = {
+              gym_id: gymId,
+              created_by: profile?.id,
+              name: isEs ? (suggestion.suggested_name_es || suggestion.suggested_name_en) : (suggestion.suggested_name_en || suggestion.suggested_name_es),
+              type: suggestion.challenge_type || 'consistency',
+              description: isEs ? (suggestion.description_es || suggestion.description_en || '') : (suggestion.description_en || suggestion.description_es || ''),
+              start_date: now.toISOString(),
+              end_date: endDate.toISOString(),
+              status: 'active',
+            };
+            const { error } = await supabase.from('challenges').insert(payload);
+            if (error) throw error;
+            logAdminAction('create_challenge', 'challenge', null, { source: 'ai_suggestion' });
+            queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
+            showToast(t('admin.challenges.challengeCreated', 'Reto creado'), 'success');
+          } catch (err) {
+            showToast(err.message || 'Error', 'error');
+          }
+        }}
+      />
+
       {/* Tabs */}
       {(() => {
         const activeChallenges = challenges.filter(c => !isFuture(new Date(c.start_date)) && !isPast(new Date(c.end_date)));
@@ -253,132 +311,63 @@ export default function AdminChallenges() {
           { key: 'upcoming', label: t('admin.challenges.tabUpcoming', 'Upcoming'), count: upcomingChallenges.length },
           { key: 'past', label: t('admin.challenges.tabPast', 'Past'), count: pastChallenges.length },
         ];
-        const filtered = tab === 'active' ? activeChallenges : tab === 'upcoming' ? upcomingChallenges : pastChallenges;
+        const filterMap = { active: activeChallenges, upcoming: upcomingChallenges, past: pastChallenges };
+        const emptyMsgMap = {
+          active: t('admin.challenges.noActive', 'No active challenges'),
+          upcoming: t('admin.challenges.noUpcoming', 'No upcoming challenges'),
+          past: t('admin.challenges.noPast', 'No past challenges'),
+        };
 
-        return <>
-          <AdminTabs tabs={tabs} active={tab} onChange={setTab} className="mb-5" />
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[80px]" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-20">
-          <Trophy size={32} className="text-[#6B7280] mx-auto mb-3" />
-          <p className="text-[14px] text-[#6B7280]">{tab === 'active' ? t('admin.challenges.noActive', 'No active challenges') : tab === 'upcoming' ? t('admin.challenges.noUpcoming', 'No upcoming challenges') : t('admin.challenges.noPast', 'No past challenges')}</p>
-          <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((c, idx) => {
-            const badge = statusBadge(c);
-            const isOpen = expanded === c.id;
-            return (
-              <FadeIn key={c.id} delay={idx * 40}>
-                <AdminCard hover className="overflow-hidden !p-0">
-                  <button className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors"
-                    onClick={() => setExpanded(isOpen ? null : c.id)}>
-                    <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                      <Trophy size={17} className="text-[#D4AF37]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{c.name}</p>
-                      <p className="text-[11px] text-[#6B7280]">
-                        {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#6B7280] flex-shrink-0">
-                      <Users size={11} />
-                      <span>{c._participantCount}</span>
-                    </div>
-                    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge.color} flex-shrink-0`}>
-                      {t(badge.labelKey)}
-                    </span>
-                    <ChevronDown size={16} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {isOpen && (
-                    <div className="px-4 pb-4 border-t border-white/4">
-                      {/* Edit / Delete buttons */}
-                      <div className="flex items-center gap-2 mt-3 mb-3">
-                        <button onClick={(e) => { e.stopPropagation(); setEditChallenge(c); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[#E5E7EB] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg transition-colors">
-                          <Pencil size={12} /> {t('admin.challenges.edit', 'Edit')}
-                        </button>
-                        {deleteConfirm === c.id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[12px] text-red-400">{t('admin.challenges.deleteConfirm')}</span>
-                            <button onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}
-                              className="px-3 py-1.5 text-[12px] font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
-                              {deleteMutation.isPending ? t('admin.challenges.deleting', 'Deleting...') : t('admin.challenges.confirm', 'Confirm')}
-                            </button>
-                            <button onClick={() => setDeleteConfirm(null)}
-                              className="px-3 py-1.5 text-[12px] font-medium text-[#9CA3AF] bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
-                              {t('admin.challenges.cancel', 'Cancel')}
-                            </button>
-                          </div>
+        const renderChallengeList = (filtered, tabKey) => {
+          if (isLoading) return (
+            <div className="space-y-3">
+              {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[80px]" />)}
+            </div>
+          );
+          if (filtered.length === 0) return (
+            <div className="text-center py-20">
+              <Trophy size={32} className="text-[#6B7280] mx-auto mb-3" />
+              <p className="text-[14px] text-[#6B7280]">{emptyMsgMap[tabKey]}</p>
+              <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
+            </div>
+          );
+          return (
+            <div className="space-y-3">
+              {filtered.map((c, idx) => {
+                const badge = statusBadge(c);
+                const isOpen = expanded === c.id;
+                return (
+                  <FadeIn key={c.id} delay={idx * 40}>
+                    <AdminCard hover className="overflow-hidden !p-0">
+                      <button className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/2 transition-colors"
+                        onClick={() => setExpanded(isOpen ? null : c.id)}>
+                        {c.cover_preset ? (
+                          <ChallengeCoverBadge preset={c.cover_preset} />
                         ) : (
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-lg transition-colors">
-                            <Trash2 size={12} /> {t('admin.challenges.delete', 'Delete')}
-                          </button>
-                        )}
-                      </div>
-
-                      {c.description && (
-                        <p className="text-[12px] text-[#9CA3AF] mt-3 mb-2">{c.description}</p>
-                      )}
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-[11px] text-[#6B7280] bg-white/5 px-2 py-0.5 rounded-lg capitalize">{c.type.replace('_', ' ')}</span>
-                        {badge.labelKey === 'admin.challenges.live' && (
-                          <span className="flex items-center gap-1 text-[11px] text-emerald-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            {t('admin.challenges.liveScoring', 'Live scoring')}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Rewards display */}
-                      {(() => {
-                        let rewards = null;
-                        try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
-                        if (!rewards || !Array.isArray(rewards)) return null;
-                        const medals = ['🥇', '🥈', '🥉'];
-                        return (
-                          <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <Gift size={12} className="text-[#D4AF37]" />
-                              <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">{t('admin.challenges.rewards', 'Rewards')}</p>
-                            </div>
-                            <div className="space-y-1.5">
-                              {rewards.map((r, i) => (
-                                <div key={i} className="flex items-center gap-2 text-[12px]">
-                                  <span>{medals[i]}</span>
-                                  <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
-                                  {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
-                                </div>
-                              ))}
-                            </div>
+                          <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                            <Trophy size={17} className="text-[#D4AF37]" />
                           </div>
-                        );
-                      })()}
-
-                      {/* Enrolled members */}
-                      <div className="mb-4">
-                        <SectionLabel className="mb-2">
-                          {t('admin.challenges.participants', 'Participants')} · {c._participantCount}
-                        </SectionLabel>
-                        <ParticipantList challengeId={c.id} gymId={gymId} />
-                      </div>
-
-                      {/* Leaderboard */}
-                      <SectionLabel className="mb-2">{t('admin.challenges.leaderboard', 'Leaderboard')}</SectionLabel>
-                      <ChallengeLeaderboard challenge={c} gymId={gymId} />
-
-                      {/* Award Prizes button — only for ended challenges with rewards and not yet awarded */}
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{c.name}</p>
+                          <p className="text-[11px] text-[#6B7280]">
+                            {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#6B7280] flex-shrink-0">
+                          <Users size={11} />
+                          <span>{c._participantCount}</span>
+                        </div>
+                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge.color} flex-shrink-0`}>
+                          {t(badge.labelKey)}
+                        </span>
+                        <ChevronDown size={16} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {/* Award Prizes — surfaced prominently on ended challenges */}
                       {isPast(new Date(c.end_date)) && c.reward_description && !c._prizesAwarded && (
-                        <div className="mt-4">
+                        <div className="px-4 pb-3 -mt-1">
                           <button
-                            onClick={() => { setAwardingId(c.id); awardPrizesMutation.mutate(c.id); }}
+                            onClick={(e) => { e.stopPropagation(); setAwardingId(c.id); awardPrizesMutation.mutate(c.id); }}
                             disabled={awardPrizesMutation.isPending && awardingId === c.id}
                             className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors disabled:opacity-50 w-full justify-center"
                           >
@@ -390,21 +379,120 @@ export default function AdminChallenges() {
                         </div>
                       )}
                       {isPast(new Date(c.end_date)) && c._prizesAwarded && (
-                        <div className="mt-4 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                          <Award size={14} className="text-emerald-400" />
-                          <span className="text-[12px] font-semibold text-emerald-400">
-                            {t('admin.challenges.prizesAwarded', 'Prizes awarded!')}
-                          </span>
+                        <div className="px-4 pb-3 -mt-1">
+                          <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                            <Award size={14} className="text-emerald-400" />
+                            <span className="text-[12px] font-semibold text-emerald-400">
+                              {t('admin.challenges.prizesAwarded', 'Prizes awarded!')}
+                            </span>
+                          </div>
                         </div>
                       )}
-                    </div>
-                  )}
-                </AdminCard>
-              </FadeIn>
-            );
-          })}
-        </div>
-      )}
+                      {isOpen && (
+                        <div className="px-4 pb-4 border-t border-white/4">
+                          {/* Edit / Delete buttons */}
+                          <div className="flex items-center gap-2 mt-3 mb-3">
+                            <button onClick={(e) => { e.stopPropagation(); setEditChallenge(c); }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[#E5E7EB] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg transition-colors">
+                              <Pencil size={12} /> {t('admin.challenges.edit', 'Edit')}
+                            </button>
+                            {deleteConfirm === c.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12px] text-red-400">{t('admin.challenges.deleteConfirm')}</span>
+                                <button onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}
+                                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                                  style={{ backgroundColor: '#EF4444', color: '#fff' }}>
+                                  {deleteMutation.isPending ? t('admin.challenges.deleting', 'Eliminando...') : t('admin.challenges.confirm', 'Confirmar')}
+                                </button>
+                                <button onClick={() => setDeleteConfirm(null)}
+                                  className="px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors"
+                                  style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                                  {t('admin.challenges.cancel', 'Cancelar')}
+                                </button>
+                              </div>
+                            ) : (
+                              <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-lg transition-colors">
+                                <Trash2 size={12} /> {t('admin.challenges.delete', 'Delete')}
+                              </button>
+                            )}
+                          </div>
+
+                          {c.description && (
+                            <p className="text-[12px] text-[#9CA3AF] mt-3 mb-2">{c.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[11px] text-[#6B7280] bg-white/5 px-2 py-0.5 rounded-lg capitalize">{c.type.replace('_', ' ')}</span>
+                            {badge.labelKey === 'admin.challenges.live' && (
+                              <span className="flex items-center gap-1 text-[11px] text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                {t('admin.challenges.liveScoring', 'Live scoring')}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Rewards display */}
+                          {(() => {
+                            let rewards = null;
+                            try { rewards = c.reward_description ? JSON.parse(c.reward_description) : null; } catch {}
+                            if (!rewards || !Array.isArray(rewards)) return null;
+                            const medals = ['🥇', '🥈', '🥉'];
+                            return (
+                              <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
+                                <div className="flex items-center gap-1.5 mb-2">
+                                  <Gift size={12} className="text-[#D4AF37]" />
+                                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">{t('admin.challenges.rewards', 'Rewards')}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {rewards.map((r, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-[12px]">
+                                      <span>{medals[i]}</span>
+                                      <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
+                                      {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Enrolled members */}
+                          <div className="mb-4">
+                            <SectionLabel className="mb-2">
+                              {t('admin.challenges.participants', 'Participants')} · {c._participantCount}
+                            </SectionLabel>
+                            <ParticipantList challengeId={c.id} gymId={gymId} />
+                          </div>
+
+                          {/* Leaderboard — collapsed by default */}
+                          <div>
+                            <button
+                              onClick={() => setLeaderboardOpen(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
+                              className="flex items-center gap-2 w-full py-2.5 px-3 rounded-xl bg-white/4 hover:bg-white/6 border border-white/6 transition-colors"
+                            >
+                              <BarChart3 size={14} className="text-[#D4AF37]" />
+                              <span className="text-[12px] font-semibold text-[#E5E7EB]">{t('admin.challenges.viewLeaderboard', 'View Leaderboard')}</span>
+                              <ChevronDown size={14} className={`ml-auto text-[#6B7280] transition-transform ${leaderboardOpen[c.id] ? 'rotate-180' : ''}`} />
+                            </button>
+                            {leaderboardOpen[c.id] && (
+                              <ChallengeLeaderboard challenge={c} gymId={gymId} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </AdminCard>
+                  </FadeIn>
+                );
+              })}
+            </div>
+          );
+        };
+
+        return <>
+          <AdminTabs tabs={tabs} active={tab} onChange={setTab} className="mb-5" />
+          <SwipeableTabContent tabs={tabs} active={tab} onChange={setTab}>
+            {(tabKey) => renderChallengeList(filterMap[tabKey] || [], tabKey)}
+          </SwipeableTabContent>
         </>;
       })()}
 

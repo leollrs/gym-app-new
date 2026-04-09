@@ -32,7 +32,7 @@ const ExpandableText = ({ text }) => {
         {text}
       </p>
       {text.length > 120 && (
-        <button onClick={() => setExpanded(!expanded)} className="text-[12px] font-semibold mt-1 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded" style={{ color: 'var(--color-accent)' }}>
+        <button onClick={() => setExpanded(!expanded)} className="text-[12px] font-semibold mt-1 min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded" style={{ color: 'var(--color-accent)' }}>
           {expanded ? t('exerciseLibrary.showLess', 'Show less') : t('exerciseLibrary.readMore', 'Read more')}
         </button>
       )}
@@ -57,7 +57,7 @@ const ExerciseWhyTooltip = ({ exercise, onboarding, lang }) => {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-        className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+        className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-[#D4AF37] before:absolute before:inset-[-13px] before:content-['']"
         style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}
         aria-label={t('workouts.whyThisExercise')}
       >
@@ -65,7 +65,7 @@ const ExerciseWhyTooltip = ({ exercise, onboarding, lang }) => {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div className="fixed inset-0 z-[60]" role="button" tabIndex={0} aria-label="Close tooltip" onClick={(e) => { e.stopPropagation(); setOpen(false); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setOpen(false); } }} />
           <div className="absolute left-0 top-full mt-1 z-[61] w-[240px] rounded-xl p-3 shadow-xl border" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }}>
             <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-accent)' }}>{t('workouts.whyThisExercise')}</p>
             <div className="flex flex-col gap-1.5">
@@ -132,7 +132,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
   const weekNums = Object.keys(weeks).map(Number).sort((a, b) => a - b);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm py-[10vh] px-4" role="button" tabIndex={0} aria-label="Close program details" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}>
       <div role="dialog" aria-modal="true" className="rounded-[20px] w-full max-w-lg md:max-w-2xl max-h-[80vh] flex flex-col overflow-hidden border" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex-1 min-w-0 pr-4">
@@ -997,7 +997,7 @@ const Workouts = () => {
 
   return (
     <>
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-4 pb-28 md:pb-12">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 lg:px-8 pt-4 pb-28 md:pb-12">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-8 gap-2" data-tour="tour-workouts-page">
@@ -1005,7 +1005,7 @@ const Workouts = () => {
         <div className="flex items-center gap-2 flex-shrink-0">
           <Link
             to="/exercises"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-[12px] font-medium transition-colors"
             style={{ color: 'var(--color-text-subtle)' }}
           >
             <BookOpen size={14} />
@@ -1013,7 +1013,7 @@ const Workouts = () => {
           </Link>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-xl text-[12px] font-semibold transition-colors"
             style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
           >
             <Plus size={14} />
@@ -1073,8 +1073,8 @@ const Workouts = () => {
                   dismissAdaptationSuggestions();
                   setAdaptationSuggestions(null);
                 }}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                aria-label="Dismiss"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                aria-label="Dismiss adaptation suggestion"
               >
                 <X size={14} style={{ color: 'var(--color-text-subtle)' }} />
               </button>
@@ -1275,7 +1275,7 @@ const Workouts = () => {
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.myRoutines')}</p>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="text-[11px] font-medium transition-colors"
+            className="text-[11px] font-medium transition-colors min-h-[44px] min-w-[44px]"
             style={{ color: 'var(--color-text-subtle)' }}
           >
             {t('workouts.addNew')}
@@ -1301,7 +1301,7 @@ const Workouts = () => {
           const hiddenCount = routines.length - 3;
           return (
             <>
-              <div className="space-y-1">
+              <div className="space-y-1 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
                 {visible.map(routine => {
                   const isExpanded = expandedRoutineId === routine.id;
                   return (
@@ -1372,7 +1372,7 @@ const Workouts = () => {
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.myPrograms')}</p>
           <button
             onClick={() => setShowGenerator(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
+            className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-xl text-[11px] font-semibold transition-colors bg-[#10B981]/10 text-[#10B981]"
           >
             <Zap size={12} />
             {t('workouts.newProgram')}
@@ -1387,10 +1387,10 @@ const Workouts = () => {
               <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.goalsChanged')}</p>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.goalsChangedDesc')}</p>
               <div className="flex gap-2 mt-3">
-                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#10B981] text-white">
+                <button onClick={() => setShowGenerator(true)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold bg-[#10B981] text-white">
                   {t('workouts.newProgramBtn')}
                 </button>
-                <button onClick={() => setGoalsMismatch(false)} className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors" style={{ color: 'var(--color-text-subtle)' }}>
+                <button onClick={() => setGoalsMismatch(false)} className="px-3 py-1.5 min-h-[44px] rounded-lg text-[11px] font-medium transition-colors" style={{ color: 'var(--color-text-subtle)' }}>
                   {t('workouts.dismiss')}
                 </button>
               </div>
@@ -1423,7 +1423,7 @@ const Workouts = () => {
 
               return (
                 <div key={prog.id} className="relative rounded-2xl transition-colors duration-200 group" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <button onClick={() => { loadExerciseNames(); setSelectedMyProgram(prog); setMyProgWeek('1'); }} className="w-full text-left p-5">
+                  <button onClick={() => { loadExerciseNames(); setSelectedMyProgram(prog); setMyProgWeek('1'); }} className="w-full text-left p-5" aria-label={`View program: ${gpName(prog)}`}>
                     <div className="flex items-center justify-between mb-2.5">
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
                         <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -1516,7 +1516,7 @@ const Workouts = () => {
             <button
               key={cat}
               onClick={() => setProgramCategoryFilter(cat)}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+              className={`shrink-0 px-3.5 py-1.5 min-h-[44px] rounded-full text-[11px] font-medium transition-all ${
                 cat === 'Gym Exclusive' ? 'border' : ''
               }`}
               style={programCategoryFilter === cat
@@ -1535,10 +1535,14 @@ const Workouts = () => {
 
         {/* Gym Exclusive programs section */}
         {programCategoryFilter !== 'Gym Exclusive' && gymPrograms.length > 0 && (
-          <div className="mb-6">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-accent)' }}>
-              {t('workouts.gymExclusive', 'Gym Exclusive')}
-            </p>
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-px flex-1" style={{ background: 'linear-gradient(to right, color-mix(in srgb, var(--color-accent) 30%, transparent), transparent)' }} />
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] shrink-0" style={{ color: 'var(--color-accent)' }}>
+                {t('workouts.gymExclusive', 'Gym Exclusive')}
+              </p>
+              <div className="h-px flex-1" style={{ background: 'linear-gradient(to left, color-mix(in srgb, var(--color-accent) 30%, transparent), transparent)' }} />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               {gymPrograms.slice(0, 2).map(prog => (
                 <button
@@ -1546,6 +1550,7 @@ const Workouts = () => {
                   onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
                   className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
                   style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                  aria-label={`${prog.name} - Gym Exclusive program`}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
                   <div className="absolute top-3 left-3 z-10">
@@ -1561,6 +1566,14 @@ const Workouts = () => {
                   </div>
                 </button>
               ))}
+            </div>
+            {/* Separator before community programs */}
+            <div className="flex items-center gap-3 mt-8">
+              <div className="h-px flex-1" style={{ background: 'linear-gradient(to right, var(--color-border-subtle), transparent)' }} />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('workouts.communityPrograms', 'Programs')}
+              </p>
+              <div className="h-px flex-1" style={{ background: 'linear-gradient(to left, var(--color-border-subtle), transparent)' }} />
             </div>
           </div>
         )}
@@ -1584,6 +1597,7 @@ const Workouts = () => {
                   onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
                   className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
                   style={{ aspectRatio: '3 / 4', backgroundColor: 'var(--color-bg-card)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
+                  aria-label={`${prog.name} - Gym Exclusive program`}
                 >
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-card)), var(--color-bg-card))' }} />
                   <div className="absolute top-3 left-3 z-10">
@@ -1622,6 +1636,7 @@ const Workouts = () => {
                 onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); setTemplateWeek('1'); }}
                 className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150 group"
                 style={{ aspectRatio: '3 / 4' }}
+                aria-label={`${progName(tmpl)} - ${tmpl.level} program`}
               >
                 {/* Background image */}
                 <div className="absolute inset-0">
@@ -1694,7 +1709,7 @@ const Workouts = () => {
 
       return (
         <div className="fixed inset-0 z-[70] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSelectedMyProgram(null)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label="Close program details" onClick={() => setSelectedMyProgram(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedMyProgram(null); }} />
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] overflow-hidden" style={{ backgroundColor: 'var(--color-bg-secondary)', paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}>
             <div className="relative flex justify-center pt-4 pb-3 shrink-0">
               <div className="w-8 h-[3px] rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
@@ -1864,7 +1879,7 @@ const Workouts = () => {
 
       return (
         <div className="fixed inset-0 z-[70] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSelectedTemplate(null)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label="Close program details" onClick={() => setSelectedTemplate(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedTemplate(null); }} />
           <div
             className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-[28px] overflow-hidden"
             style={{ backgroundColor: 'var(--color-bg-secondary)', paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}
@@ -1896,7 +1911,7 @@ const Workouts = () => {
               </div>
 
               {/* Meta pills */}
-              <div className="flex items-center gap-2 mb-8">
+              <div className="flex flex-wrap items-center gap-2 mb-8">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
                   <Activity size={11} style={{ color: 'var(--color-text-subtle)' }} />
                   <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.xPerWeek', { count: selectedTemplate.daysPerWeek })}</span>
@@ -1905,10 +1920,12 @@ const Workouts = () => {
                   <Calendar size={11} style={{ color: 'var(--color-text-subtle)' }} />
                   <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.weeksCount', { count: selectedTemplate.durationWeeks })}</span>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <Target size={11} style={{ color: 'var(--color-text-subtle)' }} />
-                  <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t(`workouts.programGoals.${selectedTemplate.goal}`)}</span>
-                </div>
+                {selectedTemplate.goal && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                    <Target size={11} style={{ color: 'var(--color-text-subtle)' }} />
+                    <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t(`workouts.programGoals.${selectedTemplate.goal}`)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Week navigator */}
@@ -2054,8 +2071,8 @@ const Workouts = () => {
 
     {/* ── Start Mode Choice Dialog ────────────── */}
     {startModeChoice === 'choosing' && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setStartModeChoice(null)}>
-        <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close start mode dialog" onClick={() => setStartModeChoice(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setStartModeChoice(null); }}>
+        <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
             <Calendar size={24} className="text-[#D4AF37]" />
           </div>
@@ -2094,8 +2111,8 @@ const Workouts = () => {
 
     {/* ── Switch Program Confirmation Dialog ────────────── */}
     {switchStep && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setSwitchStep(null)}>
-        <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close switch program dialog" onClick={() => setSwitchStep(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSwitchStep(null); }}>
+        <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           {switchStep === 'confirm' ? (
             <>
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
@@ -2158,8 +2175,8 @@ const Workouts = () => {
 
     {/* ── Day Compression Warning Modal ────────────────── */}
     {dayCompressionWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setDayCompressionWarning(null)}>
-        <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close day compression warning" onClick={() => setDayCompressionWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDayCompressionWarning(null); }}>
+        <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />
           </div>
@@ -2188,8 +2205,8 @@ const Workouts = () => {
 
     {/* ── Goal Mismatch Warning Modal ─────────────────── */}
     {goalMismatchWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" onClick={() => setGoalMismatchWarning(null)}>
-        <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label="Close goal mismatch warning" onClick={() => setGoalMismatchWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setGoalMismatchWarning(null); }}>
+        <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />
           </div>

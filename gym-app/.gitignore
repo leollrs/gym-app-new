@@ -20,3 +20,11 @@ gym-app/
 
 # Firebase credentials (should not be committed)
 android/app/google-services.json
+
+# Private keys and certificates
+*.key
+*.pem
+*.p8
+*.p12
+*.crt
+*.der

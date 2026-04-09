@@ -15,6 +15,7 @@ const LikeButton = ({ feedItemId, currentUserId, currentReaction, reactionCounts
     <button
       type="button"
       onClick={handleToggle}
+      aria-label={isLiked ? 'Unlike' : 'Like'}
       className={`flex items-center gap-1.5 text-[13px] font-semibold transition-colors select-none ${
         isLiked ? 'text-red-500' : 'text-[var(--color-text-muted,#6B7280)] hover:text-red-400'
       }`}

@@ -103,7 +103,7 @@ const WarmUp = ({ onComplete, onSkip }) => {
         {/* Timer ring */}
         <div className="relative w-36 h-36 mb-5">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+            <circle cx="60" cy="60" r="54" fill="none" stroke="var(--color-border-default)" strokeWidth="6" />
             <circle
               cx="60" cy="60" r="54" fill="none"
               stroke="var(--color-accent)" strokeWidth="6" strokeLinecap="round"
@@ -143,7 +143,7 @@ const WarmUp = ({ onComplete, onSkip }) => {
           <button
             onClick={handleSkipMovement}
             className="w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-95"
-            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+            style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
             aria-label="Skip movement"
           >
             <SkipForward size={18} style={{ color: 'var(--color-text-muted)' }} />
@@ -188,9 +188,9 @@ const WarmUp = ({ onComplete, onSkip }) => {
           onClick={onComplete}
           className="w-full py-4 rounded-2xl font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{
-            backgroundColor: allDone ? 'var(--color-accent)' : 'rgba(255,255,255,0.06)',
+            backgroundColor: allDone ? 'var(--color-accent)' : 'var(--color-bg-card)',
             color: allDone ? '#000' : 'var(--color-text-primary)',
-            border: allDone ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            border: allDone ? 'none' : '1px solid var(--color-border-default)',
           }}
         >
           {allDone ? t('warmUp.startWorkout') : t('warmUp.startWorkoutEarly')}

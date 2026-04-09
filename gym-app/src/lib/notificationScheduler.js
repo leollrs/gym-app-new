@@ -13,7 +13,7 @@ import {
   sendNotification,
   isQuietHours,
 } from './notifications';
-import { REWARDS_CATALOG, getUserPoints } from './rewardsEngine';
+import { getUserPoints } from './rewardsEngine';
 import { checkSmartVisitReminder, formatScheduleTime } from './workoutScheduleTracker';
 
 // ── HELPERS ──────────────────────────────────────────────────
@@ -431,20 +431,28 @@ async function checkRewardProximity(userId, gymId, profile) {
   if (!points) return;
   const currentPoints = points.total_points ?? 0;
 
-  // Find the cheapest reward the user can't yet afford but is close to
-  const sortedRewards = [...REWARDS_CATALOG].sort((a, b) => a.cost - b.cost);
+  // Fetch gym rewards from DB, sorted by cost
+  const { data: gymRewards } = await supabase
+    .from('gym_rewards')
+    .select('name, name_es, cost_points')
+    .eq('gym_id', gymId)
+    .eq('is_active', true)
+    .order('cost_points');
 
-  for (const reward of sortedRewards) {
-    if (currentPoints >= reward.cost) continue; // already can afford
-    const remaining = reward.cost - currentPoints;
-    const threshold = reward.cost * 0.15; // within 15%
+  if (!gymRewards?.length) return;
+
+  for (const reward of gymRewards) {
+    if (currentPoints >= reward.cost_points) continue; // already can afford
+    const remaining = reward.cost_points - currentPoints;
+    const threshold = reward.cost_points * 0.15; // within 15%
 
     if (remaining <= threshold && remaining > 0) {
+      const rewardName = i18n.language?.startsWith('es') && reward.name_es ? reward.name_es : reward.name;
       await createNotification({
         profileId: userId,
         gymId,
         type: NOTIFICATION_TYPES.SYSTEM,
-        title: i18n.t('notifications.closeToReward', { ns: 'common', reward: reward.name, defaultValue: `You're close to a ${reward.name}!` }),
+        title: i18n.t('notifications.closeToReward', { ns: 'common', reward: rewardName, defaultValue: `You're close to a ${rewardName}!` }),
         body: i18n.t('notifications.closeToRewardBody', { ns: 'common', points: remaining, defaultValue: `Just ${remaining} more points to redeem. Keep training!` }),
       });
       break; // only nudge for the nearest reward
@@ -679,6 +687,88 @@ async function checkSmartVisitNotification(userId, gymId, profile) {
   });
 }
 
+/**
+ * Challenge Onboarding Nudge
+ * After exactly 3 completed workouts, nudge the user to join an active challenge.
+ */
+async function checkChallengeOnboardingNudge(userId, gymId) {
+  const { data: sessions } = await supabase
+    .from('workout_sessions')
+    .select('id')
+    .eq('profile_id', userId)
+    .eq('status', 'completed');
+
+  const count = sessions?.length || 0;
+  if (count !== 3) return;
+
+  const alreadySent = await wasNotificationWithTitleSince(userId, 'challenge', daysAgoStart(90));
+  if (alreadySent) return;
+
+  const now = new Date().toISOString();
+  const { data: activeChallenges } = await supabase
+    .from('challenges')
+    .select('id, name')
+    .eq('gym_id', gymId)
+    .lte('start_date', now)
+    .gte('end_date', now)
+    .eq('status', 'active')
+    .limit(1);
+
+  if (!activeChallenges?.length) return;
+
+  const challenge = activeChallenges[0];
+  await createNotification({
+    profileId: userId,
+    gymId,
+    type: 'challenge_update',
+    title: i18n.t('notifications.challengeNudgeTitle', { ns: 'common', defaultValue: 'Ready for a challenge?' }),
+    body: i18n.t('notifications.challengeNudgeBody', { ns: 'common', name: challenge.name, defaultValue: `You've completed 3 workouts! Join "${challenge.name}" and compete with your gym.` }),
+    dedupKey: `challenge_nudge_${userId}`,
+  });
+}
+
+/**
+ * Same-Day Streak-at-Risk Warning
+ * If user has a 3+ day streak, last activity was yesterday, and it's past 4 PM -> warn.
+ */
+async function checkStreakAtRisk(userId, gymId, profile) {
+  const { data: streakData } = await supabase
+    .from('streak_cache')
+    .select('current_streak, last_activity_date')
+    .eq('profile_id', userId)
+    .maybeSingle();
+
+  if (!streakData) return;
+
+  const currentStreak = streakData.current_streak || 0;
+  if (currentStreak < 3) return;
+
+  // Check if last_activity_date is yesterday
+  const lastActivity = new Date(streakData.last_activity_date);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    lastActivity.getFullYear() === yesterday.getFullYear() &&
+    lastActivity.getMonth() === yesterday.getMonth() &&
+    lastActivity.getDate() === yesterday.getDate();
+
+  if (!isYesterday) return;
+
+  // Only warn after 4 PM local time
+  const currentHour = new Date().getHours();
+  if (currentHour < 16) return;
+
+  const alreadySent = await wasNotificationWithTitleSince(userId, 'streak', todayStart());
+  if (alreadySent) return;
+
+  await sendNotification(userId, gymId, {
+    type: 'streak_warning',
+    title: i18n.t('notifications.streakAtRiskTitle', { ns: 'common', defaultValue: '🔥 Your streak is at risk!' }),
+    body: i18n.t('notifications.streakAtRiskBody', { ns: 'common', count: currentStreak, defaultValue: `Your ${currentStreak}-day streak breaks at midnight. One workout keeps it alive!` }),
+    dedupKey: `streak_risk_${userId}_${new Date().toISOString().slice(0, 10)}`,
+  });
+}
+
 // ── MAIN SCHEDULER ───────────────────────────────────────────
 
 /**
@@ -718,6 +808,8 @@ export async function runNotificationScheduler(userId, gymId) {
     checkWeightLogReminder(userId, gymId, profile),
     checkPunchCardProximity(userId, gymId, profile),
     checkSmartVisitNotification(userId, gymId, profile),
+    checkChallengeOnboardingNudge(userId, gymId),
+    checkStreakAtRisk(userId, gymId, profile),
   ];
 
   const results = await Promise.allSettled(checks);

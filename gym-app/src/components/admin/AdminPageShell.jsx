@@ -16,7 +16,7 @@ export default function AdminPageShell({
 }) {
   const sizeClass = SIZE_CLASS[size] || SIZE_CLASS.default;
   return (
-    <div className={`w-full ${sizeClass} mx-auto px-4 md:px-6 xl:px-8 py-6 md:py-8 pb-28 md:pb-12 ${className}`}>
+    <div className={`w-full ${sizeClass} mx-auto px-4 md:px-6 xl:px-8 py-6 md:py-8 pb-28 md:pb-12 overflow-x-hidden ${className}`}>
       {children}
     </div>
   );

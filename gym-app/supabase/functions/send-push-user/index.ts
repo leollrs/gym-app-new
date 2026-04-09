@@ -19,9 +19,10 @@ const FCM_CLIENT_EMAIL = Deno.env.get('FCM_CLIENT_EMAIL') || '';
 const FCM_PRIVATE_KEY  = Deno.env.get('FCM_PRIVATE_KEY') || '';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
+if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN ?? '',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -220,12 +221,10 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
-  if (!ALLOWED_ORIGIN) {
-    console.error('ALLOWED_ORIGIN environment variable is not set');
-    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  // Content-Type validation
+  const contentType = req.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return jsonResp({ error: 'Content-Type must be application/json' }, 415);
   }
 
   try {
@@ -369,7 +368,8 @@ serve(async (req) => {
             const errBody = await res.text();
             console.error(`APNs error: ${res.status} ${errBody}`);
             if (res.status === 410 || res.status === 400) {
-              await supabase.from('push_tokens').delete().eq('token', token);
+              const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+              if (deleteErr) console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);
             }
             throw new Error(`APNs ${res.status}`);
           }
@@ -407,7 +407,8 @@ serve(async (req) => {
             const err = await res.json().catch(() => ({}));
             console.error(`FCM error: ${res.status}`, err?.error?.message);
             if (res.status === 404 || res.status === 400) {
-              await supabase.from('push_tokens').delete().eq('token', token);
+              const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
+              if (deleteErr) console.error(`Failed to remove invalid FCM token ${token.substring(0, 10)}...: ${deleteErr.message}`);
             }
             throw new Error(`FCM ${res.status}`);
           }

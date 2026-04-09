@@ -10,6 +10,7 @@ import { format, subDays, subMonths } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { encryptMessage } from '../../lib/messageEncryption';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -294,7 +295,7 @@ async function fetchSegments(gymId) {
 // ── Main component ──────────────────────────────────────────
 export default function AdminSegments() {
   const { t } = useTranslation('pages');
-  const { profile } = useAuth();
+  const { user: authUser, profile } = useAuth();
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
   const queryClient = useQueryClient();
@@ -550,6 +551,7 @@ function SegmentListItem({ segment, isActive, onSelect, onEdit, onDelete, onTogg
             onClick={onTogglePin}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#D4AF37] hover:bg-white/[0.04] transition-all"
             title={segment.is_pinned ? t('admin.segments.unpin', 'Unpin') : t('admin.segments.pin', 'Pin')}
+            aria-label={segment.is_pinned ? t('admin.segments.unpin', 'Unpin') : t('admin.segments.pin', 'Pin')}
           >
             {segment.is_pinned ? <PinOff size={13} /> : <Pin size={13} />}
           </button>
@@ -557,6 +559,7 @@ function SegmentListItem({ segment, isActive, onSelect, onEdit, onDelete, onTogg
             onClick={onEdit}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#3B82F6] hover:bg-white/[0.04] transition-all"
             title={t('admin.segments.edit', 'Edit')}
+            aria-label={t('admin.segments.edit', 'Edit')}
           >
             <Pencil size={13} />
           </button>
@@ -564,6 +567,7 @@ function SegmentListItem({ segment, isActive, onSelect, onEdit, onDelete, onTogg
             onClick={onDelete}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] hover:bg-white/[0.04] transition-all"
             title={t('admin.segments.delete', 'Delete')}
+            aria-label={t('admin.segments.delete', 'Delete')}
           >
             <Trash2 size={13} />
           </button>
@@ -636,17 +640,18 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
     const message = prompt(t('admin.segments.messagePrompt', 'Message to send to all members in this segment:'));
     if (!message?.trim()) return;
 
-    const notifications = filtered.map(m => ({
-      profile_id: m.id,
-      gym_id: gymId,
-      type: 'admin_message',
-      title: segment.name,
-      body: message.trim(),
-    }));
-
-    const { error } = await supabase.from('notifications').insert(notifications);
-    if (error) {
-      logger.error('Segment bulk message:', error);
+    for (const m of filtered) {
+      try {
+        const { data: convoId } = await supabase.rpc('get_or_create_conversation', { p_other_user: m.id });
+        if (!convoId) continue;
+        const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
+        const seed = convo?.encryption_seed || convoId;
+        const encrypted = await encryptMessage(message.trim(), convoId, seed);
+        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: authUser?.id, body: encrypted });
+        await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
+      } catch (err) {
+        logger.error('Segment DM failed for:', m.id, err);
+      }
     }
   };
 
@@ -675,16 +680,17 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={t('admin.segments.searchMembers', 'Search members...')}
+              aria-label={t('admin.segments.searchMembers', 'Search members')}
               className="w-full bg-white/[0.04] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/40"
             />
           </div>
-          <button onClick={() => setRefreshKey(k => k + 1)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all" title={t('admin.segments.refresh', 'Refresh')}>
+          <button onClick={() => setRefreshKey(k => k + 1)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all" title={t('admin.segments.refresh', 'Refresh')} aria-label={t('admin.segments.refresh', 'Refresh')}>
             <RefreshCw size={13} />
           </button>
-          <button onClick={handleSendMessage} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.sendMessage', 'Message All')}>
+          <button onClick={handleSendMessage} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.sendMessage', 'Message All')} aria-label={t('admin.segments.sendMessage', 'Message All')}>
             <Send size={13} />
           </button>
-          <button onClick={handleExport} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.export', 'Export CSV')}>
+          <button onClick={handleExport} disabled={!filtered.length} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] bg-white/[0.03] hover:bg-white/[0.06] border border-white/6 rounded-lg transition-all disabled:opacity-40" title={t('admin.segments.export', 'Export CSV')} aria-label={t('admin.segments.export', 'Export CSV')}>
             <Download size={13} />
           </button>
           <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 rounded-lg transition-colors">
@@ -985,6 +991,7 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder={t('admin.segments.namePlaceholder', 'Segment name...')}
+            aria-label={t('admin.segments.namePlaceholder', 'Segment name')}
             className={inputClass}
             maxLength={80}
           />
@@ -992,6 +999,7 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder={t('admin.segments.descPlaceholder', 'Optional description...')}
+            aria-label={t('admin.segments.descPlaceholder', 'Optional description')}
             className={inputClass}
             maxLength={200}
           />
@@ -1212,9 +1220,9 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
 // ── Filter Row ──────────────────────────────────────────────
 function FilterRow({ label, children }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2 items-start">
-      <p className="text-[12px] text-[#9CA3AF] font-medium pt-2 sm:text-right">{label}</p>
+    <label className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2 items-start">
+      <span className="text-[12px] text-[#9CA3AF] font-medium pt-2 sm:text-right">{label}</span>
       <div>{children}</div>
-    </div>
+    </label>
   );
 }

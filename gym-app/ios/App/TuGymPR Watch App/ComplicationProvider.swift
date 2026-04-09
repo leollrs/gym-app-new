@@ -86,10 +86,10 @@ struct TuGymPRComplicationEntryView: View {
             AccessoryWidgetBackground()
             VStack(spacing: 1) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundColor(complicationGold)
                 Text("\(entry.streak)")
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.system(.body, design: .rounded).weight(.black))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             }
@@ -102,31 +102,31 @@ struct TuGymPRComplicationEntryView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundColor(complicationGold)
                 Text("TuGymPR")
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(.caption.weight(.heavy))
                     .foregroundColor(complicationGold)
             }
 
             HStack(spacing: 4) {
                 Text("\(entry.streak) day streak")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
                 Spacer()
                 Text("\(entry.weeklyCount)/wk")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundColor(.secondary)
             }
 
             HStack(spacing: 4) {
                 Text(entry.lastWorkoutName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Text("·")
                     .foregroundColor(.secondary)
                 Text(formatRelativeDate(entry.lastWorkoutDate))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -137,7 +137,7 @@ struct TuGymPRComplicationEntryView: View {
 
     private var inlineView: some View {
         Text("🔥 \(entry.streak) streak • \(entry.lastWorkoutName)")
-            .font(.system(size: 13, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .lineLimit(1)
     }
 
@@ -148,10 +148,10 @@ struct TuGymPRComplicationEntryView: View {
             AccessoryWidgetBackground()
             VStack(spacing: 1) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundColor(complicationGold)
                 Text("\(entry.streak)")
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(.headline, design: .rounded).weight(.black))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
             }

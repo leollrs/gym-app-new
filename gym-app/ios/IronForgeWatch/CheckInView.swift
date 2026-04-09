@@ -11,23 +11,27 @@ struct CheckInView: View {
         VStack(spacing: 16) {
             if session.checkedIn || tapped {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 44))
+                    .font(.system(size: 44, weight: .regular, design: .default))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundColor(.green)
+                    .accessibilityLabel("Checked in successfully")
 
                 Text("Checked In!")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.headline)
                     .foregroundColor(.white)
 
                 Text("You're at the gym")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundColor(.gray)
             } else {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 44))
+                    .font(.system(size: 44, weight: .regular, design: .default))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundColor(gold)
+                    .accessibilityLabel("Gym location")
 
                 Text("Check In")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.headline)
                     .foregroundColor(.white)
 
                 Button(action: {
@@ -39,7 +43,7 @@ struct CheckInView: View {
                     }
                 }) {
                     Text("Tap to Check In")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -51,7 +55,7 @@ struct CheckInView: View {
 
                 if !session.isReachable {
                     Text("iPhone not reachable")
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundColor(.red)
                 }
             }

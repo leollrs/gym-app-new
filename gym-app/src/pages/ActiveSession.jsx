@@ -71,11 +71,11 @@ const WarmUpTimer = ({ durationSec, onComplete }) => {
   const secs = displaySeconds % 60;
 
   return (
-    <div className="w-full rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+    <div className="w-full rounded-2xl p-5" style={{ backgroundColor: 'var(--color-bg-card)' }} role="timer" aria-label={done ? 'Timer complete' : `${mins > 0 ? `${mins} minutes ${secs} seconds` : `${secs} seconds`} remaining`}>
       {/* Timer display */}
       <div className="flex items-center justify-center py-8">
         <div className="relative w-44 h-44">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128" aria-hidden="true">
             <circle cx="64" cy="64" r="58" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
             <circle
               cx="64" cy="64" r="58" fill="none"
@@ -213,6 +213,7 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
               <input
                 type="number" inputMode="decimal" min="0" step="0.1" placeholder="0.0"
                 value={distance} onChange={e => setDistance(e.target.value)}
+                aria-label={t('cardio.distance', 'Distance')}
                 className="w-full border border-white/[0.06] rounded-xl px-3 py-2.5 outline-none"
                 style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', fontSize: '16px' }}
               />
@@ -441,9 +442,13 @@ const ActiveSession = () => {
   const onboardingRef = useRef(null); // cached onboarding for intra-session suggestions
 
   // Warm-up phase: 'gate' (show splash), 'active' (doing warm-ups), 'done' (skipped or finished)
-  const [warmUpPhase, setWarmUpPhase] = useState(() =>
-    savedSession || IS_EMPTY_SESSION(id) ? 'done' : 'gate'
-  );
+  const [warmUpPhase, setWarmUpPhase] = useState(() => {
+    if (IS_EMPTY_SESSION(id)) return 'done';
+    if (savedSession?.warmUpPhase === 'done') return 'done';
+    // If was mid warm-up ('active') or has any saved data, restart warm-up gate
+    if (savedSession) return savedSession.warmUpPhase === 'active' ? 'gate' : 'done';
+    return 'gate';
+  });
   const [warmUpExercises, setWarmUpExercises] = useState([]);
   const [warmUpIndex, setWarmUpIndex] = useState(0);
 
@@ -451,6 +456,7 @@ const ActiveSession = () => {
     savedSession?.currentExerciseIndex ?? 0
   );
   const [isPaused, setIsPaused] = useState(savedSession?.isPaused ?? false);
+  const [removedExerciseIds, setRemovedExerciseIds] = useState(savedSession?.removedExerciseIds ?? []);
 
   const startedAt = useRef(savedSession?.startedAt ?? new Date().toISOString());
   const [elapsedTime, setElapsedTime] = useState(savedSession?.elapsedTime ?? 0);
@@ -839,8 +845,6 @@ const ActiveSession = () => {
         suggestion: computeSuggestion(prevSetsMap[ex.id] || [], onboarding, ex.targetReps, 0, exerciseMeta),
         };
       });
-      setExercises(enriched);
-
       // DB draft wins; fall back to localStorage if no DB draft
       const draft = dbDraft
         ? {
@@ -851,6 +855,7 @@ const ActiveSession = () => {
             elapsedTime:           dbDraft.elapsed_time,
             startedAt:             dbDraft.started_at,
             isPaused:              dbDraft.is_paused ?? false,
+            removedExerciseIds:    dbDraft.removed_exercise_ids ?? [],
           }
         : savedSession
           ? {
@@ -861,18 +866,27 @@ const ActiveSession = () => {
               elapsedTime:          savedSession.elapsedTime,
               startedAt:            savedSession.startedAt,
               isPaused:             savedSession.isPaused ?? false,
+              removedExerciseIds:   savedSession.removedExerciseIds ?? [],
             }
           : null;
 
+      // Filter out exercises that were removed during a previous session
+      const draftRemovedIds = draft?.removedExerciseIds ?? [];
+      const finalExercises = draftRemovedIds.length > 0
+        ? enriched.filter(ex => !draftRemovedIds.includes(ex.id))
+        : enriched;
+      if (draftRemovedIds.length > 0) setRemovedExerciseIds(draftRemovedIds);
+      setExercises(finalExercises);
+
       // Check if draft exercises match the current routine — discard stale drafts
-      const currentExerciseIds = new Set(enriched.map(ex => ex.id));
+      const currentExerciseIds = new Set(finalExercises.map(ex => ex.id));
       const draftExerciseIds = draft?.loggedSets ? Object.keys(draft.loggedSets) : [];
       const draftMatchesRoutine = draftExerciseIds.length > 0 &&
         draftExerciseIds.some(eid => currentExerciseIds.has(eid));
 
       if (draft?.loggedSets && draftMatchesRoutine) {
         const restored = {};
-        enriched.forEach(ex => {
+        finalExercises.forEach(ex => {
           restored[ex.id] = draft.loggedSets[ex.id]?.map(s => ({
             weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '', ...s,
           })) ?? Array.from({ length: ex.targetSets }).map(() => ({
@@ -903,7 +917,7 @@ const ActiveSession = () => {
           }
         }
         const initialSets = {};
-        enriched.forEach(ex => {
+        finalExercises.forEach(ex => {
           initialSets[ex.id] = Array.from({ length: ex.targetSets }).map(() => ({
             weight: '', reps: '', completed: false, isPR: false, rpe: null, notes: '',
           }));
@@ -912,7 +926,7 @@ const ActiveSession = () => {
       }
 
       // Cache workout data for offline use
-      try { cacheWorkoutData(id, { exercises: enriched, routineName: localizeRoutineName(routine.name) }); } catch { }
+      try { cacheWorkoutData(id, { exercises: finalExercises, routineName: localizeRoutineName(routine.name) }); } catch { }
 
       setDataLoading(false);
       } catch (err) {
@@ -993,6 +1007,7 @@ const ActiveSession = () => {
         restRemainingSeconds: isResting && restStartedAt.current
           ? Math.max(0, Math.ceil((restStartedAt.current + currentRestDurationRef.current * 1000 - Date.now()) / 1000))
           : 0,
+        isPaused,
       });
       // Sync to Apple Watch — send actual set weight/reps if available
       const watchSetIdx = curEx ? (loggedSets[curEx.id] || []).findIndex(s => !s.completed) : -1;
@@ -1075,7 +1090,9 @@ const ActiveSession = () => {
     routineName,
     exerciseSwaps,
     isPaused,
-    ...(isEmptyMode && { exercises }), // Save exercises for empty mode restore
+    warmUpPhase,
+    removedExerciseIds,
+    exercises, // Persist exercises so removed ones stay removed on reload
   };
   if (!dataLoading && user && profile && !isEmptyMode) {
     draftSaveRef.current = {
@@ -1090,6 +1107,7 @@ const ActiveSession = () => {
       live_prs: livePRs.current,
       current_exercise_index: currentExerciseIndex,
       is_paused: isPaused,
+      removed_exercise_ids: removedExerciseIds,
       updated_at: new Date().toISOString(),
     };
   }
@@ -1122,10 +1140,12 @@ const ActiveSession = () => {
         livePRs: livePRs.current,
         currentExerciseIndex,
         routineName,
-        ...(isEmptyMode && { exercises }), // Persist exercises for empty mode
+        warmUpPhase,
+        removedExerciseIds,
+        exercises, // Persist exercises so removed ones stay removed on reload
       }));
     } catch { }
-  }, [loggedSets, sessionPRs, dataLoading, sessionKey, currentExerciseIndex, elapsedTime, routineName, exercises, isEmptyMode]);
+  }, [loggedSets, sessionPRs, dataLoading, sessionKey, currentExerciseIndex, elapsedTime, routineName, exercises, warmUpPhase, removedExerciseIds]);
 
   // ── Force-save on browser close or tab switch to background ─────────────────
   useEffect(() => {
@@ -1368,7 +1388,8 @@ const ActiveSession = () => {
           }
         } else {
           // Last set — trigger finish after state updates
-          setTimeout(() => handleFinish(), 100);
+          // Use ref to avoid stale closure (this runs inside setLoggedSets updater)
+          setTimeout(() => handleFinishRef.current?.(), 100);
         }
       } else {
         set.isPR = false;
@@ -1613,12 +1634,17 @@ const ActiveSession = () => {
         }).catch((err) => console.warn('Failed to link class booking:', err));
       }
 
+      // Prefer server-computed counts (immune to stale closures) with client fallback
+      const serverSets = result.completed_sets ?? completedSets;
+      const serverExercises = result.exercise_count ?? Object.values(loggedSets).filter(sets => sets.some(s => s.completed)).length;
+
       navigate('/session-summary', {
         replace: true,
         state: {
-          routineName, elapsedTime, totalVolume, completedSets,
-          totalSets,
-          totalExercises: Object.values(loggedSets).filter(sets => sets.some(s => s.completed)).length, sessionPRs, exerciseSwaps,
+          routineName, elapsedTime, totalVolume,
+          completedSets: serverSets,
+          totalSets: serverSets, // all sent sets are completed (we only send completed)
+          totalExercises: serverExercises, sessionPRs, exerciseSwaps,
           completedAt: new Date().toISOString(),
           xpEarned: result.xp_earned,
           sessionId: result.session_id,
@@ -1657,7 +1683,7 @@ const ActiveSession = () => {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-2 border-amber-700 border-t-amber-400 rounded-full animate-spin" />
+          <div className="w-10 h-10 border-2 border-amber-700 border-t-amber-400 rounded-full animate-spin" role="status" aria-busy={true} aria-label="Loading workout" />
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>Loading workout…</p>
         </div>
       </div>
@@ -1752,15 +1778,12 @@ const ActiveSession = () => {
   const activeSet = activeSetIndex >= 0 ? currentSets[activeSetIndex] : null;
   const allSetsComplete = activeSetIndex === -1;
   const hasNextExercise = currentExerciseIndex < exercises.length - 1;
-  // Bodyweight exercises (pull-ups, dips, etc.) do not require a weight to complete a set
-  const currentLocalEx = currentExercise ? localExercises.find(e => e.id === currentExercise.id) : null;
-  const isCurrentBodyweight = currentLocalEx?.equipment === 'Bodyweight';
+  // Allow 0 weight for all exercises (bodyweight, rehab, warm-up sets, etc.)
   const canComplete = activeSet
     && activeSet.reps
     && !isNaN(Number(activeSet.reps)) && Number(activeSet.reps) > 0
-    && (isCurrentBodyweight
-      ? (activeSet.weight === '' || activeSet.weight === '0' || (!isNaN(Number(activeSet.weight)) && Number(activeSet.weight) >= 0))
-      : (activeSet.weight && !isNaN(Number(activeSet.weight)) && Number(activeSet.weight) > 0));
+    && activeSet.weight !== '' && activeSet.weight !== undefined
+    && !isNaN(Number(activeSet.weight)) && Number(activeSet.weight) >= 0;
   const handleCompleteSet = () => {
     if (!canComplete || !currentExercise) return;
     handleToggleComplete(
@@ -1807,6 +1830,17 @@ const ActiveSession = () => {
       return;
     }
     const idx = currentExerciseIndex;
+    const removedEx = exercises[idx];
+    // Track removed exercise ID so it stays removed on reload
+    if (removedEx) {
+      setRemovedExerciseIds(prev => [...prev, removedEx.id]);
+      // Clean up loggedSets for the removed exercise so totalSets adjusts
+      setLoggedSets(prev => {
+        const updated = { ...prev };
+        delete updated[removedEx.id];
+        return updated;
+      });
+    }
     setExercises(prev => prev.filter((_, i) => i !== idx));
     if (idx >= exercises.length - 1) {
       setCurrentExerciseIndex(Math.max(0, idx - 1));
@@ -2034,7 +2068,7 @@ const ActiveSession = () => {
                 {/* Video placeholder / demo area */}
                 {localWu?.videoUrl ? (
                   <div className="relative w-full aspect-video bg-black/40 flex items-center justify-center">
-                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay aria-label={`${wuName} exercise demonstration`} />
                   </div>
                 ) : (
                   <div className="w-full h-24" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.1), rgba(234,88,12,0.03))' }} />
@@ -2281,6 +2315,8 @@ const ActiveSession = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[250] flex flex-col"
             style={{ backgroundColor: 'var(--color-bg-primary)', paddingTop: 'env(safe-area-inset-top, 0px)' }}
+            role="dialog"
+            aria-label={t('activeSession.addExercise')}
           >
             {/* Header — title + close */}
             <div className="flex items-center gap-2 px-4 pt-4 pb-3">
@@ -2289,6 +2325,7 @@ const ActiveSession = () => {
                 onClick={() => { setShowAddExercise(false); setExerciseSearch(''); setSelectedMuscle(''); setShowFilters(false); setShowFavoritesOnly(false); setPreviewExercise(null); }}
                 className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors"
                 style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-default)' }}
+                aria-label="Close"
               >
                 <X size={20} />
               </button>
@@ -2303,6 +2340,7 @@ const ActiveSession = () => {
                   value={exerciseSearch}
                   onChange={e => setExerciseSearch(e.target.value)}
                   placeholder={t('activeSession.searchExercises')}
+                  aria-label={t('activeSession.searchExercises')}
                   className="flex-1 text-[14px] bg-transparent focus:outline-none min-w-0"
                   style={{ color: 'var(--color-text-primary)' }}
                   autoFocus
@@ -2311,7 +2349,8 @@ const ActiveSession = () => {
                 <button
                   onClick={() => setShowFavoritesOnly(v => !v)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
-                  aria-label="Favorites"
+                  aria-label="Toggle favorites filter"
+                  aria-pressed={showFavoritesOnly}
                 >
                   <Star size={16} fill={showFavoritesOnly ? 'var(--color-accent)' : 'none'} style={{ color: showFavoritesOnly ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
                 </button>
@@ -2319,7 +2358,8 @@ const ActiveSession = () => {
                 <button
                   onClick={() => setShowFilters(v => !v)}
                   className="w-8 h-8 flex items-center justify-center rounded-lg shrink-0 active:scale-90 transition-transform"
-                  aria-label="Filter"
+                  aria-label="Open exercise filters"
+                  aria-expanded={showFilters}
                 >
                   <SlidersHorizontal size={16} style={{ color: (showFilters || selectedMuscle) ? 'var(--color-accent)' : 'var(--color-text-subtle)' }} />
                 </button>
@@ -2330,13 +2370,13 @@ const ActiveSession = () => {
             {(selectedMuscle || selectedEquipment) && (
               <div className="px-4 pb-2 flex gap-2">
                 {selectedMuscle && (
-                  <button onClick={() => setSelectedMuscle('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/20 active:scale-95">
+                  <button onClick={() => setSelectedMuscle('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/20 active:scale-95" aria-label={`Remove ${t(`muscleGroups.${selectedMuscle}`, selectedMuscle)} filter`}>
                     {t(`muscleGroups.${selectedMuscle}`, selectedMuscle)}
                     <X size={12} />
                   </button>
                 )}
                 {selectedEquipment && (
-                  <button onClick={() => setSelectedEquipment('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#60A5FA]/15 text-[#60A5FA] border border-[#60A5FA]/20 active:scale-95">
+                  <button onClick={() => setSelectedEquipment('')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#60A5FA]/15 text-[#60A5FA] border border-[#60A5FA]/20 active:scale-95" aria-label={`Remove ${selectedEquipment} filter`}>
                     {selectedEquipment}
                     <X size={12} />
                   </button>
@@ -2374,7 +2414,7 @@ const ActiveSession = () => {
                         onClick={() => handleAddExerciseToSession(ex)}
                         className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition-transform"
                         style={{ backgroundColor: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.2)' }}
-                        aria-label="Add"
+                        aria-label={`Add ${exName(ex) || ex.name}`}
                       >
                         <Plus size={18} style={{ color: 'var(--color-accent)' }} />
                       </button>
@@ -2414,9 +2454,11 @@ const ActiveSession = () => {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="fixed inset-0 z-[260] flex items-end justify-center"
+                  role="dialog"
+                  aria-label="Filter exercises"
                   onClick={() => setShowFilters(false)}
                 >
-                  <div className="absolute inset-0 bg-black/60" />
+                  <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
                   <motion.div
                     initial={{ y: 300 }}
                     animate={{ y: 0 }}
@@ -2496,6 +2538,8 @@ const ActiveSession = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[250] flex flex-col"
             style={{ backgroundColor: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))' }}
+            role="dialog"
+            aria-label={t('activeSession.swapTitle', { exercise: exName(swapTargetExercise) })}
           >
             <div className="flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex-1 min-w-0">
@@ -2510,6 +2554,7 @@ const ActiveSession = () => {
                 onClick={() => { setShowSwapModal(false); setSwapSearch(''); setSwapSelectedReason(null); }}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-white/[0.06] hover:opacity-80 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ml-3 shrink-0"
                 style={{ color: 'var(--color-text-muted)' }}
+                aria-label="Close"
               >
                 <X size={20} />
               </button>
@@ -2546,6 +2591,7 @@ const ActiveSession = () => {
                   value={swapSearch}
                   onChange={e => setSwapSearch(e.target.value)}
                   placeholder={t('activeSession.swapSearchPlaceholder')}
+                  aria-label={t('activeSession.swapSearchPlaceholder')}
                   className="w-full pl-9 pr-4 py-3 rounded-xl border border-white/[0.06] text-[14px] focus:border-[#D4AF37]/40 focus:outline-none"
                   style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
                   autoFocus

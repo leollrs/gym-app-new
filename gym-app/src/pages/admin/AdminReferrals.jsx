@@ -173,18 +173,13 @@ export default function AdminReferrals() {
   });
 
   // CSV export
-  const exportCSV = () => {
+  const handleExportCSV = async () => {
+    const { downloadCSVString } = await import('../../lib/csvExport');
     const header = `${t('admin.referrals.csvReferrer', 'Referrer')},${t('admin.referrals.csvReferred', 'Referred')},${t('admin.referrals.csvStatus', 'Status')},${t('admin.referrals.csvDate', 'Date')},${t('admin.referrals.csvPoints', 'Points')}\n`;
     const rows = filtered.map(r =>
       `"${r.referrer?.full_name || ''}","${r.referred?.full_name || ''}","${r.status}","${format(new Date(r.created_at), 'yyyy-MM-dd')}","${r.points_awarded || 0}"`
     ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `referrals-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadCSVString(`referrals-${format(new Date(), 'yyyy-MM-dd')}.csv`, header + rows);
   };
 
   const MEDALS = ['🥇', '🥈', '🥉'];
@@ -209,6 +204,7 @@ export default function AdminReferrals() {
           <input
             type="text"
             placeholder={t('admin.referrals.searchByName')}
+            aria-label={t('admin.referrals.searchByName')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/30"
@@ -235,8 +231,9 @@ export default function AdminReferrals() {
 
           {/* Export */}
           <button
-            onClick={exportCSV}
-            className="flex items-center gap-1.5 bg-[#111827]/60 border border-white/[0.04] rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors"
+            onClick={handleExportCSV}
+            disabled={isLoading || !filtered.length}
+            className="flex items-center gap-1.5 bg-[#111827]/60 border border-white/[0.04] rounded-xl px-3 py-2.5 text-[12px] font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download size={13} />
             {t('admin.referrals.export', 'Export')}

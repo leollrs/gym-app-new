@@ -4,7 +4,7 @@ import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Flag, Gift,
   Image, Link, MoreHorizontal, EyeOff, VolumeX,
-  AlertTriangle, Trash2, PenSquare,
+  AlertTriangle, Trash2, PenSquare, Ban,
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Droplets, PersonStanding, Flame,
 } from 'lucide-react';
@@ -63,8 +63,8 @@ const ReportModal = ({ open, onClose, onSubmit, t }) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={handleClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={t('social.report.title')} onClick={handleClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
       <div
         className="relative w-full max-w-[420px] mx-4 mb-4 sm:mb-0 rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
         style={{ background: 'var(--color-bg-card)' }}
@@ -82,6 +82,7 @@ const ReportModal = ({ open, onClose, onSubmit, t }) => {
           <button
             type="button"
             onClick={handleClose}
+            aria-label={t('social.report.cancel')}
             className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06] transition-colors"
             style={{ color: 'var(--color-text-subtle)' }}
           >
@@ -324,7 +325,7 @@ const FeedContent = ({ type, data, t }) => {
         {data.photo_url && (
           <img
             src={data.photo_url}
-            alt="Post"
+            alt={data.body ? `${t('social.postImage')}: ${data.body.slice(0, 80)}` : t('social.postImage')}
             className="w-full rounded-xl object-cover max-h-[400px]"
             loading="lazy"
           />
@@ -416,7 +417,7 @@ const CommentRow = ({ comment }) => (
 );
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
-const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onDelete, onProfilePreview, reportedIds, t }) => {
+const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onBlock, onDelete, onProfilePreview, reportedIds, t }) => {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
@@ -560,7 +561,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 
       {/* Header */}
       <div className="flex items-center gap-4 p-5 pb-4">
-        <button type="button" onClick={() => onProfilePreview?.(item.actor_id)} className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
+        <button type="button" onClick={() => onProfilePreview?.(item.actor_id)} aria-label={t('social.viewProfile', { name: item.profiles?.full_name ?? 'Gym Member' })} className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
           <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} avatarType={item.profiles?.avatar_type} avatarValue={item.profiles?.avatar_value} />
         </button>
         <div className="flex-1 min-w-0">
@@ -614,6 +615,16 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
                   {t('social.muteUser', { name: item.profiles?.full_name?.split(' ')[0] ?? '' })}
                 </button>
               )}
+              {item.actor_id !== currentUserId && (
+                <button
+                  type="button"
+                  onClick={() => { onBlock(item.actor_id, item.profiles?.full_name); setShowMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors text-left border-t border-white/[0.06]"
+                >
+                  <Ban size={15} className="text-red-400" />
+                  {t('social.blockUser', { name: item.profiles?.full_name?.split(' ')[0] ?? '' })}
+                </button>
+              )}
               {item.actor_id === currentUserId && (
                 <button
                   type="button"
@@ -646,6 +657,8 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         <button
           type="button"
           onClick={handleToggleComments}
+          aria-label={t('social.comment')}
+          aria-expanded={showComments}
           className={`flex items-center gap-2 text-[13px] font-semibold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg ${showComments ? 'text-blue-400' : ''}`}
           style={!showComments ? { color: 'var(--color-text-subtle)' } : undefined}
         >
@@ -695,7 +708,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         <div className="px-5 pb-5 pt-1 border-t border-white/[0.06]" style={{ background: 'color-mix(in srgb, var(--color-bg-card) 50%, transparent)' }}>
           <div className="pt-3 flex flex-col">
             {comments === null ? (
-              <p className="text-[13px] py-3 text-center" style={{ color: 'var(--color-text-muted)' }}>{t('social.loading')}</p>
+              <p className="text-[13px] py-3 text-center" role="status" aria-busy={true} style={{ color: 'var(--color-text-muted)' }}>{t('social.loading')}</p>
             ) : comments.length === 0 ? (
               <p className="text-[13px] py-2" style={{ color: 'var(--color-text-muted)' }}>{t('social.noCommentsYet')}</p>
             ) : (
@@ -714,6 +727,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
                     key={u.id}
                     type="button"
                     onClick={() => insertMention(u.username)}
+                    aria-label={`${t('social.mention', 'Mention')} @${u.username}`}
                     className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-white/[0.06] transition-colors"
                   >
                     <Avatar src={u.avatar_url} name={u.full_name ?? '?'} size={28} avatarType={u.avatar_type} avatarValue={u.avatar_value} />
@@ -911,7 +925,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
             />
           </div>
           {searching && (
-            <div className="mt-3 flex justify-center py-4">
+            <div className="mt-3 flex justify-center py-4" role="status" aria-busy={true} aria-label={t('social.searching', 'Searching')}>
               <div className="w-5 h-5 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
             </div>
           )}
@@ -1060,6 +1074,7 @@ const SocialFeed = ({ embedded = false }) => {
   const [reportedIds, setReportedIds] = useState(new Set());
   const [hiddenIds, setHiddenIds]     = useState(new Set());
   const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
+  const [blockedUsers, setBlockedUsers] = useState(new Set());
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [previewUserId, setPreviewUserId] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
@@ -1082,6 +1097,18 @@ const SocialFeed = ({ embedded = false }) => {
         if (data?.length) {
           setReportedIds(new Set(data.map(r => r.feed_item_id)));
         }
+      });
+  }, [user?.id]);
+
+  // Load blocked users from DB
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', user.id)
+      .then(({ data }) => {
+        if (data?.length) setBlockedUsers(new Set(data.map(b => b.blocked_id)));
       });
   }, [user?.id]);
 
@@ -1279,6 +1306,18 @@ const SocialFeed = ({ embedded = false }) => {
     setMutedUsers(new Set(updated));
   }, []);
 
+  const handleBlock = useCallback(async (userId, name) => {
+    await supabase.from('blocked_users').upsert(
+      { blocker_id: user.id, blocked_id: userId },
+      { onConflict: 'blocker_id,blocked_id' }
+    );
+    setBlockedUsers(prev => new Set([...prev, userId]));
+    // Also remove from friends if they were friends
+    await supabase.from('friendships').delete()
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`);
+    showToast(t('social.userBlocked', { name: name?.split(' ')[0] ?? '' }), 'success');
+  }, [user?.id, showToast, t]);
+
   const handleDelete = useCallback(async (itemId) => {
     const { error } = await supabase
       .from('activity_feed_items')
@@ -1367,8 +1406,8 @@ const SocialFeed = ({ embedded = false }) => {
 
   // Filter hidden and muted
   const visibleFeed = useMemo(
-    () => feed.filter(item => !hiddenIds.has(item.id) && !mutedUsers.has(item.actor_id)),
-    [feed, hiddenIds, mutedUsers]
+    () => feed.filter(item => !hiddenIds.has(item.id) && !mutedUsers.has(item.actor_id) && !blockedUsers.has(item.actor_id)),
+    [feed, hiddenIds, mutedUsers, blockedUsers]
   );
 
   // Ranked feed (For You) — engagement scored
@@ -1386,14 +1425,14 @@ const SocialFeed = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={!embedded ? { background: 'var(--color-bg-primary)' } : undefined}>
-      <div className={`${embedded ? '' : 'max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-8'}`}>
+      <div className={`${embedded ? '' : 'max-w-5xl lg:max-w-6xl mx-auto px-4 md:px-6 lg:px-8 pt-6 pb-8'}`}>
 
         {/* Header */}
         {!embedded && (
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             {gymLogoUrl ? (
-              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-12 h-12 rounded-2xl object-cover" width={48} height={48} loading="lazy" />
+              <img src={gymLogoUrl} alt={`${gymName || 'Gym'} logo`} className="w-12 h-12 rounded-2xl object-cover" width={48} height={48} loading="lazy" />
             ) : (
               <div className="w-12 h-12 rounded-2xl bg-white/[0.06] flex items-center justify-center">
                 <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
@@ -1485,7 +1524,7 @@ const SocialFeed = ({ embedded = false }) => {
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('social.friendsStreaks')}</p>
             <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
               {friendStreaks.map(f => (
-                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
+                <button key={f.id} type="button" onClick={() => setPreviewUserId(f.id)} aria-label={`${f.name} - ${t('social.streak', { count: f.streak })}`} className="flex flex-col items-center flex-shrink-0 bg-transparent border-0 p-0 cursor-pointer" style={{ width: 64 }}>
                   <Avatar src={f.avatar_url} name={f.name ?? '?'} size={40} avatarType={f.avatar_type} avatarValue={f.avatar_value} />
                   <p className="text-[11px] mt-1.5 truncate w-full text-center" style={{ color: 'var(--color-text-muted)' }}>{f.name.split(' ')[0]}</p>
                   <p className="text-[11px] font-semibold text-[#D4AF37]">{t('social.streak', { count: f.streak })}</p>
@@ -1497,7 +1536,9 @@ const SocialFeed = ({ embedded = false }) => {
 
         {/* Loading skeletons */}
         {loading && (
-          <Skeleton variant="feed" count={3} />
+          <div role="status" aria-busy={true} aria-label={t('social.loading')}>
+            <Skeleton variant="feed" count={3} />
+          </div>
         )}
 
         {/* Swipeable feed panels */}
@@ -1525,6 +1566,7 @@ const SocialFeed = ({ embedded = false }) => {
                       onReport={handleReport}
                       onHide={handleHide}
                       onMute={handleMute}
+                      onBlock={handleBlock}
                       onDelete={handleDelete}
                       onProfilePreview={setPreviewUserId}
                       reportedIds={reportedIds}
@@ -1567,6 +1609,7 @@ const SocialFeed = ({ embedded = false }) => {
                       onReport={handleReport}
                       onHide={handleHide}
                       onMute={handleMute}
+                      onBlock={handleBlock}
                       onDelete={handleDelete}
                       onProfilePreview={setPreviewUserId}
                       reportedIds={reportedIds}
@@ -1648,7 +1691,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t('social.createPost')} onClick={onClose}>
       <div
         className="w-full max-w-lg rounded-2xl border border-white/10 overflow-hidden"
         style={{ background: 'var(--color-bg-card, #0F172A)' }}
@@ -1660,6 +1703,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
           <button
             type="button"
             onClick={onClose}
+            aria-label={t('social.report.cancel')}
             className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06]"
             style={{ color: 'var(--color-text-subtle)' }}
           >
@@ -1673,6 +1717,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
             value={body}
             onChange={e => setBody(e.target.value)}
             placeholder={t('social.postPlaceholder')}
+            aria-label={t('social.postPlaceholder')}
             maxLength={500}
             rows={4}
             className="w-full rounded-xl px-4 py-3 text-[14px] border border-white/[0.06] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] resize-none"
@@ -1685,10 +1730,11 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
           {/* Photo preview */}
           {photoPreview && (
             <div className="relative">
-              <img src={photoPreview} alt="Preview" className="w-full max-h-[200px] object-cover rounded-xl" loading="lazy" />
+              <img src={photoPreview} alt={t('social.photoPreview', 'Photo preview for post')} className="w-full max-h-[200px] object-cover rounded-xl" loading="lazy" />
               <button
                 type="button"
                 onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                aria-label={t('social.removePhoto', 'Remove photo')}
                 className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white"
               >
                 <X size={14} />
@@ -1706,7 +1752,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
                   {workoutSession.total_volume_lbs > 0 && ` · ${fmtVolume(workoutSession.total_volume_lbs)}`}
                 </p>
               </div>
-              <button type="button" onClick={() => setWorkoutSession(null)} style={{ color: 'var(--color-text-subtle)' }}><X size={14} /></button>
+              <button type="button" onClick={() => setWorkoutSession(null)} aria-label={t('social.removeWorkout', 'Remove tagged workout')} style={{ color: 'var(--color-text-subtle)' }}><X size={14} /></button>
             </div>
           )}
 

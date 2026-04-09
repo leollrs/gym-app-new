@@ -42,7 +42,8 @@ private class LiveActivityManager {
             currentExerciseName: exerciseName,
             isResting: false,
             restEndDate: nil,
-            isRestFinished: false
+            isRestFinished: false,
+            isPaused: false
         )
 
         let content = ActivityContent(state: state, staleDate: nil)
@@ -217,6 +218,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             let exerciseName = call.getString("currentExerciseName") ?? ""
             let isResting = call.getBool("isResting") ?? false
             let restRemainingSeconds = call.getInt("restRemainingSeconds") ?? 0
+            let isPaused = call.getBool("isPaused") ?? false
 
             var restEndDate: Date? = nil
             if isResting && restRemainingSeconds > 0 {
@@ -229,7 +231,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 currentExerciseName: exerciseName,
                 isResting: isResting,
                 restEndDate: restEndDate,
-                isRestFinished: false
+                isRestFinished: false,
+                isPaused: isPaused
             )
 
             Task {
@@ -252,7 +255,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 currentExerciseName: "Done",
                 isResting: false,
                 restEndDate: nil,
-                isRestFinished: false
+                isRestFinished: false,
+                isPaused: false
             )
 
             Task {

@@ -7,7 +7,7 @@ import {
 import {
   Building2, Users, Dumbbell, TrendingUp, TrendingDown,
   UserPlus, Activity, ArrowUpDown, ChevronRight, AlertTriangle,
-  DollarSign,
+  DollarSign, UserCheck, Signal,
 } from 'lucide-react';
 import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
@@ -95,10 +95,10 @@ export default function PlatformAnalytics() {
 
       const [gymRes, profileRes, sessionRes, checkInRes, churnRes, recentProfileRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding'),
-        supabase.from('profiles').select('id, gym_id, role, created_at, last_active_at, membership_status'),
+        supabase.from('profiles').select('id, gym_id, role, created_at, last_active_at, membership_status, is_onboarded'),
         supabase.from('workout_sessions').select('id, gym_id, profile_id, status, started_at').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
         supabase.from('check_ins').select('id, gym_id, profile_id, checked_in_at').gte('checked_in_at', thirtyDaysAgo),
-        supabase.from('churn_risk_scores').select('id, gym_id, profile_id, score, risk_tier'),
+        supabase.from('churn_risk_scores').select('id, gym_id, profile_id, score, risk_tier, key_signals'),
         supabase.from('profiles').select('id, gym_id, created_at').gte('created_at', ninetyDaysAgo),
       ]);
 
@@ -281,6 +281,102 @@ export default function PlatformAnalytics() {
   const strugglingGyms = useMemo(() => {
     return gymBreakdown.filter(g => g.isStruggling).sort((a, b) => a.activeRate - b.activeRate);
   }, [gymBreakdown]);
+
+  // ── Cross-Gym Churn Analysis ────────────────────────────────
+  const crossGymChurn = useMemo(() => {
+    const atRisk = churnScores.filter(c => c.risk_tier === 'critical' || c.risk_tier === 'high');
+    const totalAtRisk = atRisk.length;
+    const platformAvgScore = churnScores.length
+      ? +(churnScores.reduce((s, c) => s + (c.score || 0), 0) / churnScores.length).toFixed(1)
+      : 0;
+
+    // Per-gym avg churn scores
+    const gymScoreMap = {};
+    churnScores.forEach(c => {
+      if (!gymScoreMap[c.gym_id]) gymScoreMap[c.gym_id] = { sum: 0, count: 0 };
+      gymScoreMap[c.gym_id].sum += c.score || 0;
+      gymScoreMap[c.gym_id].count += 1;
+    });
+
+    const gymNameMap = {};
+    gyms.forEach(g => { gymNameMap[g.id] = g.name; });
+
+    const perGymChurn = Object.entries(gymScoreMap)
+      .map(([gymId, { sum, count }]) => ({
+        gymId,
+        name: gymNameMap[gymId] || 'Unknown',
+        avgScore: +(sum / count).toFixed(1),
+        count,
+      }))
+      .sort((a, b) => b.avgScore - a.avgScore);
+
+    const gymsRisingChurn = perGymChurn.filter(g => g.avgScore > 50).length;
+
+    // Aggregate key_signals
+    const signalCounts = {};
+    const signalGymCounts = {};
+    atRisk.forEach(c => {
+      const signals = Array.isArray(c.key_signals) ? c.key_signals : [];
+      const gymName = gymNameMap[c.gym_id] || 'Unknown';
+      signals.forEach(sig => {
+        const label = typeof sig === 'string' ? sig : String(sig);
+        if (!label) return;
+        signalCounts[label] = (signalCounts[label] || 0) + 1;
+        if (!signalGymCounts[label]) signalGymCounts[label] = {};
+        signalGymCounts[label][gymName] = (signalGymCounts[label][gymName] || 0) + 1;
+      });
+    });
+
+    const topSignals = Object.entries(signalCounts)
+      .map(([signal, count]) => {
+        const gymEntries = Object.entries(signalGymCounts[signal] || {});
+        const mostAffected = gymEntries.sort((a, b) => b[1] - a[1])[0];
+        return {
+          signal,
+          count,
+          pct: totalAtRisk ? +((count / totalAtRisk) * 100).toFixed(1) : 0,
+          mostAffectedGym: mostAffected ? mostAffected[0] : '—',
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return { totalAtRisk, platformAvgScore, gymsRisingChurn, perGymChurn, topSignals };
+  }, [churnScores, gyms]);
+
+  // ── Onboarding Effectiveness ──────────────────────────────
+  const onboardingData = useMemo(() => {
+    const gymNameMap = {};
+    gyms.forEach(g => { gymNameMap[g.id] = g.name; });
+
+    const gymOnboardingMap = {};
+    profiles.forEach(p => {
+      if (p.role !== 'member') return;
+      if (!gymOnboardingMap[p.gym_id]) gymOnboardingMap[p.gym_id] = { total: 0, onboarded: 0 };
+      gymOnboardingMap[p.gym_id].total += 1;
+      if (p.is_onboarded) gymOnboardingMap[p.gym_id].onboarded += 1;
+    });
+
+    const perGym = Object.entries(gymOnboardingMap)
+      .map(([gymId, { total, onboarded }]) => ({
+        gymId,
+        name: gymNameMap[gymId] || 'Unknown',
+        total,
+        onboarded,
+        rate: total ? +((onboarded / total) * 100).toFixed(1) : 0,
+        notOnboarded: total - onboarded,
+      }))
+      .sort((a, b) => b.rate - a.rate);
+
+    const totalMembers = perGym.reduce((s, g) => s + g.total, 0);
+    const totalOnboarded = perGym.reduce((s, g) => s + g.onboarded, 0);
+    const platformAvgRate = totalMembers ? +((totalOnboarded / totalMembers) * 100).toFixed(1) : 0;
+    const best = perGym[0] || null;
+    const worst = perGym[perGym.length - 1] || null;
+    const gapsGyms = perGym.filter(g => g.rate < 60);
+
+    return { perGym, platformAvgRate, best, worst, gapsGyms };
+  }, [profiles, gyms]);
 
   // ── Render ─────────────────────────────────────────────────
   if (loading) return <Spinner />;
@@ -604,6 +700,252 @@ export default function PlatformAnalytics() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      </FadeIn>
+
+      {/* ── Cross-Gym Churn Patterns ─────────────────────────── */}
+      <FadeIn delay={300}>
+        <div className="mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingDown className="w-5 h-5 text-red-400" />
+            <h2 className="text-[17px] font-bold text-[#E5E7EB]">{t('platform.analytics.crossGymChurn', 'Cross-Gym Churn Patterns')}</h2>
+          </div>
+
+          {/* Churn summary strip */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <StatCard
+              value={crossGymChurn.totalAtRisk.toLocaleString()}
+              label={t('platform.analytics.totalAtRisk', 'Total At-Risk Members')}
+              icon={AlertTriangle}
+              color="#EF4444"
+              delay={310}
+            />
+            <StatCard
+              value={crossGymChurn.platformAvgScore}
+              label={t('platform.analytics.platformAvgChurn', 'Platform Avg Churn Score')}
+              icon={Activity}
+              color="#F59E0B"
+              delay={320}
+            />
+            <StatCard
+              value={crossGymChurn.gymsRisingChurn}
+              label={t('platform.analytics.gymsRisingChurn', 'Gyms with Rising Churn')}
+              icon={TrendingUp}
+              color="#F97316"
+              delay={330}
+            />
+          </div>
+
+          {/* Churn by Gym Bar Chart */}
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.avgChurnByGym', 'Avg Churn Score by Gym')}</h3>
+            {crossGymChurn.perGymChurn.length === 0 ? (
+              <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noChurnData', 'No churn data available')}</p>
+            ) : (
+              <div style={{ height: Math.max(200, crossGymChurn.perGymChurn.length * 40) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={crossGymChurn.perGymChurn} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={120}
+                    />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
+                    <Bar
+                      dataKey="avgScore"
+                      name={t('platform.analytics.avgChurnScore', 'Avg Churn Score')}
+                      radius={[0, 4, 4, 0]}
+                      barSize={18}
+                      shape={(props) => {
+                        const { x, y, width, height, payload } = props;
+                        const score = payload.avgScore;
+                        const fill = score > 60 ? '#EF4444' : score > 40 ? '#F97316' : score > 20 ? '#F59E0B' : '#10B981';
+                        return <rect x={x} y={y} width={width} height={height} fill={fill} rx={4} />;
+                      }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Common Churn Signals Table */}
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.commonChurnSignals', 'Common Churn Signals')}</h3>
+            {crossGymChurn.topSignals.length === 0 ? (
+              <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noChurnData', 'No churn data available')}</p>
+            ) : (
+              <div className="overflow-x-auto -mx-4 px-4">
+                <table className="w-full min-w-[600px]">
+                  <thead>
+                    <tr className="border-b border-white/6">
+                      <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.signal', 'Signal')}</th>
+                      <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.occurrences', 'Occurrences')}</th>
+                      <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.pctAtRisk', '% of At-Risk')}</th>
+                      <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.mostAffectedGym', 'Most Affected Gym')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {crossGymChurn.topSignals.map((sig, i) => (
+                      <tr key={i} className="border-b border-white/4 last:border-0">
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <Signal className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                            <span className="text-[13px] text-[#E5E7EB]">{sig.signal}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-[13px] text-[#E5E7EB] tabular-nums">{sig.count.toLocaleString()}</span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${
+                            sig.pct >= 50 ? 'bg-red-500/15 text-red-400' :
+                            sig.pct >= 25 ? 'bg-amber-500/15 text-amber-400' :
+                            'bg-emerald-500/15 text-emerald-400'
+                          }`}>
+                            {sig.pct}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-[13px] text-[#9CA3AF]">{sig.mostAffectedGym}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </FadeIn>
+
+      {/* ── Onboarding Effectiveness ─────────────────────────── */}
+      <FadeIn delay={350}>
+        <div className="mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <UserCheck className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-[17px] font-bold text-[#E5E7EB]">{t('platform.analytics.onboardingEffectiveness', 'Onboarding Effectiveness by Gym')}</h2>
+          </div>
+
+          {/* Onboarding summary strip */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <StatCard
+              value={`${onboardingData.platformAvgRate}%`}
+              label={t('platform.analytics.platformAvgOnboarding', 'Platform Avg Onboarding Rate')}
+              icon={UserCheck}
+              color="#10B981"
+              delay={360}
+            />
+            <StatCard
+              value={onboardingData.best ? `${onboardingData.best.rate}%` : '—'}
+              label={onboardingData.best ? `${t('platform.analytics.bestPerforming', 'Best Performing Gym')}: ${onboardingData.best.name}` : t('platform.analytics.bestPerforming', 'Best Performing Gym')}
+              icon={TrendingUp}
+              color="#6366F1"
+              delay={370}
+            />
+            <StatCard
+              value={onboardingData.worst ? `${onboardingData.worst.rate}%` : '—'}
+              label={onboardingData.worst ? `${t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}: ${onboardingData.worst.name}` : t('platform.analytics.lowestPerforming', 'Lowest Performing Gym')}
+              icon={TrendingDown}
+              color="#EF4444"
+              delay={380}
+            />
+          </div>
+
+          {/* Onboarding Comparison Bar Chart */}
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+            <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.onboardingRate', 'Onboarding Rate')}</h3>
+            {onboardingData.perGym.length === 0 ? (
+              <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noOnboardingData', 'No onboarding data available')}</p>
+            ) : (
+              <div style={{ height: Math.max(200, onboardingData.perGym.length * 40) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={onboardingData.perGym} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={120}
+                    />
+                    <Tooltip
+                      content={<ChartTooltip formatter={(v) => `${v}%`} />}
+                      cursor={{ fill: 'var(--color-accent-glow)' }}
+                    />
+                    <Bar
+                      dataKey="rate"
+                      name={t('platform.analytics.onboardingRate', 'Onboarding Rate')}
+                      radius={[0, 4, 4, 0]}
+                      barSize={18}
+                      shape={(props) => {
+                        const { x, y, width, height, payload } = props;
+                        const rate = payload.rate;
+                        const fill = rate >= 75 ? '#10B981' : rate >= 50 ? '#F59E0B' : '#EF4444';
+                        return <rect x={x} y={y} width={width} height={height} fill={fill} rx={4} />;
+                      }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Onboarding Gap List */}
+          {onboardingData.gapsGyms.length > 0 && (
+            <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-3">{t('platform.analytics.onboardingGaps', 'Onboarding Gaps')}</h3>
+              <div className="space-y-2">
+                {onboardingData.gapsGyms.map(gym => (
+                  <div
+                    key={gym.gymId}
+                    className="flex items-center justify-between px-3 py-3 rounded-lg bg-red-500/5 border border-red-500/10"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{gym.name}</p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className={`text-[11px] font-semibold ${gym.rate < 30 ? 'text-red-400' : 'text-amber-400'}`}>
+                          {gym.rate}% onboarded
+                        </span>
+                        <span className="text-[11px] text-[#6B7280]">
+                          {gym.total.toLocaleString()} {t('platform.analytics.members', 'members')}
+                        </span>
+                        <span className="text-[11px] text-[#6B7280]">
+                          {gym.notOnboarded.toLocaleString()} {t('platform.analytics.notOnboarded', 'not onboarded')}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/platform/gym/${gym.gymId}`)}
+                      className="text-[11px] font-semibold text-[#D4AF37] hover:text-[#E5C04B] transition-colors flex-shrink-0 ml-3"
+                    >
+                      {t('platform.analytics.viewGym', 'View Gym')}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

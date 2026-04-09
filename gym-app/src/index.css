@@ -614,7 +614,11 @@ textarea:focus-visible,
 }
 
 /* ── Base resets ──────────────────────────────────────────────────── */
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
 body {
   font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -686,6 +690,13 @@ button {
   padding: 0 1.25rem;
 }
 
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1400px;
+    padding: 0 2rem;
+  }
+}
+
 .app-wrapper {
   display: flex;
   flex-direction: column;
@@ -702,6 +713,14 @@ button {
   }
 }
 
+/* Desktop sidebar offset — sidebar is 240px fixed on left */
+@media (min-width: 1024px) {
+  .app-wrapper {
+    padding-left: 240px;
+    padding-top: 0;
+  }
+}
+
 .main-content {
   flex: 1;
   padding-top: 0.5rem;
@@ -712,6 +731,13 @@ button {
   .main-content {
     padding-top: 2.5rem;
     padding-bottom: 2.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .main-content {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
   }
 }
 
@@ -878,6 +904,8 @@ button {
 /* ── Scrollbar ────────────────────────────────────────────────────── */
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ADMIN DASHBOARD — Premium surface & typography system

@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { ScanClaimProvider } from '../contexts/ScanClaimContext';
 import { supabase } from '../lib/supabase';
+import UserAvatar from '../components/UserAvatar';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
@@ -163,6 +164,16 @@ export default function AdminLayout({ children }) {
   const matchedAdvanced = navQuery
     ? advancedPages.filter((item) => t(item.labelKey).toLowerCase().includes(navQuery))
     : [];
+
+  // Lock body scroll when More menu is open
+  useEffect(() => {
+    if (moreMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [moreMenuOpen]);
 
   // Close "More" menu on route change
   useEffect(() => {
@@ -399,12 +410,14 @@ export default function AdminLayout({ children }) {
             onMouseEnter={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--color-accent) 6%, transparent)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}>
-              <span className="text-[10px] font-bold" style={{ color: 'var(--color-accent)' }}>
-                {profile?.full_name?.[0]?.toUpperCase() ?? 'A'}
-              </span>
-            </div>
+            <UserAvatar
+              user={{
+                ...profile,
+                avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
+                avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
+              }}
+              size={28}
+            />
             <p className="text-[14px] font-medium truncate" style={{ color: 'var(--color-text-muted)' }}>{profile?.full_name ?? 'Admin'}</p>
             <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
           </button>
@@ -422,15 +435,15 @@ export default function AdminLayout({ children }) {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────── */}
-      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden"
+      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-x-hidden overflow-y-auto"
         style={{ background: 'var(--color-admin-panel)' }}>
-        {/* Mobile top bar */}
+        {/* Mobile top bar — fixed so it never scrolls */}
         <header
-          className="md:hidden flex items-center justify-between px-4 flex-shrink-0"
+          className="md:hidden flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50"
           style={{
             paddingTop: 'env(safe-area-inset-top)',
             paddingBottom: '12px',
-            height: 'calc(52px + env(safe-area-inset-top))',
+            height: 'calc(56px + env(safe-area-inset-top))',
             background: 'var(--color-bg-nav)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
@@ -438,54 +451,64 @@ export default function AdminLayout({ children }) {
           }}
         >
           {/* Left: gym logo or name */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             {gymLogoUrl ? (
               <img
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
-                className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
+                className="w-9 h-9 rounded-lg object-contain flex-shrink-0"
                 style={{ background: 'var(--color-bg-active)', border: '1px solid var(--color-border-subtle)' }}
               />
             ) : (
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-subtle)' }}>
-                <LayoutDashboard size={13} style={{ color: 'var(--color-text-subtle)' }} />
+                <LayoutDashboard size={15} style={{ color: 'var(--color-text-subtle)' }} />
               </div>
             )}
-            <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
+            <p className="text-[16px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{gymName || 'Dashboard'}</p>
           </div>
 
           {/* Right: alert badge + admin avatar (sign-out on tap) */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {highRiskCount > 0 && (
-              <div className="relative flex items-center justify-center w-8 h-8">
-                <AlertTriangle size={16} style={{ color: 'var(--color-text-subtle)' }} />
-                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full"
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={() => navigate('/admin/churn')}
+              aria-label={t('adminNav.churnIntel')}
+              className="relative flex items-center justify-center w-10 h-10"
+            >
+              <AlertTriangle size={18} style={{ color: 'var(--color-text-subtle)' }} />
+              {highRiskCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full"
                   style={{ background: 'var(--color-danger)', boxShadow: '0 0 0 2px var(--color-admin-shell)' }} />
-              </div>
-            )}
+              )}
+            </button>
             <button
               onClick={() => navigate('/admin/profile')}
               aria-label={t('adminNav.profile')}
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 focus:ring-2 focus:outline-none"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+              className="flex-shrink-0 focus:ring-2 focus:outline-none rounded-full overflow-hidden"
             >
-              <span className="text-[11px] font-bold" style={{ color: 'var(--color-accent)' }}>
-                {profile?.full_name?.[0]?.toUpperCase() ?? 'A'}
-              </span>
+              <UserAvatar
+                user={{
+                  ...profile,
+                  avatar_type: profile?.avatar_url ? 'photo' : profile?.avatar_design ? 'design' : 'color',
+                  avatar_value: profile?.avatar_url || profile?.avatar_design || profile?.avatar_color || '#6366F1',
+                }}
+                size={36}
+              />
             </button>
           </div>
         </header>
 
+        {/* Spacer for fixed header on mobile */}
+        <div className="md:hidden flex-shrink-0" style={{ height: 'calc(56px + env(safe-area-inset-top))' }} />
         {/* Page content */}
-        <div className="flex-1 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="flex-1 pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
           {children}
         </div>
       </main>
 
       {/* ── Mobile "More" menu overlay ──────────────────────── */}
       {moreMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" />
+        <div className="md:hidden fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={() => setMoreMenuOpen(false)} />
       )}
 
       {/* ── Mobile "More" slide-up panel ────────────────────── */}
@@ -494,10 +517,9 @@ export default function AdminLayout({ children }) {
         className={`md:hidden fixed bottom-0 left-0 right-0 z-[70] transition-transform duration-300 ease-out ${
           moreMenuOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="rounded-t-2xl px-4 pt-3 pb-4 overflow-hidden max-h-[70vh] overflow-y-auto"
-          style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-default)' }}>
+        <div className="rounded-t-2xl px-4 pt-3 overflow-hidden max-h-[70vh] overflow-y-auto"
+          style={{ background: 'var(--color-bg-card)', borderTop: '1px solid var(--color-border-default)', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {/* Panel header */}
           <div className="flex items-center justify-between mb-3">
             <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('adminNav.morePages')}</p>

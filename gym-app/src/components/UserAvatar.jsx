@@ -108,6 +108,8 @@ export default function UserAvatar({ user, size = 40, className = '', rounded = 
           borderRadius,
           background: design.bg,
         }}
+        role="img"
+        aria-label={`${user?.full_name || user?.display_name || 'User'} avatar`}
       >
         {design.svg(iconSize)}
       </div>
@@ -126,6 +128,8 @@ export default function UserAvatar({ user, size = 40, className = '', rounded = 
         fontSize,
         lineHeight: 1,
       }}
+      role="img"
+      aria-label={`${user?.full_name || user?.display_name || 'User'} avatar`}
     >
       {initials}
     </div>

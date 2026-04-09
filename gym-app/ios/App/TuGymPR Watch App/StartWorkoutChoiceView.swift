@@ -17,9 +17,10 @@ struct StartWorkoutPage: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("WORKOUT")
-                .font(.system(size: 10, weight: .heavy))
+                .font(.caption2.weight(.heavy))
                 .foregroundColor(DS.mutedText)
                 .tracking(1.5)
+                .accessibilityAddTraits(.isHeader)
 
             // Start today's workout
             if let routine = todayRoutine ?? anyProgramRoutine {
@@ -30,15 +31,16 @@ struct StartWorkoutPage: View {
                 } label: {
                     VStack(spacing: 6) {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 24))
+                            .font(.title3)
                             .foregroundColor(DS.gold)
+                            .accessibilityLabel("Quick start")
 
                         Text("Start Workout")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.subheadline.weight(.bold))
                             .foregroundColor(.white)
 
                         Text(cleanName(routine["name"] as? String ?? ""))
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundColor(DS.mutedText)
                             .lineLimit(1)
                     }
@@ -58,18 +60,20 @@ struct StartWorkoutPage: View {
             NavigationLink(destination: QuickStartView()) {
                 HStack(spacing: 8) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.white)
+                        .accessibilityLabel("Routines list")
 
                     Text("Browse Routines")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundColor(.white)
 
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundColor(DS.mutedText)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -80,13 +84,13 @@ struct StartWorkoutPage: View {
 
             if todayRoutine == nil && anyProgramRoutine == nil && session.availableRoutines.isEmpty {
                 Text("Open TuGymPR on your\niPhone to sync routines")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundColor(Color(white: 0.3))
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
             } else if todayRoutine == nil && anyProgramRoutine == nil {
                 Text("No active program")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundColor(Color(white: 0.3))
                     .padding(.top, 4)
             }

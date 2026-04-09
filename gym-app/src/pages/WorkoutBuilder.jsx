@@ -117,6 +117,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
               inputMode="numeric"
               min={0}
               value={item.reps}
+              aria-label={`${t('workoutBuilder.reps')} for ${exercise ? exName(exercise) : 'exercise'}`}
               onChange={e => {
                 const v = e.target.value;
                 if (v === '' || v === '-') return onChange(index, 'reps', v);
@@ -135,6 +136,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.rest')}</p>
           <select
             value={item.restSeconds}
+            aria-label={`${t('workoutBuilder.rest')} for ${exercise ? exName(exercise) : 'exercise'}`}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
             className="w-16 rounded-lg py-1.5 text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors appearance-none"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)', textAlign: 'center', textAlignLast: 'center', paddingLeft: '0', paddingRight: '0' }}
@@ -504,7 +506,7 @@ const WorkoutBuilder = () => {
       <div className="flex-1 overflow-y-auto">
 
       {error && (
-        <div className="mx-auto max-w-[480px] md:max-w-4xl px-4 mt-4">
+        <div className="mx-auto max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 mt-4">
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-[13px] text-red-400">
             {error}
           </div>
@@ -582,7 +584,7 @@ const WorkoutBuilder = () => {
       )}
 
       {/* Builder Content */}
-      <div className="container max-w-[480px] md:max-w-4xl mx-auto px-5 pb-8 md:pb-10" style={{ paddingTop: '2rem' }}>
+      <div className="container max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-5 pb-8 md:pb-10" style={{ paddingTop: '2rem' }}>
 
         {/* Summary stats */}
         <div className="flex items-center justify-between rounded-2xl px-2 py-3 mb-6" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.06) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.12)' }}>
@@ -644,6 +646,7 @@ const WorkoutBuilder = () => {
                       </div>
                       <button
                         onClick={() => handleUngroup(item.groupId)}
+                        aria-label={t('workoutBuilder.ungroup')}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold hover:text-red-400 bg-white/[0.04] border border-white/[0.06] transition-colors"
                         style={{ color: 'var(--color-text-muted)' }}
                       >

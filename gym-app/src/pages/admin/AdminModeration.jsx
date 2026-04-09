@@ -11,11 +11,13 @@ import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { logAdminAction } from '../../lib/adminAudit';
 import {
   PageHeader, FilterBar, Avatar, StatCard, AdminCard,
   AdminPageShell, AdminModal, AdminTable, FadeIn, SectionLabel,
   Skeleton, ErrorCard, AdminTabs,
 } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -300,6 +302,7 @@ const PostsTab = ({ gymId }) => {
   const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
   const [acting, setActing] = useState(null);
+  const [expandedRow, setExpandedRow] = useState(null);
 
   const { data: posts = [], isLoading, error, refetch } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'posts'],
@@ -313,6 +316,7 @@ const PostsTab = ({ gymId }) => {
       .from('activity_feed_items')
       .update({ is_deleted: !post.is_deleted })
       .eq('id', post.id);
+    logAdminAction('moderate_post', 'post', post.id, { action: post.is_deleted ? 'restore' : 'delete' });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'posts'], (old) =>
       (old || []).map(p => p.id === post.id ? { ...p, is_deleted: !p.is_deleted } : p)
     );
@@ -340,67 +344,42 @@ const PostsTab = ({ gymId }) => {
 
   const columns = [
     {
-      key: 'user',
-      label: t('admin.moderation.user', { defaultValue: 'User' }),
-      render: (row) => {
-        const profile = row.profiles;
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={profile?.full_name} size="sm" variant="accent" />
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-              <p className="text-[11px] text-[#6B7280]">@{profile?.username ?? '\u2014'}</p>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
       key: 'type',
       label: t('admin.moderation.type', { defaultValue: 'Type' }),
       sortable: true,
       render: (row) => {
         const badge = postTypeBadge(row.type, t);
         return (
-          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize ${badge.color}`}>
-            {badge.label}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize ${badge.color}`}>
+              {badge.label}
+            </span>
+            {row.is_deleted && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
+                {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
+              </span>
+            )}
+          </div>
         );
       },
     },
     {
-      key: 'preview',
-      label: t('admin.moderation.content', { defaultValue: 'Content' }),
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
+      key: 'user',
+      label: t('admin.moderation.user', { defaultValue: 'Author' }),
       render: (row) => {
-        const preview = dataPreview(row.type, row.data, t);
-        return preview ? (
-          <p className="text-[12px] text-[#9CA3AF] truncate max-w-[200px]">{preview}</p>
-        ) : (
-          <span className="text-[11px] text-[#6B7280]">\u2014</span>
+        const profile = row.profiles;
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={profile?.full_name} size="sm" variant="accent" />
+            <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+          </div>
         );
       },
-    },
-    {
-      key: 'status',
-      label: t('admin.moderation.status', { defaultValue: 'Status' }),
-      render: (row) => row.is_deleted ? (
-        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-red-400 bg-red-500/10">
-          {t('admin.moderation.deleted', { defaultValue: 'Deleted' })}
-        </span>
-      ) : (
-        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-emerald-400 bg-emerald-500/10">
-          {t('admin.moderation.live', { defaultValue: 'Live' })}
-        </span>
-      ),
     },
     {
       key: 'created_at',
       label: t('admin.moderation.date', { defaultValue: 'Date' }),
       sortable: true,
-      headerClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
       sortValue: (row) => new Date(row.created_at).getTime(),
       render: (row) => (
         <span className="text-[12px] text-[#6B7280]">{relativeTime(row.created_at, dateFnsOpts)}</span>
@@ -409,23 +388,31 @@ const PostsTab = ({ gymId }) => {
     {
       key: 'actions',
       label: '',
-      headerClassName: 'w-12 hidden md:table-cell',
-      className: 'hidden md:table-cell text-[#E5E7EB]',
+      headerClassName: 'w-20',
       render: (row) => {
         const busy = acting === row.id;
         return (
-          <button
-            onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
-            disabled={busy}
-            title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
-            className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
-              row.is_deleted
-                ? 'text-emerald-500 hover:bg-emerald-500/10'
-                : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
-            }`}
-          >
-            {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpandedRow(expandedRow === row.id ? null : row.id); }}
+              className="p-2 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-all"
+              title={t('admin.moderation.details', { defaultValue: 'Details' })}
+            >
+              <ChevronRight size={15} className={`transition-transform ${expandedRow === row.id ? 'rotate-90' : ''}`} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
+              disabled={busy}
+              title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+              className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
+                row.is_deleted
+                  ? 'text-emerald-500 hover:bg-emerald-500/10'
+                  : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
+              }`}
+            >
+              {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
+            </button>
+          </div>
         );
       },
     },
@@ -434,17 +421,73 @@ const PostsTab = ({ gymId }) => {
   return (
     <div className="space-y-4">
       <FilterBar options={filterOptions} active={filter} onChange={setFilter} />
-      <AdminTable
-        columns={columns}
-        data={filtered}
-        loading={false}
-        emptyState={
+      <AdminCard className="overflow-hidden !p-0">
+        {filtered.length === 0 ? (
           <div className="text-center py-12">
             <Activity size={28} className="text-[#4B5563] mx-auto mb-2" />
             <p className="text-[13px] text-[#6B7280]">{t('admin.moderation.noPosts', { defaultValue: 'No posts match this filter' })}</p>
           </div>
-        }
-      />
+        ) : (
+          <div className="divide-y divide-white/4">
+            {filtered.map(row => {
+              const profile = row.profiles;
+              const badge = postTypeBadge(row.type, t);
+              const preview = dataPreview(row.type, row.data, t);
+              const isExpanded = expandedRow === row.id;
+              return (
+                <div key={row.id}>
+                  <div
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    onClick={() => setExpandedRow(isExpanded ? null : row.id)}
+                  >
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full capitalize flex-shrink-0 ${badge.color}`}>
+                      {badge.label}
+                    </span>
+                    {row.is_deleted && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10 flex-shrink-0">
+                        {t('admin.moderation.deleted', { defaultValue: 'Del' })}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Avatar name={profile?.full_name} size="sm" variant="accent" />
+                      <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{profile?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+                    </div>
+                    <span className="text-[12px] text-[#6B7280] flex-shrink-0 hidden sm:block">{relativeTime(row.created_at, dateFnsOpts)}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <ChevronRight size={14} className={`text-[#4B5563] transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
+                        disabled={acting === row.id}
+                        title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+                        className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
+                          row.is_deleted
+                            ? 'text-emerald-500 hover:bg-emerald-500/10'
+                            : 'text-[#6B7280] hover:text-red-400 hover:bg-red-500/10'
+                        }`}
+                      >
+                        {row.is_deleted ? <RotateCcw size={15} /> : <Trash2 size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-5 pb-3 pt-0 ml-[52px] space-y-1.5">
+                      <p className="text-[11px] text-[#6B7280]">
+                        @{profile?.username ?? '\u2014'} · {relativeTime(row.created_at, dateFnsOpts)}
+                      </p>
+                      {preview && (
+                        <p className="text-[12px] text-[#9CA3AF]">{preview}</p>
+                      )}
+                      <p className="text-[11px] text-[#4B5563]">
+                        {t('admin.moderation.visibility', { defaultValue: 'Visibility' })}: {row.is_public ? t('admin.moderation.public', { defaultValue: 'Public' }) : t('admin.moderation.private', { defaultValue: 'Private' })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </AdminCard>
     </div>
   );
 };
@@ -470,6 +513,7 @@ const CommentsTab = ({ gymId }) => {
       .from('feed_comments')
       .update({ is_deleted: !comment.is_deleted })
       .eq('id', comment.id);
+    logAdminAction('moderate_comment', 'comment', comment.id, { action: comment.is_deleted ? 'restore' : 'delete' });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'comments'], (old) =>
       (old || []).map(c => c.id === comment.id ? { ...c, is_deleted: !c.is_deleted } : c)
     );
@@ -632,6 +676,7 @@ const ReportsTab = ({ gymId }) => {
         .eq('id', report.feed_item_id);
     }
 
+    logAdminAction('action_report', 'report', report.id, { status: newStatus });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'reports'], (old) =>
       (old || []).map(r => r.id === report.id ? { ...r, status: newStatus, reviewed_at: new Date().toISOString() } : r)
     );
@@ -801,18 +846,18 @@ export default function AdminModeration() {
 
   const gymId = profile?.gym_id;
 
-  // Prefetch all data for stat cards
+  // Prefetch all data for stat cards + tab counts
   const { data: reports = [] } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'reports'],
     queryFn: () => fetchReports(gymId),
     enabled: !!gymId,
   });
-  useQuery({
+  const { data: posts = [] } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'posts'],
     queryFn: () => fetchPosts(gymId),
     enabled: !!gymId,
   });
-  useQuery({
+  const { data: comments = [] } = useQuery({
     queryKey: [...adminKeys.moderation(gymId), 'comments'],
     queryFn: () => fetchComments(gymId),
     enabled: !!gymId,
@@ -823,9 +868,9 @@ export default function AdminModeration() {
   const escalatedReports = reports.filter(r => r.status === 'actioned').length;
 
   const tabs = [
-    { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),   icon: Flag,            count: pendingReports },
-    { key: 'posts',    label: t('admin.moderation.feedPosts', { defaultValue: 'Feed Posts' }),  icon: Activity,        count: null },
-    { key: 'comments', label: t('admin.moderation.comments', { defaultValue: 'Comments' }),  icon: MessageSquare,   count: null },
+    { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),   icon: Flag,            count: pendingReports || null },
+    { key: 'posts',    label: t('admin.moderation.feedPosts', { defaultValue: 'Posts' }),    icon: Activity,        count: posts.length || null },
+    { key: 'comments', label: t('admin.moderation.comments', { defaultValue: 'Comments' }),  icon: MessageSquare,   count: comments.length || null },
   ];
 
   return (
@@ -881,15 +926,14 @@ export default function AdminModeration() {
           </div>
         </AdminCard>
       ) : (
-        <FadeIn delay={0.05} key={tab}>
-          {tab === 'reports' ? (
-            <ReportsTab gymId={gymId} />
-          ) : tab === 'posts' ? (
-            <PostsTab gymId={gymId} />
-          ) : (
-            <CommentsTab gymId={gymId} />
-          )}
-        </FadeIn>
+        <SwipeableTabContent tabs={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon, count: t.count }))} active={tab} onChange={setTab}>
+          {(tabKey) => {
+            if (tabKey === 'reports') return <ReportsTab gymId={gymId} />;
+            if (tabKey === 'posts') return <PostsTab gymId={gymId} />;
+            if (tabKey === 'comments') return <CommentsTab gymId={gymId} />;
+            return null;
+          }}
+        </SwipeableTabContent>
       )}
     </AdminPageShell>
   );

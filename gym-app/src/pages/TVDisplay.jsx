@@ -143,9 +143,9 @@ export default function TVDisplay() {
         style={{ background: 'var(--color-bg-primary)', fontFamily: 'Barlow, sans-serif' }}
       >
         <div className="text-center space-y-4">
-          <p className="text-[28px] font-bold text-white/30">No gym specified</p>
+          <p className="text-[28px] font-bold text-white/60">No gym specified</p>
           <p className="text-[16px] text-white/20">
-            Add a <code className="text-white/40">?gym=your-slug</code> parameter to the URL.
+            Add a <code className="text-white/70">?gym=your-slug</code> parameter to the URL.
           </p>
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function TVDisplay() {
           <h1 className="text-[72px] font-black leading-none tracking-tight" style={{ color: accent }}>
             {metric.label}
           </h1>
-          <p className="text-[22px] font-bold tracking-widest uppercase text-white/40 pb-2">
+          <p className="text-[22px] font-bold tracking-widest uppercase text-white/70 pb-2">
             {metric.period}
           </p>
         </div>
@@ -234,7 +234,7 @@ export default function TVDisplay() {
           </div>
         ) : entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <p className="text-[28px] font-bold text-white/30">No activity yet this month</p>
+            <p className="text-[28px] font-bold text-white/60">No activity yet this month</p>
             <p className="text-[16px] text-white/20 mt-2">Start training to appear on the board</p>
           </div>
         ) : (

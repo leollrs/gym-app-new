@@ -76,6 +76,9 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
+    // MARK: - Offline action tracking
+    @Published var pendingActionCount: Int = 0
+
     // MARK: - Send messages to iPhone
 
     func startWorkout(routineId: String) {
@@ -93,6 +96,9 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         suggestedReps = 0
         elapsedSeconds = 0
 
+        // Persist local workout state for standalone operation
+        OfflineCacheManager.shared.saveLocalWorkoutState(routineId: routineId, startTime: Date())
+
         // Tell phone to start the workout
         let msg: [String: Any] = ["action": "start_workout", "routineId": routineId]
         if WCSession.default.isReachable {
@@ -105,31 +111,47 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func completeSet(actualReps: Int, actualWeight: Double) {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage([
+        let msg: [String: Any] = [
             "action": "complete_set",
             "actualReps": actualReps,
             "actualWeight": actualWeight
-        ], replyHandler: nil)
+        ]
+
+        // Always save locally first so data is never lost
+        OfflineCacheManager.shared.saveLocalSet(OfflineCacheManager.LocalSet(
+            exerciseIndex: 0,
+            setIndex: setNumber,
+            weight: actualWeight,
+            reps: actualReps,
+            timestamp: Date()
+        ))
+
+        // Try to send to phone, queue if unreachable
+        sendOrQueue(msg)
     }
 
     func skipRest() {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage(["action": "skip_rest"], replyHandler: nil)
+        let msg: [String: Any] = ["action": "skip_rest"]
+        sendOrQueue(msg)
         DispatchQueue.main.async {
             self.isResting = false
         }
     }
 
     func endWorkout() {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage(["action": "end_workout"], replyHandler: nil)
+        let msg: [String: Any] = ["action": "end_workout"]
+        sendOrQueue(msg)
     }
 
     func saveAndEndWorkout() {
         let msg: [String: Any] = ["action": "save_and_end"]
-        if WCSession.default.isReachable {
-            WCSession.default.sendMessage(msg, replyHandler: nil, errorHandler: nil)
+        sendOrQueue(msg)
+
+        // Update local state immediately regardless of phone connectivity
+        DispatchQueue.main.async {
+            self.isWorkoutActive = false
+            self.workoutJustEnded = true
+            OfflineCacheManager.shared.clearLocalWorkoutState()
         }
     }
 
@@ -145,19 +167,75 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func submitRPE(value: Int) {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage(["action": "submit_rpe", "rpe": value], replyHandler: nil)
+        let msg: [String: Any] = ["action": "submit_rpe", "rpe": value]
+        sendOrQueue(msg)
         pendingRPE = false
     }
 
     func checkIn() {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage(["action": "check_in"], replyHandler: nil)
+        let msg: [String: Any] = ["action": "check_in"]
+        sendOrQueue(msg)
     }
 
     func openQROnPhone() {
-        guard WCSession.default.isReachable else { return }
-        WCSession.default.sendMessage(["action": "open_qr"], replyHandler: nil)
+        let msg: [String: Any] = ["action": "open_qr"]
+        sendOrQueue(msg)
+    }
+
+    // MARK: - Offline Send/Queue Helpers
+
+    private func sendOrQueue(_ msg: [String: Any]) {
+        if WCSession.default.isReachable {
+            WCSession.default.sendMessage(msg, replyHandler: nil) { [weak self] _ in
+                // Send failed despite being reachable — queue it
+                self?.queueMessage(msg)
+            }
+        } else {
+            queueMessage(msg)
+        }
+    }
+
+    private func queueMessage(_ msg: [String: Any]) {
+        var payload: [String: String] = [:]
+        for (key, value) in msg where key != "action" {
+            payload[key] = "\(value)"
+        }
+        let action = OfflineCacheManager.PendingAction(
+            action: msg["action"] as? String ?? "",
+            payload: payload
+        )
+        OfflineCacheManager.shared.queueAction(action)
+        DispatchQueue.main.async {
+            self.pendingActionCount = OfflineCacheManager.shared.loadPendingActions().count
+        }
+    }
+
+    private func flushPendingActions() {
+        let actions = OfflineCacheManager.shared.loadPendingActions()
+        guard !actions.isEmpty else { return }
+
+        for action in actions {
+            var msg: [String: Any] = ["action": action.action]
+            for (key, value) in action.payload {
+                // Convert numeric strings back to their original types
+                if let intVal = Int(value) {
+                    msg[key] = intVal
+                } else if let doubleVal = Double(value) {
+                    msg[key] = doubleVal
+                } else {
+                    msg[key] = value
+                }
+            }
+            WCSession.default.sendMessage(msg, replyHandler: nil) { _ in
+                // If direct send still fails, use guaranteed delivery
+                WCSession.default.transferUserInfo(msg)
+            }
+            OfflineCacheManager.shared.removePendingAction(action.id)
+        }
+
+        DispatchQueue.main.async {
+            self.pendingActionCount = 0
+        }
     }
 
     // MARK: - WCSessionDelegate
@@ -171,9 +249,9 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     func sessionReachabilityDidChange(_ session: WCSession) {
         DispatchQueue.main.async {
             self.isReachable = session.isReachable
-            // Auto-request routines when phone becomes reachable
             if session.isReachable {
                 self.requestRoutines()
+                self.flushPendingActions()
             }
         }
     }

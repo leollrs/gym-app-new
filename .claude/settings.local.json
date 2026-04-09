@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(grep -n \"streak_cache\\\\|CREATE TABLE.*streak\" /c/Users/leoll/gyn-app-new/gym-app-new/gym-app/supabase/migrations/*.sql)",
-      "Bash(grep -c \"export const MEALS\" /c/Users/leoll/gyn-app-new/gym-app-new/gym-app/src/data/meals_*.js)"
+      "Bash(grep -c \"export const MEALS\" /c/Users/leoll/gyn-app-new/gym-app-new/gym-app/src/data/meals_*.js)",
+      "Bash(find /Users/leollorens/Downloads/gym-app-new-main -type f \\\\\\( -name \"*.jsx\" -o -name \"*.js\" \\\\\\) -exec grep -l \"routine_day_map\\\\|week1_map\" {} \\\\;)",
+      "Bash(curl -s \"https://www.google.com/search?q=Alex+Hormozi+100M+Offers+value+equation+framework+detailed+breakdown\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(grep -l \"QR\\\\|qr\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/src/pages/*.jsx)",
+      "Bash(ls /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/025*)",
+      "Bash(ls /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0260* /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0261*)",
+      "Bash(grep -l \"CREATE TABLE\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/*.sql)"
     ]
   }
 }

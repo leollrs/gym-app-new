@@ -73,6 +73,104 @@ class OfflineCacheManager {
         return (date, name)
     }
 
+    // MARK: - Pending Actions Queue
+
+    struct PendingAction: Codable, Identifiable {
+        let id: UUID
+        let action: String
+        let payload: [String: String]
+        let timestamp: Date
+
+        init(action: String, payload: [String: String] = [:]) {
+            self.id = UUID()
+            self.action = action
+            self.payload = payload
+            self.timestamp = Date()
+        }
+    }
+
+    private let pendingActionsKey = "pending_actions_queue"
+
+    func queueAction(_ action: PendingAction) {
+        var actions = loadPendingActions()
+        actions.append(action)
+        if let data = try? JSONEncoder().encode(actions) {
+            defaults.set(data, forKey: pendingActionsKey)
+        }
+    }
+
+    func loadPendingActions() -> [PendingAction] {
+        guard let data = defaults.data(forKey: pendingActionsKey),
+              let actions = try? JSONDecoder().decode([PendingAction].self, from: data) else {
+            return []
+        }
+        return actions
+    }
+
+    func clearPendingActions() {
+        defaults.removeObject(forKey: pendingActionsKey)
+    }
+
+    func removePendingAction(_ id: UUID) {
+        var actions = loadPendingActions()
+        actions.removeAll { $0.id == id }
+        if let data = try? JSONEncoder().encode(actions) {
+            defaults.set(data, forKey: pendingActionsKey)
+        }
+    }
+
+    // MARK: - Local Workout State
+
+    private let localSetsKey = "local_workout_sets"
+    private let localWorkoutActiveKey = "local_workout_active"
+    private let localWorkoutRoutineKey = "local_workout_routine_id"
+    private let localWorkoutStartKey = "local_workout_start"
+
+    struct LocalSet: Codable {
+        let exerciseIndex: Int
+        let setIndex: Int
+        let weight: Double
+        let reps: Int
+        let timestamp: Date
+    }
+
+    func saveLocalSet(_ set: LocalSet) {
+        var sets = loadLocalSets()
+        sets.append(set)
+        if let data = try? JSONEncoder().encode(sets) {
+            defaults.set(data, forKey: localSetsKey)
+        }
+    }
+
+    func loadLocalSets() -> [LocalSet] {
+        guard let data = defaults.data(forKey: localSetsKey),
+              let sets = try? JSONDecoder().decode([LocalSet].self, from: data) else {
+            return []
+        }
+        return sets
+    }
+
+    func clearLocalSets() {
+        defaults.removeObject(forKey: localSetsKey)
+    }
+
+    func saveLocalWorkoutState(routineId: String, startTime: Date) {
+        defaults.set(true, forKey: localWorkoutActiveKey)
+        defaults.set(routineId, forKey: localWorkoutRoutineKey)
+        defaults.set(startTime, forKey: localWorkoutStartKey)
+    }
+
+    func clearLocalWorkoutState() {
+        defaults.set(false, forKey: localWorkoutActiveKey)
+        defaults.removeObject(forKey: localWorkoutRoutineKey)
+        defaults.removeObject(forKey: localWorkoutStartKey)
+        clearLocalSets()
+    }
+
+    func isLocalWorkoutActive() -> Bool {
+        return defaults.bool(forKey: localWorkoutActiveKey)
+    }
+
     // MARK: - Clear All
 
     func clearAll() {
@@ -87,5 +185,7 @@ class OfflineCacheManager {
         for key in allKeys {
             defaults.removeObject(forKey: key)
         }
+        clearPendingActions()
+        clearLocalWorkoutState()
     }
 }

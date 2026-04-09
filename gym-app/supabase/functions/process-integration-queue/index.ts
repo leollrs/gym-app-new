@@ -14,12 +14,41 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
+
+// Timing-safe comparison (HMAC-based, no length leak)
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
+}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // ── Auth: require valid cron secret ──
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const incomingSecret = req.headers.get('X-Cron-Secret') ?? '';
+
+  if (!cronSecret || !incomingSecret || !(await timingSafeEqual(cronSecret, incomingSecret))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);

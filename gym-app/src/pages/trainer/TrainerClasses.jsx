@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { format, addDays, startOfDay } from 'date-fns';
+import UnderlineTabs from '../../components/UnderlineTabs';
 
 const DAYS_OF_WEEK = [
   { value: 0, labelKey: 'days.sunday' },
@@ -38,7 +39,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
   const [adding, setAdding] = useState(false);
   const [newSlot, setNewSlot] = useState({ day_of_week: 1, start_time: '09:00', end_time: '10:00' });
   const queryClient = useQueryClient();
-  const { addToast } = useToast();
+  const { showToast } = useToast();
 
   const schedules = (cls.gym_class_schedules || [])
     .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time));
@@ -51,7 +52,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
     });
     if (error) {
       logger.error('TrainerClasses: add slot error', error);
-      addToast(error.message, 'error');
+      showToast(error.message, 'error');
     } else {
       queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
       setAdding(false);
@@ -69,16 +70,16 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-[480px] max-h-[90vh] sm:max-h-[85vh] bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
+      <div className="relative w-full sm:max-w-[480px] max-h-[92vh] sm:max-h-[85vh] bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-[var(--color-bg-card)] border-b border-[var(--color-border-subtle)] px-4 py-3 flex items-center justify-between z-10">
           <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.classDetails')}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
             <X size={18} className="text-[var(--color-text-muted)]" />
           </button>
         </div>
 
-        <div className="p-4 space-y-5">
+        <div className="p-4 space-y-5 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {/* Class info */}
           <div className="flex items-center gap-3">
             {cls.image_url ? (
@@ -155,14 +156,14 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.start')}</label>
                     <input
                       type="time"
                       value={newSlot.start_time}
                       onChange={e => setNewSlot(s => ({ ...s, start_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
                   </div>
                   <div>
@@ -171,20 +172,20 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                       type="time"
                       value={newSlot.end_time}
                       onChange={e => setNewSlot(s => ({ ...s, end_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
                     />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleAddSlot}
-                    className="px-3 py-2 bg-[var(--color-accent)] text-[var(--color-text-on-accent)] text-[12px] font-semibold rounded-xl hover:bg-[var(--color-accent-dark)] transition-colors min-h-[36px]"
+                    className="px-3 py-3 sm:py-2.5 bg-[var(--color-accent)] text-[var(--color-text-on-accent)] text-[12px] font-semibold rounded-xl hover:bg-[var(--color-accent-dark)] transition-colors min-h-[44px]"
                   >
                     {t('trainerClasses.save')}
                   </button>
                   <button
                     onClick={() => setAdding(false)}
-                    className="px-3 py-2 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-h-[36px]"
+                    className="px-3 py-3 sm:py-2.5 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
                   >
                     {t('trainerClasses.cancel')}
                   </button>
@@ -238,7 +239,7 @@ function MyClassesTab({ classes, gymId, t, tc }) {
               <button
                 key={cls.id}
                 onClick={() => setSelectedClass(cls)}
-                className="w-full bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] p-4 hover:border-white/12 transition-all text-left group"
+                className="w-full bg-[var(--color-bg-secondary)] rounded-2xl border border-[var(--color-border-subtle)] p-3.5 sm:p-4 hover:border-white/12 transition-all text-left group"
               >
                 <div className="flex items-center gap-3">
                   {cls.image_url ? (
@@ -297,7 +298,7 @@ function BookingsTab({ classes, t }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
   const [selectedDate, setSelectedDate] = useState(format(today, 'yyyy-MM-dd'));
   const queryClient = useQueryClient();
-  const { addToast } = useToast();
+  const { showToast } = useToast();
 
   const classIds = classes.map(c => c.id);
 
@@ -323,7 +324,7 @@ function BookingsTab({ classes, t }) {
       .update({ attended: true, attended_at: new Date().toISOString() })
       .eq('id', bookingId);
     if (error) {
-      addToast(error.message, 'error');
+      showToast(error.message, 'error');
     } else {
       queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
     }
@@ -342,27 +343,30 @@ function BookingsTab({ classes, t }) {
   return (
     <div className="space-y-4">
       {/* Day pills */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-        {days.map(day => {
-          const dayStr = format(day, 'yyyy-MM-dd');
-          const isActive = dayStr === selectedDate;
-          return (
-            <button
-              key={dayStr}
-              onClick={() => setSelectedDate(dayStr)}
-              className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl min-w-[52px] min-h-[52px] transition-all ${
-                isActive
-                  ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
-                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
-              }`}
-            >
-              <span className="text-[10px] font-medium uppercase">{format(day, 'EEE')}</span>
-              <span className={`text-[15px] font-bold ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
-                {format(day, 'd')}
-              </span>
-            </button>
-          );
-        })}
+      <div className="relative">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+          {days.map(day => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            const isActive = dayStr === selectedDate;
+            return (
+              <button
+                key={dayStr}
+                onClick={() => setSelectedDate(dayStr)}
+                className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl min-w-[52px] min-h-[52px] transition-all ${
+                  isActive
+                    ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
+                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
+                }`}
+              >
+                <span className="text-[10px] font-medium uppercase">{format(day, 'EEE')}</span>
+                <span className={`text-[15px] font-bold ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
+                  {format(day, 'd')}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[var(--color-bg-primary)] to-transparent pointer-events-none sm:hidden" />
       </div>
 
       {/* Bookings content */}
@@ -391,9 +395,9 @@ function BookingsTab({ classes, t }) {
                 </div>
                 <div className="space-y-1.5">
                   {classBookings.map(b => (
-                    <div key={b.id} className="flex items-center gap-2.5 p-2.5 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]">
+                    <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]">
                       {b.profiles?.avatar_url ? (
-                        <img src={b.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                        <img src={b.profiles.avatar_url} alt={b.profiles?.display_name || "Member avatar"} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
                           <span className="text-[11px] font-bold text-[var(--color-accent)]">
@@ -411,7 +415,7 @@ function BookingsTab({ classes, t }) {
                       ) : (
                         <button
                           onClick={() => handleMarkAttended(b.id)}
-                          className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[32px]"
+                          className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-2.5 py-2 sm:py-1.5 rounded-full font-medium hover:bg-[var(--color-accent)]/20 transition-colors min-h-[44px] sm:min-h-[32px]"
                         >
                           <UserCheck size={11} /> {t('trainerClasses.markAttended')}
                         </button>
@@ -492,21 +496,14 @@ function AnalyticsTab({ classes, t }) {
 
   return (
     <div className="space-y-4">
-      {/* Class selector pills */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-        {classes.map(cls => (
-          <button
-            key={cls.id}
-            onClick={() => setSelectedClassId(cls.id)}
-            className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-[12px] font-medium transition-all min-h-[36px] ${
-              cls.id === selectedClassId
-                ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
-                : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
-            }`}
-          >
-            {cls.name}
-          </button>
-        ))}
+      {/* Class selector */}
+      <div className="mb-5">
+        <UnderlineTabs
+          tabs={classes.map(cls => ({ key: cls.id, label: cls.name }))}
+          activeIndex={Math.max(0, classes.findIndex(cls => cls.id === selectedClassId))}
+          onChange={(i) => setSelectedClassId(classes[i].id)}
+          scrollable
+        />
       </div>
 
       {/* Analytics content */}
@@ -573,7 +570,7 @@ function AnalyticsTab({ classes, t }) {
                     className="flex items-center gap-2.5 p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]"
                   >
                     {r.profiles?.avatar_url ? (
-                      <img src={r.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      <img src={r.profiles.avatar_url} alt={r.profiles?.display_name || "Member avatar"} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
                         <span className="text-[11px] font-bold text-[var(--color-accent)]">
@@ -683,7 +680,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
             />
           </div>
           {search && filtered.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-card)]">
+            <div className="max-h-48 sm:max-h-40 overflow-y-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-card)]">
               {filtered.map(r => (
                 <button
                   key={r.id}
@@ -747,7 +744,7 @@ function TemplatePreview({ templateId, t }) {
 // ── Tab 4: Templates ──
 function TemplatesTab({ classes, gymId, t }) {
   const queryClient = useQueryClient();
-  const { addToast } = useToast();
+  const { showToast } = useToast();
 
   // Get routine names for classes that have templates
   const templateIds = classes.filter(c => c.workout_template_id).map(c => c.workout_template_id);
@@ -774,7 +771,7 @@ function TemplatesTab({ classes, gymId, t }) {
       .update({ workout_template_id: templateId, updated_at: new Date().toISOString() })
       .eq('id', classId);
     if (error) {
-      addToast(error.message, 'error');
+      showToast(error.message, 'error');
     } else {
       queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
     }
@@ -846,6 +843,135 @@ function TemplatesTab({ classes, gymId, t }) {
   );
 }
 
+// ── Propose New Class Modal ──
+function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ name: '', description: '', day_of_week: 1, start_time: '09:00', duration: 60 });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) return;
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.rpc('log_admin_action', {
+        p_action: 'class_proposal',
+        p_entity_type: 'class',
+        p_entity_id: null,
+        p_details: {
+          class_name: form.name.trim(),
+          description: form.description.trim(),
+          suggested_day: form.day_of_week,
+          suggested_time: form.start_time,
+          duration_minutes: form.duration,
+        },
+      });
+      if (error) throw error;
+      showToast(t('trainerClasses.proposalSent', 'Proposal sent to admin'), 'success');
+      onClose();
+    } catch (err) {
+      logger.error('ProposeClass: error', err);
+      showToast(err.message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm overflow-hidden sm:mx-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+            {t('trainerClasses.proposeClass', 'Propose New Class')}
+          </h2>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5 space-y-3">
+          {/* Class name */}
+          <div>
+            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.className', 'Class Name')}</label>
+            <input
+              value={form.name}
+              onChange={e => setForm(s => ({ ...s, name: e.target.value }))}
+              placeholder={t('trainerClasses.classNamePlaceholder', 'e.g. HIIT Cardio')}
+              autoFocus
+              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] transition-colors"
+            />
+          </div>
+          {/* Description */}
+          <div>
+            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.classDescription', 'Description')}</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm(s => ({ ...s, description: e.target.value }))}
+              placeholder={t('trainerClasses.classDescPlaceholder', 'Describe the class...')}
+              rows={3}
+              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none"
+            />
+          </div>
+          {/* Day + Time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.suggestedDay', 'Day')}</label>
+              <select
+                value={form.day_of_week}
+                onChange={e => setForm(s => ({ ...s, day_of_week: Number(e.target.value) }))}
+                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              >
+                {DAYS_OF_WEEK.map(d => (
+                  <option key={d.value} value={d.value}>{tc(d.labelKey)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.suggestedTime', 'Time')}</label>
+              <input
+                type="time"
+                value={form.start_time}
+                onChange={e => setForm(s => ({ ...s, start_time: e.target.value }))}
+                className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+            </div>
+          </div>
+          {/* Duration */}
+          <div>
+            <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.duration', 'Duration (min)')}</label>
+            <input
+              type="number"
+              value={form.duration}
+              onChange={e => setForm(s => ({ ...s, duration: Number(e.target.value) }))}
+              min={15}
+              max={180}
+              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)] transition-colors"
+            />
+          </div>
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={!form.name.trim() || submitting}
+            className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {submitting ? (
+              <div className="w-4 h-4 border-2 rounded-full animate-spin border-white/30 border-t-white" />
+            ) : (
+              <>
+                <Plus size={16} />
+                {t('trainerClasses.submitProposal', 'Submit Proposal')}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──
 export default function TrainerClasses() {
   const { profile } = useAuth();
@@ -854,6 +980,7 @@ export default function TrainerClasses() {
   const gymId = profile?.gym_id;
   const trainerId = profile?.id;
   const [activeTab, setActiveTab] = useState('myClasses');
+  const [showProposeClass, setShowProposeClass] = useState(false);
 
   useEffect(() => { document.title = t('trainerClasses.documentTitle'); }, [t]);
 
@@ -896,26 +1023,33 @@ export default function TrainerClasses() {
   return (
     <div className="px-4 md:px-6 py-6 max-w-4xl mx-auto w-full">
       {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-[22px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.title')}</h1>
-        <p className="text-[13px] text-[var(--color-text-muted)] mt-0.5">{t('trainerClasses.subtitle')}</p>
+      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
+        style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
+          {t('trainerClasses.subtitle')}
+        </p>
+        <div className="flex items-center justify-between">
+          <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+            {t('trainerClasses.title')}
+          </h1>
+          <button
+            onClick={() => setShowProposeClass(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[12px] transition-colors min-h-[44px] shrink-0"
+          >
+            <Plus size={15} />
+            <span className="hidden sm:inline">{t('trainerClasses.proposeClass', 'Propose New Class')}</span>
+            <span className="sm:hidden">{t('trainerClasses.propose', 'Propose')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-2 overflow-x-auto pb-1 mb-5 -mx-1 px-1 scrollbar-hide">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-medium transition-all min-h-[40px] ${
-              tab === activeTab
-                ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
-                : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
-            }`}
-          >
-            {t(`trainerClasses.${tabKeys[tab]}`)}
-          </button>
-        ))}
+      <div className="mb-5">
+        <UnderlineTabs
+          tabs={TABS.map(tab => ({ key: tab, label: t(`trainerClasses.${tabKeys[tab]}`) }))}
+          activeIndex={TABS.indexOf(activeTab) >= 0 ? TABS.indexOf(activeTab) : 0}
+          onChange={(i) => setActiveTab(TABS[i])}
+        />
       </div>
 
       {/* Loading state */}
@@ -939,6 +1073,16 @@ export default function TrainerClasses() {
       )}
       {!isLoading && activeTab === 'templates' && (
         <TemplatesTab classes={classes} gymId={gymId} t={t} />
+      )}
+
+      {showProposeClass && (
+        <ProposeClassModal
+          gymId={gymId}
+          trainerId={trainerId}
+          onClose={() => setShowProposeClass(false)}
+          t={t}
+          tc={tc}
+        />
       )}
     </div>
   );

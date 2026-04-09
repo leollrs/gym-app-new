@@ -4,6 +4,7 @@ import {
   MessageSquare, Send, Search, Plus, CheckCircle, Clock,
   ArrowLeft, Eye, Calendar, Zap, Radio, Trash2, Pencil,
   ToggleLeft, ToggleRight, AlertTriangle, Megaphone, Users,
+  MoreVertical, Archive, ArchiveRestore, Ban, ShieldOff,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -16,9 +17,11 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import logger from '../../lib/logger';
 
 import { PageHeader, AdminCard, AdminModal, FadeIn, AdminTabs } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import UserAvatar from '../../components/UserAvatar';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
 import { sanitize } from '../../lib/sanitize';
+import { logAdminAction } from '../../lib/adminAudit';
 
 // ────────────────────────────────────────────────────────────
 // Constants
@@ -31,12 +34,12 @@ const TABS = [
 ];
 
 const TRIGGER_PRESETS = [
-  { label: 'New Member Welcome', delay: 0 },
-  { label: '3-Day Check-in', delay: 3 },
-  { label: '7-Day Motivation', delay: 7 },
-  { label: '14-Day Progress', delay: 14 },
-  { label: '30-Day Milestone', delay: 30 },
-  { label: 'Custom', delay: null },
+  { key: 'welcome',    labelKey: 'admin.messaging.presetWelcome',    labelDefault: 'New Member Welcome', delay: 0 },
+  { key: 'check3',     labelKey: 'admin.messaging.presetCheck3',     labelDefault: '3-Day Check-in',     delay: 3 },
+  { key: 'motivate7',  labelKey: 'admin.messaging.presetMotivate7',  labelDefault: '7-Day Motivation',   delay: 7 },
+  { key: 'progress14', labelKey: 'admin.messaging.presetProgress14', labelDefault: '14-Day Progress',    delay: 14 },
+  { key: 'milestone30',labelKey: 'admin.messaging.presetMilestone30',labelDefault: '30-Day Milestone',   delay: 30 },
+  { key: 'custom',     labelKey: 'admin.messaging.presetCustom',     labelDefault: 'Custom',             delay: null },
 ];
 
 // ────────────────────────────────────────────────────────────
@@ -58,6 +61,78 @@ function dateLabel(dateStr, t, dateFnsLocale) {
 function getOtherParticipant(convo, adminId) {
   if (convo.participant_1 === adminId) return convo.p2;
   return convo.p1;
+}
+
+function getMemberId(convo, adminId) {
+  return convo.participant_1 === adminId ? convo.participant_2 : convo.participant_1;
+}
+
+// ── Action dropdown for conversations ──────────────────
+function ConversationActionMenu({ convoId, memberId, isArchived, isBlocked, onArchive, onUnarchive, onDelete, onBlock, onUnblock, t }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        aria-label="Actions"
+        className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.06] transition-colors flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+      >
+        <MoreVertical size={14} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}>
+          {isArchived ? (
+            <button onClick={() => { onUnarchive(convoId); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              <ArchiveRestore size={14} className="text-[#6B7280]" />
+              {t('admin.messaging.unarchive', 'Desarchivar')}
+            </button>
+          ) : (
+            <button onClick={() => { onArchive(convoId); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              <Archive size={14} className="text-[#6B7280]" />
+              {t('admin.messaging.archive', 'Archivar')}
+            </button>
+          )}
+          <button onClick={() => { onDelete(convoId); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-400 hover:bg-red-500/[0.06] transition-colors text-left">
+            <Trash2 size={14} />
+            {t('admin.messaging.deleteConversation', 'Eliminar conversacion')}
+          </button>
+          <div className="h-px bg-white/6" />
+          {isBlocked ? (
+            <button onClick={() => { onUnblock(memberId); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              <ShieldOff size={14} className="text-[#6B7280]" />
+              {t('admin.messaging.unblockUser', 'Desbloquear usuario')}
+            </button>
+          ) : (
+            <button onClick={() => { onBlock(memberId, convoId); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-400 hover:bg-red-500/[0.06] transition-colors text-left">
+              <Ban size={14} />
+              {t('admin.messaging.blockUser', 'Bloquear usuario')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ════════════════════════════════════════════════════════════
@@ -90,24 +165,27 @@ export default function AdminMessaging() {
         tabs={TABS.map(tb => ({ key: tb.key, label: t(`admin.messaging.${tb.labelKey}`), icon: tb.icon }))}
         active={activeTab}
         onChange={setActiveTab}
-        className="mt-6 mb-4"
+        className="mt-5 mb-5"
       />
 
       {/* ── Tab content ──────────────────────────────────── */}
-      <div className="mt-4">
-        {activeTab === 'dm' && (
-          <DirectMessagesTab
-            gymId={gymId} adminId={adminId} gym={gym}
-            searchParams={searchParams} t={t} dateFnsLocale={dateFnsLocale}
-          />
-        )}
-        {activeTab === 'scheduled' && (
-          <ScheduledMessagesTab gymId={gymId} t={t} />
-        )}
-        {activeTab === 'broadcast' && (
-          <BroadcastTab gymId={gymId} adminId={adminId} gym={gym} t={t} />
-        )}
-      </div>
+      <SwipeableTabContent tabs={TABS.map(tb => ({ key: tb.key, label: t(`admin.messaging.${tb.labelKey}`), icon: tb.icon }))} active={activeTab} onChange={setActiveTab}>
+        {(tabKey) => {
+          if (tabKey === 'dm') return (
+            <DirectMessagesTab
+              gymId={gymId} adminId={adminId} gym={gym}
+              searchParams={searchParams} t={t} dateFnsLocale={dateFnsLocale}
+            />
+          );
+          if (tabKey === 'scheduled') return (
+            <ScheduledMessagesTab gymId={gymId} t={t} />
+          );
+          if (tabKey === 'broadcast') return (
+            <BroadcastTab gymId={gymId} adminId={adminId} gym={gym} t={t} />
+          );
+          return null;
+        }}
+      </SwipeableTabContent>
     </div>
   );
 }
@@ -132,6 +210,13 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   const [showNewMsg, setShowNewMsg] = useState(false);
   const [newMsgSearch, setNewMsgSearch] = useState('');
   const [mobileShowThread, setMobileShowThread] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedIds, setArchivedIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('admin_archived_conversations') || '[]'); }
+    catch { return []; }
+  });
+  const [blockedUserIds, setBlockedUserIds] = useState([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const threadEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -209,6 +294,102 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
   }, [gymId, adminId, searchParams]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // ── Load blocked users ───────────────────────────────
+  useEffect(() => {
+    if (!adminId) return;
+    supabase.from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', adminId)
+      .then(({ data }) => {
+        if (data) setBlockedUserIds(data.map(r => r.blocked_id));
+      });
+  }, [adminId]);
+
+  // ── Archive / Unarchive ──────────────────────────────
+  const handleArchive = useCallback((convoId) => {
+    setArchivedIds(prev => {
+      const next = [...prev, convoId];
+      localStorage.setItem('admin_archived_conversations', JSON.stringify(next));
+      return next;
+    });
+    if (activeConvoId === convoId) {
+      setActiveConvoId(null);
+      setActiveMember(null);
+      setMobileShowThread(false);
+    }
+    showToast(t('admin.messaging.archived', 'Archivado'), 'success');
+  }, [activeConvoId, showToast, t]);
+
+  const handleUnarchive = useCallback((convoId) => {
+    setArchivedIds(prev => {
+      const next = prev.filter(id => id !== convoId);
+      localStorage.setItem('admin_archived_conversations', JSON.stringify(next));
+      return next;
+    });
+    showToast(t('admin.messaging.unarchive', 'Desarchivar'), 'success');
+  }, [showToast, t]);
+
+  // ── Delete conversation ──────────────────────────────
+  const handleDeleteConfirmed = useCallback(async () => {
+    if (!deleteConfirmId) return;
+    const convoId = deleteConfirmId;
+    setDeleteConfirmId(null);
+
+    // Delete all messages then the conversation
+    const { error: msgErr } = await supabase.from('direct_messages')
+      .delete().eq('conversation_id', convoId);
+    if (msgErr) { logger.error('AdminMessaging: delete msgs:', msgErr); showToast('Error', 'error'); return; }
+
+    const { error: convoErr } = await supabase.from('conversations')
+      .delete().eq('id', convoId);
+    if (convoErr) { logger.error('AdminMessaging: delete convo:', convoErr); showToast('Error', 'error'); return; }
+
+    logAdminAction('delete_conversation', 'conversation', convoId);
+
+    // Remove from local state
+    setConversations(prev => prev.filter(c => c.id !== convoId));
+    setArchivedIds(prev => {
+      const next = prev.filter(id => id !== convoId);
+      localStorage.setItem('admin_archived_conversations', JSON.stringify(next));
+      return next;
+    });
+    if (activeConvoId === convoId) {
+      setActiveConvoId(null);
+      setActiveMember(null);
+      setMobileShowThread(false);
+    }
+    showToast(t('admin.messaging.deleteConversation', 'Eliminada'), 'success');
+  }, [deleteConfirmId, activeConvoId, showToast, t]);
+
+  // ── Block / Unblock ──────────────────────────────────
+  const handleBlock = useCallback(async (memberId, convoId) => {
+    const { error } = await supabase.from('blocked_users')
+      .insert({ blocker_id: adminId, blocked_id: memberId });
+    if (error && !error.message?.includes('duplicate')) {
+      logger.error('AdminMessaging: block:', error);
+      showToast('Error', 'error');
+      return;
+    }
+    setBlockedUserIds(prev => [...prev, memberId]);
+    // Auto-archive the conversation
+    handleArchive(convoId);
+    showToast(t('admin.messaging.blocked', 'Bloqueado'), 'success');
+  }, [adminId, handleArchive, showToast, t]);
+
+  const handleUnblock = useCallback(async (memberId) => {
+    const { error } = await supabase.from('blocked_users')
+      .delete()
+      .eq('blocker_id', adminId)
+      .eq('blocked_id', memberId);
+    if (error) {
+      logger.error('AdminMessaging: unblock:', error);
+      showToast('Error', 'error');
+      return;
+    }
+    setBlockedUserIds(prev => prev.filter(id => id !== memberId));
+    showToast(t('admin.messaging.unblockUser', 'Desbloqueado'), 'success');
+  }, [adminId, showToast, t]);
 
   // ── Load messages for active conversation ─────────────
   useEffect(() => {
@@ -434,13 +615,22 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
 
   // ── Filters ───────────────────────────────────────────
   const filteredConvos = useMemo(() => {
-    if (!search) return conversations;
-    const q = search.toLowerCase();
-    return conversations.filter(c => {
-      const other = getOtherParticipant(c, adminId);
-      return other?.full_name?.toLowerCase().includes(q) || other?.username?.toLowerCase().includes(q);
-    });
-  }, [conversations, search, adminId]);
+    let list = conversations;
+    // Archive filter
+    if (showArchived) {
+      list = list.filter(c => archivedIds.includes(c.id));
+    } else {
+      list = list.filter(c => !archivedIds.includes(c.id));
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(c => {
+        const other = getOtherParticipant(c, adminId);
+        return other?.full_name?.toLowerCase().includes(q) || other?.username?.toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }, [conversations, search, adminId, showArchived, archivedIds]);
 
   const filteredMembers = useMemo(() => {
     if (!newMsgSearch) return members.slice(0, 20);
@@ -479,6 +669,14 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                 <input type="text" placeholder={t('admin.messaging.searchConversations')} aria-label={t('admin.messaging.searchConversations')} value={search} onChange={e => setSearch(e.target.value)}
                   className="w-full bg-[#111827] border border-white/6 rounded-lg pl-8 pr-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
               </div>
+              <button onClick={() => setShowArchived(!showArchived)}
+                aria-label={showArchived ? t('admin.messaging.hideArchived', 'Ocultar archivados') : t('admin.messaging.showArchived', 'Ver archivados')}
+                title={showArchived ? t('admin.messaging.hideArchived', 'Ocultar archivados') : t('admin.messaging.showArchived', 'Ver archivados')}
+                className={`px-3 py-2 rounded-lg border transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
+                  showArchived ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-white/[0.03] text-[#6B7280] border-white/6 hover:text-[#E5E7EB]'
+                }`}>
+                <Archive size={14} />
+              </button>
               <button onClick={() => setShowNewMsg(true)}
                 aria-label={t('admin.messaging.newMessage')}
                 className="px-3 py-2 rounded-lg bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/18 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
@@ -501,38 +699,69 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
               ) : (
                 filteredConvos.map(c => {
                   const member = getOtherParticipant(c, adminId);
+                  const membId = getMemberId(c, adminId);
                   const isActive = c.id === activeConvoId;
+                  const isMemberBlocked = blockedUserIds.includes(membId);
+                  const isConvoArchived = archivedIds.includes(c.id);
                   const previewText = c.last_message_preview
                     ? (c.last_message_sender_id === adminId ? `${t('admin.messaging.you')}: ` : '') +
                       sanitize(c.last_message_preview.length > 50 ? c.last_message_preview.slice(0, 50) + '...' : c.last_message_preview)
                     : t('admin.messaging.noMessagesYet');
                   return (
-                    <button key={c.id} onClick={() => { setActiveConvoId(c.id); setActiveMember(member); setMobileShowThread(true); }}
-                      className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-colors ${
-                        isActive ? 'bg-[#D4AF37]/8' : 'hover:bg-white/[0.03]'
-                      }`}>
-                      <UserAvatar user={member || {}} size={36} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className={`text-[13px] font-semibold truncate ${isActive ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                            {member?.full_name || member?.username || t('admin.messaging.unknown')}
-                          </p>
-                          {c.last_message_at && (
-                            <p className="text-[10px] text-[#6B7280] flex-shrink-0 ml-2">
-                              {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: false, ...dateFnsLocale })}
-                            </p>
-                          )}
+                    <div key={c.id} className={`flex items-center transition-colors ${
+                      isActive ? 'bg-[#D4AF37]/8' : 'hover:bg-white/[0.03]'
+                    }`}>
+                      <button onClick={() => { setActiveConvoId(c.id); setActiveMember(member); setMobileShowThread(true); }}
+                        className="flex-1 flex items-center gap-3 px-3 py-3 text-left min-w-0">
+                        <UserAvatar user={member || {}} size={36} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className={`text-[13px] font-semibold truncate ${isActive ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                                {member?.full_name || member?.username || t('admin.messaging.unknown')}
+                              </p>
+                              {isMemberBlocked && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500/10 text-red-400">
+                                  {t('admin.messaging.blocked', 'Bloqueado')}
+                                </span>
+                              )}
+                              {isConvoArchived && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-white/6 text-[#6B7280]">
+                                  {t('admin.messaging.archived', 'Archivado')}
+                                </span>
+                              )}
+                            </div>
+                            {c.last_message_at && (
+                              <p className="text-[10px] text-[#6B7280] flex-shrink-0 ml-2">
+                                {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: false, ...dateFnsLocale })}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <p className="text-[11px] text-[#6B7280] truncate">{previewText}</p>
+                            {c.unread_count > 0 && (
+                              <span className="flex-shrink-0 ml-2 w-5 h-5 rounded-full bg-[#D4AF37] text-[#05070B] text-[10px] font-bold flex items-center justify-center">
+                                {c.unread_count}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between mt-0.5">
-                          <p className="text-[11px] text-[#6B7280] truncate">{previewText}</p>
-                          {c.unread_count > 0 && (
-                            <span className="flex-shrink-0 ml-2 w-5 h-5 rounded-full bg-[#D4AF37] text-[#05070B] text-[10px] font-bold flex items-center justify-center">
-                              {c.unread_count}
-                            </span>
-                          )}
-                        </div>
+                      </button>
+                      <div className="flex-shrink-0 pr-2">
+                        <ConversationActionMenu
+                          convoId={c.id}
+                          memberId={membId}
+                          isArchived={isConvoArchived}
+                          isBlocked={isMemberBlocked}
+                          onArchive={handleArchive}
+                          onUnarchive={handleUnarchive}
+                          onDelete={(id) => setDeleteConfirmId(id)}
+                          onBlock={handleBlock}
+                          onUnblock={handleUnblock}
+                          t={t}
+                        />
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               )}
@@ -558,11 +787,37 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                   </button>
                   <UserAvatar user={activeMember || {}} size={36} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{activeMember?.full_name || activeMember?.username || t('admin.messaging.member')}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{activeMember?.full_name || activeMember?.username || t('admin.messaging.member')}</p>
+                      {blockedUserIds.includes(getMemberId(conversations.find(c => c.id === activeConvoId) || {}, adminId)) && (
+                        <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-500/10 text-red-400">
+                          {t('admin.messaging.blocked', 'Bloqueado')}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-[#6B7280]">
                       {activeMember?.username ? `@${activeMember.username}` : activeMember?.email || t('admin.messaging.member')}
                     </p>
                   </div>
+                  {activeConvoId && (() => {
+                    const activeConvo = conversations.find(c => c.id === activeConvoId);
+                    if (!activeConvo) return null;
+                    const membId = getMemberId(activeConvo, adminId);
+                    return (
+                      <ConversationActionMenu
+                        convoId={activeConvoId}
+                        memberId={membId}
+                        isArchived={archivedIds.includes(activeConvoId)}
+                        isBlocked={blockedUserIds.includes(membId)}
+                        onArchive={handleArchive}
+                        onUnarchive={handleUnarchive}
+                        onDelete={(id) => setDeleteConfirmId(id)}
+                        onBlock={handleBlock}
+                        onUnblock={handleUnblock}
+                        t={t}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Messages */}
@@ -609,7 +864,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
                             </div>
                           </div>
                           {isLastSent && (
-                            <p className="text-[10px] text-right mr-1" style={{ color: item.read_at ? '#10B981' : '#6B7280' }}>
+                            <p className={`text-[10px] text-right mr-1 ${item.read_at ? 'text-[#10B981]' : 'text-[#6B7280]'}`}>
                               {item.read_at ? t('admin.messaging.read') : t('admin.messaging.delivered')}
                             </p>
                           )}
@@ -654,10 +909,10 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
             <input type="text" placeholder={t('admin.messaging.searchMembers')} aria-label={t('admin.messaging.searchMembers')} value={newMsgSearch} onChange={e => setNewMsgSearch(e.target.value)} autoFocus
               className="w-full bg-[#111827] border border-white/6 rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
           </div>
-          <div className="max-h-[300px] overflow-y-auto space-y-0.5">
+          <div className="max-h-[300px] overflow-y-auto space-y-1">
             {filteredMembers.map(m => (
               <button key={m.id} onClick={() => handleNewConversation(m)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-colors text-left">
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/[0.04] transition-colors text-left">
                 <UserAvatar user={m} size={32} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name}</p>
@@ -669,6 +924,37 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
               <p className="text-center py-6 text-[13px] text-[#6B7280]">{t('admin.messaging.noMembersFound')}</p>
             )}
           </div>
+        </AdminModal>
+      )}
+
+      {/* ── Delete Conversation Confirmation Modal ───── */}
+      {deleteConfirmId && (
+        <AdminModal
+          isOpen={!!deleteConfirmId}
+          onClose={() => setDeleteConfirmId(null)}
+          title={t('admin.messaging.deleteConversation', 'Eliminar conversacion')}
+          titleIcon={Trash2}
+          size="sm"
+          footer={
+            <>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-[#9CA3AF] text-[13px] font-semibold hover:bg-white/[0.04] transition-colors min-h-[44px]"
+              >
+                {t('admin.messaging.cancel', 'Cancelar')}
+              </button>
+              <button
+                onClick={handleDeleteConfirmed}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-500/12 text-red-400 border border-red-500/25 text-[13px] font-semibold hover:bg-red-500/20 transition-colors min-h-[44px]"
+              >
+                {t('admin.messaging.deleteConversation', 'Eliminar conversacion')}
+              </button>
+            </>
+          }
+        >
+          <p className="text-[13px] text-[#9CA3AF]">
+            {t('admin.messaging.confirmDelete', 'Eliminar esta conversacion? Esta accion no se puede deshacer.')}
+          </p>
         </AdminModal>
       )}
     </FadeIn>
@@ -746,7 +1032,7 @@ function ScheduledMessagesTab({ gymId, t }) {
 
   const triggerLabel = (days) => {
     const preset = TRIGGER_PRESETS.find(p => p.delay === days);
-    if (preset && preset.delay !== null) return preset.label;
+    if (preset && preset.delay !== null) return t(preset.labelKey, preset.labelDefault);
     if (days === 0) return t('admin.messaging.onSignup');
     return `${t('admin.messaging.afterDays', { count: days })} (${days}d)`;
   };
@@ -787,7 +1073,7 @@ function ScheduledMessagesTab({ gymId, t }) {
             </div>
           ) : (
             steps.map(step => (
-              <div key={step.id} className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02] transition-colors">
+              <div key={step.id} className="flex items-center gap-4 px-4 py-4 hover:bg-white/[0.02] transition-colors">
                 {/* Active toggle */}
                 <button
                   onClick={() => toggleMutation.mutate({ id: step.id, is_active: !step.is_active })}
@@ -903,9 +1189,9 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
   const queryClient = useQueryClient();
 
   const [triggerType, setTriggerType] = useState(() => {
-    if (!editingStep) return TRIGGER_PRESETS[0].label;
+    if (!editingStep) return TRIGGER_PRESETS[0].key;
     const preset = TRIGGER_PRESETS.find(p => p.delay === editingStep.delay_days);
-    return preset && preset.delay !== null ? preset.label : 'Custom';
+    return preset && preset.delay !== null ? preset.key : 'custom';
   });
   const [customDelay, setCustomDelay] = useState(editingStep?.delay_days ?? 0);
   const [messageTemplate, setMessageTemplate] = useState(editingStep?.message_template || '');
@@ -913,7 +1199,7 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
   const [isActive, setIsActive] = useState(editingStep?.is_active ?? true);
   const [showVariantB, setShowVariantB] = useState(!!editingStep?.message_b);
 
-  const selectedPreset = TRIGGER_PRESETS.find(p => p.label === triggerType);
+  const selectedPreset = TRIGGER_PRESETS.find(p => p.key === triggerType);
   const delayDays = selectedPreset?.delay !== null && selectedPreset?.delay !== undefined
     ? selectedPreset.delay
     : Number(customDelay) || 0;
@@ -992,15 +1278,15 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {TRIGGER_PRESETS.map(preset => (
               <button
-                key={preset.label}
-                onClick={() => setTriggerType(preset.label)}
+                key={preset.key}
+                onClick={() => setTriggerType(preset.key)}
                 className={`px-3 py-2 rounded-lg text-[12px] font-semibold border transition-all min-h-[44px] ${
-                  triggerType === preset.label
+                  triggerType === preset.key
                     ? 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25'
                     : 'bg-white/[0.02] text-[#9CA3AF] border-white/6 hover:border-white/10'
                 }`}
               >
-                {preset.label}
+                {t(preset.labelKey, preset.labelDefault)}
                 {preset.delay !== null && (
                   <span className="block text-[10px] text-[#6B7280] mt-0.5">
                     {preset.delay === 0 ? t('admin.messaging.instant') : `${preset.delay} ${t('admin.messaging.days')}`}
@@ -1012,7 +1298,7 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
         </div>
 
         {/* Custom delay */}
-        {triggerType === 'Custom' && (
+        {triggerType === 'custom' && (
           <div>
             <label className="block text-[12px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-2">
               {t('admin.messaging.delayDays')}
@@ -1239,9 +1525,9 @@ function BroadcastTab({ gymId, adminId, gym, t }) {
               <p className="text-[13px] text-[#6B7280]">{t('admin.messaging.noBroadcastsYet')}</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {broadcastHistory.map(log => (
-                <div key={log.id} className="px-3 py-2.5 rounded-lg bg-white/[0.02] border border-white/4">
+                <div key={log.id} className="px-4 py-3 rounded-lg bg-white/[0.02] border border-white/4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Users size={12} className="text-[#6B7280]" />

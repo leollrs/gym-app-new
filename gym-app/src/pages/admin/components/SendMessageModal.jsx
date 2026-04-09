@@ -3,8 +3,10 @@ import { MessageSquare, Send, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../../lib/supabase';
+import { encryptMessage } from '../../../lib/messageEncryption';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
+import { logAdminAction } from '../../../lib/adminAudit';
 
 export default function SendMessageModal({ member, gymId, adminId, onClose, onSent }) {
   const { t } = useTranslation('pages');
@@ -16,24 +18,45 @@ export default function SendMessageModal({ member, gymId, adminId, onClose, onSe
   const handleSend = async () => {
     setSending(true);
     try {
-      await supabase.from('notifications').insert({
-        profile_id: member.id, gym_id: gymId, type: 'admin_message',
-        title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'churn_intel' },
-        dedup_key: `admin_msg_${member.id}_${adminId}_${Date.now() / 60000 | 0}`,
+      // Create or get DM conversation
+      const { data: convoId, error: convoErr } = await supabase.rpc('get_or_create_conversation', { p_other_user: member.id });
+      if (convoErr) throw convoErr;
+
+      // Get encryption seed
+      const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
+      const seed = convo?.encryption_seed || convoId;
+
+      // Encrypt and send as DM
+      const encrypted = await encryptMessage(msg.trim(), convoId, seed);
+      await supabase.from('direct_messages').insert({
+        conversation_id: convoId,
+        sender_id: adminId,
+        body: encrypted,
       });
-      try {
-        await supabase.from('win_back_attempts').insert({
-          user_id: member.id, gym_id: gymId, admin_id: adminId,
-          message: msg, offer: null, outcome: 'pending', created_at: new Date().toISOString(),
-        });
-      } catch (_) {}
-      // Log contact to admin_contact_log
+      await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
+
+      // Send push notification so phone buzzes
+      const { data: { session } } = await supabase.auth.getSession();
+      supabase.functions.invoke('send-push-user', {
+        body: {
+          profile_id: member.id,
+          gym_id: gymId,
+          title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }),
+          body: msg.trim().substring(0, 100),
+          data: { type: 'direct_message', conversation_id: convoId },
+        },
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      }).catch(err => logger.warn('SendMessage: push failed:', err));
+
+      // Log contact
       try {
         await supabase.from('admin_contact_log').insert({
           admin_id: adminId, member_id: member.id, gym_id: gymId,
           method: 'in_app_message', note: msg.substring(0, 200),
         });
       } catch (_) {}
+
+      logAdminAction('send_message', 'member', member.id);
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
     } catch (err) {
@@ -64,7 +87,7 @@ export default function SendMessageModal({ member, gymId, adminId, onClose, onSe
           <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4}
             className="w-full bg-[#111827] border border-white/6 rounded-xl px-3.5 py-3 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 resize-none transition-colors"
             placeholder={t('admin.churn.writeMessage', 'Write your message\u2026')} />
-          <p className="text-[11px] text-[#4B5563] mt-1.5">{t('admin.churn.messageHint', 'Member will receive this as an in-app notification.')}</p>
+          <p className="text-[11px] text-[#4B5563] mt-1.5">{t('admin.churn.messageHint', 'Member will see this in their Messages page.')}</p>
         </div>
       </div>
     </AdminModal>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw, MessageSquare, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../lib/supabase';
@@ -13,11 +13,13 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics } from '../../lib/exportData';
+import { logAdminAction } from '../../lib/adminAudit';
 import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared components
 import { PageHeader, FilterBar, Avatar, TableSkeleton, AdminPageShell, AdminTable, StatCard, AdminTabs } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { StatusBadge } from '../../components/admin/StatusBadge';
 
 // Sub-components
@@ -148,6 +150,7 @@ function getInviteStatus(invite) {
 export default function AdminMembers() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
   const k = (key) => t(`admin.memberInvites.${key}`);
@@ -175,6 +178,21 @@ export default function AdminMembers() {
   const [allMembers, setAllMembers] = useState([]);
   const [hasMoreMembers, setHasMoreMembers] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [quickMsgMemberId, setQuickMsgMemberId] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(10);
+
+  // Auto-open member detail from ?member=ID query param
+  useEffect(() => {
+    const memberId = searchParams.get('member');
+    if (memberId && allMembers.length > 0 && !selected) {
+      const found = allMembers.find(m => m.id === memberId);
+      if (found) {
+        setSelected(found);
+        searchParams.delete('member');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, allMembers, selected, setSearchParams]);
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -309,7 +327,10 @@ export default function AdminMembers() {
   const handleRevokeInvite = async (inviteId) => {
     const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId);
     if (error) logger.error('Failed to revoke invite:', error);
-    else refetchInvites();
+    else {
+      logAdminAction('revoke_invite', 'invite', inviteId);
+      refetchInvites();
+    }
   };
 
   const handleNoteSaved = (memberId, newNote) => {
@@ -338,6 +359,11 @@ export default function AdminMembers() {
     return list;
   }, [members, search, filter]);
 
+  // Reset visible count when filters change
+  useEffect(() => { setVisibleCount(10); }, [search, filter]);
+
+  const visibleMembers = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
   const atRiskFiltered = filtered.filter(m => m.score >= 61);
 
   const handleBulkFollowup = async () => {
@@ -350,6 +376,7 @@ export default function AdminMembers() {
       try {
         const msg = `Hey ${(m.full_name || 'Member').split(' ')[0]}, we noticed you haven't been in for a while. We miss you! Come back and let's get back on track together.`;
         await createNotification({ profileId: m.id, gymId, type: 'churn_followup', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: msg, data: { source: 'admin_bulk_followup' } });
+        logAdminAction('bulk_followup', 'member', m.id);
         successCount++;
         succeeded.push(m);
       } catch (err) {
@@ -381,6 +408,7 @@ export default function AdminMembers() {
   const handleBulkFreeze = async () => {
     const ids = [...selectedIds];
     await supabase.from('profiles').update({ membership_status: 'frozen' }).in('id', ids).eq('gym_id', gymId);
+    ids.forEach(id => logAdminAction('bulk_freeze', 'member', id));
     refetch();
     clearSelection();
   };
@@ -409,6 +437,7 @@ export default function AdminMembers() {
     for (const id of ids) {
       try {
         await createNotification({ profileId: id, gymId, type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_bulk_message' } });
+        logAdminAction('bulk_message', 'member', id);
         successCount++;
       } catch (err) {
         logger.error('Bulk message failed for member:', id, err);
@@ -420,6 +449,19 @@ export default function AdminMembers() {
       showToast(t('admin.members.bulkMessageSuccess', { count: successCount, defaultValue: 'Message sent to {{count}} members' }), 'success');
     }
     clearSelection();
+  };
+
+  const handleQuickMessage = async (memberId, message) => {
+    if (!message?.trim()) return;
+    try {
+      await createNotification({ profileId: memberId, gymId, type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_quick_message' } });
+      logAdminAction('quick_message', 'member', memberId);
+      showToast(t('admin.members.messageSent', { defaultValue: 'Message sent' }), 'success');
+    } catch (err) {
+      logger.error('Quick message failed for member:', memberId, err);
+      showToast(t('admin.members.messageFailed', { defaultValue: 'Failed to send message' }), 'error');
+    }
+    setQuickMsgMemberId(null);
   };
 
   const handleExport = () => {
@@ -521,15 +563,6 @@ export default function AdminMembers() {
       },
     },
     {
-      key: 'recentWorkouts',
-      label: t('admin.members.colWorkouts14d', 'Workouts (14d)'),
-      sortable: true,
-      sortValue: (m) => m.recentWorkouts ?? 0,
-      render: (m) => <span className="text-[13px] text-[#9CA3AF] font-semibold">{m.recentWorkouts ?? 0}</span>,
-      className: 'text-center',
-      headerClassName: 'text-center',
-    },
-    {
       key: 'last_seen',
       label: t('admin.members.colLastActive', 'Last Active'),
       sortable: true,
@@ -543,11 +576,22 @@ export default function AdminMembers() {
       ),
     },
     {
-      key: 'created_at',
-      label: t('admin.members.colJoined', 'Joined'),
-      sortable: true,
-      sortValue: (m) => new Date(m.created_at).getTime(),
-      render: (m) => <span className="text-[12px] text-[#9CA3AF]">{format(new Date(m.created_at), 'MMM yyyy', dateFnsLocale)}</span>,
+      key: 'actions',
+      label: '',
+      width: '48px',
+      render: (m) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
+          className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110"
+          style={{ color: 'var(--color-text-muted)', backgroundColor: 'transparent' }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--color-accent) 12%, transparent)'; e.currentTarget.style.color = 'var(--color-accent)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+          title={t('admin.members.message', 'Message')}
+          aria-label={t('admin.members.messageMember', { name: m.full_name, defaultValue: 'Message {{name}}' })}
+        >
+          <MessageSquare size={14} />
+        </button>
+      ),
     },
   ];
 
@@ -563,7 +607,7 @@ export default function AdminMembers() {
   return (
     <AdminPageShell>
       <PageHeader
-        title={t('admin.members.title', 'Members')}
+        title={`${t('admin.members.title', 'Members')} (${members.length})`}
         subtitle={t('admin.members.subtitle', { total: members.length, atRisk: atRiskCount, defaultValue: '{{total}} total \u00b7 {{atRisk}} at risk' })}
         actions={
           <>
@@ -650,18 +694,18 @@ export default function AdminMembers() {
       {/* Tab strip */}
       <AdminTabs tabs={tabOptions} active={tab} onChange={(key) => { setTab(key); setSearch(''); setFilter('all'); clearSelection(); }} className="mb-4" />
 
-      {/* Member limit warning */}
-      {!hasMoreMembers && members.length >= MEMBERS_PAGE_SIZE && tab === 'members' && (
-        <div className="mb-3 px-4 py-2.5 rounded-xl text-[12px] flex items-center gap-2"
-          style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)', color: 'var(--color-warning)' }}>
-          <AlertTriangle size={14} className="flex-shrink-0" />
-          {t('admin.members.memberLimitWarning', 'All loaded members are shown. Use search to find specific members.')}
-        </div>
-      )}
-
-      {/* ─── Members Tab ─── */}
-      {tab === 'members' && (
+      <SwipeableTabContent tabs={tabOptions} active={tab} onChange={(key) => { setTab(key); setSearch(''); setFilter('all'); clearSelection(); }}>
+        {(tabKey) => {
+          if (tabKey === 'members') return (
         <>
+          {/* Member limit warning */}
+          {!hasMoreMembers && members.length >= MEMBERS_PAGE_SIZE && (
+            <div className="mb-3 px-4 py-2.5 rounded-xl text-[12px] flex items-center gap-2"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)', color: 'var(--color-warning)' }}>
+              <AlertTriangle size={14} className="flex-shrink-0" />
+              {t('admin.members.memberLimitWarning', 'All loaded members are shown. Use search to find specific members.')}
+            </div>
+          )}
           {/* Search + filter */}
           <div className="lg:sticky lg:top-0 lg:z-20 lg:backdrop-blur-xl lg:py-3 flex flex-col lg:flex-row gap-3 mb-4"
             style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-base) 95%, transparent)' }}>
@@ -706,33 +750,41 @@ export default function AdminMembers() {
             </div>
           </div>
 
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4 transition-all duration-300"
-              style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
-              <span className="text-[13px] font-semibold" style={{ color: 'var(--color-accent)' }}>{t('admin.members.selectedCount', { count: selectedIds.size, defaultValue: '{{count}} selected' })}</span>
-              <div className="flex-1" />
-              <button onClick={handleBulkExportSelected}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03]"
-                style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                <Download size={12} /> {t('admin.members.export', 'Export')}
-              </button>
-              <button onClick={() => setBulkAction('message')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03]"
-                style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                <Mail size={12} /> {t('admin.members.message', 'Message')}
-              </button>
-              <button onClick={() => setBulkAction('freeze')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03]"
-                style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}>
-                {t('admin.members.freeze', 'Freeze')}
-              </button>
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-3 rounded-xl mb-4 transition-all duration-300"
+            style={{
+              backgroundColor: selectedIds.size > 0 ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'var(--color-bg-deep)',
+              border: selectedIds.size > 0 ? '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' : '1px solid var(--color-border-subtle)',
+            }}>
+            <span className="text-[12px] md:text-[13px] font-semibold" style={{ color: selectedIds.size > 0 ? 'var(--color-accent)' : 'var(--color-text-faint)' }}>
+              {selectedIds.size > 0
+                ? t('admin.members.selectedCount', { count: selectedIds.size, defaultValue: '{{count}} selected' })
+                : t('admin.members.bulkActions', { defaultValue: 'Select members for bulk actions' })}
+            </span>
+            <div className="flex-1" />
+            <button onClick={handleBulkExportSelected} disabled={selectedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
+              <Download size={12} /> {t('admin.members.export', 'Export')}
+            </button>
+            <button onClick={() => setBulkAction('message')} disabled={selectedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              style={{ backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
+              <Mail size={12} /> {t('admin.members.message', 'Message')}
+            </button>
+            <button onClick={() => setBulkAction('freeze')} disabled={selectedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 hover:scale-[1.03] disabled:opacity-30 disabled:pointer-events-none"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', color: 'var(--color-danger)' }}>
+              {t('admin.members.freeze', 'Freeze')}
+            </button>
+            {selectedIds.size > 0 && (
               <button onClick={clearSelection}
+                aria-label={t('admin.members.clearSelection', 'Clear selection')}
                 className="transition-colors p-1"
                 style={{ color: 'var(--color-text-muted)' }}>
                 <X size={14} />
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Member list */}
           {isLoading ? (
@@ -744,10 +796,16 @@ export default function AdminMembers() {
             </div>
           ) : (
             <div>
+              {/* Showing X of Y */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <p className="text-[12px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.members.showingCount', { visible: visibleMembers.length, total: filtered.length, defaultValue: 'Showing {{visible}} of {{total}} members' })}
+                </p>
+              </div>
               <div className="hidden lg:block">
                 <AdminTable
                   columns={memberTableColumns}
-                  data={filtered}
+                  data={visibleMembers}
                   onRowClick={(m) => setSelected(m)}
                   stickyHeader
                 />
@@ -755,12 +813,14 @@ export default function AdminMembers() {
               <div className="lg:hidden rounded-[14px] overflow-hidden"
                 style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                 <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  {filtered.map(m => {
+                  {visibleMembers.map(m => {
                     const tier = getRiskTier(m.score);
                     return (
                       <button key={m.id} onClick={() => setSelected(m)}
                         className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all duration-200 text-left group">
                         <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
+                          role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? 'Deselect member' : 'Select member'}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleSelect(m.id); } }}
                           className="flex items-center justify-center w-5 h-5 flex-shrink-0 cursor-pointer">
                           {selectedIds.has(m.id) ? (
                             <CheckSquare size={16} style={{ color: 'var(--color-accent)' }} />
@@ -783,18 +843,20 @@ export default function AdminMembers() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2.5 flex-shrink-0">
-                          <div className="text-right hidden md:block">
-                            <p className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>{format(new Date(m.created_at), 'MMM yyyy', dateFnsLocale)}</p>
-                            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.members.joined', 'joined')}</p>
-                          </div>
-                          <div className="text-right hidden sm:block">
-                            <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>{m.recentWorkouts}w / 14d</p>
-                          </div>
                           <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
                             style={{ color: tier.color, background: tier.bg, borderColor: `${tier.color}33` }}>
                             <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: tier.color }} />
                             {m.score}%
                           </span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            title={t('admin.members.message', 'Message')}
+                            aria-label={t('admin.members.messageMember', { name: m.full_name, defaultValue: 'Message {{name}}' })}
+                          >
+                            <MessageSquare size={14} />
+                          </button>
                           <ChevronRight size={14} style={{ color: 'var(--color-text-faint)' }} className="group-hover:translate-x-0.5 transition-transform duration-200" />
                         </div>
                       </button>
@@ -802,6 +864,19 @@ export default function AdminMembers() {
                   })}
                 </div>
               </div>
+              {/* Show more paginated members */}
+              {visibleCount < filtered.length && (
+                <div className="flex justify-center mt-4">
+                  <button
+                    onClick={() => setVisibleCount(v => v + 10)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:scale-[1.02]"
+                    style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
+                  >
+                    <ChevronDown size={14} />
+                    {t('admin.members.showMore', { count: Math.min(10, filtered.length - visibleCount), defaultValue: 'Show {{count}} more' })}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -829,10 +904,8 @@ export default function AdminMembers() {
             </div>
           )}
         </>
-      )}
-
-      {/* ─── Invites Tab ─── */}
-      {tab === 'invites' && (
+          );
+          if (tabKey === 'invites') return (
         invitesLoading ? (
           <TableSkeleton rows={6} />
         ) : (
@@ -938,10 +1011,8 @@ export default function AdminMembers() {
             )}
           </div>
         )
-      )}
-
-      {/* ─── Password Resets Tab ─── */}
-      {tab === 'resets' && (
+          );
+          if (tabKey === 'resets') return (
         pendingResets.length === 0 ? (
           <div className="text-center py-16">
             <KeyRound size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
@@ -988,7 +1059,10 @@ export default function AdminMembers() {
             </div>
           </div>
         )
-      )}
+          );
+          return null;
+        }}
+      </SwipeableTabContent>
 
       {selected && (
         <MemberDetail key={selected.id} member={selected} gymId={gymId}
@@ -1053,6 +1127,42 @@ export default function AdminMembers() {
           </div>
         </div>
       )}
+
+      {/* Quick message modal for individual member */}
+      {quickMsgMemberId && (() => {
+        const targetMember = members.find(m => m.id === quickMsgMemberId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setQuickMsgMemberId(null)}>
+            <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
+              onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <Avatar name={targetMember?.full_name} />
+                <div className="min-w-0">
+                  <h3 className="text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('admin.members.messageToMember', { name: targetMember?.full_name?.split(' ')[0] || '', defaultValue: 'Message {{name}}' })}
+                  </h3>
+                  <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.members.sentAsNotification', { defaultValue: 'Sent as in-app notification' })}</p>
+                </div>
+              </div>
+              <textarea id="quick-msg" rows={3} autoFocus placeholder={t('admin.members.typeMessage')}
+                className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none mb-4 transition-colors"
+                style={{ backgroundColor: 'var(--color-bg-base)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+              <div className="flex gap-2">
+                <button onClick={() => setQuickMsgMemberId(null)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                  style={{ backgroundColor: 'var(--color-bg-base)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
+                <button onClick={() => { const msg = document.getElementById('quick-msg').value; if (msg.trim()) handleQuickMessage(quickMsgMemberId, msg); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[13px] transition-all hover:scale-[1.02]"
+                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}>
+                  <Send size={13} /> {t('admin.members.send')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </AdminPageShell>
   );
 }

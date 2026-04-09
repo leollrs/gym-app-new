@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var session: WatchSessionManager
     @StateObject private var workoutSession = WorkoutSessionManager()
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var body: some View {
         Group {
@@ -25,7 +26,7 @@ struct ContentView: View {
                             .zIndex(10)
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: session.isResting)
+                .animation(reduceMotion ? .none : .easeInOut(duration: 0.3), value: session.isResting)
                 .onAppear {
                     workoutSession.startSession()
                 }

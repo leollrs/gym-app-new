@@ -45,7 +45,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .from('gym_churn_weights')
       .select('*')
       .eq('gym_id', gymId)
-      .single();
+      .maybeSingle();
 
     if (wRow && wRow.confidence > 0) {
       const c = wRow.confidence;
@@ -79,7 +79,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // ── 1. Member profiles ───────────────────────────────────────
   const { data: memberRows, error: membersError } = await supabase
     .from('profiles')
-    .select('id, full_name, username, created_at, gym_id, training_frequency')
+    .select('id, full_name, username, phone_number, created_at, gym_id, training_frequency')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .order('full_name', { ascending: true });

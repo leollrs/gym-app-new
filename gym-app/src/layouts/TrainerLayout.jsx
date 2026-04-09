@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
-import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut } from 'lucide-react';
+import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut, BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
-const NAV = [
+const BASE_NAV = [
   { to: '/trainer',          labelKey: 'trainerNav.home',     icon: Home,           exact: true },
   { to: '/trainer/clients',  labelKey: 'trainerNav.clients',  icon: Users },
   { to: '/trainer/calendar', labelKey: 'trainerNav.calendar', icon: CalendarDays },
   { to: '/trainer/plans',    labelKey: 'trainerNav.plans',    icon: ClipboardList },
+  { to: '/trainer/classes',  labelKey: 'trainerNav.classes',  icon: BookOpen, requiresClasses: true },
   { to: '/trainer/messages', labelKey: 'trainerNav.messages', icon: MessageSquare },
 ];
 
@@ -22,7 +23,9 @@ const sidebarLinkClass = (active) =>
 
 export default function TrainerLayout({ children }) {
   const { t } = useTranslation('common');
-  const { profile, gymName, gymLogoUrl, signOut } = useAuth();
+  const { profile, gymName, gymLogoUrl, gymConfig, signOut } = useAuth();
+  const classesEnabled = gymConfig?.classes_enabled !== false;
+  const NAV = BASE_NAV.filter(n => !n.requiresClasses || classesEnabled);
   const navigate = useNavigate();
 
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -83,6 +86,7 @@ export default function TrainerLayout({ children }) {
         <div className="px-3 py-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           <button
             onClick={() => navigate('/trainer/profile')}
+            aria-label={`${profile?.full_name ?? 'Trainer'} profile`}
             className="w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-white/[0.04] transition-colors text-left"
           >
             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--color-accent-glow)' }}>
@@ -102,7 +106,7 @@ export default function TrainerLayout({ children }) {
       </aside>
 
       {/* ── Main ────────────────────────────────────── */}
-      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <main id="main-content" className="flex-1 flex flex-col min-h-screen overflow-x-hidden overflow-y-auto">
         {/* Mobile header */}
         <header
           className="md:hidden fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl px-4 flex items-center justify-between"

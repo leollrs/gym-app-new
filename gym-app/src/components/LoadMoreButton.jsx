@@ -8,6 +8,7 @@ export default function LoadMoreButton({ hasMore, loading, onLoadMore }) {
         type="button"
         onClick={onLoadMore}
         disabled={loading}
+        aria-busy={loading}
         className="px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-all active:scale-95 disabled:opacity-50 bg-white/[0.04] border border-white/8 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15"
       >
         {loading ? (

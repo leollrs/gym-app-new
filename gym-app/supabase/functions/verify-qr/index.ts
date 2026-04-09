@@ -103,7 +103,7 @@ serve(async (req) => {
     }
 
     // ── Check expiration (5-minute window) ───────────────────────
-    const QR_EXPIRY_MS = 300_000; // 5 minutes
+    const QR_EXPIRY_MS = 60_000; // 60 seconds
     const timestamp = parseInt(parts[parts.length - 1]);
 
     if (isNaN(timestamp)) {

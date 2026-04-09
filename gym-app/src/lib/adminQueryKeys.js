@@ -34,6 +34,7 @@ export const adminKeys = {
 
   attendance: (gymId) => ['admin', 'attendance', gymId],
   challenges: (gymId) => ['admin', 'challenges', gymId],
+  challengeSuggestion: (gymId) => ['admin', 'challenge-suggestion', gymId],
   trainers: (gymId) => ['admin', 'trainers', gymId],
   programs: (gymId) => ['admin', 'programs', gymId],
   leaderboard: (gymId) => ['admin', 'leaderboard', gymId],

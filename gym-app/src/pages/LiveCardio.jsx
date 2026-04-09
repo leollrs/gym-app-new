@@ -257,7 +257,7 @@ export default function LiveCardio() {
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12">
-        <button onClick={handleBack} className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ color: 'var(--color-text-muted)' }}>
+        <button onClick={handleBack} aria-label={t('cardio.goBack', 'Go back')} className="w-11 h-11 rounded-xl flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
           <ChevronLeft size={22} />
         </button>
         <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
@@ -278,7 +278,9 @@ export default function LiveCardio() {
               const sel = cardioType === ct.key;
               return (
                 <button key={ct.key} type="button" onClick={() => setCardioType(ct.key)}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all ${sel ? '' : 'bg-white/[0.04] border-white/[0.06]'}`}
+                  aria-label={t(`cardio.types.${ct.key}`, ct.key.replace(/_/g, ' '))}
+                  aria-pressed={sel}
+                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all min-h-[44px] focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none ${sel ? '' : 'bg-white/[0.04] border-white/[0.06]'}`}
                   style={sel ? { backgroundColor: `${ct.color}15`, borderColor: `${ct.color}50` } : undefined}
                 >
                   <Icon size={20} style={{ color: sel ? ct.color : 'var(--color-text-subtle)' }} />
@@ -289,7 +291,7 @@ export default function LiveCardio() {
               );
             })}
           </div>
-          <button type="button" onClick={() => setShowMore(s => !s)} className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          <button type="button" onClick={() => setShowMore(s => !s)} aria-expanded={showMore} className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
             <ChevronDown size={12} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
             {showMore ? t('cardio.showLess', 'Show less') : t('cardio.showMore', 'More activities')}
           </button>
@@ -317,14 +319,14 @@ export default function LiveCardio() {
           {/* Controls */}
           <div className="flex gap-4">
             <button onClick={handlePauseResume}
-              className="px-10 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
+              className="px-10 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none"
               style={running ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' } : { backgroundColor: '#10B981', color: '#fff' }}
             >
               {running ? t('cardio.pause', 'Pause') : t('cardio.resume', 'Resume')}
             </button>
             {!running && elapsed > 0 && (
               <button onClick={handleFinish}
-                className="px-8 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
+                className="px-8 py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none"
                 style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
               >
                 {t('cardio.finish', 'Finish')}
@@ -352,13 +354,16 @@ export default function LiveCardio() {
               <div className="flex items-center gap-2">
                 <input type="number" inputMode="decimal" min="0" step="0.1" placeholder="0.0" value={distance}
                   onChange={e => setDistance(e.target.value)}
-                  className="flex-1 border border-white/[0.06] rounded-xl px-3 py-2.5 outline-none"
+                  aria-label={t('cardio.distanceInput', 'Distance')}
+                  className="flex-1 border border-white/[0.06] rounded-xl px-3 py-2.5 outline-none min-h-[44px]"
                   style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-primary)', fontSize: '16px' }}
                 />
                 <div className="flex rounded-xl border border-white/[0.06] overflow-hidden">
                   {['km', 'mi'].map(u => (
                     <button key={u} type="button" onClick={() => setDistanceUnit(u)}
-                      className="px-3 py-2.5 text-[12px] font-semibold transition-colors"
+                      aria-label={t(`cardio.unit_${u}`, `Distance unit: ${u}`)}
+                      aria-pressed={distanceUnit === u}
+                      className="px-3 py-2.5 text-[12px] font-semibold transition-colors min-w-[44px] min-h-[44px]"
                       style={distanceUnit === u ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-text-muted)' }}
                     >{u}</button>
                   ))}
@@ -375,7 +380,8 @@ export default function LiveCardio() {
             <div className="grid grid-cols-4 gap-2">
               {INTENSITIES.map(i => (
                 <button key={i} type="button" onClick={() => setIntensity(i)}
-                  className="py-2.5 rounded-xl text-[11px] font-bold uppercase transition-all border"
+                  aria-pressed={intensity === i}
+                  className="py-2.5 min-h-[44px] rounded-xl text-[11px] font-bold uppercase transition-all border"
                   style={intensity === i
                     ? { backgroundColor: `${INTENSITY_COLORS[i]}20`, borderColor: `${INTENSITY_COLORS[i]}50`, color: INTENSITY_COLORS[i] }
                     : { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-subtle)' }
@@ -387,7 +393,7 @@ export default function LiveCardio() {
 
           {/* Log button */}
           <button onClick={handleSubmit} disabled={submitting}
-            className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform disabled:opacity-50"
+            className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform disabled:opacity-50 focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none"
             style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
           >
             {submitting ? t('cardio.logging', 'Logging...') : t('cardio.finishAndLog', 'Finish & Log')}
@@ -399,7 +405,7 @@ export default function LiveCardio() {
       {phase === 'pick' && (
         <div className="px-5 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
           <button onClick={handleStart}
-            className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
+            className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform focus:ring-2 focus:ring-[#D4AF37]/50 focus:outline-none"
             style={{ backgroundColor: '#10B981', color: '#FFFFFF' }}
           >
             {t('cardio.start', 'Start')}

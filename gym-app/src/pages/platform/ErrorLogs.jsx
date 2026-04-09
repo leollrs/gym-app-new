@@ -4,6 +4,7 @@ import {
   Monitor, Smartphone, Clock, Building2, Loader2,
 } from 'lucide-react';
 import { formatDistanceToNow, subDays, subHours } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
@@ -165,6 +166,7 @@ function ErrorRow({ entry }) {
 
 export default function ErrorLogs() {
   const { user } = useAuth();
+  const { t } = useTranslation('pages');
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -268,14 +270,14 @@ export default function ErrorLogs() {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">Errors</h1>
-          <p className="text-[12px] text-[#6B7280] mt-0.5">Platform failures and crash analysis</p>
+          <h1 className="text-[22px] font-bold text-[#E5E7EB] truncate">{t('platform.errors.title', 'Errors')}</h1>
+          <p className="text-[12px] text-[#6B7280] mt-0.5">{t('platform.errors.subtitle', 'Platform failures and crash analysis')}</p>
         </div>
         <button
           onClick={() => window.open('/platform/operations', '_self')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors flex-shrink-0"
         >
-          Open Operations
+          {t('platform.errors.openOperations', 'Open Operations')}
         </button>
       </div>
 
@@ -322,7 +324,7 @@ export default function ErrorLogs() {
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
           <Filter size={14} className="text-[#6B7280]" />
-          <span className="text-[12px] text-[#6B7280] font-medium uppercase tracking-wider">Filters</span>
+          <span className="text-[12px] text-[#6B7280] font-medium uppercase tracking-wider">{t('platform.errors.filters', 'Filters')}</span>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -402,9 +404,9 @@ export default function ErrorLogs() {
         ) : entries.length === 0 ? (
           <div className="text-center py-16">
             <Bug size={32} className="mx-auto text-[#6B7280] mb-3" />
-            <p className="text-[14px] text-[#6B7280]">No errors found</p>
+            <p className="text-[14px] text-[#6B7280]">{t('platform.errors.noErrors', 'No errors found')}</p>
             <p className="text-[12px] text-[#6B7280]/60 mt-1">
-              Errors from across the platform will appear here
+              {t('platform.errors.noErrorsHint', 'Errors from across the platform will appear here')}
             </p>
           </div>
         ) : (
@@ -425,10 +427,10 @@ export default function ErrorLogs() {
                   {loadingMore ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      Loading...
+                      {t('platform.errors.loading', 'Loading...')}
                     </>
                   ) : (
-                    'Load more'
+                    t('platform.errors.loadMore', 'Load more')
                   )}
                 </button>
               </div>

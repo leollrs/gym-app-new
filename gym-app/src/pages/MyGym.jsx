@@ -123,7 +123,7 @@ export default function MyGym() {
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
           <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 -ml-2 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
             <ChevronLeft size={24} strokeWidth={2} />
           </button>
@@ -141,7 +141,7 @@ export default function MyGym() {
         </div>
       </div>
 
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-5 space-y-5">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-5 space-y-5">
 
         {/* Hours Card — per-day */}
         <section className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>

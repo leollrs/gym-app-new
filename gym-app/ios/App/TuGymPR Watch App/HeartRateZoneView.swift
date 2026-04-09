@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HeartRateZoneView: View {
     @ObservedObject var workoutSession: WorkoutSessionManager
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     private let zones: [(HeartRateZone, ClosedRange<Double>)] = [
         (.warmup,  0...99),
@@ -14,29 +15,32 @@ struct HeartRateZoneView: View {
         VStack(spacing: 10) {
             // Heart icon with pulse
             Image(systemName: "heart.fill")
-                .font(.system(size: 24))
+                .font(.title3)
                 .foregroundColor(workoutSession.heartRateZone.color)
                 .symbolEffect(.pulse, isActive: workoutSession.isSessionActive)
+                .accessibilityLabel("Heart rate")
 
             // BPM display
             if workoutSession.currentHeartRate > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(Int(workoutSession.currentHeartRate))")
                         .font(.system(size: 38, weight: .black, design: .rounded))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundColor(.white)
                     Text("BPM")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundColor(.gray)
                 }
             } else {
                 Text("--")
                     .font(.system(size: 38, weight: .black, design: .rounded))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundColor(Color(white: 0.3))
             }
 
             // Zone badge
             Text(workoutSession.heartRateZone.rawValue)
-                .font(.system(size: 11, weight: .heavy))
+                .font(.caption2.weight(.heavy))
                 .foregroundColor(.white)
                 .tracking(1)
                 .padding(.horizontal, 12)
@@ -50,15 +54,16 @@ struct HeartRateZoneView: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(zone.color.opacity(zone == workoutSession.heartRateZone ? 1.0 : 0.2))
                         .frame(height: zone == workoutSession.heartRateZone ? 10 : 6)
-                        .animation(.easeInOut(duration: 0.3), value: workoutSession.heartRateZone)
+                        .animation(reduceMotion ? .none : .easeInOut(duration: 0.3), value: workoutSession.heartRateZone)
                 }
             }
             .padding(.horizontal, 4)
+            .accessibilityHidden(true)
 
             // Avg HR
             if workoutSession.averageHeartRate > 0 {
                 Text("Avg \(Int(workoutSession.averageHeartRate)) BPM")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundColor(DS.mutedText)
             }
         }

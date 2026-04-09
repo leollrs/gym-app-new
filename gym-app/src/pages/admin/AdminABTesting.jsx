@@ -15,6 +15,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import {
   AdminCard, PageHeader, AdminPageShell, FadeIn, StatCard, AdminTabs,
 } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import CreateCampaignModal from './components/CreateCampaignModal';
 
 // ── Constants ──────────────────────────────────────────────
@@ -523,52 +524,58 @@ export default function AdminABTesting() {
       </FadeIn>
 
       {/* Experiment list */}
-      <FadeIn delay={0.06}>
-        {isLoading ? (
+      {isLoading ? (
+        <FadeIn delay={0.06}>
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-28 bg-white/[0.02] rounded-xl animate-pulse border border-white/6" />
             ))}
           </div>
-        ) : filteredCampaigns.length > 0 ? (
-          <div className="space-y-3">
-            {filteredCampaigns.map((c) => (
-              <ExperimentCard
-                key={c.id}
-                campaign={c}
-                attempts={attempts}
-                onEnd={handleEndExperiment}
-                onReactivate={handleReactivate}
-                t={t}
-              />
-            ))}
-          </div>
-        ) : (
-          /* Empty state */
-          <AdminCard className="p-10 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
-              <FlaskConical size={22} className="text-[#D4AF37]" />
-            </div>
-            <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">
-              {activeTab === 'active'
-                ? t('admin.abTesting.noActive', 'No active experiments')
-                : activeTab === 'completed'
-                ? t('admin.abTesting.noCompleted', 'No completed experiments yet')
-                : t('admin.abTesting.noExperiments', 'No experiments yet')}
-            </p>
-            <p className="text-[12px] text-[#6B7280] mb-4">
-              {t('admin.abTesting.emptyHint', 'Create your first A/B experiment to start optimizing')}
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
-            >
-              <Plus size={14} />
-              {t('admin.abTesting.createFirst', 'Create Experiment')}
-            </button>
-          </AdminCard>
-        )}
-      </FadeIn>
+        </FadeIn>
+      ) : (
+        <SwipeableTabContent tabs={tabOptions} active={activeTab} onChange={setActiveTab}>
+          {(tabKey) => {
+            const tabCampaigns = tabKey === 'active' ? activeCampaigns : tabKey === 'completed' ? completedCampaigns : campaigns;
+            return tabCampaigns.length > 0 ? (
+              <div className="space-y-3">
+                {tabCampaigns.map((c) => (
+                  <ExperimentCard
+                    key={c.id}
+                    campaign={c}
+                    attempts={attempts}
+                    onEnd={handleEndExperiment}
+                    onReactivate={handleReactivate}
+                    t={t}
+                  />
+                ))}
+              </div>
+            ) : (
+              <AdminCard className="p-10 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-3">
+                  <FlaskConical size={22} className="text-[#D4AF37]" />
+                </div>
+                <p className="text-[14px] font-semibold text-[#E5E7EB] mb-1">
+                  {tabKey === 'active'
+                    ? t('admin.abTesting.noActive', 'No active experiments')
+                    : tabKey === 'completed'
+                    ? t('admin.abTesting.noCompleted', 'No completed experiments yet')
+                    : t('admin.abTesting.noExperiments', 'No experiments yet')}
+                </p>
+                <p className="text-[12px] text-[#6B7280] mb-4">
+                  {t('admin.abTesting.emptyHint', 'Create your first A/B experiment to start optimizing')}
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors"
+                >
+                  <Plus size={14} />
+                  {t('admin.abTesting.createFirst', 'Create Experiment')}
+                </button>
+              </AdminCard>
+            );
+          }}
+        </SwipeableTabContent>
+      )}
 
       {/* Create modal */}
       {showCreateModal && (

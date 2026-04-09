@@ -5,61 +5,76 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-/** Strip EXIF metadata from JPEG to prevent GPS/device info leakage */
-function stripExifFromJpeg(base64: string): string {
+/** Strip metadata from images (JPEG EXIF + PNG ancillary chunks) to prevent GPS/device info leakage */
+function stripImageMetadata(base64: string): string {
   try {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    // Only process JPEG (starts with FF D8)
-    if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return base64;
-    const cleaned: number[] = [0xFF, 0xD8];
-    let i = 2;
-    while (i < bytes.length - 1) {
-      if (bytes[i] !== 0xFF) break;
-      const marker = bytes[i + 1];
-      // Remove APP1 (EXIF) and APP2 (ICC profile) markers
-      if (marker === 0xE1 || marker === 0xE2) {
+
+    // JPEG (FF D8)
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+      const cleaned: number[] = [0xFF, 0xD8];
+      let i = 2;
+      while (i < bytes.length - 1) {
+        if (bytes[i] !== 0xFF) break;
+        const marker = bytes[i + 1];
+        if (marker === 0xE1 || marker === 0xE2) {
+          const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+          i += 2 + segLen;
+          continue;
+        }
+        if (marker === 0xDA) {
+          for (let j = i; j < bytes.length; j++) cleaned.push(bytes[j]);
+          break;
+        }
         const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
+        for (let j = i; j < i + 2 + segLen; j++) cleaned.push(bytes[j]);
         i += 2 + segLen;
-        continue;
       }
-      // Start of scan — rest is image data
-      if (marker === 0xDA) {
-        for (let j = i; j < bytes.length; j++) cleaned.push(bytes[j]);
-        break;
-      }
-      const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
-      for (let j = i; j < i + 2 + segLen; j++) cleaned.push(bytes[j]);
-      i += 2 + segLen;
+      const cleanedBytes = new Uint8Array(cleaned);
+      let result = '';
+      for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
+      return btoa(result);
     }
-    const cleanedBytes = new Uint8Array(cleaned);
-    let result = '';
-    for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
-    return btoa(result);
+
+    // PNG (89 50 4E 47) — strip non-critical chunks (tEXt, iTXt, zTXt, eXIf, etc.)
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      const keep = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'cHRM', 'gAMA', 'iCCP', 'sBIT', 'sRGB', 'pHYs'];
+      const parts: Uint8Array[] = [bytes.slice(0, 8)];
+      let offset = 8;
+      while (offset < bytes.length - 4) {
+        const len = (bytes[offset] << 24) | (bytes[offset+1] << 16) | (bytes[offset+2] << 8) | bytes[offset+3];
+        const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+        const chunkTotal = 12 + len;
+        if (keep.includes(type)) parts.push(bytes.slice(offset, offset + chunkTotal));
+        offset += chunkTotal;
+        if (type === 'IEND') break;
+      }
+      const totalLen = parts.reduce((s, a) => s + a.length, 0);
+      const out = new Uint8Array(totalLen);
+      let pos = 0;
+      for (const p of parts) { out.set(p, pos); pos += p.length; }
+      let result = '';
+      for (let j = 0; j < out.length; j++) result += String.fromCharCode(out[j]);
+      return btoa(result);
+    }
+
+    return base64;
   } catch {
-    return base64; // On error, return original
+    return base64;
   }
 }
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) {
-  console.error('FATAL: ALLOWED_ORIGIN environment variable is not set');
-}
+if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
-  if (!ALLOWED_ORIGIN) {
-    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -73,7 +88,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -84,8 +99,9 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
+      console.error('Auth error:', authError?.message);
       return new Response(
-        JSON.stringify({ error: `Auth failed: ${authError?.message || 'no user'}` }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -166,8 +182,8 @@ serve(async (req) => {
     }
 
     // ── Strip EXIF metadata before sending to AI ────────────────
-    const cleanFront = stripExifFromJpeg(frontImage);
-    const cleanSide = sideImage ? stripExifFromJpeg(sideImage) : null;
+    const cleanFront = stripImageMetadata(frontImage);
+    const cleanSide = sideImage ? stripImageMetadata(sideImage) : null;
 
     // ── Build image inputs ──────────────────────────────────────
     const imageInputs: any[] = [

@@ -184,6 +184,8 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
                   key={m}
                   type="button"
                   onClick={() => toggleMuscle(m)}
+                  aria-pressed={selectedMuscles.includes(m)}
+                  aria-label={t(`muscleGroups.${m}`, m)}
                   className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all border-2 ${
                     selectedMuscles.includes(m)
                       ? 'bg-[#D4AF37]/20 border-[#D4AF37]/50 text-[#D4AF37]'

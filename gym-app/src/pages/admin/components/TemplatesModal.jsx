@@ -10,6 +10,23 @@ import { AdminModal } from '../../../components/admin';
 import { PROGRAM_TEMPLATES, TEMPLATE_CATEGORIES, GOAL_BADGE, buildWeeksFromPattern } from './programHelpers';
 import { generateProgram, estimateDuration } from '../../../lib/workoutGenerator';
 import { exercises as allExercises } from '../../../data/exercises';
+import { exName as exNameLocalized, localizeRoutineName } from '../../../lib/exerciseName';
+
+// ── Translation maps for template badge labels ─────────────────────────────
+const GOAL_LABEL_KEYS = {
+  'Muscle Gain':      'admin.programs.generate.goals.muscle_gain',
+  'Strength':         'admin.programs.generate.goals.strength',
+  'General Fitness':  'admin.programs.generate.goals.general_fitness',
+  'Strength & Size':  'admin.programs.generate.goalLabels.strength_size',
+};
+
+const LEVEL_LABEL_KEYS = {
+  'Beginner':                  'admin.programs.generate.levels.beginner',
+  'Intermediate':              'admin.programs.generate.levels.intermediate',
+  'Advanced':                  'admin.programs.generate.levels.advanced',
+  'Beginner\u2013Intermediate': 'admin.programs.generate.levelLabels.beginner_intermediate',
+  'Intermediate\u2013Advanced': 'admin.programs.generate.levelLabels.intermediate_advanced',
+};
 
 // ── Goal value map (display label → generator key) ──────────────────────────
 const GOAL_OPTIONS = [
@@ -81,9 +98,6 @@ const CheckItem = ({ checked, onChange, label }) => (
   </label>
 );
 
-// ── Exercise name lookup ────────────────────────────────────────────────────
-const exerciseMap = Object.fromEntries(allExercises.map(ex => [ex.id, ex.name]));
-
 // ── Preview Browser — browse all weeks/days/exercises ──────────────────
 function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUse, onRegenerate, onBack, t }) {
   const [week, setWeek] = useState(1);
@@ -107,9 +121,9 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
       {/* Header badges */}
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles size={15} className="text-[#D4AF37]" />
-        <span className="text-[14px] font-bold text-[#E5E7EB]">{preview.splitLabel}</span>
+        <span className="text-[14px] font-bold text-[#E5E7EB]">{localizeRoutineName(preview.splitLabel)}</span>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${GOAL_BADGE[preview.goalLabel] ?? 'bg-white/8 text-[#9CA3AF]'}`}>
-          {preview.goalLabel}
+          {GOAL_LABEL_KEYS[preview.goalLabel] ? t(GOAL_LABEL_KEYS[preview.goalLabel], preview.goalLabel) : preview.goalLabel}
         </span>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/8 text-[#9CA3AF]">
           {totalWeeks} {t('admin.programs.generate.weeksLabel', 'weeks')} · {genDays} {t('admin.programs.generate.daysPerWeekShort', 'days/week')}
@@ -139,7 +153,7 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
                 className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.02] transition-colors">
                 <div className="flex items-center gap-2">
                   <Dumbbell size={13} className="text-[#D4AF37]" />
-                  <span className="text-[13px] font-semibold text-[#E5E7EB]">{day.name}</span>
+                  <span className="text-[13px] font-semibold text-[#E5E7EB]">{localizeRoutineName(day.name)}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[11px] text-[#6B7280]">{day.exercises.length} {t('admin.programs.generate.exercises', 'exercises')}</span>
@@ -154,7 +168,7 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
                       <div key={ei} className="flex items-center justify-between py-1.5 px-2.5 bg-white/[0.02] rounded-lg">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="text-[10px] font-bold text-[#4B5563] w-4 text-right">{ei + 1}</span>
-                          <span className="text-[12px] text-[#E5E7EB] truncate">{info?.name || ex.id}</span>
+                          <span className="text-[12px] text-[#E5E7EB] truncate">{info ? exNameLocalized(info) : ex.id}</span>
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                           <span className="text-[11px] font-semibold text-[#D4AF37]">{ex.sets} × {ex.reps || info?.defaultReps || '8-12'}</span>
@@ -439,10 +453,10 @@ export default function TemplatesModal({ onClose, onSelect, onStartFromScratch }
                   <p className="text-[14px] font-bold text-[#E5E7EB] mb-2 truncate">{t(tpl.nameKey, tpl.name)}</p>
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${GOAL_BADGE[tpl.goal] ?? 'bg-white/8 text-[#9CA3AF]'}`}>
-                      {tpl.goal}
+                      {GOAL_LABEL_KEYS[tpl.goal] ? t(GOAL_LABEL_KEYS[tpl.goal], tpl.goal) : tpl.goal}
                     </span>
                     <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/8 text-[#9CA3AF]">
-                      {tpl.level}
+                      {LEVEL_LABEL_KEYS[tpl.level] ? t(LEVEL_LABEL_KEYS[tpl.level], tpl.level) : tpl.level}
                     </span>
                   </div>
                   <p className="text-[11px] text-[#4B5563]">

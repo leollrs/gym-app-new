@@ -85,26 +85,19 @@ export async function broadcastNotification({ gymId, type, title, body = null, d
 
   if (!members?.length) return;
 
-  // Insert in-app notifications for all members
-  const rows = members.map(m => {
+  // Insert in-app notifications for all members (one by one to avoid batch dedup failures)
+  for (const m of members) {
     const row = { profile_id: m.id, gym_id: gymId, type, title, body, data };
     if (dedupKey) row.dedup_key = `${dedupKey}_${m.id}`;
-    return row;
-  });
-  const { error } = await supabase.from('notifications').insert(rows);
-  // Silently ignore duplicate key violations when dedupKey is provided
-  if (error && error.code === '23505') return;
-  if (error) logger.error('broadcastNotification error:', error);
+    const { error } = await supabase.from('notifications').insert(row);
+    if (error && error.code !== '23505') logger.warn('broadcastNotification insert failed:', m.id, error);
+  }
 
-  // Fire native push notifications via edge function (fire-and-forget)
-  // Skip push delivery during quiet hours (10pm–7am) — the in-app notification is already inserted above
+  // Fire native push to each member individually (same pattern as DMs)
   if (!isQuietHours()) {
-    supabase.functions.invoke('send-push', {
-      body: { gym_id: gymId, title, body: body || '', data: { route: '/notifications', type } },
-    }).then(({ data: res, error }) => {
-      if (error) logger.warn('[Push] send-push error:', error.message);
-      else logger.info('[Push] send-push result:', res);
-    }).catch(err => logger.warn('[Push] send-push failed:', err));
+    for (const m of members) {
+      sendPushToUser({ userId: m.id, gymId, title, body: body || '', data: { route: '/notifications', type } });
+    }
   }
 }
 
@@ -144,12 +137,16 @@ export async function sendNotification(userId, gymId, { title, body, type = NOTI
  */
 async function sendPushToUser({ userId, gymId, title, body, data = {} }) {
   try {
-    supabase.functions.invoke('send-push-user', {
-      body: { profile_id: userId, gym_id: gymId, title, body, data },
-    }).then(({ data: res, error: pushErr }) => {
-      if (pushErr) logger.warn('[Push] send-push-user error:', pushErr.message);
-      else logger.info('[Push] send-push-user result:', res);
-    }).catch(err => logger.warn('[Push] send-push-user failed:', err));
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {};
+    const { data: res, error: pushErr } = await supabase.functions.invoke('send-push-user', {
+      body: { profile_id: userId, gym_id: gymId, title, body: body || title, data },
+      headers,
+    });
+    if (pushErr) logger.warn('[Push] send-push-user error:', pushErr.message);
+    else logger.info('[Push] send-push-user result:', res);
   } catch (e) {
     logger.warn('[Push] sendPushToUser failed:', e?.message || e);
   }

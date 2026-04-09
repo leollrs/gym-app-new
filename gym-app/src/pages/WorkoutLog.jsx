@@ -225,7 +225,7 @@ const WorkoutLog = ({ embedded = false }) => {
     setCollapsedMonths(prev => ({ ...prev, [month]: !prev[month] }));
 
   return (
-    <div className={embedded ? 'animate-fade-in' : 'mx-auto w-full max-w-[480px] md:max-w-4xl px-4 md:px-6 pt-6 pb-28 md:pb-12 animate-fade-in'}>
+    <div className={embedded ? 'animate-fade-in' : 'mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 md:px-6 lg:px-8 pt-6 pb-28 md:pb-12 animate-fade-in'}>
 
       {/* Header */}
       {!embedded && (
@@ -291,7 +291,7 @@ const WorkoutLog = ({ embedded = false }) => {
               </span>
             </button>
             {!isCollapsed && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
                 {grouped[month].map(session => (
                   <SessionCard key={session.id} session={session} />
                 ))}

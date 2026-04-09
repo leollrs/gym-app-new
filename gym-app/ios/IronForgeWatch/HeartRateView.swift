@@ -14,22 +14,25 @@ struct HeartRateView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "heart.fill")
-                .font(.system(size: 28))
+                .font(.title3)
                 .foregroundColor(isMonitoring ? .red : gold)
                 .symbolEffect(.pulse, isActive: isMonitoring)
+                .accessibilityLabel("Heart rate")
 
             if heartRate > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(Int(heartRate))")
                         .font(.system(size: 42, weight: .black, design: .rounded))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundColor(.white)
                     Text("BPM")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundColor(.gray)
                 }
             } else {
                 Text("--")
                     .font(.system(size: 42, weight: .black, design: .rounded))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundColor(Color(white: 0.3))
             }
 
@@ -42,9 +45,10 @@ struct HeartRateView: View {
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: isMonitoring ? "stop.fill" : "play.fill")
-                        .font(.system(size: 12))
+                        .font(.caption)
+                        .accessibilityLabel(isMonitoring ? "Stop monitoring" : "Start monitoring")
                     Text(isMonitoring ? "Stop" : "Start")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                 }
                 .foregroundColor(isMonitoring ? .white : .black)
                 .frame(maxWidth: .infinity)
@@ -54,7 +58,7 @@ struct HeartRateView: View {
             }
 
             Text("Heart Rate")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundColor(.gray)
                 .textCase(.uppercase)
         }

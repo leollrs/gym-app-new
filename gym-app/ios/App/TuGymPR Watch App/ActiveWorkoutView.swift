@@ -15,6 +15,9 @@ struct ActiveWorkoutView: View {
     @State private var timer: Timer?
     @State private var showEndConfirmation: Bool = false
 
+    // Local offline set tracking — advances UI when phone is unreachable
+    @State private var localCompletedSets: Int = 0
+
     private var currentWeight: Double {
         hasEditedWeight ? editedWeight : session.suggestedWeight
     }
@@ -27,20 +30,21 @@ struct ActiveWorkoutView: View {
         VStack(spacing: 6) {
             // Exercise name
             Text(session.exerciseName)
-                .font(.system(size: 14, weight: .bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundColor(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
 
-            // Set counter with PR badge
+            // Set counter with PR badge + offline indicator
             HStack(spacing: 4) {
-                Text("Set \(session.setNumber) of \(session.totalSets)")
-                    .font(.system(size: 11, weight: .semibold))
+                let displaySet = session.setNumber > 0 ? session.setNumber : max(1, localCompletedSets + 1)
+                Text("Set \(displaySet) of \(session.totalSets)")
+                    .font(.caption2.weight(.semibold))
                     .foregroundColor(.gray)
 
                 if session.currentSetIsPR {
                     Text("PR!")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.caption2.weight(.black))
                         .foregroundColor(.black)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -56,20 +60,21 @@ struct ActiveWorkoutView: View {
                     WKInterfaceDevice.current().play(.click)
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.caption.weight(.bold))
                         .foregroundColor(DS.gold)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(DS.cardBg)
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Decrease weight")
 
                 VStack(spacing: 0) {
                     Text("\(Int(currentWeight))")
-                        .font(.system(size: 26, weight: .black, design: .rounded))
+                        .font(.system(.title2, design: .rounded).weight(.black))
                         .foregroundColor(.white)
                     Text("lbs")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundColor(DS.mutedText)
                 }
                 .frame(minWidth: 55)
@@ -79,13 +84,14 @@ struct ActiveWorkoutView: View {
                     WKInterfaceDevice.current().play(.click)
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.caption.weight(.bold))
                         .foregroundColor(DS.gold)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(DS.cardBg)
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Increase weight")
             }
 
             // ── Reps editor ──
@@ -95,20 +101,21 @@ struct ActiveWorkoutView: View {
                     WKInterfaceDevice.current().play(.click)
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.caption.weight(.bold))
                         .foregroundColor(DS.gold)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(DS.cardBg)
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Decrease reps")
 
                 VStack(spacing: 0) {
                     Text("\(currentReps)")
-                        .font(.system(size: 26, weight: .black, design: .rounded))
+                        .font(.system(.title2, design: .rounded).weight(.black))
                         .foregroundColor(.white)
                     Text("reps")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundColor(DS.mutedText)
                 }
                 .frame(minWidth: 55)
@@ -118,26 +125,29 @@ struct ActiveWorkoutView: View {
                     WKInterfaceDevice.current().play(.click)
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.caption.weight(.bold))
                         .foregroundColor(DS.gold)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(DS.cardBg)
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Increase reps")
             }
 
             // ── Done button ──
             Button {
                 session.completeSet(actualReps: currentReps, actualWeight: currentWeight)
+                localCompletedSets += 1
                 WKInterfaceDevice.current().play(.success)
                 hasEditedReps = false
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13))
+                        .font(.subheadline)
+                        .accessibilityLabel("Complete set")
                     Text("Done")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                 }
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
@@ -147,10 +157,24 @@ struct ActiveWorkoutView: View {
             }
             .buttonStyle(.plain)
 
+            // Offline queue indicator
+            if session.pendingActionCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.caption2)
+                        .accessibilityLabel("Pending sync")
+                    Text("\(session.pendingActionCount) queued")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundColor(.orange.opacity(0.8))
+            }
+
             // Elapsed time
             Text(DS.formatTime(localElapsed))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(.system(.caption2, design: .monospaced).weight(.medium))
                 .foregroundColor(Color(white: 0.3))
+                .accessibilityAddTraits(.updatesFrequently)
+                .accessibilityLabel("Elapsed time \(DS.formatTime(localElapsed))")
 
             // End workout
             Button {
@@ -158,11 +182,12 @@ struct ActiveWorkoutView: View {
                 WKInterfaceDevice.current().play(.click)
             } label: {
                 Text("End Workout")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundColor(.red.opacity(0.8))
                     .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
+            .accessibilityHint("Ends the current workout")
         }
         .padding(.horizontal, 6)
         .padding(.top, 4)

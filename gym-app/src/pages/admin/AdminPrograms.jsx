@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search } from 'lucide-react';
+import { Plus, Dumbbell, ChevronRight, ChevronDown, Trash2, Users, Search, Lightbulb } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -22,12 +23,105 @@ import {
 import TemplatesModal from './components/TemplatesModal';
 import ProgramBuilderModal from './components/ProgramBuilderModal';
 
+// ── Program Suggestion Card ───────────────────────────────
+function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram }) {
+  const { data: suggestion } = useQuery({
+    queryKey: ['program-suggestion', gymId],
+    queryFn: async () => {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('fitness_level, primary_goal')
+        .eq('gym_id', gymId)
+        .eq('role', 'member');
+
+      if (!profiles?.length) return null;
+
+      const goalCounts = {};
+      const levelCounts = {};
+      profiles.forEach(p => {
+        if (p.primary_goal) goalCounts[p.primary_goal] = (goalCounts[p.primary_goal] || 0) + 1;
+        if (p.fitness_level) levelCounts[p.fitness_level] = (levelCounts[p.fitness_level] || 0) + 1;
+      });
+
+      const topGoal = Object.entries(goalCounts).sort((a, b) => b[1] - a[1])[0];
+      const topLevel = Object.entries(levelCounts).sort((a, b) => b[1] - a[1])[0];
+
+      if (!topGoal) return null;
+
+      const SUGGESTIONS = {
+        muscle_gain: { name_en: 'Hypertrophy Focus Program', name_es: 'Programa de Hipertrofia', desc_en: 'Most members want muscle gain — this program targets hypertrophy with progressive overload', desc_es: 'La mayoría de los miembros buscan ganar músculo — este programa se enfoca en hipertrofia con sobrecarga progresiva', template: 'ppl' },
+        strength: { name_en: 'Strength Builder Program', name_es: 'Programa de Fuerza', desc_en: 'Your members are focused on getting stronger — compound lifts with low reps', desc_es: 'Tus miembros se enfocan en fuerza — levantamientos compuestos con pocas repeticiones', template: 'upper_lower' },
+        fat_loss: { name_en: 'Fat Loss Circuit Program', name_es: 'Programa de Pérdida de Grasa', desc_en: 'Many members want fat loss — high-intensity circuits with short rest', desc_es: 'Muchos miembros buscan perder grasa — circuitos de alta intensidad con descanso corto', template: 'full_body' },
+        endurance: { name_en: 'Endurance Training Program', name_es: 'Programa de Resistencia', desc_en: 'Endurance is the top goal — high-rep work with progressive volume', desc_es: 'La resistencia es el objetivo principal — trabajo de muchas repeticiones con volumen progresivo', template: 'full_body' },
+        general_fitness: { name_en: 'General Fitness Program', name_es: 'Programa de Fitness General', desc_en: 'A balanced program for overall fitness', desc_es: 'Un programa equilibrado para fitness general', template: 'full_body' },
+      };
+
+      const s = SUGGESTIONS[topGoal[0]] || SUGGESTIONS.general_fitness;
+      return {
+        ...s,
+        topGoal: topGoal[0],
+        goalCount: topGoal[1],
+        totalMembers: profiles.length,
+        topLevel: topLevel?.[0],
+        pct: Math.round((topGoal[1] / profiles.length) * 100),
+      };
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+    enabled: !!gymId,
+  });
+
+  if (!suggestion) return null;
+
+  const name = isEs ? suggestion.name_es : suggestion.name_en;
+  const desc = isEs ? suggestion.desc_es : suggestion.desc_en;
+
+  return (
+    <AdminCard className="mb-5 border-[#D4AF37]/20 bg-gradient-to-r from-[#D4AF37]/[0.04] to-transparent">
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+          <Lightbulb size={20} className="text-[#D4AF37]" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-semibold text-[#D4AF37] uppercase tracking-wider mb-1.5">
+            {t('admin.programs.suggestion.title', 'Monthly Suggestion')}
+          </p>
+
+          <div className="flex items-center gap-2 mb-2">
+            <Dumbbell size={15} className="text-[#E5E7EB] flex-shrink-0" />
+            <p className="text-[16px] font-bold text-[#E5E7EB] truncate">{name}</p>
+          </div>
+
+          <p className="text-[13px] text-[#9CA3AF] leading-relaxed mb-2">{desc}</p>
+
+          <p className="text-[11px] text-[#6B7280] mb-4">
+            {t('admin.programs.suggestion.basedOn', 'Based on {{pct}}% of your members ({{count}}/{{total}})', {
+              pct: suggestion.pct,
+              count: suggestion.goalCount,
+              total: suggestion.totalMembers,
+            })}
+          </p>
+
+          <button
+            type="button"
+            onClick={onCreateProgram}
+            className="px-5 py-2.5 rounded-xl text-[13px] font-bold text-black bg-[#D4AF37] hover:bg-[#E6C766] active:scale-[0.97] transition-all"
+          >
+            {t('admin.programs.suggestion.createButton', 'Create This Program')}
+          </button>
+        </div>
+      </div>
+    </AdminCard>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────
 export default function AdminPrograms() {
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { profile, user } = useAuth();
   const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
+  const isEs = i18n.language?.startsWith('es');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing]       = useState(null);
@@ -102,10 +196,15 @@ export default function AdminPrograms() {
 
   const saveMutation = useMutation({
     mutationFn: async ({ programId, payload }) => {
-      const { error } = programId
-        ? await supabase.from('gym_programs').update(payload).eq('id', programId)
-        : await supabase.from('gym_programs').insert(payload);
-      if (error) throw error;
+      if (programId) {
+        const { error } = await supabase.from('gym_programs').update(payload).eq('id', programId);
+        if (error) throw error;
+        logAdminAction('update_program', 'program', programId);
+      } else {
+        const { data: inserted, error } = await supabase.from('gym_programs').insert(payload).select('id').single();
+        if (error) throw error;
+        logAdminAction('create_program', 'program', inserted.id, { name: payload.name });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) });
@@ -119,6 +218,7 @@ export default function AdminPrograms() {
     mutationFn: async (id) => {
       const { error } = await supabase.from('gym_programs').delete().eq('id', id);
       if (error) throw error;
+      logAdminAction('delete_program', 'program', id);
     },
     onSuccess: () => {
       setConfirmDeleteId(null);
@@ -218,6 +318,14 @@ export default function AdminPrograms() {
         className="mb-6"
       />
 
+      {/* Program Suggestion */}
+      <ProgramSuggestionCard
+        gymId={gymId}
+        t={t}
+        isEs={isEs}
+        onCreateProgram={() => { setPrefillProgram(null); setShowTemplates(true); }}
+      />
+
       {/* Program Analytics Summary */}
       {!loading && programs.length > 0 && (
         <FadeIn>
@@ -243,6 +351,7 @@ export default function AdminPrograms() {
               <input
                 type="text"
                 placeholder={t('admin.programs.searchPlaceholder', 'Search programs...')}
+                aria-label={t('admin.programs.searchPlaceholder', 'Search programs')}
                 value={programSearch}
                 onChange={e => setProgramSearch(e.target.value)}
                 className="w-full bg-[#111827] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/30"

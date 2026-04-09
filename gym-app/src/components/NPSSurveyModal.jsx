@@ -164,7 +164,7 @@ const NPSSurveyModal = () => {
                   className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/[0.08] transition-colors"
                   aria-label="Close"
                 >
-                  <X size={16} className="text-white/40" />
+                  <X size={16} className="text-white/70" />
                 </button>
 
                 {/* Title */}
@@ -183,22 +183,22 @@ const NPSSurveyModal = () => {
                         key={i}
                         onClick={() => setScore(i)}
                         className={`
-                          w-full aspect-square max-w-[36px] rounded-xl border text-[13px] font-semibold
+                          w-full aspect-square min-w-[44px] min-h-[44px] rounded-xl border text-[13px] font-semibold
                           flex items-center justify-center transition-all duration-150
                           hover:scale-110 active:scale-95
                           ${getScoreColor(i, score)}
                         `}
-                        aria-label={`${i}`}
+                        aria-label={`Rate ${i}${i === 0 ? ' - Not at all likely' : i === 5 ? ' - Neutral' : i === 10 ? ' - Extremely likely' : ''}`}
                       >
                         {i}
                       </button>
                     ))}
                   </div>
                   <div className="flex justify-between mt-2 px-0.5">
-                    <span className="text-[10px] text-white/30">
+                    <span className="text-[10px] text-white/60">
                       {t('nps.survey.notLikely')}
                     </span>
-                    <span className="text-[10px] text-white/30">
+                    <span className="text-[10px] text-white/60">
                       {t('nps.survey.veryLikely')}
                     </span>
                   </div>
@@ -209,6 +209,7 @@ const NPSSurveyModal = () => {
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   placeholder={t('nps.survey.feedbackPlaceholder')}
+                  aria-label={t('nps.survey.feedbackPlaceholder')}
                   rows={2}
                   className="w-full mt-4 rounded-xl bg-white/[0.04] border border-white/[0.08] text-[13px] text-white placeholder-white/25 px-3.5 py-2.5 resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
                 />

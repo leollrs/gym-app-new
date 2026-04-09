@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ToggleLeft, ToggleRight, Save, CheckCircle, ChevronDown, Plus, X, Activity,
-  Award, Mail, AlertTriangle,
+  Award, Mail, AlertTriangle, Bell, Smartphone,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
@@ -90,16 +90,18 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
   const defaultMsg = t('adminChurn.followUp.defaultMessage', { defaultValue: DEFAULT_SETTINGS.message_template });
   const [steps, setSteps] = useState(
     initialSteps?.length
-      ? initialSteps
-      : [{ step_number: 1, delay_days: 0, message_template: defaultMsg, message_b: null }]
+      ? initialSteps.map(s => ({ ...s, channel: s.channel || 'notification' }))
+      : [{ step_number: 1, delay_days: 0, message_template: defaultMsg, message_b: null, channel: 'notification' }]
   );
 
   const lastRunLabel = initialSettings?.last_run_at
     ? formatDistanceToNow(new Date(initialSettings.last_run_at), { addSuffix: true })
     : null;
 
+  const CHANNEL_DEFAULTS = ['notification', 'email', 'sms'];
   const addStep = () => {
-    setSteps(prev => [...prev, { step_number: prev.length + 1, delay_days: 3, message_template: '', message_b: null }]);
+    const nextChannel = CHANNEL_DEFAULTS[steps.length] || 'notification';
+    setSteps(prev => [...prev, { step_number: prev.length + 1, delay_days: 7, message_template: '', message_b: null, channel: nextChannel }]);
   };
   const removeStep = (idx) => {
     setSteps(prev => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, step_number: i + 1 })));
@@ -131,7 +133,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
     await supabase.from('drip_campaign_steps').delete().eq('gym_id', gymId);
     if (steps.length > 0) {
       await supabase.from('drip_campaign_steps').insert(
-        steps.map(s => ({ gym_id: gymId, step_number: s.step_number, delay_days: s.delay_days, message_template: s.message_template, message_b: s.message_b || null }))
+        steps.map(s => ({ gym_id: gymId, step_number: s.step_number, delay_days: s.delay_days, message_template: s.message_template, message_b: s.message_b || null, channel: s.channel || 'notification' }))
       );
     }
     setSavingFup(false);
@@ -240,7 +242,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
               {/* Drip Campaign Steps */}
               <div className="mb-4">
                 <label className="block text-[11px] font-medium text-[#9CA3AF] mb-2">{t('adminChurn.followUp.campaignSteps', { defaultValue: 'Campaign Steps' })}</label>
-                <p className="text-[10px] text-[#4B5563] mb-2.5">{t('adminChurn.followUp.campaignHint', { defaultValue: 'Sent as in-app notifications · members see them in their notification bell' })}</p>
+                <p className="text-[10px] text-[#4B5563] mb-2.5">{t('adminChurn.followUp.campaignHint', { defaultValue: 'Each step can use a different channel: push notification, email, or SMS' })}</p>
                 <div className="space-y-0">
                   {steps.map((step, i) => (
                     <div key={i} className="flex gap-2.5">
@@ -265,6 +267,29 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                             <button onClick={() => removeStep(i)} className="ml-auto text-[#6B7280] hover:text-[#EF4444] transition-colors"><X size={13} /></button>
                           )}
                         </div>
+
+                        {/* Channel selector */}
+                        <div className="flex gap-1.5 mb-1.5">
+                          {[
+                            { key: 'notification', icon: Bell, label: t('adminChurn.followUp.channelNotif', { defaultValue: 'Push' }), color: '#10B981' },
+                            { key: 'email', icon: Mail, label: t('adminChurn.followUp.channelEmail', { defaultValue: 'Email' }), color: '#60A5FA' },
+                            { key: 'sms', icon: Smartphone, label: t('adminChurn.followUp.channelSms', { defaultValue: 'SMS' }), color: '#F59E0B' },
+                          ].map(ch => (
+                            <button key={ch.key} onClick={() => updateStep(i, 'channel', ch.key)}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors ${
+                                step.channel === ch.key
+                                  ? 'border-opacity-40 opacity-100'
+                                  : 'border-white/6 text-[#6B7280] hover:text-[#9CA3AF] opacity-60'
+                              }`}
+                              style={step.channel === ch.key ? { background: `${ch.color}15`, borderColor: `${ch.color}66`, color: ch.color } : {}}>
+                              <ch.icon size={10} />
+                              {ch.label}
+                            </button>
+                          ))}
+                        </div>
+                        {step.channel === 'sms' && (
+                          <p className="text-[9px] text-[#F59E0B] mb-1">{t('adminChurn.followUp.smsCapWarning', { defaultValue: 'Counts toward 200/mo SMS limit · Only sent if member has phone on file' })}</p>
+                        )}
 
                         {/* A/B Testing: show variants side by side or single textarea */}
                         {step.message_b !== null && step.message_b !== undefined ? (

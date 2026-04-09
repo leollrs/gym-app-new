@@ -175,7 +175,7 @@ export default function Notifications() {
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               type="button"
@@ -211,7 +211,7 @@ export default function Notifications() {
         </div>
       </div>
 
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 py-4">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 py-4">
         {/* Gym News */}
         {announcements.length > 0 && (
           <section className="mb-8">

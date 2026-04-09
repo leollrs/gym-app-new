@@ -7,6 +7,7 @@
  */
 import { addPoints, calculatePointsForAction } from './rewardsEngine';
 import logger from './logger';
+import { logAdminAction } from './adminAudit';
 
 // ── Check-in ─────────────────────────────────────────────
 export async function handleCheckinScan(parsed, ctx) {
@@ -73,6 +74,8 @@ export async function handleCheckinScan(parsed, ctx) {
     await addPoints(member.id, gymId, 'check_in', pts, 'QR check-in');
   }
 
+  logAdminAction('checkin_scan', 'member', member.id);
+
   const msg = pointsAwarded > 0
     ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts: pointsAwarded })
     : t('admin.scan.checkinSuccessNoPoints', '{{name}} checked in!', { name: member.full_name });
@@ -121,6 +124,8 @@ export async function handlePurchaseScan(parsed, ctx) {
     logger.error('Purchase record failed:', error);
     return { success: false, message: t('admin.scan.purchaseFailed', 'Purchase recording failed') };
   }
+
+  logAdminAction('purchase_scan', 'member', member.id, { product: parsed.productId });
 
   // Trigger wallet update for punch cards
   supabase.functions.invoke('push-wallet-update', {
@@ -199,24 +204,25 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
   }
 
-  if (redemption.status === 'expired') {
-    return { success: false, message: t('admin.scan.redemptionExpired', 'This redemption has expired') };
+  if (redemption.status === 'expired' || redemption.status === 'cancelled') {
+    return { success: false, message: t('admin.scan.redemptionExpired', 'This redemption has expired or was cancelled') };
   }
 
   if (redemption.profile_id !== parsed.memberId) {
     return { success: false, message: t('admin.scan.memberMismatch', 'Redemption does not belong to this member') };
   }
 
-  // Mark as claimed
-  const { error: updateErr } = await supabase
-    .from('reward_redemptions')
-    .update({ status: 'claimed', claimed_at: new Date().toISOString() })
-    .eq('id', redemption.id);
+  // Claim via RPC (deducts points + marks claimed atomically)
+  const { error: claimErr } = await supabase.rpc('claim_redemption', {
+    p_redemption_id: redemption.id,
+  });
 
-  if (updateErr) {
-    logger.error('Redemption claim failed:', updateErr);
+  if (claimErr) {
+    logger.error('Redemption claim failed:', claimErr);
     return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
   }
+
+  logAdminAction('claim_reward', 'member', parsed.memberId, { reward: redemption.reward_name });
 
   // Get member name
   const { data: member } = await supabase
@@ -266,6 +272,8 @@ export async function handleReferralScan(parsed, ctx) {
     logger.error('Referral completion failed:', error);
     return { success: false, message: t('admin.scan.referralFailed', 'Referral completion failed: {{msg}}', { msg: error.message }) };
   }
+
+  logAdminAction('referral_scan', 'member', referral.referrer_id);
 
   // Get referrer name
   const { data: referrer } = await supabase

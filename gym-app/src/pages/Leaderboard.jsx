@@ -105,7 +105,7 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
         <div className="px-5 pt-5 pb-3 text-center">
           <div className="w-14 h-14 rounded-full bg-white/[0.06] flex items-center justify-center mx-auto mb-3 overflow-hidden">
             {entry.avatar ? (
-              <img src={entry.avatar} alt="" className="w-full h-full object-cover" width={56} height={56} loading="lazy" />
+              <img src={entry.avatar} alt={entry.name || "User avatar"} className="w-full h-full object-cover" width={56} height={56} loading="lazy" />
             ) : (
               <span className="text-[18px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
             )}
@@ -207,7 +207,7 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency, t }) 
       </div>
       <div className="w-7 h-7 rounded-full bg-white/[0.06] flex items-center justify-center flex-shrink-0 overflow-hidden">
         {entry.avatar ? (
-          <img src={entry.avatar} alt="" loading="lazy" className="w-full h-full object-cover" />
+          <img src={entry.avatar} alt={entry.name || "User avatar"} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
         )}
@@ -355,7 +355,7 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
                     </div>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${isFirst ? 'ring-1 ring-[#D4AF37]/25' : 'bg-white/[0.06]'}`}>
                       {entry.avatar ? (
-                        <img src={entry.avatar} alt="" loading="lazy" className="w-full h-full object-cover" />
+                        <img src={entry.avatar} alt={entry.name || "User avatar"} loading="lazy" className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
                       )}
@@ -520,7 +520,7 @@ const Leaderboard = ({ embedded = false }) => {
 
   return (
     <div className={`${embedded ? '' : 'min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12'} animate-fade-in`}>
-      <div className={embedded ? '' : 'mx-auto w-full max-w-[480px] md:max-w-4xl px-4'}>
+      <div className={embedded ? '' : 'mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4'}>
 
         {/* Title */}
         {!embedded && (
@@ -538,7 +538,7 @@ const Leaderboard = ({ embedded = false }) => {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 ring-2 ring-[#10B981]/20">
                 {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} loading="lazy" />
+                  <img src={profile.avatar_url} alt={profile.display_name || "User avatar"} className="w-full h-full object-cover" width={48} height={48} loading="lazy" />
                 ) : (
                   <span className="text-[14px] font-bold text-[var(--color-text-muted)]">{profile?.full_name?.charAt(0)?.toUpperCase() ?? '?'}</span>
                 )}

@@ -9,32 +9,48 @@ struct QRCheckInView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("GYM CHECK-IN")
-                .font(.system(size: 10, weight: .heavy))
+                .font(.caption2.weight(.heavy))
                 .foregroundColor(DS.mutedText)
                 .tracking(1.5)
 
             Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 48))
+                .font(.system(size: 48, weight: .regular, design: .default))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .foregroundColor(DS.gold)
+                .accessibilityLabel("QR check-in code")
 
             GoldButton("Open QR on iPhone", icon: "iphone") {
+                session.openQROnPhone()
                 if WCSession.default.isReachable {
-                    session.openQROnPhone()
                     WKInterfaceDevice.current().play(.success)
                     feedbackText = "Check your iPhone"
                 } else {
-                    WKInterfaceDevice.current().play(.failure)
-                    feedbackText = "iPhone not reachable"
+                    WKInterfaceDevice.current().play(.click)
+                    feedbackText = "Will sync when iPhone connects"
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    feedbackText = ""
+                }
+            }
+
+            GoldButton("Quick Check-In", icon: "checkmark.seal.fill") {
+                session.checkIn()
+                if WCSession.default.isReachable {
+                    WKInterfaceDevice.current().play(.success)
+                    feedbackText = "Checked in!"
+                } else {
+                    WKInterfaceDevice.current().play(.click)
+                    feedbackText = "Check-in will sync when iPhone connects"
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                     feedbackText = ""
                 }
             }
 
             if !feedbackText.isEmpty {
                 Text(feedbackText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(feedbackText.contains("not") ? .red.opacity(0.8) : DS.mutedText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(feedbackText.contains("sync") ? .orange.opacity(0.8) : DS.mutedText)
             }
         }
         .padding(.horizontal, 8)

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   Plus, Gift, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Milestone, Award, Hash, Trophy, Mail, Clock,
+  Milestone, Award, Hash, Trophy, Mail, Clock, ChevronRight,
+  CupSoda, Ticket, ShoppingBag, Dumbbell, Crown, Percent, Droplets, Wind,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { logAdminAction } from '../../lib/adminAudit';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -16,6 +18,7 @@ import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
   SectionLabel, AdminPageShell, AdminTabs,
 } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 // ── Constants ──────────────────────────────────────────────
 const REWARD_TYPES = [
@@ -30,10 +33,36 @@ const REWARD_TYPES = [
   { value: 'custom',       color: 'text-[#9CA3AF] bg-white/6' },
 ];
 
+const REWARD_COVERS = [
+  { key: 'smoothie',   label: 'Batido',        gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)', icon: CupSoda },
+  { key: 'guest_pass', label: 'Pase Invitado', gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', icon: Ticket },
+  { key: 'merch',      label: 'Merchandise',   gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)', icon: ShoppingBag },
+  { key: 'pt_session', label: 'Sesi\u00f3n PT',     gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)', icon: Dumbbell },
+  { key: 'free_month', label: 'Mes Gratis',    gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)', icon: Crown },
+  { key: 'discount',   label: 'Descuento',     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', icon: Percent },
+  { key: 'water',      label: 'Agua/Bebida',   gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)', icon: Droplets },
+  { key: 'towel',      label: 'Toalla',        gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)', icon: Wind },
+];
+
 const rewardKeys = adminKeys.rewards;
 
 const typeColor = (type) =>
   REWARD_TYPES.find(t => t.value === type)?.color ?? 'text-[#9CA3AF] bg-white/6';
+
+function RewardCoverBadge({ preset, size = 40, iconSize = 18 }) {
+  if (!preset) return null;
+  const cover = REWARD_COVERS.find(c => c.key === preset);
+  if (!cover) return null;
+  const Icon = cover.icon;
+  return (
+    <div
+      className="rounded-xl flex items-center justify-center flex-shrink-0"
+      style={{ background: cover.gradient, width: size, height: size }}
+    >
+      <Icon size={iconSize} className="text-white/90" />
+    </div>
+  );
+}
 
 // ── Input class (shared) ───────────────────────────────────
 const inputClass = 'w-full bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 transition-all';
@@ -44,11 +73,12 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
   const queryClient = useQueryClient();
   const { translate, translating } = useAutoTranslate();
   const isEdit = !!reward;
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [form, setForm] = useState({
     name: '', name_es: '', description: '', description_es: '',
-    reward_type: 'custom', emoji_icon: '🎁', cost_points: '0', is_active: true,
-    sort_order: '0',
+    reward_type: 'custom', cost_points: '0', is_active: true,
+    sort_order: '0', cover_preset: '',
   });
 
   useEffect(() => {
@@ -59,17 +89,20 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
         description: reward.description || '',
         description_es: reward.description_es || '',
         reward_type: reward.reward_type || 'custom',
-        emoji_icon: reward.emoji_icon || '🎁',
         cost_points: reward.cost_points?.toString() || '0',
         is_active: reward.is_active ?? true,
         sort_order: reward.sort_order?.toString() || '0',
+        cover_preset: reward.cover_preset || '',
       });
+      // Auto-expand advanced if reward has translations or custom sort
+      setShowAdvanced(!!(reward.name_es || reward.description_es || (reward.sort_order && reward.sort_order !== 0)));
     } else {
       setForm({
         name: '', name_es: '', description: '', description_es: '',
-        reward_type: 'custom', emoji_icon: '🎁', cost_points: '0', is_active: true,
-        sort_order: '0',
+        reward_type: 'custom', cost_points: '0', is_active: true,
+        sort_order: '0', cover_preset: '',
       });
+      setShowAdvanced(false);
     }
   }, [reward, isOpen]);
 
@@ -97,18 +130,20 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
         description: form.description.trim() || null,
         description_es: form.description_es.trim() || null,
         reward_type: form.reward_type,
-        emoji_icon: form.emoji_icon || '🎁',
         cost_points: parseInt(form.cost_points) || 0,
         is_active: form.is_active,
         sort_order: parseInt(form.sort_order) || 0,
+        cover_preset: form.cover_preset || null,
       };
 
       if (isEdit) {
         const { error } = await supabase.from('gym_rewards').update(payload).eq('id', reward.id);
         if (error) throw error;
+        logAdminAction('update_reward', 'reward', reward.id, { name: payload.name });
       } else {
-        const { error } = await supabase.from('gym_rewards').insert(payload);
+        const { data: inserted, error } = await supabase.from('gym_rewards').insert(payload).select('id').single();
         if (error) throw error;
+        logAdminAction('create_reward', 'reward', inserted.id, { name: payload.name });
       }
     },
     onSuccess: () => {
@@ -140,69 +175,52 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
       }
     >
       <div className="space-y-5">
-        {/* Emoji + Name */}
-        <div className="flex gap-3">
-          <div className="w-20">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.emojiIcon', 'Emoji')}</label>
-            <input
-              value={form.emoji_icon}
-              onChange={e => set('emoji_icon', e.target.value)}
-              placeholder="🎁"
-              maxLength={4}
-              className={`${inputClass} !text-center !text-[20px] !px-2`}
-            />
-          </div>
-          <div className="flex-1">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardName', 'Reward Name')}</label>
-            <input
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              placeholder={t('admin.rewards.rewardNamePlaceholder', 'e.g. Free Smoothie')}
-              className={inputClass}
-            />
+        {/* ── Cover Image ── */}
+        <div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">
+            {t('admin.rewards.coverImage', 'Imagen de portada')}
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {REWARD_COVERS.map(c => {
+              const Icon = c.icon;
+              const selected = form.cover_preset === c.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => set('cover_preset', selected ? '' : c.key)}
+                  className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${
+                    selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{ background: c.gradient }}
+                >
+                  <Icon size={20} className="text-white/90" />
+                  <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{c.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Name ES + Auto-translate */}
+        {/* ── Name ── */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.rewards.rewardName', 'Reward Name')} (ES)</label>
-            <button
-              onClick={handleAutoTranslate}
-              disabled={translating || !form.name.trim()}
-              className="text-[11px] text-[#D4AF37] hover:text-[#C5A028] disabled:opacity-40 transition-colors"
-            >
-              {translating ? '...' : t('admin.rewards.autoTranslate', 'Auto-translate')}
-            </button>
-          </div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardName', 'Nombre del premio')}</label>
           <input
-            value={form.name_es}
-            onChange={e => set('name_es', e.target.value)}
-            placeholder="e.g. Batido Gratis"
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder={t('admin.rewards.rewardNamePlaceholder', 'ej. Batido Gratis')}
             className={inputClass}
           />
         </div>
 
         {/* Description */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Description')}</label>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Descripci\u00f3n')}</label>
           <textarea
             value={form.description}
             onChange={e => set('description', e.target.value)}
             rows={2}
-            placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
-            className={`${inputClass} resize-none`}
-          />
-        </div>
-
-        {/* Description ES */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Description')} (ES)</label>
-          <textarea
-            value={form.description_es}
-            onChange={e => set('description_es', e.target.value)}
-            rows={2}
-            placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
+            placeholder={t('admin.rewards.descriptionPlaceholder', 'Descripci\u00f3n opcional...')}
             className={`${inputClass} resize-none`}
           />
         </div>
@@ -225,30 +243,17 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
           </div>
         </div>
 
-        {/* Points + Sort */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.costPoints', 'Points Cost')}</label>
-            <input
-              type="number"
-              min="0"
-              value={form.cost_points}
-              onChange={e => set('cost_points', e.target.value)}
-              placeholder="0"
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.sortOrder', 'Sort Order')}</label>
-            <input
-              type="number"
-              min="0"
-              value={form.sort_order}
-              onChange={e => set('sort_order', e.target.value)}
-              placeholder="0"
-              className={inputClass}
-            />
-          </div>
+        {/* Points Cost */}
+        <div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.costPoints', 'Points Cost')}</label>
+          <input
+            type="number"
+            min="0"
+            value={form.cost_points}
+            onChange={e => set('cost_points', e.target.value)}
+            placeholder="0"
+            className={inputClass}
+          />
         </div>
 
         {/* Active toggle */}
@@ -263,6 +268,69 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
             {t('admin.rewards.active', 'Active')}
           </span>
         </button>
+
+        {/* ── Advanced / Translation fields (progressive disclosure) ── */}
+        <div className="border-t border-white/6 pt-3">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors w-full"
+          >
+            <ChevronRight size={14} className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
+            {t('admin.rewards.advancedSettings', 'Translations & Advanced')}
+            {(form.name_es || form.description_es) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] flex-shrink-0" />
+            )}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-4 mt-4">
+              {/* Name ES + Auto-translate */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.rewards.rewardName', 'Reward Name')} (ES)</label>
+                  <button
+                    onClick={handleAutoTranslate}
+                    disabled={translating || !form.name.trim()}
+                    className="text-[11px] text-[#D4AF37] hover:text-[#C5A028] disabled:opacity-40 transition-colors"
+                  >
+                    {translating ? '...' : t('admin.rewards.autoTranslate', 'Auto-translate')}
+                  </button>
+                </div>
+                <input
+                  value={form.name_es}
+                  onChange={e => set('name_es', e.target.value)}
+                  placeholder="e.g. Batido Gratis"
+                  className={inputClass}
+                />
+              </div>
+
+              {/* Description ES */}
+              <div>
+                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Description')} (ES)</label>
+                <textarea
+                  value={form.description_es}
+                  onChange={e => set('description_es', e.target.value)}
+                  rows={2}
+                  placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
+
+              {/* Sort Order */}
+              <div>
+                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.sortOrder', 'Sort Order')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.sort_order}
+                  onChange={e => set('sort_order', e.target.value)}
+                  placeholder="0"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </AdminModal>
   );
@@ -495,7 +563,7 @@ export default function AdminRewards() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('referral_milestones')
-        .select('*, gym_rewards(name, name_es, emoji_icon)')
+        .select('*, gym_rewards(name, name_es)')
         .eq('gym_id', gymId)
         .order('referral_count', { ascending: true });
       if (error) throw error;
@@ -530,6 +598,7 @@ export default function AdminRewards() {
     mutationFn: async (id) => {
       const { error } = await supabase.from('gym_rewards').delete().eq('id', id);
       if (error) throw error;
+      logAdminAction('delete_reward', 'reward', id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.all(gymId) });
@@ -544,12 +613,13 @@ export default function AdminRewards() {
       const count = parseInt(milestoneCount);
       if (!count || count < 1) throw new Error('Invalid referral count');
       if (!milestoneRewardId) throw new Error('Select a reward');
-      const { error } = await supabase.from('referral_milestones').insert({
+      const { data: inserted, error } = await supabase.from('referral_milestones').insert({
         gym_id: gymId,
         referral_count: count,
         reward_id: milestoneRewardId,
-      });
+      }).select('id').single();
       if (error) throw error;
+      logAdminAction('create_milestone', 'referral_milestone', inserted.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.milestones(gymId) });
@@ -564,6 +634,7 @@ export default function AdminRewards() {
     mutationFn: async (id) => {
       const { error } = await supabase.from('referral_milestones').delete().eq('id', id);
       if (error) throw error;
+      logAdminAction('delete_milestone', 'referral_milestone', id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.milestones(gymId) });
@@ -585,7 +656,11 @@ export default function AdminRewards() {
     <AdminPageShell>
       <PageHeader
         title={t('admin.rewards.title', 'Rewards')}
-        subtitle={t('admin.rewards.subtitle', 'Manage your reward catalog and referral milestones')}
+        subtitle={
+          !loadingRewards && rewards.length > 0
+            ? `${activeRewards.length} ${t('admin.rewards.active', 'active')} · ${rewards.length - activeRewards.length} ${t('admin.rewards.inactive', 'inactive')}`
+            : t('admin.rewards.subtitle', 'Manage your reward catalog and referral milestones')
+        }
         actions={
           rewardsTab === 'catalog' && (
             <button
@@ -611,8 +686,13 @@ export default function AdminRewards() {
         className="mb-6"
       />
 
-      {/* ── Catalog Tab ───────────────────────────────────── */}
-      {rewardsTab === 'catalog' && <>
+      <SwipeableTabContent tabs={[
+          { key: 'catalog', label: t('admin.rewards.tabCatalog', 'Catalog'), icon: Gift },
+          { key: 'redemptions', label: t('admin.rewards.tabRedemptions', 'Redemptions'), icon: Clock },
+          { key: 'performance', label: t('admin.rewards.tabPerformance', 'Performance'), icon: Trophy },
+        ]} active={rewardsTab} onChange={setRewardsTab}>
+        {(tabKey) => {
+          if (tabKey === 'catalog') return <>
       <SectionLabel className="mb-1">{t('admin.rewards.catalog', 'Reward Catalog')}</SectionLabel>
 
       {loadingRewards ? (
@@ -636,11 +716,15 @@ export default function AdminRewards() {
           {rewards.map((r, idx) => (
             <FadeIn key={r.id} delay={idx * 40}>
               <AdminCard className="relative">
-                {/* Top row: emoji + name + badges */}
+                {/* Top row: cover/emoji + name + badges */}
                 <div className={`flex items-center gap-3 ${!r.is_active ? 'opacity-40' : ''}`}>
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/8 flex items-center justify-center flex-shrink-0 text-[20px]">
-                    {r.emoji_icon || '🎁'}
-                  </div>
+                  {r.cover_preset ? (
+                    <RewardCoverBadge preset={r.cover_preset} />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/8 flex items-center justify-center flex-shrink-0">
+                      <Gift size={20} className="text-[#6B7280]" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{rewardName(r)}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
@@ -722,10 +806,8 @@ export default function AdminRewards() {
           ))}
         </div>
       )}
-      </>}
-
-      {/* ── Performance Tab ───────────────────────────────── */}
-      {rewardsTab === 'performance' && <>
+      </>;
+          if (tabKey === 'performance') return <>
       <SectionLabel>
         {t('admin.rewards.referralMilestones', 'Referral Milestones')}
       </SectionLabel>
@@ -759,7 +841,7 @@ export default function AdminRewards() {
                 <option value="">{t('admin.rewards.selectReward', 'Select reward...')}</option>
                 {activeRewards.map(r => (
                   <option key={r.id} value={r.id}>
-                    {r.emoji_icon} {rewardName(r)}
+                    {rewardName(r)}
                   </option>
                 ))}
               </select>
@@ -798,7 +880,7 @@ export default function AdminRewards() {
                         {t('admin.rewards.referralsNeeded', 'referrals')}
                       </span>
                       <span className="text-[12px] text-[#6B7280] mx-1">&rarr;</span>
-                      <span className="text-[15px]">{rw?.emoji_icon || '🎁'}</span>
+                      <Gift size={15} className="text-[#6B7280]" />
                       <span className="text-[13px] font-medium text-[#E5E7EB] truncate">
                         {rwName || 'Unknown'}
                       </span>
@@ -821,10 +903,11 @@ export default function AdminRewards() {
           )}
         </AdminCard>
       </FadeIn>
-      </>}
-
-      {/* ── Redemptions Tab ───────────────────────────────── */}
-      {rewardsTab === 'redemptions' && <RewardLog gymId={gymId} isEs={isEs} t={t} />}
+      </>;
+          if (tabKey === 'redemptions') return <RewardLog gymId={gymId} isEs={isEs} t={t} />;
+          return null;
+        }}
+      </SwipeableTabContent>
 
       {/* ── Reward Modal ─────────────────────────────────────── */}
       <RewardModal
@@ -845,7 +928,11 @@ export default function AdminRewards() {
         >
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-3 bg-[#111827] rounded-xl border border-white/6">
-              <span className="text-[20px]">{deactivateTarget.emoji_icon || '🎁'}</span>
+              {deactivateTarget.cover_preset ? (
+                <RewardCoverBadge preset={deactivateTarget.cover_preset} />
+              ) : (
+                <Gift size={20} className="text-[#6B7280]" />
+              )}
               <div>
                 <p className="text-[14px] font-semibold text-[#E5E7EB]">{rewardName(deactivateTarget)}</p>
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${typeColor(deactivateTarget.reward_type)}`}>

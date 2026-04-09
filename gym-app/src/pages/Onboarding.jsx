@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2, UtensilsCrossed, Search, X, AlertTriangle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2, UtensilsCrossed, Search, X, AlertTriangle, MapPin, Camera, BarChart3, Shield, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
@@ -78,34 +78,37 @@ function getDefaultDays(freq) {
 // Map English day names to index for display
 const DAY_NAME_TO_INDEX = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
 
-const TOTAL_STEPS = 9; // invite code step 0, language step 1, health step 7 (core onboarding steps)
-const TOTAL_STEPS_WITH_PLANS = 11; // includes workout plan (step 9) and meal plan (step 10)
+const TOTAL_STEPS = 10; // invite code step 0, language step 1, data consent step 7, health step 8 (core onboarding steps)
+const TOTAL_STEPS_WITH_PLANS = 12; // includes workout plan (step 10) and meal plan (step 11)
 
 // ── STEP INDICATOR ─────────────────────────────────────────
-const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Health', 'Metrics', 'Program', 'Nutrition'];
+const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Privacy', 'Health', 'Metrics', 'Program', 'Nutrition'];
 
 // Analytics step names (used for PostHog events and DB tracking)
-const STEP_NAMES = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'body_stats', 'health_sync', 'social'];
+const STEP_NAMES = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'body_stats', 'data_consent', 'health_sync', 'social'];
 
 const StepIndicator = ({ current, total }) => {
   const labels = total ? STEP_LABELS.slice(0, total) : STEP_LABELS;
   return (
-    <div className="flex items-center justify-between mb-8 px-1">
+    <nav aria-label="Onboarding progress" className="flex items-center justify-between mb-8 px-1">
       {labels.map((label, i) => (
-        <div key={i} className="flex flex-col items-center gap-1">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
-            i < current ? 'bg-[#D4AF37] text-black' :
-            i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
-            'bg-white/[0.04] text-[var(--color-text-muted)]'
-          }`}>
-            {i < current ? <Check size={12} /> : i + 1}
+        <div key={i} className="flex flex-col items-center gap-1" aria-current={i === current ? 'step' : undefined}>
+          <div
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
+              i < current ? 'bg-[#D4AF37] text-black' :
+              i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
+              'bg-white/[0.04] text-[var(--color-text-muted)]'
+            }`}
+            aria-label={i < current ? `${label} - completed` : i === current ? `${label} - current step` : `${label} - step ${i + 1}`}
+          >
+            {i < current ? <Check size={12} aria-hidden="true" /> : i + 1}
           </div>
           <span className={`text-[8px] font-medium tracking-wide ${
             i <= current ? 'text-[#D4AF37]' : 'text-[var(--color-text-muted)]'
           }`}>{label}</span>
         </div>
       ))}
-    </div>
+    </nav>
   );
 };
 
@@ -337,6 +340,9 @@ const Onboarding = () => {
     }));
   };
 
+  // Data consent state
+  const [consentDeclined, setConsentDeclined] = useState(false);
+
   const [healthStatus, setHealthStatus] = useState('idle'); // idle | linking | linked | unavailable | error
   const [healthPrefill, setHealthPrefill] = useState({}); // tracks which fields came from Health: { weight: true, height: true, age: true, sex: true }
   const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
@@ -403,6 +409,28 @@ const Onboarding = () => {
     } catch {
       setHealthStatus('error');
     }
+  };
+
+  const handleConsentAgree = async () => {
+    setConsentDeclined(false);
+    try {
+      await supabase
+        .from('profiles')
+        .update({ data_consent_at: new Date().toISOString(), data_consent_version: '1.0' })
+        .eq('id', user.id);
+    } catch {
+      // Don't block onboarding if consent save fails — will retry on next app load
+    }
+    setStep(s => s + 1);
+  };
+
+  const handleConsentDecline = () => {
+    setConsentDeclined(true);
+  };
+
+  const handleConsentDeclineContinue = () => {
+    setConsentDeclined(false);
+    setStep(s => s + 1);
   };
 
   const canAdvance = () => {
@@ -776,13 +804,13 @@ const Onboarding = () => {
   const FULL_DAYS_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   return (
-    <div className="min-h-screen px-4 py-10 pb-28 md:pb-12 flex flex-col items-center" style={{ backgroundColor: "var(--color-bg-primary)" }}>
+    <main className="min-h-screen px-4 py-10 pb-28 md:pb-12 flex flex-col items-center" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <div className="w-full max-w-[480px] mx-auto md:max-w-4xl">
 
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/25 mb-4">
-            <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} />
+            <Dumbbell size={22} className="text-[#D4AF37]" strokeWidth={2} aria-hidden="true" />
           </div>
           <h1 className="text-[22px] font-bold truncate" style={{ color: "var(--color-text-primary)" }}>{t('title')}</h1>
           <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
@@ -806,6 +834,7 @@ const Onboarding = () => {
                 onChange={e => handleInviteCodeChange(e.target.value)}
                 placeholder="e.g. ABC123"
                 disabled={inviteStatus === 'verifying' || inviteStatus === 'success'}
+                aria-label={t('inviteCode.title')}
                 className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-4 text-center text-[20px] font-mono font-bold tracking-[0.2em] uppercase placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors disabled:opacity-50" style={{ color: "var(--color-text-primary)" }}
               />
 
@@ -846,7 +875,7 @@ const Onboarding = () => {
 
               {/* Error state */}
               {inviteStatus === 'error' && inviteError && (
-                <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                <div role="alert" className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
                   <p className="text-[13px] text-red-400 text-center">{inviteError}</p>
                 </div>
               )}
@@ -955,6 +984,7 @@ const Onboarding = () => {
                             min="0"
                             max="1500"
                             placeholder="—"
+                            aria-label={lift.label}
                             value={data.known_maxes[lift.id]}
                             onChange={e => setMax(lift.id, e.target.value)}
                             className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-lg px-3 py-2 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors pr-10" style={{ color: "var(--color-text-primary)" }}
@@ -1013,6 +1043,8 @@ const Onboarding = () => {
                     key={n}
                     type="button"
                     onClick={() => setFrequency(n)}
+                    aria-label={`${n} ${n === 1 ? 'day' : 'days'} per week`}
+                    aria-pressed={data.training_days_per_week === n}
                     className={`flex-1 py-3 rounded-xl text-[14px] font-bold whitespace-nowrap transition-all ${
                       data.training_days_per_week === n
                         ? 'bg-[#D4AF37] text-black'
@@ -1046,6 +1078,7 @@ const Onboarding = () => {
                       key={eq.value}
                       type="button"
                       onClick={() => toggleEquipment(eq.value)}
+                      aria-pressed={active}
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
@@ -1081,6 +1114,8 @@ const Onboarding = () => {
                       key={dayEN}
                       type="button"
                       onClick={() => toggleTrainingDay(dayEN)}
+                      aria-label={dayEN}
+                      aria-pressed={active}
                       className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all ${
                         active
                           ? 'bg-[#D4AF37] text-black'
@@ -1146,6 +1181,7 @@ const Onboarding = () => {
                 <button
                   type="button"
                   onClick={() => set('has_workout_buddy', true)}
+                  aria-pressed={data.has_workout_buddy === true}
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
                     data.has_workout_buddy === true
                       ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
@@ -1160,6 +1196,7 @@ const Onboarding = () => {
                     set('has_workout_buddy', false);
                     set('workout_buddy_username', '');
                   }}
+                  aria-pressed={data.has_workout_buddy === false}
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold border transition-all ${
                     data.has_workout_buddy === false
                       ? 'bg-[#D4AF37]/12 border-[#D4AF37]/50 text-[#D4AF37]'
@@ -1173,6 +1210,7 @@ const Onboarding = () => {
                 <input
                   type="text"
                   placeholder={t('schedule.partnerPlaceholder')}
+                  aria-label={t('schedule.workoutPartner')}
                   value={data.workout_buddy_username}
                   onChange={e => set('workout_buddy_username', e.target.value)}
                   className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors" style={{ color: "var(--color-text-primary)" }}
@@ -1207,6 +1245,7 @@ const Onboarding = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => set('sex', opt.value)}
+                    aria-pressed={data.sex === opt.value}
                     className={`flex-1 py-3 rounded-xl text-[14px] font-semibold border transition-all ${
                       data.sex === opt.value
                         ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
@@ -1232,6 +1271,7 @@ const Onboarding = () => {
                 min="13"
                 max="99"
                 placeholder="25"
+                aria-label={t('bodyStats.age')}
                 value={data.age}
                 onChange={e => set('age', e.target.value)}
                 className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors" style={{ color: "var(--color-text-primary)" }}
@@ -1252,6 +1292,7 @@ const Onboarding = () => {
                     min="3"
                     max="8"
                     placeholder="5"
+                    aria-label={t('bodyStats.height') + ' (ft)'}
                     value={data.height_feet}
                     onChange={e => set('height_feet', e.target.value)}
                     className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors" style={{ color: "var(--color-text-primary)" }}
@@ -1265,6 +1306,7 @@ const Onboarding = () => {
                     min="0"
                     max="11"
                     placeholder="10"
+                    aria-label={t('bodyStats.height') + ' (in)'}
                     value={data.height_inches}
                     onChange={e => set('height_inches', e.target.value)}
                     className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors" style={{ color: "var(--color-text-primary)" }}
@@ -1288,6 +1330,7 @@ const Onboarding = () => {
                 min="50"
                 max="700"
                 placeholder={t('bodyStats.weightPlaceholder')}
+                aria-label={t('bodyStats.weight')}
                 value={data.initial_weight_lbs}
                 onChange={e => set('initial_weight_lbs', e.target.value)}
                 className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors" style={{ color: "var(--color-text-primary)" }}
@@ -1308,6 +1351,7 @@ const Onboarding = () => {
                       key={inj.value}
                       type="button"
                       onClick={() => toggleInjury(inj.value)}
+                      aria-pressed={active}
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-red-500/15 border-red-500/40 text-red-400'
@@ -1330,15 +1374,138 @@ const Onboarding = () => {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+              <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
                 <p className="text-[13px] text-red-400">{error}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* ── STEP 7: HEALTH INTEGRATION ── */}
+        {/* ── STEP 7: DATA CONSENT / DISCLOSURE ── */}
         {step === 7 && (
+          <div className="animate-fade-in">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex-shrink-0">
+                <Shield size={20} className="text-[#D4AF37]" />
+              </div>
+              <div>
+                <h2 className="text-[18px] font-semibold truncate" style={{ color: "var(--color-text-primary)" }}>{t('dataConsent.title')}</h2>
+                <p className="text-[13px]" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.subtitle')}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 mt-6">
+              {/* Health & Fitness */}
+              <div className="flex items-start gap-3.5 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5">
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0 mt-0.5">
+                  <Activity size={16} className="text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--color-text-primary)" }}>
+                    {i18n.language === 'es' ? 'Salud y Fitness' : 'Health & Fitness'}
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.health')}</p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="flex items-start gap-3.5 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5">
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex-shrink-0 mt-0.5">
+                  <MapPin size={16} className="text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--color-text-primary)" }}>
+                    {i18n.language === 'es' ? 'Ubicaci\u00f3n' : 'Location'}
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.location')}</p>
+                </div>
+              </div>
+
+              {/* Camera & Photos */}
+              <div className="flex items-start gap-3.5 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5">
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex-shrink-0 mt-0.5">
+                  <Camera size={16} className="text-purple-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--color-text-primary)" }}>
+                    {i18n.language === 'es' ? 'C\u00e1mara y Fotos' : 'Camera & Photos'}
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.camera')}</p>
+                </div>
+              </div>
+
+              {/* Analytics */}
+              <div className="flex items-start gap-3.5 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5">
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex-shrink-0 mt-0.5">
+                  <BarChart3 size={16} className="text-[#D4AF37]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--color-text-primary)" }}>
+                    {i18n.language === 'es' ? 'An\u00e1litica' : 'Analytics'}
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.analytics')}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy policy link */}
+            <div className="mt-5 text-center">
+              <a
+                href="https://tugympr.com/privacidad"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#D4AF37] hover:text-[#E6C766] transition-colors"
+              >
+                {t('dataConsent.privacyLink')} <ExternalLink size={13} />
+              </a>
+            </div>
+
+            {/* Decline warning */}
+            {consentDeclined && (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mt-4">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={15} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-[12px] text-yellow-400 leading-relaxed">{t('dataConsent.declineWarning')}</p>
+                    <button
+                      type="button"
+                      onClick={handleConsentDeclineContinue}
+                      className="text-[12px] font-semibold text-yellow-400 hover:text-yellow-300 mt-2 transition-colors"
+                    >
+                      {t('common:continue')} &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={handleConsentDecline}
+                className="flex-1 flex items-center justify-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
+                style={{ color: "var(--color-text-primary)" }}
+              >
+                {t('dataConsent.decline')}
+              </button>
+              <button
+                type="button"
+                onClick={handleConsentAgree}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
+              >
+                {t('dataConsent.agree')}
+              </button>
+            </div>
+
+            <p className="text-[11px] text-center mt-3" style={{ color: "var(--color-text-muted)" }}>
+              {t('dataConsent.changeAnytime')}
+            </p>
+          </div>
+        )}
+
+        {/* ── STEP 8: HEALTH INTEGRATION ── */}
+        {step === 8 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-semibold truncate mb-1" style={{ color: "var(--color-text-primary)" }}>{t('health.title')}</h2>
             <p className="text-[13px] mb-6" style={{ color: "var(--color-text-subtle)" }}>{t('health.subtitle')}</p>
@@ -1451,8 +1618,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 8: FIND YOUR GYM SQUAD (final step) ── */}
-        {step === 8 && (
+        {/* ── STEP 9: FIND YOUR GYM SQUAD (final step) ── */}
+        {step === 9 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-semibold truncate mb-1" style={{ color: "var(--color-text-primary)" }}>{t('social.title')}</h2>
             <p className="text-[13px] mb-6" style={{ color: "var(--color-text-subtle)" }}>{t('social.subtitle')}</p>
@@ -1479,7 +1646,7 @@ const Onboarding = () => {
                     <p className="text-[12px]" style={{ color: "var(--color-text-subtle)" }}>Bench Press — 225 lbs × 5 reps</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>{t('social.minAgo')}</span>
-                      <button className="text-[11px] hover:text-[#D4AF37] transition-colors" style={{ color: "var(--color-text-subtle)" }}>👏 {t('social.nice')}</button>
+                      <span className="text-[11px]" style={{ color: "var(--color-text-subtle)" }}>👏 {t('social.nice')}</span>
                     </div>
                   </div>
                 </div>
@@ -1498,7 +1665,7 @@ const Onboarding = () => {
                     <p className="text-[12px]" style={{ color: "var(--color-text-subtle)" }}>Upper Body — 14 sets · 42 min</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>{t('social.minAgo18')}</span>
-                      <button className="text-[11px] hover:text-[#D4AF37] transition-colors" style={{ color: "var(--color-text-subtle)" }}>{t('social.crushIt')}</button>
+                      <span className="text-[11px]" style={{ color: "var(--color-text-subtle)" }}>{t('social.crushIt')}</span>
                     </div>
                   </div>
                 </div>
@@ -1518,7 +1685,7 @@ const Onboarding = () => {
                     <p className="text-[12px]" style={{ color: "var(--color-text-subtle)" }}>{t('social.mockStreakDesc')}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>{t('social.hrAgo')}</span>
-                      <button className="text-[11px] hover:text-[#D4AF37] transition-colors" style={{ color: "var(--color-text-subtle)" }}>🙌 {t('social.insane')}</button>
+                      <span className="text-[11px]" style={{ color: "var(--color-text-subtle)" }}>🙌 {t('social.insane')}</span>
                     </div>
                   </div>
                 </div>
@@ -1526,7 +1693,7 @@ const Onboarding = () => {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+              <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
                 <p className="text-[13px] text-red-400">{error}</p>
               </div>
             )}
@@ -1540,8 +1707,8 @@ const Onboarding = () => {
           </p>
         )}
 
-        {/* ── NAV BUTTONS (hidden on invite code step, generate plan, and meal plan screens) ── */}
-        {step > 0 && !showGeneratePlan && !showMealPlan && (
+        {/* ── NAV BUTTONS (hidden on invite code step, data consent step, generate plan, and meal plan screens) ── */}
+        {step > 0 && step !== 7 && !showGeneratePlan && !showMealPlan && (
         <div className="flex gap-3 mt-8">
           <button
             type="button"
@@ -1575,14 +1742,14 @@ const Onboarding = () => {
         </div>
         )}
 
-        {/* Skip on body stats or health step */}
-        {(step === 6 || step === 7) && !showGeneratePlan && !showMealPlan && (
+        {/* Skip on body stats or health step (step 7 = data consent has its own buttons) */}
+        {(step === 6 || step === 8) && !showGeneratePlan && !showMealPlan && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
             className="w-full text-center text-[12px] mt-3 py-2 transition-colors" style={{ color: "var(--color-text-muted)" }}
           >
-            {step === 7 ? t('health.skip') : t('common:skip')}
+            {step === 8 ? t('health.skip') : t('common:skip')}
           </button>
         )}
 
@@ -1602,7 +1769,7 @@ const Onboarding = () => {
             </div>
 
             {generateError && (
-              <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+              <div role="alert" className="w-full bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
                 <p className="text-[13px] text-red-400 text-center">{generateError}</p>
               </div>
             )}
@@ -1628,8 +1795,8 @@ const Onboarding = () => {
 
         {/* ── GENERATE PLAN: Generating screen ── */}
         {showGeneratePlan === 'generating' && (
-          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
-            <Loader2 size={36} className="text-[#D4AF37] animate-spin" />
+          <div role="status" aria-live="polite" className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
+            <Loader2 size={36} className="text-[#D4AF37] animate-spin" aria-hidden="true" />
             <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
               {t('generatePlan.generating')}
             </p>
@@ -1729,6 +1896,7 @@ const Onboarding = () => {
                       key={opt.value}
                       type="button"
                       onClick={() => toggleRestriction(opt.value)}
+                      aria-pressed={active}
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
@@ -1761,6 +1929,7 @@ const Onboarding = () => {
                       key={opt.value}
                       type="button"
                       onClick={() => toggleAllergy(opt.value)}
+                      aria-pressed={active}
                       className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
                         active
                           ? 'bg-red-500/15 border-red-500/40 text-red-400'
@@ -1791,12 +1960,15 @@ const Onboarding = () => {
                   value={ingredientSearch}
                   onChange={e => setIngredientSearch(e.target.value)}
                   placeholder={t('mealPlan.dislikePlaceholder')}
+                  aria-label={t('mealPlan.dislikesLabel')}
                   className="w-full bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-[13px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-emerald-500/40 focus:outline-none transition-colors"
                   style={{ color: "var(--color-text-primary)" }}
                 />
                 {ingredientSearch && (
                   <button
+                    type="button"
                     onClick={() => setIngredientSearch('')}
+                    aria-label="Clear search"
                     className="absolute right-3 top-1/2 -translate-y-1/2"
                   >
                     <X size={14} style={{ color: "var(--color-text-muted)" }} />
@@ -1810,7 +1982,9 @@ const Onboarding = () => {
                   {dislikedIngredients.map(ing => (
                     <button
                       key={ing}
+                      type="button"
                       onClick={() => toggleDislike(ing)}
+                      aria-label={`Remove ${formatIngredient(ing)} from dislikes`}
                       className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 transition-all hover:bg-red-500/25"
                     >
                       {formatIngredient(ing)} <X size={12} />
@@ -1863,7 +2037,7 @@ const Onboarding = () => {
             </div>
 
             {mealPlanError && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+              <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
                 <p className="text-[13px] text-red-400 text-center">{mealPlanError}</p>
               </div>
             )}
@@ -1892,8 +2066,8 @@ const Onboarding = () => {
 
         {/* ── MEAL PLAN: Generating screen ── */}
         {showMealPlan === 'generating' && (
-          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
-            <Loader2 size={36} className="text-emerald-400 animate-spin" />
+          <div role="status" aria-live="polite" className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
+            <Loader2 size={36} className="text-emerald-400 animate-spin" aria-hidden="true" />
             <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
               {t('mealPlan.generating')}
             </p>
@@ -1961,7 +2135,7 @@ const Onboarding = () => {
         )}
 
       </div>
-    </div>
+    </main>
   );
 };
 

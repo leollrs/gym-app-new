@@ -41,12 +41,32 @@ const PLACEHOLDER_PNG = new Uint8Array([
 ]);
 
 function getAuthToken(req: Request): string {
-  return (req.headers.get('Authorization') ?? '').replace('ApplePass ', '');
+  const header = req.headers.get('Authorization') ?? '';
+  // Apple Wallet WebService sends: "ApplePass <authenticationToken>"
+  if (!header.startsWith('ApplePass ')) return '';
+  return header.slice(10);
 }
 
 async function hashAuthToken(token: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Verify Apple Wallet auth token against stored profile tokens */
+async function verifyAuthToken(
+  req: Request,
+  supabase: ReturnType<typeof createClient>,
+  selectFields = 'id, gym_id'
+): Promise<Record<string, unknown> | null> {
+  const token = getAuthToken(req);
+  if (!token) return null;
+  const hashed = await hashAuthToken(token);
+  const { data } = await supabase
+    .from('profiles')
+    .select(selectFields)
+    .eq('wallet_auth_token', hashed)
+    .maybeSingle();
+  return data;
 }
 
 serve(async (req: Request) => {
@@ -72,6 +92,13 @@ serve(async (req: Request) => {
     // FIX: Uses profiles.pass_data_updated_at instead of registration.updated_at
     // to avoid the race condition where push-wallet-update hasn't finished yet.
     if (api[0] === 'devices' && req.method === 'GET') {
+      // Verify Apple Wallet auth token
+      const profile = await verifyAuthToken(req, supabase);
+      if (!profile) {
+        console.warn('[Wallet] GET registrations: invalid auth token');
+        return new Response('Unauthorized', { status: 401 });
+      }
+
       const deviceId = api[1];
       const passTypeId = decodeURIComponent(api[3] || '');
       const passesUpdatedSince = url.searchParams.get('passesUpdatedSince');

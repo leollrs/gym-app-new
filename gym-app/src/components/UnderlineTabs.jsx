@@ -9,7 +9,7 @@ import React, { useRef, useEffect, useState } from 'react';
  *   activeIndex – current active tab index
  *   onChange    – called with new index
  */
-export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
+export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable = false }) {
   const containerRef = useRef(null);
   const tabRefs = useRef([]);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -23,11 +23,15 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
       const containerRect = container.getBoundingClientRect();
       const tabRect = el.getBoundingClientRect();
       setIndicator({
-        left: tabRect.left - containerRect.left,
+        left: tabRect.left - containerRect.left + container.scrollLeft,
         width: tabRect.width,
       });
+      // Scroll active tab into view on mobile
+      if (scrollable) {
+        el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
     }
-  }, [activeIndex, normalized.length]);
+  }, [activeIndex, normalized.length, scrollable]);
 
   const handleKeyDown = (e, i) => {
     let newIndex = i;
@@ -51,8 +55,8 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
   };
 
   return (
-    <div ref={containerRef} className="relative">
-      <div className="flex" role="tablist">
+    <div ref={containerRef} className={`relative ${scrollable ? 'overflow-x-auto scrollbar-hide' : ''}`}>
+      <div className={`flex ${scrollable ? 'w-max min-w-full' : ''}`} role="tablist">
         {normalized.map((tab, i) => (
           <button
             key={tab.key}
@@ -64,7 +68,7 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange }) {
             tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onChange(i)}
             onKeyDown={(e) => handleKeyDown(e, i)}
-            className={`flex-1 py-2.5 text-[13px] font-semibold text-center transition-colors relative ${
+            className={`${scrollable ? 'shrink-0 px-4' : 'flex-1'} py-2.5 min-h-[44px] text-[13px] font-semibold text-center transition-colors relative whitespace-nowrap ${
               i === activeIndex
                 ? 'text-[var(--color-text-primary)]'
                 : 'text-[var(--color-text-muted)]'

@@ -29,7 +29,7 @@ export default function StatCard({
     <FadeIn delay={delay} className={isHero ? 'md:col-span-2 xl:col-span-3' : ''}>
       <div
         className={`admin-stat-card border-l-2 group ${
-          isHero ? 'p-5' : 'p-4'
+          isHero ? 'p-5' : 'p-3 md:p-4'
         }`}
         style={{ borderLeftColor: borderColor }}
       >
@@ -37,14 +37,14 @@ export default function StatCard({
           <div className="min-w-0 flex-1">
             <p
               className={`admin-kpi truncate ${
-                isHero ? 'text-[32px]' : 'text-[26px]'
+                isHero ? 'text-[26px] md:text-[32px]' : 'text-[20px] md:text-[26px]'
               }`}
             >
               {displayVal}
             </p>
             <p
               className={`font-medium group-hover:text-[color:var(--color-text-secondary)] transition-colors truncate ${
-                isHero ? 'text-[13px] mt-2 text-[color:var(--color-text-muted)]' : 'text-[12px] mt-1.5 text-[color:var(--color-text-muted)]'
+                isHero ? 'text-[11px] md:text-[13px] mt-2 text-[color:var(--color-text-muted)]' : 'text-[11px] md:text-[12px] mt-1.5 text-[color:var(--color-text-muted)]'
               }`}
             >
               {label}

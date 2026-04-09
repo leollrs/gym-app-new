@@ -99,10 +99,13 @@ export default function AvatarPicker({ isOpen, onClose, currentAvatar, user, onS
           exit="hidden"
         >
           {/* Scrim */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={-1} aria-label="Close dialog" onClick={handleClose} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClose(); }} />
 
           {/* Sheet */}
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Customize Avatar"
             className="relative w-full max-w-[480px] bg-[var(--color-bg-card)] border-t border-white/[0.08] rounded-t-[20px] pb-[env(safe-area-inset-bottom)] max-h-[85vh] overflow-y-auto"
             variants={sheet}
             initial="hidden"

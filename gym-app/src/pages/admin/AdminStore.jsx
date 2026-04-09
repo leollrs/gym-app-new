@@ -3,11 +3,13 @@ import {
   Plus, ShoppingBag, Pencil, Trash2, Search, Package, Gift,
   Hash, DollarSign, Star, ToggleLeft, ToggleRight, Minus, Clock,
   Filter, ChevronDown, X, ScanLine, Users, Receipt,
+  CupSoda, Ticket, Dumbbell, Crown, Percent, Droplets, Wind,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
@@ -16,6 +18,7 @@ import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
   SectionLabel, FilterBar, AdminPageShell, AdminTable, AdminTabs,
 } from '../../components/admin';
+import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import QRScannerModal from '../../components/admin/QRScannerModal';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
@@ -40,6 +43,28 @@ const categoryLabel = (cat, t) => {
 };
 
 // ── Product Modal ──────────────────────────────────────────
+const PRODUCT_COVERS = [
+  { key: 'smoothie',   label: 'Batido',        icon: CupSoda,     gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
+  { key: 'guest_pass', label: 'Pase Invitado', icon: Ticket,      gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
+  { key: 'merch',      label: 'Merchandise',   icon: ShoppingBag, gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
+  { key: 'pt_session', label: 'Sesión PT',     icon: Dumbbell,    gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
+  { key: 'free_month', label: 'Mes Gratis',    icon: Crown,       gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
+  { key: 'discount',   label: 'Descuento',     icon: Percent,     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
+  { key: 'water',      label: 'Agua/Bebida',   icon: Droplets,    gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)' },
+  { key: 'towel',      label: 'Toalla',        icon: Wind,        gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
+];
+
+function ProductCoverBadge({ preset, size = 40, iconSize = 18 }) {
+  const cover = PRODUCT_COVERS.find(c => c.key === preset);
+  if (!cover) return null;
+  const Icon = cover.icon;
+  return (
+    <div className="rounded-xl flex items-center justify-center flex-shrink-0" style={{ width: size, height: size, background: cover.gradient }}>
+      <Icon size={iconSize} className="text-white/90" />
+    </div>
+  );
+}
+
 const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -49,7 +74,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
     name: '',
     category: 'supplement',
     price: '',
-    emoji_icon: '',
+    cover_preset: '',
     points_per_purchase: '10',
     punch_card_enabled: false,
     punch_card_target: '10',
@@ -61,14 +86,14 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
         name: product.name || '',
         category: product.category || 'supplement',
         price: product.price?.toString() || '',
-        emoji_icon: product.emoji_icon || '',
+        cover_preset: product.cover_preset || '',
         points_per_purchase: product.points_per_purchase?.toString() || '10',
         punch_card_enabled: product.punch_card_enabled || false,
         punch_card_target: product.punch_card_target?.toString() || '10',
       });
     } else {
       setForm({
-        name: '', category: 'supplement', price: '', emoji_icon: '',
+        name: '', category: 'supplement', price: '', cover_preset: '',
         points_per_purchase: '10', punch_card_enabled: false, punch_card_target: '10',
       });
     }
@@ -86,7 +111,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
         name: form.name.trim(),
         category: form.category,
         price: parseFloat(form.price),
-        emoji_icon: form.emoji_icon || null,
+        cover_preset: form.cover_preset || null,
         points_per_purchase: parseInt(form.points_per_purchase) || 0,
         punch_card_enabled: form.punch_card_enabled,
         punch_card_target: form.punch_card_enabled ? parseInt(form.punch_card_target) || 10 : null,
@@ -101,6 +126,11 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
       }
     },
     onSuccess: () => {
+      if (isEdit) {
+        logAdminAction('update_product', 'product', product.id, { name: form.name.trim() });
+      } else {
+        logAdminAction('create_product', 'product', null, { name: form.name.trim() });
+      }
       queryClient.invalidateQueries({ queryKey: storeKeys.products(gymId) });
       showToast(isEdit ? t('admin.store.productUpdated', 'Product updated') : t('admin.store.productCreated', 'Product created'), 'success');
       onClose();
@@ -131,27 +161,37 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
       }
     >
       <div className="space-y-5">
-        {/* Name + Emoji */}
-        <div className="flex gap-3">
-          <div className="w-20">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.emoji', 'Emoji')}</label>
-            <input
-              value={form.emoji_icon}
-              onChange={e => set('emoji_icon', e.target.value)}
-              placeholder="\u{1F964}"
-              maxLength={4}
-              className={`${inputClass} !text-center !text-[20px] !px-2`}
-            />
+        {/* Cover preset grid */}
+        <div>
+          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.store.coverImage', 'Imagen del producto')}
+          </label>
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            {PRODUCT_COVERS.map(c => {
+              const Icon = c.icon;
+              const selected = form.cover_preset === c.key;
+              return (
+                <button key={c.key} type="button"
+                  onClick={() => set('cover_preset', selected ? '' : c.key)}
+                  className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
+                  style={{ background: c.gradient }}>
+                  <Icon size={20} className="text-white/90" />
+                  <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{c.label}</span>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex-1">
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.productName', 'Product Name')}</label>
-            <input
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              placeholder={t('admin.store.productNamePlaceholder', 'e.g. Protein Shake')}
-              className={inputClass}
-            />
-          </div>
+        </div>
+
+        {/* Name */}
+        <div>
+          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.productName', 'Nombre del Producto')}</label>
+          <input
+            value={form.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder={t('admin.store.productNamePlaceholder', 'ej. Batido de Proteína')}
+            className={inputClass}
+          />
         </div>
 
         {/* Category */}
@@ -274,7 +314,8 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
       const { error } = await supabase.from('gym_products').update({ is_active: !is_active }).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, { id, is_active }) => {
+      logAdminAction('toggle_product', 'product', id, { is_active: !is_active });
       queryClient.invalidateQueries({ queryKey: storeKeys.products(gymId) });
     },
     onError: (err) => showToast(err.message, 'error'),
@@ -285,7 +326,8 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
       const { error } = await supabase.from('gym_products').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, productId) => {
+      logAdminAction('delete_product', 'product', productId);
       queryClient.invalidateQueries({ queryKey: storeKeys.products(gymId) });
       setConfirmDeleteId(null);
       showToast(t('admin.store.productDeleted', 'Product deleted'), 'success');
@@ -337,10 +379,14 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
             <FadeIn key={p.id} delay={idx * 40}>
               <AdminCard hover>
                 <div className="flex items-start gap-3">
-                  {/* Emoji */}
-                  <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0 text-[22px]">
-                    {p.emoji_icon || '\u{1F4E6}'}
-                  </div>
+                  {/* Cover / Emoji */}
+                  {p.cover_preset ? (
+                    <ProductCoverBadge preset={p.cover_preset} size={44} iconSize={20} />
+                  ) : (
+                    <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0">
+                      <Package size={22} className="text-[#6B7280]" />
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
@@ -446,7 +492,7 @@ const RedemptionsTab = ({ gymId, t, dateFnsLocale }) => {
     queryFn: async () => {
       let query = supabase
         .from('member_purchases')
-        .select('*, profiles:member_id(full_name, avatar_url), gym_products:product_id(name, emoji_icon, price)')
+        .select('*, profiles:member_id(full_name, avatar_url), gym_products:product_id(name, price)')
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -494,7 +540,7 @@ const RedemptionsTab = ({ gymId, t, dateFnsLocale }) => {
       label: t('admin.store.item', 'Item'),
       render: (row) => (
         <div className="flex items-center gap-2">
-          <span className="text-[15px]">{row.gym_products?.emoji_icon || '\u{1F4E6}'}</span>
+          <Package size={15} className="text-[#6B7280]" />
           <span className="text-[13px] text-[#E5E7EB]">
             {row.quantity > 1 ? `${row.quantity}x ` : ''}{row.gym_products?.name ?? t('admin.store.unknown', 'Unknown')}
           </span>
@@ -651,7 +697,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
     queryFn: async () => {
       const { data } = await supabase
         .from('gym_products')
-        .select('id, name, emoji_icon')
+        .select('id, name')
         .eq('gym_id', gymId)
         .order('name');
       return data || [];
@@ -708,7 +754,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
     queryFn: async () => {
       let query = supabase
         .from('member_purchases')
-        .select('*, profiles:member_id(full_name, avatar_url), gym_products:product_id(name, emoji_icon, price)')
+        .select('*, profiles:member_id(full_name, avatar_url), gym_products:product_id(name, price)')
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -889,6 +935,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
                     onChange={e => { setMemberSearch(e.target.value); setShowMemberDropdown(true); }}
                     onFocus={() => setShowMemberDropdown(true)}
                     placeholder={t('admin.store.searchMember', 'Search member by name...')}
+                    aria-label={t('admin.store.searchMember', 'Search member by name')}
                     className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 transition-all"
                   />
                   {showMemberDropdown && memberSearch.trim().length > 0 && members.length > 0 && (
@@ -938,7 +985,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
                           : 'bg-white/[0.03] border border-white/6 hover:border-white/12'
                       }`}
                     >
-                      <span className="text-[18px]">{p.emoji_icon || '\u{1F4E6}'}</span>
+                      <Package size={18} className="text-[#6B7280]" />
                       <div className="min-w-0 flex-1">
                         <p className={`text-[12px] font-medium truncate ${selectedProduct?.id === p.id ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
                           {p.name}
@@ -1050,7 +1097,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
               >
                 <option value="all">{t('admin.store.allProducts', 'All Products')}</option>
                 {allProducts.map(p => (
-                  <option key={p.id} value={p.id}>{p.emoji_icon} {p.name}</option>
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>
@@ -1101,8 +1148,8 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
               <FadeIn key={p.id} delay={idx * 30}>
                 <AdminCard padding="p-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0 text-[18px]">
-                      {p.gym_products?.emoji_icon || '\u{1F4E6}'}
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/6 flex items-center justify-center flex-shrink-0">
+                      <Package size={18} className="text-[#6B7280]" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1182,9 +1229,14 @@ export default function AdminStore() {
       </FadeIn>
 
       {/* Tab Content */}
-      {storeTab === 'products' && <ProductsTab gymId={gymId} t={t} addProductOpen={addProductOpen} onAddProductClose={() => setAddProductOpen(false)} />}
-      {storeTab === 'redemptions' && <RedemptionsTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
-      {storeTab === 'purchases' && <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />}
+      <SwipeableTabContent tabs={tabOptions} active={storeTab} onChange={setStoreTab}>
+        {(tabKey) => {
+          if (tabKey === 'products') return <ProductsTab gymId={gymId} t={t} addProductOpen={addProductOpen} onAddProductClose={() => setAddProductOpen(false)} />;
+          if (tabKey === 'redemptions') return <RedemptionsTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />;
+          if (tabKey === 'purchases') return <MemberPurchasesTab gymId={gymId} t={t} dateFnsLocale={dateFnsLocale} />;
+          return null;
+        }}
+      </SwipeableTabContent>
     </AdminPageShell>
   );
 }

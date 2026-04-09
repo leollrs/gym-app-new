@@ -386,7 +386,7 @@ serve(async (req) => {
       // Fetch all active members
       const { data: members } = await supabase
         .from('profiles')
-        .select('id, created_at, training_frequency, membership_status, assigned_program_id')
+        .select('id, created_at, training_frequency, membership_status, assigned_program_id, phone_number')
         .eq('gym_id', gymId)
         .eq('role', 'member')
         .in('membership_status', ['active', 'frozen']);
@@ -777,7 +777,7 @@ serve(async (req) => {
         totalScored += rows.length;
       }
 
-      // ── Automated follow-ups ───────────────────────────────
+      // ── Automated follow-ups (multi-channel drip) ─────────
       const { data: settings } = await supabase
         .from('churn_followup_settings')
         .select('*')
@@ -787,14 +787,66 @@ serve(async (req) => {
       if (settings?.enabled) {
         const threshold = settings.threshold || 61;
         const cooldownDays = settings.cooldown_days || 7;
-        const template = settings.message_template;
         const cooldownDate = new Date(now.getTime() - cooldownDays * MS_PER_DAY).toISOString();
+
+        // Fetch drip campaign steps (ordered by step_number)
+        const { data: dripSteps } = await supabase
+          .from('drip_campaign_steps')
+          .select('step_number, delay_days, message_template, message_b, channel')
+          .eq('gym_id', gymId)
+          .order('step_number', { ascending: true });
+
+        const stepsToUse = dripSteps?.length ? dripSteps : [{ step_number: 1, delay_days: 0, message_template: settings.message_template, message_b: null, channel: 'notification' }];
 
         // Get members above threshold
         const atRisk = rows.filter(r => r.score >= threshold);
+        const atRiskIds = atRisk.map(r => r.profile_id);
+
+        // Get existing win_back_attempts to determine which step each member is on
+        let existingAttempts: any[] = [];
+        if (atRiskIds.length) {
+          const { data: attempts } = await supabase
+            .from('win_back_attempts')
+            .select('user_id, step_number, created_at')
+            .eq('gym_id', gymId)
+            .in('user_id', atRiskIds)
+            .order('step_number', { ascending: false });
+          existingAttempts = attempts || [];
+        }
+
+        // Build map: member -> highest step completed
+        const memberStepMap: Record<string, { step: number; created_at: string }> = {};
+        existingAttempts.forEach((a: any) => {
+          if (!memberStepMap[a.user_id] || a.step_number > memberStepMap[a.user_id].step) {
+            memberStepMap[a.user_id] = { step: a.step_number, created_at: a.created_at };
+          }
+        });
+
+        // Build phone lookup from members array
+        const phoneMap: Record<string, string> = {};
+        members!.forEach((m: any) => { if (m.phone_number) phoneMap[m.id] = m.phone_number; });
 
         for (const member of atRisk) {
-          // Check cooldown — was a churn_followup notification sent recently?
+          const lastAttempt = memberStepMap[member.profile_id];
+          let nextStepNum: number;
+
+          if (!lastAttempt) {
+            nextStepNum = 1; // First contact
+          } else {
+            // Check delay since last step
+            const lastStepDef = stepsToUse.find(s => s.step_number === lastAttempt.step);
+            const nextStep = stepsToUse.find(s => s.step_number === lastAttempt.step + 1);
+            if (!nextStep) continue; // All steps completed for this member
+
+            const daysSinceLastStep = (now.getTime() - new Date(lastAttempt.created_at).getTime()) / MS_PER_DAY;
+            if (daysSinceLastStep < nextStep.delay_days) continue; // Not time yet
+            nextStepNum = nextStep.step_number;
+          }
+
+          const step = stepsToUse.find(s => s.step_number === nextStepNum);
+          if (!step) continue;
+
+          // Check cooldown (prevent spam regardless of step)
           const { data: recent } = await supabase
             .from('notifications')
             .select('id')
@@ -802,18 +854,77 @@ serve(async (req) => {
             .eq('type', 'churn_followup')
             .gte('created_at', cooldownDate)
             .limit(1);
-
           if (recent && recent.length > 0) continue;
 
-          // Send follow-up notification
-          await supabase.from('notifications').insert({
-            profile_id: member.profile_id,
-            gym_id: gymId,
-            type: 'churn_followup',
-            title: 'We miss you!',
-            body: template,
-            data: { source: 'churn_auto', score: member.score, tier: member.risk_tier },
-          });
+          // Pick message (A/B if variant B exists)
+          const useVariantB = step.message_b && (parseInt(member.profile_id.slice(-1), 16) % 2 === 1);
+          const template = useVariantB ? step.message_b! : step.message_template;
+          const channel = step.channel || 'notification';
+
+          // Send via the appropriate channel
+          if (channel === 'notification') {
+            await supabase.from('notifications').insert({
+              profile_id: member.profile_id,
+              gym_id: gymId,
+              type: 'churn_followup',
+              title: 'We miss you!',
+              body: template,
+              data: { source: 'churn_auto', score: member.score, tier: member.risk_tier, step: nextStepNum },
+            });
+          } else if (channel === 'email') {
+            try {
+              await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  memberId: member.profile_id,
+                  subject: 'We miss you!',
+                  body: template,
+                  lang: 'en',
+                }),
+              });
+            } catch (emailErr) {
+              console.error('Drip email failed:', emailErr);
+            }
+          } else if (channel === 'sms') {
+            // Only send if member has a phone number
+            if (phoneMap[member.profile_id]) {
+              try {
+                await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    memberId: member.profile_id,
+                    body: template.slice(0, 320),
+                    source: 'automated',
+                    gymId,
+                  }),
+                });
+              } catch (smsErr) {
+                console.error('Drip SMS failed:', smsErr);
+              }
+            }
+          }
+
+          // Track in win_back_attempts
+          try {
+            await supabase.from('win_back_attempts').insert({
+              user_id: member.profile_id,
+              gym_id: gymId,
+              admin_id: '00000000-0000-0000-0000-000000000000', // system
+              message: template,
+              outcome: 'no_response',
+              step_number: nextStepNum,
+              variant: useVariantB ? 'B' : 'A',
+              created_at: now.toISOString(),
+            });
+          } catch (_) {}
 
           totalFollowups++;
         }

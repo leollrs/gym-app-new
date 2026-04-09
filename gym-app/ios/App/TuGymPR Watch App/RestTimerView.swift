@@ -3,6 +3,7 @@ import WatchKit
 
 struct RestTimerView: View {
     @EnvironmentObject var session: WatchSessionManager
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State private var countdown: Int = 0
     @State private var totalDuration: Int = 0
     @State private var timer: Timer?
@@ -12,9 +13,11 @@ struct RestTimerView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("REST")
-                .font(.system(size: 11, weight: .heavy))
+                .font(.caption)
+                .fontWeight(.heavy)
                 .foregroundColor(DS.gold)
                 .tracking(2)
+                .accessibilityAddTraits(.isHeader)
 
             // Circular countdown
             ZStack {
@@ -27,15 +30,18 @@ struct RestTimerView: View {
                     .stroke(DS.gold, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                     .frame(width: 110, height: 110)
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 1), value: countdown)
+                    .animation(reduceMotion ? .none : .linear(duration: 1), value: countdown)
 
                 VStack(spacing: 2) {
                     Text("\(countdown)")
                         .font(.system(size: 48, weight: .black, design: .rounded))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundColor(countdown <= 5 ? DS.gold : .white)
                         .monospacedDigit()
+                        .accessibilityAddTraits(.updatesFrequently)
+                        .accessibilityLabel("\(countdown) seconds remaining")
                     Text("sec")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundColor(DS.mutedText)
                 }
             }
@@ -47,7 +53,7 @@ struct RestTimerView: View {
                 WKInterfaceDevice.current().play(.click)
             }) {
                 Text("Skip")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundColor(DS.gold)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 10)
@@ -55,6 +61,7 @@ struct RestTimerView: View {
                     .cornerRadius(10)
             }
             .buttonStyle(.plain)
+            .accessibilityHint("Skip rest timer")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DS.darkBg)

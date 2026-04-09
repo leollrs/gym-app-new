@@ -723,7 +723,7 @@ const SwipeableRow = ({ children, onArchive, onDelete, openRowId, setOpenRowId, 
 };
 
 // ── Conversation List View (iMessage style) ─────────────────────
-const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
+const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, headerExtra }) => {
   const { t } = useTranslation('pages');
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
@@ -867,14 +867,17 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
             {t('messages.title')}
           </h1>
         </div>
-        <button
-          onClick={onNewMessage}
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
-          style={{ color: 'var(--color-accent, #D4AF37)' }}
-          aria-label={t('messages.newMessage')}
-        >
-          <Plus size={22} strokeWidth={2.5} />
-        </button>
+        <div className="flex items-center gap-2">
+          {headerExtra}
+          <button
+            onClick={onNewMessage}
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            style={{ color: 'var(--color-accent, #D4AF37)' }}
+            aria-label={t('messages.newMessage')}
+          >
+            <Plus size={22} strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -998,7 +1001,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack }) => {
 };
 
 // ── Main Messages Page ───────────────────────────────────────────
-const Messages = ({ embedded = false }) => {
+const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null }) => {
   const { conversationId: routeConvId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1046,7 +1049,8 @@ const Messages = ({ embedded = false }) => {
       <ConversationList
         onSelectConversation={handleSelectConversation}
         onNewMessage={handleNewMessage}
-        onGoBack={() => navigate(location.pathname.startsWith('/trainer') ? '/trainer' : '/')}
+        onGoBack={hideBackButton ? null : () => navigate(location.pathname.startsWith('/trainer') ? '/trainer' : '/')}
+        headerExtra={headerExtra}
       />
       {showPicker && <MemberPicker
         isOpen={showPicker}

@@ -13,26 +13,27 @@ struct WorkoutView: View {
             VStack(spacing: 12) {
                 // Exercise name
                 Text(session.exerciseName)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.headline)
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
 
                 // Set counter
                 Text("Set \(session.setNumber) of \(session.totalSets)")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundColor(.gray)
 
                 if session.isResting {
                     // Rest timer
                     VStack(spacing: 6) {
                         Text("REST")
-                            .font(.system(size: 11, weight: .heavy))
+                            .font(.caption2.weight(.heavy))
                             .foregroundColor(gold)
                             .tracking(2)
 
                         Text("\(restCountdown)s")
                             .font(.system(size: 36, weight: .black, design: .rounded))
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .foregroundColor(gold)
                             .monospacedDigit()
                     }
@@ -42,11 +43,11 @@ struct WorkoutView: View {
                     // Suggestion
                     VStack(spacing: 4) {
                         Text("\(Int(session.suggestedWeight)) lbs")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .font(.system(.title3, design: .rounded).weight(.black))
                             .foregroundColor(.white)
 
                         Text("× \(session.suggestedReps) reps")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundColor(.gray)
                     }
                 }
@@ -55,9 +56,10 @@ struct WorkoutView: View {
                 Button(action: { session.completeSet() }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.subheadline)
+                            .accessibilityLabel("Complete set")
                         Text("Done")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.subheadline.weight(.bold))
                     }
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
@@ -70,7 +72,7 @@ struct WorkoutView: View {
 
                 // Elapsed time
                 Text(formatTime(session.elapsedSeconds))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundColor(Color(white: 0.45))
             }
             .padding(.horizontal, 8)

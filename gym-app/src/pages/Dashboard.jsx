@@ -113,7 +113,7 @@ const PulseBlock = ({ className }) => (
 );
 
 const DashboardSkeleton = () => (
-  <div className="space-y-5">
+  <div className="space-y-5" aria-busy={true} aria-label="Loading dashboard">
     <PulseBlock className="h-10" />
     <PulseBlock className="h-16" />
     <PulseBlock className="h-8 w-64" />
@@ -759,7 +759,7 @@ const Dashboard = () => {
       {/* Referral reward celebration banner */}
       <ReferralRewardBanner />
 
-      <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 space-y-0">
+      <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 lg:px-8 pt-6 pb-28 md:pb-12 space-y-0">
 
         {/* ════════════════════════════════════════════════════
             HEADER — My Plan + Icons
@@ -784,11 +784,16 @@ const Dashboard = () => {
             <button
               type="button"
               onClick={() => setShowQR(true)}
-              className="flex items-center gap-1.5 px-3 min-h-[44px] rounded-2xl bg-white/[0.04] border border-[var(--color-border-subtle)] active:scale-[0.98] hover:bg-white/[0.06] transition-all duration-200 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="flex items-center gap-1.5 px-3.5 min-h-[44px] rounded-2xl active:scale-[0.96] transition-all duration-200 focus:ring-2 focus:outline-none"
+              style={{
+                background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                focusRingColor: 'var(--color-accent)',
+              }}
               aria-label="QR Code"
             >
-              <QrCode size={14} className="text-[#D4AF37]" />
-              <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{t('dashboard.qr')}</span>
+              <QrCode size={16} style={{ color: 'var(--color-accent)' }} strokeWidth={2.5} />
+              <span className="text-[11px] font-bold" style={{ color: 'var(--color-accent)' }}>{t('dashboard.qr')}</span>
             </button>
             <Link
               to="/messages"
@@ -984,7 +989,7 @@ const Dashboard = () => {
               <section className="mb-3" data-tour="tour-hero-card">
                 {/* Wait for today's sessions to load before rendering hero to prevent flash */}
                 {isToday && !todaysSessionsLoaded ? (
-                  <div className="w-full rounded-[20px] bg-white/[0.04] animate-pulse" style={{ aspectRatio: '9 / 10' }} />
+                  <div className="w-full rounded-[20px] bg-white/[0.04] animate-pulse" style={{ aspectRatio: '9 / 10' }} aria-busy={true} aria-label="Loading workout" />
                 ) : isToday && liveCardioSession ? (
                   /* ── Live cardio in progress — green hero card ── */
                   <LiveCardioHeroCard liveCardioSession={liveCardioSession} t={t} />
@@ -1080,6 +1085,7 @@ const Dashboard = () => {
                                   <ChevronRight size={12} style={{ color: 'var(--color-text-subtle)' }} />
                                 </Link>
                                 <button
+                                  type="button"
                                   onClick={() => setDeleteConfirm({ type: 'workout', id: session.id, name: session.name })}
                                   className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/10 transition-colors flex-shrink-0"
                                   style={{ color: 'var(--color-text-muted)' }}
@@ -1522,20 +1528,19 @@ const Dashboard = () => {
               </section>
 
               {/* ════════════════════════════════════════════════
-                  6. GYM WORKOUT OF THE DAY
+                  6+7. WOD + GYM ACTIVITY — side-by-side on desktop
                  ════════════════════════════════════════════════ */}
-              <section className="mt-0 mb-3">
-                <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3" />
+              <div className="lg:grid lg:grid-cols-2 lg:gap-4">
+              <section className="mt-0 mb-3 lg:mb-0">
+                <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3 lg:hidden" />
                 <GymWOD />
               </section>
 
-              {/* ════════════════════════════════════════════════
-                  7. GYM ACTIVITY
-                 ════════════════════════════════════════════════ */}
-              <section className="mt-0 mb-6">
-                <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3" />
+              <section className="mt-0 mb-6 lg:mb-0">
+                <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent mb-3 lg:hidden" />
                 <GymPulse />
               </section>
+              </div>
 
             </motion.div>
           </AnimatePresence>
@@ -1634,7 +1639,7 @@ const Dashboard = () => {
         });
 
         return (
-          <div className="fixed inset-x-0 bottom-0 z-[70] flex justify-center pointer-events-none">
+          <div className="fixed inset-x-0 bottom-0 z-[70] flex justify-center pointer-events-none" role="dialog" aria-modal="true" aria-label={t('dashboard.myPlan')}>
             <div
               className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-t-[28px] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] border-b-0 shadow-[0_-8px_40px_rgba(0,0,0,0.6)] overflow-hidden pointer-events-auto"
               style={{ paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))' }}
@@ -1849,6 +1854,9 @@ const Dashboard = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] flex items-center justify-center px-6"
             style={{ background: 'rgba(0,0,0,0.6)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('dashboard.deleteSessionTitle', 'Delete session?')}
             onClick={() => setDeleteConfirm(null)}
           >
             <motion.div

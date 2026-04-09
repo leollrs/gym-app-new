@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff, Download, Loader2, Trophy,
+  ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff, Download, Loader2, Trophy, Ban, UserX,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation, Trans } from 'react-i18next';
@@ -24,12 +24,36 @@ export default function MemberSettings() {
   const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
   const { showToast } = useToast();
   const [exporting, setExporting] = useState({ workouts: false, prs: false, body: false });
+  const [blockedList, setBlockedList] = useState([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(true);
+  const [unblocking, setUnblocking] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('blocked_users')
+      .select('id, blocked_id, created_at, profiles:blocked_id(full_name, avatar_url)')
+      .eq('blocker_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setBlockedList(data ?? []);
+        setLoadingBlocked(false);
+      });
+  }, [user?.id]);
+
+  const handleUnblock = useCallback(async (blockId, blockedId) => {
+    setUnblocking(blockedId);
+    await supabase.from('blocked_users').delete().eq('id', blockId);
+    setBlockedList(prev => prev.filter(b => b.id !== blockId));
+    showToast(t('social.unblockUser'), 'success');
+    setUnblocking(null);
+  }, [showToast, t]);
 
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl border-b border-white/[0.06]" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto flex items-center gap-3 px-4 py-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -42,7 +66,7 @@ export default function MemberSettings() {
         </div>
       </div>
 
-      <div className="px-4 pt-5 max-w-[480px] md:max-w-4xl mx-auto space-y-4">
+      <div className="px-4 pt-5 max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto space-y-4">
         {/* General */}
         <div>
           <h3 className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: 'var(--color-text-subtle)' }}>{t('settings.general')}</h3>
@@ -118,6 +142,7 @@ export default function MemberSettings() {
           <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
             <button
               type="button"
+              aria-pressed={leaderboardVisible}
               onClick={async () => {
                 const newVal = !leaderboardVisible;
                 setLeaderboardVisible(newVal);
@@ -138,6 +163,52 @@ export default function MemberSettings() {
                 <div className={`w-4.5 h-4.5 rounded-full bg-white absolute top-[3px] transition-transform ${leaderboardVisible ? 'translate-x-[19px]' : 'translate-x-[3px]'}`} />
               </div>
             </button>
+          </div>
+        </div>
+
+        {/* Blocked Users */}
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: 'var(--color-text-subtle)' }}>{t('social.blockedUsers')}</h3>
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
+            {loadingBlocked ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={18} className="text-[#D4AF37] animate-spin" />
+              </div>
+            ) : blockedList.length === 0 ? (
+              <div className="flex items-center gap-3 px-5 py-4">
+                <Ban size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                <span className="text-[13px]" style={{ color: 'var(--color-text-subtle)' }}>{t('social.noBlockedUsers')}</span>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/[0.06]">
+                {blockedList.map(block => (
+                  <div key={block.id} className="flex items-center justify-between px-5 py-3.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+                        {block.profiles?.avatar_url ? (
+                          <img src={block.profiles.avatar_url} alt={block.profiles?.full_name ? `${block.profiles.full_name} avatar` : 'User avatar'} className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <UserX size={14} style={{ color: 'var(--color-text-subtle)' }} />
+                        )}
+                      </div>
+                      <span className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {block.profiles?.full_name ?? 'Unknown'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={unblocking === block.blocked_id}
+                      onClick={() => handleUnblock(block.id, block.blocked_id)}
+                      aria-label={t('social.unblockUser')}
+                      className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-white/[0.1] hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      {unblocking === block.blocked_id ? <Loader2 size={12} className="animate-spin" /> : t('social.unblockUser')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -227,7 +298,7 @@ export default function MemberSettings() {
 
       {/* Delete confirmation modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-xl bg-black/60 px-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-xl bg-black/60 px-4" role="presentation">
           <div role="dialog" aria-modal="true" aria-labelledby="delete-account-title" className="w-full max-w-[400px] rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
@@ -246,6 +317,7 @@ export default function MemberSettings() {
               value={deleteText}
               onChange={e => setDeleteText(e.target.value)}
               placeholder={t('settings.typeDelete')}
+              aria-label={t('settings.typeDelete')}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"

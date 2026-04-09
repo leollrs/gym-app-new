@@ -7,22 +7,23 @@ import {
   Wifi, WifiOff, Lock, Eye, Loader2,
 } from 'lucide-react';
 import { formatDistanceToNow, subHours, subMinutes } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 
 // ── Health status helpers ────────────────────────────────────
 const STATUS = {
-  healthy:  { label: 'Healthy',  color: '#10B981', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', icon: CheckCircle2 },
-  degraded: { label: 'Degraded', color: '#F59E0B', bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   icon: AlertTriangle },
-  failing:  { label: 'Failing',  color: '#EF4444', bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-400',     icon: XCircle },
-  unknown:  { label: 'Checking', color: '#6B7280', bg: 'bg-white/5',        border: 'border-white/10',       text: 'text-[#6B7280]',   icon: Clock },
+  healthy:  { labelKey: 'platform.ops.statusHealthy',  fallback: 'Healthy',  color: '#10B981', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', icon: CheckCircle2 },
+  degraded: { labelKey: 'platform.ops.statusDegraded', fallback: 'Degraded', color: '#F59E0B', bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   icon: AlertTriangle },
+  failing:  { labelKey: 'platform.ops.statusFailing',  fallback: 'Failing',  color: '#EF4444', bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-400',     icon: XCircle },
+  unknown:  { labelKey: 'platform.ops.statusChecking', fallback: 'Checking', color: '#6B7280', bg: 'bg-white/5',        border: 'border-white/10',       text: 'text-[#6B7280]',   icon: Clock },
 };
 
 const SEVERITY = {
-  critical: { label: 'Critical', bg: 'bg-red-500/15',    text: 'text-red-400',    border: 'border-red-500/20',    dot: 'bg-red-400' },
-  high:     { label: 'High',     bg: 'bg-orange-500/15', text: 'text-orange-400', border: 'border-orange-500/20', dot: 'bg-orange-400' },
-  medium:   { label: 'Medium',   bg: 'bg-amber-500/15',  text: 'text-amber-400',  border: 'border-amber-500/20',  dot: 'bg-amber-400' },
-  low:      { label: 'Low',      bg: 'bg-blue-500/15',   text: 'text-blue-400',   border: 'border-blue-500/20',   dot: 'bg-blue-400' },
+  critical: { labelKey: 'platform.ops.sevCritical', fallback: 'Critical', bg: 'bg-red-500/15',    text: 'text-red-400',    border: 'border-red-500/20',    dot: 'bg-red-400' },
+  high:     { labelKey: 'platform.ops.sevHigh',     fallback: 'High',     bg: 'bg-orange-500/15', text: 'text-orange-400', border: 'border-orange-500/20', dot: 'bg-orange-400' },
+  medium:   { labelKey: 'platform.ops.sevMedium',   fallback: 'Medium',   bg: 'bg-amber-500/15',  text: 'text-amber-400',  border: 'border-amber-500/20',  dot: 'bg-amber-400' },
+  low:      { labelKey: 'platform.ops.sevLow',      fallback: 'Low',      bg: 'bg-blue-500/15',   text: 'text-blue-400',   border: 'border-blue-500/20',   dot: 'bg-blue-400' },
 };
 
 const FadeIn = ({ delay = 0, children, className = '' }) => (
@@ -35,7 +36,7 @@ const FadeIn = ({ delay = 0, children, className = '' }) => (
 );
 
 // ── Health status card ───────────────────────────────────────
-function HealthCard({ label, icon: Icon, status, detail, delay = 0 }) {
+function HealthCard({ label, icon: Icon, status, detail, delay = 0, t }) {
   const s = STATUS[status] || STATUS.unknown;
   const StatusIcon = s.icon;
   return (
@@ -52,7 +53,7 @@ function HealthCard({ label, icon: Icon, status, detail, delay = 0 }) {
         </div>
         <div className="flex items-center gap-2">
           <span className={`w-1.5 h-1.5 rounded-full`} style={{ backgroundColor: s.color }} />
-          <span className={`text-[12px] font-semibold ${s.text}`}>{s.label}</span>
+          <span className={`text-[12px] font-semibold ${s.text}`}>{t(s.labelKey, s.fallback)}</span>
         </div>
         {detail && (
           <p className="text-[10px] text-[#6B7280] mt-1.5 truncate">{detail}</p>
@@ -63,7 +64,7 @@ function HealthCard({ label, icon: Icon, status, detail, delay = 0 }) {
 }
 
 // ── Incident card ────────────────────────────────────────────
-function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAcknowledge }) {
+function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAcknowledge, t }) {
   const sev = SEVERITY[severity] || SEVERITY.medium;
   return (
     <div className={`bg-[#0F172A] border ${sev.border} rounded-xl p-4 hover:bg-[#111827] transition-colors`}>
@@ -72,7 +73,7 @@ function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAckn
           <div className="flex items-center gap-2 mb-1.5">
             <span className={`w-2 h-2 rounded-full ${sev.dot} animate-pulse`} />
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${sev.bg} ${sev.text}`}>
-              {sev.label}
+              {t(sev.labelKey, sev.fallback)}
             </span>
             <span className="text-[11px] text-[#6B7280]">{area}</span>
           </div>
@@ -134,8 +135,10 @@ function KillSwitch({ label, description, enabled, onToggle, loading: busy }) {
 // ── Main component ───────────────────────────────────────────
 export default function Operations() {
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [configWarning, setConfigWarning] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Health checks
@@ -389,18 +392,23 @@ export default function Operations() {
 
   const fetchFeatureFlags = useCallback(async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('platform_config')
         .select('key, value')
         .like('key', 'feature_%');
 
-      if (data) {
-        const flags = {};
-        data.forEach(({ key, value }) => {
-          const name = key.replace('feature_', '');
-          flags[name] = value === 'true' || value === true;
-        });
-        setFeatures(prev => ({ ...prev, ...flags }));
+      if (error) {
+        setConfigWarning(t('platform.ops.configWarning', 'platform_config table not available — using default feature flags.'));
+      } else {
+        setConfigWarning(null);
+        if (data) {
+          const flags = {};
+          data.forEach(({ key, value }) => {
+            const name = key.replace('feature_', '');
+            flags[name] = value === 'true' || value === true;
+          });
+          setFeatures(prev => ({ ...prev, ...flags }));
+        }
       }
 
       const { data: maint } = await supabase
@@ -410,9 +418,9 @@ export default function Operations() {
         .maybeSingle();
       setMaintenanceMode(maint?.value === 'true' || maint?.value === true);
     } catch {
-      // platform_config may not exist yet — use defaults
+      setConfigWarning(t('platform.ops.configWarning', 'platform_config table not available — using default feature flags.'));
     }
-  }, []);
+  }, [t]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -499,7 +507,7 @@ export default function Operations() {
               Live platform health
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${overallCfg.bg} ${overallCfg.text} ${overallCfg.border} border`}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: overallCfg.color }} />
-                {overallCfg.label}
+                {t(overallCfg.labelKey, overallCfg.fallback)}
               </span>
             </p>
           </div>
@@ -525,17 +533,25 @@ export default function Operations() {
         </div>
       </FadeIn>
 
+      {/* Config warning banner */}
+      {configWarning && (
+        <div className="mb-4 flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-500/8 border border-amber-500/20 text-amber-400 text-[12px]">
+          <AlertTriangle size={14} className="flex-shrink-0" />
+          <span>{configWarning}</span>
+        </div>
+      )}
+
       {/* Health strip */}
       <FadeIn delay={50}>
         <div className="mb-6">
           <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">Service Health</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-            <HealthCard label="API"       icon={Zap}       status={health.api}      detail={healthDetails.api}      delay={60} />
-            <HealthCard label="Auth"      icon={Lock}      status={health.auth}     detail={healthDetails.auth}     delay={80} />
-            <HealthCard label="Database"  icon={Database}  status={health.database} detail={healthDetails.database} delay={100} />
-            <HealthCard label="Storage"   icon={HardDrive} status={health.storage}  detail={healthDetails.storage}  delay={120} />
-            <HealthCard label="Edge Fns"  icon={Zap}       status={health.edge}     detail={healthDetails.edge}     delay={140} />
-            <HealthCard label="Realtime"  icon={Wifi}      status={health.realtime} detail={healthDetails.realtime} delay={160} />
+            <HealthCard label="API"       icon={Zap}       status={health.api}      detail={healthDetails.api}      delay={60}  t={t} />
+            <HealthCard label="Auth"      icon={Lock}      status={health.auth}     detail={healthDetails.auth}     delay={80}  t={t} />
+            <HealthCard label="Database"  icon={Database}  status={health.database} detail={healthDetails.database} delay={100} t={t} />
+            <HealthCard label="Storage"   icon={HardDrive} status={health.storage}  detail={healthDetails.storage}  delay={120} t={t} />
+            <HealthCard label="Edge Fns"  icon={Zap}       status={health.edge}     detail={healthDetails.edge}     delay={140} t={t} />
+            <HealthCard label="Realtime"  icon={Wifi}      status={health.realtime} detail={healthDetails.realtime} delay={160} t={t} />
           </div>
         </div>
       </FadeIn>
@@ -563,7 +579,7 @@ export default function Operations() {
           ) : (
             <div className="space-y-2.5">
               {incidents.map((inc) => (
-                <IncidentCard key={inc.id} {...inc} />
+                <IncidentCard key={inc.id} {...inc} t={t} />
               ))}
             </div>
           )}

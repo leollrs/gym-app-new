@@ -111,13 +111,21 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
   return createPortal(
     <div
       ref={backdropRef}
+      role="button"
+      tabIndex={-1}
+      aria-label="Close preview"
       onClick={handleBackdropClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}
       className={`fixed inset-0 z-[200] flex items-center justify-center px-4 transition-all duration-300 ${
         visible ? 'bg-black/60 backdrop-blur-sm' : 'bg-black/0'
       }`}
       style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-busy={loading}
+        aria-label={loading ? 'Loading profile' : (profileData?.full_name || 'Profile preview')}
         className={`relative w-full max-w-[360px] rounded-2xl border border-white/[0.06] shadow-2xl shadow-black/50 overflow-hidden transition-all duration-300 ${
           visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         }`}

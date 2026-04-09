@@ -148,7 +148,7 @@ export default function Referrals() {
   const friendReward = (referralConfig?.referred_reward?.label || referralConfig?.friend_reward?.label) || t('referrals.defaultFriendReward');
 
   return (
-    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
+    <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in">
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -190,7 +190,8 @@ export default function Referrals() {
             {referralCode ? (
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-xl mb-4 transition-all duration-200 active:scale-95"
+                aria-label={copied ? t('referrals.codeCopied', 'Code copied') : t('referrals.copyCode', 'Copy referral code')}
+                className="flex items-center gap-2.5 px-5 py-3 min-h-[44px] rounded-xl mb-4 transition-all duration-200 active:scale-95"
                 style={{
                   background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
                   border: '1.5px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
@@ -215,7 +216,7 @@ export default function Referrals() {
             {/* QR Code */}
             {referralQrPayload && (
               <>
-                <div className="bg-white p-4 rounded-xl mb-3">
+                <div className="bg-white p-4 rounded-xl mb-3" role="img" aria-label={t('referrals.qrCodeAlt', 'Referral QR code')}>
                   <QRCodeSVG
                     value={referralQrPayload}
                     size={180}
@@ -227,7 +228,8 @@ export default function Referrals() {
                 </div>
                 <button
                   onClick={() => setShowQRModal(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold mb-3 transition-all duration-200 active:scale-[0.97]"
+                  aria-label={t('referrals.openQR', 'Open QR code fullscreen')}
+                  className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-semibold mb-3 transition-all duration-200 active:scale-[0.97]"
                   style={{
                     background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
                     border: '1.5px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',

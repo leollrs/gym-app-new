@@ -11,7 +11,10 @@
     "preview": "vite preview",
     "sync": "CAPACITOR_BUILD=true vite build && npx cap sync",
     "deploy": "vite build && npx @capgo/cli bundle upload --channel production",
-    "deploy:staging": "vite build && npx @capgo/cli bundle upload --channel staging"
+    "deploy:staging": "vite build && npx @capgo/cli bundle upload --channel staging",
+    "android:build": "npm run build:native && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:run": "npx cap run android"
   },
   "dependencies": {
     "@capacitor-community/screen-brightness": "^8.0.0",

@@ -286,7 +286,7 @@ const ProgressPhotoTimeline = ({ byDate, byMonth, latestDate, onDeletePhoto }) =
                         <div key={angle} className="text-center">
                           {photo ? (
                             <div className="relative aspect-[3/4] rounded-xl overflow-hidden group" style={{ border: '1px solid var(--color-border-subtle)' }}>
-                              <img src={photo.url} alt={angle} className="w-full h-full object-cover" loading="lazy" />
+                              <img src={photo.url} alt={`${angle.charAt(0).toUpperCase() + angle.slice(1)} body progress photo`} className="w-full h-full object-cover" loading="lazy" />
                               <button
                                 onClick={() => handleDelete(photo)}
                                 disabled={deleting === photo.id}
@@ -590,7 +590,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
   // ── Guided scan overlay ──────────────────────────────────
   if (scanMode && !scanning) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" onClick={() => setScanMode(false)}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl" role="button" tabIndex={0} aria-label="Close body scan" onClick={() => setScanMode(false)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setScanMode(false); }}>
         <div role="dialog" aria-modal="true" aria-label="Body scan" className="relative w-full max-w-md mx-4 rounded-[28px] overflow-hidden"
           style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', boxShadow: '0 24px 80px rgba(0,0,0,0.3), 0 0 0 1px var(--color-border-subtle)' }}
           onClick={e => e.stopPropagation()}>
@@ -621,7 +621,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
             style={{ background: 'var(--color-surface-hover)', border: '2px dashed var(--color-border-subtle)' }}>
             {scanStep === 1 && frontPhoto ? (
               <div className="relative w-full h-full">
-                <img src={frontPhoto.preview} alt="Front" className="w-full h-full object-cover opacity-30" loading="lazy" />
+                <img src={frontPhoto.preview} alt="Front body progress photo" className="w-full h-full object-cover opacity-30" loading="lazy" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <Check size={32} className="text-[#10B981] mb-2" />
                   <p className="text-[12px] font-semibold text-[#10B981]">{t('progressBody.frontCaptured')}</p>
@@ -683,7 +683,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
 
   // ── Main modal (form + results) ──────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" onClick={handleClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl" role="button" tabIndex={0} aria-label="Close measurements" onClick={handleClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="measurements-modal-title" className="w-full max-w-md overflow-hidden rounded-t-[28px] md:rounded-[28px]"
         style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
         onClick={e => e.stopPropagation()}>
@@ -699,8 +699,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           {/* AI Body Scan button */}
           <div className="mb-5">
             {scanning ? (
-              <div className="flex flex-col items-center py-6 rounded-[16px]" style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
-                <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mb-3" />
+              <div className="flex flex-col items-center py-6 rounded-[16px]" aria-busy="true" style={{ background: 'color-mix(in srgb, var(--color-accent) 4%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
+                <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin mb-3" role="status" aria-label="Analyzing photos" />
                 <p className="text-[13px] font-semibold text-[#D4AF37]">{t('progressBody.analyzingPhotos')}</p>
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{t('progressBody.estimatingComposition')}</p>
               </div>
@@ -708,8 +708,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
               <div className="rounded-[16px] overflow-hidden" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
                 <div className="px-4 py-3.5 flex items-center gap-3">
                   <div className="flex gap-2">
-                    {frontPhoto && <img src={frontPhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
-                    {sidePhoto && <img src={sidePhoto.preview} alt="" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {frontPhoto && <img src={frontPhoto.preview} alt="Front body progress photo" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {sidePhoto && <img src={sidePhoto.preview} alt="Side body progress photo" className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
@@ -720,7 +720,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
                       {scanResult.scan_quality === 'good' ? t('progressBody.highQualityScan') : scanResult.scan_quality === 'fair' ? t('progressBody.fairQuality') + ' — ' + (scanResult.scan_notes || '') : t('progressBody.lowQuality') + ' — ' + (scanResult.scan_notes || '')}
                     </p>
                   </div>
-                  <button onClick={resetScan} className="text-[10px] font-semibold text-[#D4AF37]">{t('progressBody.rescan')}</button>
+                  <button onClick={resetScan} aria-label={t('progressBody.rescan')} className="text-[10px] font-semibold text-[#D4AF37]">{t('progressBody.rescan')}</button>
                 </div>
 
                 {/* Derived metrics */}
@@ -1031,7 +1031,7 @@ export default function ProgressBody() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4" aria-busy="true">
         <Skeleton variant="chart" />
         <Skeleton variant="card" height="h-[60px]" count={4} />
       </div>
@@ -1060,6 +1060,7 @@ export default function ProgressBody() {
           type="number"
           inputMode="decimal"
           min={0}
+          aria-label={t('progress.body.enterTodaysWeight')}
           placeholder={weightLogs[0]?.logged_at === today() ? fmtW(weightLogs[0].weight_lbs) : t('progress.body.enterTodaysWeight')}
           value={weightInput}
           onChange={e => {
@@ -1375,7 +1376,7 @@ export default function ProgressBody() {
       {/* Weight history modal */}
       {showWeightHistory && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
-          onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })}>
+          role="button" tabIndex={0} aria-label="Close weight history" onClick={() => dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') dispatch({ type: 'TOGGLE_WEIGHT_HISTORY', payload: false }); }}>
           <div role="dialog" aria-modal="true" aria-labelledby="weight-history-title" className="w-full max-w-md max-h-[75vh] overflow-hidden rounded-[24px]"
             style={{ background: 'linear-gradient(180deg, var(--color-bg-card) 0%, var(--color-bg-secondary) 100%)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}
             onClick={e => e.stopPropagation()}>

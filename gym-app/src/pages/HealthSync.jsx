@@ -127,7 +127,7 @@ const HealthSync = () => {
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
       <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
-        <div className="max-w-[480px] md:max-w-4xl mx-auto flex items-center gap-3 px-4 py-3">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => navigate(-1)} aria-label="Go back" className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
             <ArrowLeft size={20} />
           </button>
@@ -135,7 +135,7 @@ const HealthSync = () => {
         </div>
       </div>
 
-      <div className="max-w-[480px] md:max-w-4xl mx-auto px-4 pb-28 md:pb-12 pt-4 space-y-6">
+      <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pb-28 md:pb-12 pt-4 space-y-6">
         {/* Connection Card */}
         <div className="rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
           <div className="flex items-center gap-3 mb-4">

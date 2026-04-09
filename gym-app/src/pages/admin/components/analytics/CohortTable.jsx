@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, addDays, differenceInMonths } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
 import { AdminCard, CardSkeleton, ErrorCard } from '../../../../components/admin';
 
@@ -54,22 +54,33 @@ async function fetchCohortData(gymId) {
     const cohortMembers   = cohortMap[label] || [];
     const cohortSize      = cohortMembers.length;
 
+    // Use signup-relative 30-day windows instead of calendar months.
+    // Month 0 = days 0-29 after signup, Month 1 = days 30-59, etc.
+    // This gives every member the same observation window regardless of
+    // when in the calendar month they joined.
     const monthRetention = [0, 1, 2, 3].map(offset => {
-      const targetMonth      = subMonths(now, i - offset);
-      const targetMonthIndex = i - offset;
-      if (targetMonthIndex < 0) return null;
-
-      const targetStart = startOfMonth(targetMonth);
-      const targetEnd   = endOfMonth(targetMonth);
-
       if (cohortSize === 0) return null;
 
       const activeCount = cohortMembers.filter(m => {
+        const joinDate       = new Date(m.created_at);
+        const windowStart    = addDays(joinDate, offset * 30);
+        const windowEnd      = addDays(joinDate, (offset + 1) * 30);
+
+        // Don't count windows that haven't fully elapsed yet
+        if (windowStart > now) return false;
+
         const memberSessions = sessionsByProfile[m.id] || [];
-        return memberSessions.some(d => d >= targetStart && d <= targetEnd);
+        return memberSessions.some(d => d >= windowStart && d <= windowEnd);
       }).length;
 
-      return Math.round((activeCount / cohortSize) * 100);
+      // Count only members whose window has started (for partial months)
+      const eligibleCount = cohortMembers.filter(m => {
+        const windowStart = addDays(new Date(m.created_at), offset * 30);
+        return windowStart <= now;
+      }).length;
+
+      if (eligibleCount === 0) return null;
+      return Math.round((activeCount / eligibleCount) * 100);
     });
 
     rows.push({ label, cohortSize, m0: monthRetention[0], m1: monthRetention[1], m2: monthRetention[2], m3: monthRetention[3] });
@@ -109,7 +120,7 @@ export default function CohortTable({ gymId }) {
   const headlineRetention = latestCohort?.m0 ?? 0;
 
   return (
-    <AdminCard hover className="overflow-x-auto hover:border-white/10 transition-colors duration-300">
+    <AdminCard hover className="overflow-hidden hover:border-white/10 transition-colors duration-300">
       <div className="flex items-center justify-between mb-1">
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-semibold text-[var(--color-text-primary)] tracking-tight truncate">{t('admin.analytics.cohortTitle', 'Cohort Retention')}</p>
@@ -133,6 +144,7 @@ export default function CohortTable({ gymId }) {
       {cohortData.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-muted)] text-center py-10">{t('admin.analytics.cohortEmpty', 'No cohort data yet')}</p>
       ) : (
+        <div className="overflow-x-auto -mx-5 px-5">
         <div className="min-w-[480px]">
           {/* Header row */}
           <div className="grid grid-cols-[140px_60px_1fr_1fr_1fr_1fr] gap-2.5 mb-3">
@@ -176,6 +188,7 @@ export default function CohortTable({ gymId }) {
               </div>
             ))}
           </div>
+        </div>
         </div>
       )}
     </AdminCard>
