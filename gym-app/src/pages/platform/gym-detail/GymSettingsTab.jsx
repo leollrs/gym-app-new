@@ -9,6 +9,7 @@ import RoleBadge from './RoleBadge';
 export default function GymSettingsTab({
   gym,
   branding,
+  logoUrl,
   invites,
   editingGym,
   setEditingGym,
@@ -105,11 +106,11 @@ export default function GymSettingsTab({
               </div>
             )}
 
-            {branding.logo_url && (
+            {logoUrl && (
               <div>
                 <label className="block text-[11px] text-[#6B7280] font-medium mb-1">Logo</label>
                 <img
-                  src={branding.logo_url}
+                  src={logoUrl}
                   alt={`${gym.name} logo`}
                   className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
                 />

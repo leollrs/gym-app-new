@@ -314,6 +314,7 @@ export default function GymDetail() {
 
   const [gym, setGym] = useState(null);
   const [branding, setBranding] = useState(null);
+  const [logoUrl, setLogoUrl] = useState('');
   const [members, setMembers] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [checkIns, setCheckIns] = useState([]);
@@ -350,8 +351,14 @@ export default function GymDetail() {
     }
     const { data: b } = await supabase.from('gym_branding').select('*').eq('gym_id', gymId).maybeSingle();
     setBranding(b);
+    if (b?.logo_url) {
+      const { data: signed } = await supabase.storage.from('gym-logos').createSignedUrl(b.logo_url, 60 * 60 * 24);
+      setLogoUrl(signed?.signedUrl ?? '');
+    } else {
+      setLogoUrl('');
+    }
   };
-  const fetchMembers = async () => { const { data } = await supabase.from('profiles').select('id, full_name, username, role, created_at, last_active_at, membership_status').eq('gym_id', gymId).order('created_at', { ascending: false }); setMembers(data ?? []); };
+  const fetchMembers = async () => { const { data } = await supabase.from('profiles').select('id, full_name, username, role, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value').eq('gym_id', gymId).order('created_at', { ascending: false }); setMembers(data ?? []); };
   const fetchActivity = async () => { const { data: sess } = await supabase.from('workout_sessions').select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)').eq('gym_id', gymId).order('started_at', { ascending: false }).limit(20); setSessions(sess ?? []); const { data: ci } = await supabase.from('check_ins').select('id, profile_id, checked_in_at, profiles(full_name)').eq('gym_id', gymId).order('checked_in_at', { ascending: false }).limit(20); setCheckIns(ci ?? []); };
   const fetchInvites = async () => { const { data } = await supabase.from('gym_invites').select('*').eq('gym_id', gymId).order('expires_at', { ascending: false }); setInvites(data ?? []); };
   const fetchChallenges = async () => { const { data } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); setChallenges(data ?? []); };
@@ -404,8 +411,8 @@ export default function GymDetail() {
           <button onClick={() => navigate('/platform')} className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#9CA3AF] text-sm mb-4 transition-colors"><ArrowLeft className="w-4 h-4" />Back to Platform</button>
           <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              {branding?.logo_url ? (
-                <img src={branding.logo_url} alt={gym.name} className="w-12 h-12 rounded-xl object-contain flex-shrink-0 border border-white/6" style={{ background: '#111827' }} />
+              {logoUrl ? (
+                <img src={logoUrl} alt={gym.name} className="w-12 h-12 rounded-xl object-contain flex-shrink-0 border border-white/6" style={{ background: '#111827' }} />
               ) : (
                 <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
                   <span className="text-[18px] font-bold text-[#D4AF37]">{(gym.name || 'G')[0]}</span>
@@ -457,11 +464,11 @@ export default function GymDetail() {
         </div>
 
         {/* Tab content */}
-        {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
+        {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} logoUrl={logoUrl} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
         {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} />}
         {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} />}
         {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
-        {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} t={t} />}
+        {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} t={t} />}
       </div>
 
       {/* Modals */}

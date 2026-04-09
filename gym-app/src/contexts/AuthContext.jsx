@@ -102,6 +102,21 @@ export const AuthProvider = ({ children }) => {
       data = fallback;
       branding = null;
       gym = null;
+
+      // Update last_active_at for all roles (fallback path — RPC handles this in the happy path).
+      // Throttle: only update if null or more than 1 hour old to avoid excessive writes.
+      if (data?.id) {
+        const lastActive = data.last_active_at ? new Date(data.last_active_at) : null;
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        if (!lastActive || lastActive < oneHourAgo) {
+          supabase
+            .from('profiles')
+            .update({ last_active_at: new Date().toISOString() })
+            .eq('id', data.id)
+            .then(() => {})
+            .catch(() => {});
+        }
+      }
     } else {
       data = rpcResult.profile ?? null;
       branding = rpcResult.branding ?? null;

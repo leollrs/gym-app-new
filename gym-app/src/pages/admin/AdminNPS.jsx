@@ -20,7 +20,7 @@ import {
   CardSkeleton,
 } from '../../components/admin';
 
-const GOLD = '#D4AF37';
+const GOLD = 'var(--color-accent)';
 
 const PERIODS = [
   { labelKey: '30d', days: 30 },
@@ -30,14 +30,14 @@ const PERIODS = [
 ];
 
 function scoreColor(score) {
-  if (score <= 6) return 'text-red-400';
-  if (score <= 8) return 'text-amber-400';
+  if (score <= 2) return 'text-red-400';
+  if (score <= 3) return 'text-amber-400';
   return 'text-emerald-400';
 }
 
 function scoreBg(score) {
-  if (score <= 6) return 'bg-red-400/20 text-red-400';
-  if (score <= 8) return 'bg-amber-400/20 text-amber-400';
+  if (score <= 2) return 'bg-red-400/20 text-red-400';
+  if (score <= 3) return 'bg-amber-400/20 text-amber-400';
   return 'bg-emerald-400/20 text-emerald-400';
 }
 
@@ -190,16 +190,17 @@ export default function AdminNPS() {
 
       {/* Period filter */}
       <FadeIn>
-        <div className="flex gap-1.5 bg-[#111827]/60 rounded-xl p-1 border border-white/[0.04] mt-6 mb-5 w-fit">
+        <div className="flex gap-1.5 rounded-xl p-1 border border-white/[0.04] mt-6 mb-5 w-fit" style={{ background: 'var(--color-bg-card)' }}>
           {PERIODS.map((p) => (
             <button
               key={p.labelKey}
               onClick={() => setDays(p.days)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+              style={
                 days === p.days
-                  ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                  : 'text-[#6B7280] hover:text-[#9CA3AF]'
-              }`}
+                  ? { background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', color: 'var(--color-accent)' }
+                  : { color: 'var(--color-text-muted)' }
+              }
             >
               {t(`admin.nps.period.${p.labelKey}`, p.labelKey)}
             </button>
@@ -236,9 +237,9 @@ export default function AdminNPS() {
                       />
                     </div>
                     <div className="flex justify-between mt-1">
-                      <span className="text-[10px] text-[#6B7280]">-100</span>
-                      <span className="text-[10px] text-[#6B7280]">0</span>
-                      <span className="text-[10px] text-[#6B7280]">+100</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>-100</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>0</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+100</span>
                     </div>
                   </div>
                 </div>
@@ -246,12 +247,12 @@ export default function AdminNPS() {
                 {/* Right: Quick stats */}
                 <div className="flex gap-6 justify-center md:justify-end">
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-[#E5E7EB]">{totalResponses}</p>
-                    <p className="text-[11px] text-[#6B7280]">{t('admin.nps.responses', 'Responses')}</p>
+                    <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{totalResponses}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.nps.responses', 'Responses')}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-[#E5E7EB]">{responseRate}%</p>
-                    <p className="text-[11px] text-[#6B7280]">{t('admin.nps.responseRate', 'Response rate')}</p>
+                    <p className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>{responseRate}%</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.nps.responseRate', 'Response rate')}</p>
                   </div>
                 </div>
               </div>
@@ -262,7 +263,7 @@ export default function AdminNPS() {
           <FadeIn delay={0.1}>
             <div className="grid grid-cols-3 gap-3 mb-5">
               <StatCard
-                label={t('admin.nps.promoters', 'Promoters (9-10)')}
+                label={t('admin.nps.promoters', 'Promoters (4-5)')}
                 value={promoters}
                 sub={`${promoterPct}%`}
                 borderColor="#10B981"
@@ -270,7 +271,7 @@ export default function AdminNPS() {
                 delay={0}
               />
               <StatCard
-                label={t('admin.nps.passives', 'Passives (7-8)')}
+                label={t('admin.nps.passives', 'Passives (3)')}
                 value={passives}
                 sub={`${passivePct}%`}
                 borderColor="#F97316"
@@ -278,7 +279,7 @@ export default function AdminNPS() {
                 delay={0.05}
               />
               <StatCard
-                label={t('admin.nps.detractors', 'Detractors (0-6)')}
+                label={t('admin.nps.detractors', 'Detractors (1-2)')}
                 value={detractors}
                 sub={`${detractorPct}%`}
                 borderColor="#EF4444"
@@ -327,13 +328,13 @@ export default function AdminNPS() {
                 )}
               </div>
               <div className="flex gap-4 mt-2">
-                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                <span className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
                   <span className="w-2 h-2 rounded-full bg-emerald-400" /> {t('admin.nps.promotersShort', 'Promoters')}
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                <span className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
                   <span className="w-2 h-2 rounded-full bg-amber-400" /> {t('admin.nps.passivesShort', 'Passives')}
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF]">
+                <span className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
                   <span className="w-2 h-2 rounded-full bg-red-400" /> {t('admin.nps.detractorsShort', 'Detractors')}
                 </span>
               </div>
@@ -356,14 +357,14 @@ export default function AdminNPS() {
 
                   return (
                     <div key={i} className="flex flex-col items-center flex-1">
-                      <span className="text-[9px] text-[#6B7280] mb-1">{count || ''}</span>
+                      <span className="text-[9px] mb-1" style={{ color: 'var(--color-text-muted)' }}>{count || ''}</span>
                       <div className="w-full flex justify-center">
                         <div
                           className={`w-full max-w-[28px] rounded-t-md transition-all duration-500 ${barColor}`}
                           style={{ height: `${Math.max(height, 2)}%`, minHeight: '2px' }}
                         />
                       </div>
-                      <span className="text-[10px] text-[#9CA3AF] mt-1.5 font-medium">{i}</span>
+                      <span className="text-[10px] mt-1.5 font-medium" style={{ color: 'var(--color-text-secondary)' }}>{i}</span>
                     </div>
                   );
                 })}
@@ -383,9 +384,9 @@ export default function AdminNPS() {
           <CardSkeleton count={3} />
         ) : !responses?.length ? (
           <AdminCard padding="p-8" className="text-center mb-5">
-            <MessageCircle size={28} className="mx-auto mb-2 text-[#6B7280]" />
-            <p className="text-sm text-[#6B7280]">{t('admin.nps.noResponses', 'No responses yet')}</p>
-            <p className="text-xs text-[#6B7280] mt-1">
+            <MessageCircle size={28} className="mx-auto mb-2" style={{ color: 'var(--color-text-muted)' }} />
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{t('admin.nps.noResponses', 'No responses yet')}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
               {t('admin.nps.sendToCollect', 'Send a survey to start collecting feedback')}
             </p>
           </AdminCard>
@@ -398,12 +399,12 @@ export default function AdminNPS() {
               return (
                 <AdminCard key={r.id} hover>
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-xs font-bold text-[#9CA3AF] flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
                       {initial}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-[#E5E7EB] truncate">{name}</span>
+                        <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{name}</span>
                         <span
                           className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${scoreBg(r.score)}`}
                         >
@@ -411,9 +412,9 @@ export default function AdminNPS() {
                         </span>
                       </div>
                       {r.feedback && (
-                        <p className="text-xs text-[#9CA3AF] mt-1 line-clamp-2">{r.feedback}</p>
+                        <p className="text-xs mt-1 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{r.feedback}</p>
                       )}
-                      <p className="text-[10px] text-[#6B7280] mt-1">
+                      <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
                         {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
                       </p>
                     </div>
@@ -437,21 +438,21 @@ export default function AdminNPS() {
               const name = r.profiles?.full_name || t('admin.nps.member', 'Member');
 
               return (
-                <AdminCard key={r.id} borderLeft={r.score >= 9 ? '#10B981' : r.score >= 7 ? '#F97316' : '#EF4444'}>
+                <AdminCard key={r.id} borderLeft={r.score >= 4 ? '#10B981' : r.score >= 3 ? '#F97316' : '#EF4444'}>
                   <div className="flex items-center gap-2 mb-2">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${scoreBg(r.score)}`}
                     >
                       {r.score}/10
                     </span>
-                    <span className="text-[10px] text-[#6B7280]">
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                       {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, ...dateFnsLocale })}
                     </span>
                   </div>
-                  <p className="text-sm text-[#E5E7EB] italic leading-relaxed">
+                  <p className="text-sm italic leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
                     &ldquo;{r.feedback}&rdquo;
                   </p>
-                  <p className="text-[10px] text-[#6B7280] mt-2">&mdash; {name}</p>
+                  <p className="text-[10px] mt-2" style={{ color: 'var(--color-text-muted)' }}>&mdash; {name}</p>
                 </AdminCard>
               );
             })}
@@ -469,7 +470,8 @@ export default function AdminNPS() {
           <>
             <button
               onClick={() => setShowSurveyModal(false)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[#9CA3AF] bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
+              style={{ color: 'var(--color-text-secondary)' }}
             >
               {t('admin.nps.cancel', 'Cancel')}
             </button>
@@ -496,15 +498,15 @@ export default function AdminNPS() {
                 <Send size={18} style={{ color: GOLD }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#E5E7EB]">
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {t('admin.nps.npsSurveyLabel', 'NPS Survey')}
                 </p>
-                <p className="text-xs text-[#6B7280]">
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   &ldquo;{t('admin.nps.surveyQuestion', 'How likely are you to recommend us?')}&rdquo;
                 </p>
               </div>
             </div>
-            <p className="text-xs text-[#9CA3AF] leading-relaxed">
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
               {t(
                 'admin.nps.surveyDesc',
                 'This will send a push notification to all active gym members asking them to rate their experience on a scale of 0-10. Members can also leave optional written feedback.',

@@ -8,6 +8,7 @@ import SmsUsageCard from './SmsUsageCard';
 export default function GymOverviewTab({
   gym,
   branding,
+  logoUrl,
   stats,
   checkIns,
   challenges,
@@ -26,8 +27,8 @@ export default function GymOverviewTab({
       {/* Gym identity card */}
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
         <div className="flex items-start gap-4">
-          {branding?.logo_url ? (
-            <img src={branding.logo_url} alt={`${gym.name} logo`} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+          {logoUrl ? (
+            <img src={logoUrl} alt={`${gym.name} logo`} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
           ) : (
             <div className="w-14 h-14 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
               <Building2 size={24} className="text-[#D4AF37]" />
@@ -36,8 +37,8 @@ export default function GymOverviewTab({
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-semibold text-[#E5E7EB]">{gym.name}</p>
             <p className="text-[12px] text-[#6B7280] font-mono">/{gym.slug}</p>
-            {branding?.palette && (
-              <span className="inline-block mt-1.5 text-[10px] text-[#9CA3AF] bg-white/5 px-2 py-0.5 rounded-full capitalize">{branding.palette.replace(/_/g, ' ')}</span>
+            {branding?.palette_name && (
+              <span className="inline-block mt-1.5 text-[10px] text-[#9CA3AF] bg-white/5 px-2 py-0.5 rounded-full capitalize">{branding.palette_name.replace(/_/g, ' ')}</span>
             )}
           </div>
         </div>

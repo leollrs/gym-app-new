@@ -7,17 +7,25 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const SCORE_LABELS = {
-  detractor: [0, 1, 2, 3, 4, 5, 6],
-  passive: [7, 8],
-  promoter: [9, 10],
+  detractor: [1, 2],
+  passive: [3],
+  promoter: [4, 5],
+};
+
+const getScoreStyle = (score, selected) => {
+  if (selected === null) return {};
+  if (score !== selected) return { opacity: 0.4 };
+  if (SCORE_LABELS.detractor.includes(score)) return {};
+  if (SCORE_LABELS.passive.includes(score)) return {};
+  return { background: 'color-mix(in srgb, var(--color-accent) 20%, transparent)', borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', color: 'var(--color-accent)' };
 };
 
 const getScoreColor = (score, selected) => {
-  if (selected === null) return 'bg-white/[0.06] border-white/10';
-  if (score !== selected) return 'bg-white/[0.03] border-white/5 opacity-40';
+  if (selected === null) return 'border-white/10';
+  if (score !== selected) return 'border-white/5';
   if (SCORE_LABELS.detractor.includes(score)) return 'bg-red-500/20 border-red-500/40 text-red-300';
   if (SCORE_LABELS.passive.includes(score)) return 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300';
-  return 'bg-[#D4AF37]/20 border-[#D4AF37]/40 text-[#D4AF37]';
+  return '';
 };
 
 const NPSSurveyModal = () => {
@@ -107,7 +115,7 @@ const NPSSurveyModal = () => {
     if (!surveyId || !userId || !gymId) return;
     localStorage.setItem(`nps_dismissed_${surveyId}`, 'true');
     // Record dismissal with score -1 so admin can track dismissal rate
-    // NOTE: requires ALTER TABLE nps_responses DROP CONSTRAINT ..., ADD CHECK (score >= -1 AND score <= 10)
+    // NOTE: requires ALTER TABLE nps_responses DROP CONSTRAINT ..., ADD CHECK (score >= -1 AND score <= 5)
     try {
       await supabase.from('nps_responses').insert({
         survey_id: surveyId,
@@ -134,7 +142,7 @@ const NPSSurveyModal = () => {
     <AnimatePresence>
       {(visible || submitted) && !dismissed && (
         <motion.div
-          className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[9999] flex items-center justify-center px-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -148,8 +156,8 @@ const NPSSurveyModal = () => {
 
           {/* Modal */}
           <motion.div
-            className="relative w-full max-w-md mx-4 mb-4 sm:mb-0 rounded-2xl border border-white/[0.08] overflow-hidden"
-            style={{ backgroundColor: '#0F172A' }}
+            className="relative w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
             initial={{ y: 40, opacity: 0, scale: 0.97 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 20, opacity: 0, scale: 0.97 }}
@@ -164,41 +172,42 @@ const NPSSurveyModal = () => {
                   className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/[0.08] transition-colors"
                   aria-label="Close"
                 >
-                  <X size={16} className="text-white/70" />
+                  <X size={16} style={{ color: 'var(--color-text-muted)' }} />
                 </button>
 
                 {/* Title */}
-                <p className="text-[13px] font-semibold uppercase tracking-[0.1em] text-[#D4AF37] mb-1">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.1em] mb-1" style={{ color: 'var(--color-accent)' }}>
                   {t('nps.survey.label')}
                 </p>
-                <h2 className="text-[18px] font-bold text-white leading-snug pr-8">
+                <h2 className="text-[18px] font-bold leading-snug pr-8" style={{ color: 'var(--color-text-primary)' }}>
                   {t('nps.survey.question')}
                 </h2>
 
                 {/* Score selector */}
                 <div className="mt-5">
-                  <div className="flex gap-[6px] justify-between">
-                    {Array.from({ length: 11 }, (_, i) => (
+                  <div className="flex gap-3 justify-between">
+                    {[1, 2, 3, 4, 5].map(i => (
                       <button
                         key={i}
                         onClick={() => setScore(i)}
                         className={`
-                          w-full aspect-square min-w-[44px] min-h-[44px] rounded-xl border text-[13px] font-semibold
+                          w-full aspect-square min-w-[52px] min-h-[52px] rounded-2xl border text-[16px] font-bold
                           flex items-center justify-center transition-all duration-150
                           hover:scale-110 active:scale-95
                           ${getScoreColor(i, score)}
                         `}
-                        aria-label={`Rate ${i}${i === 0 ? ' - Not at all likely' : i === 5 ? ' - Neutral' : i === 10 ? ' - Extremely likely' : ''}`}
+                        style={getScoreStyle(i, score)}
+                        aria-label={`${i}${i === 1 ? ' - Not at all likely' : i === 3 ? ' - Neutral' : i === 5 ? ' - Extremely likely' : ''}`}
                       >
                         {i}
                       </button>
                     ))}
                   </div>
                   <div className="flex justify-between mt-2 px-0.5">
-                    <span className="text-[10px] text-white/60">
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                       {t('nps.survey.notLikely')}
                     </span>
-                    <span className="text-[10px] text-white/60">
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                       {t('nps.survey.veryLikely')}
                     </span>
                   </div>
@@ -211,14 +220,16 @@ const NPSSurveyModal = () => {
                   placeholder={t('nps.survey.feedbackPlaceholder')}
                   aria-label={t('nps.survey.feedbackPlaceholder')}
                   rows={2}
-                  className="w-full mt-4 rounded-xl bg-white/[0.04] border border-white/[0.08] text-[13px] text-white placeholder-white/25 px-3.5 py-2.5 resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                  className="w-full mt-4 rounded-xl bg-white/[0.04] border border-white/[0.08] text-[13px] placeholder-white/25 px-3.5 py-2.5 resize-none focus:outline-none transition-colors"
+                  style={{ color: 'var(--color-text-primary)' }}
                 />
 
                 {/* Action buttons */}
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={handleDismiss}
-                    className="flex-1 h-11 rounded-xl border border-white/[0.1] text-[13px] font-medium text-white/50 hover:bg-white/[0.04] transition-colors"
+                    className="flex-1 h-11 rounded-xl border border-white/[0.1] text-[13px] font-medium hover:bg-white/[0.04] transition-colors"
+                    style={{ color: 'var(--color-text-muted)' }}
                   >
                     {t('nps.survey.noThanks')}
                   </button>
@@ -227,8 +238,8 @@ const NPSSurveyModal = () => {
                     disabled={score === null || submitting}
                     className="flex-1 h-11 rounded-xl text-[13px] font-semibold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
                     style={{
-                      backgroundColor: score !== null ? '#D4AF37' : 'rgba(212,175,55,0.15)',
-                      color: score !== null ? '#0F172A' : '#D4AF37',
+                      backgroundColor: score !== null ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                      color: score !== null ? 'var(--color-bg-deep)' : 'var(--color-accent)',
                     }}
                   >
                     {submitting ? '...' : t('nps.survey.submit')}
@@ -243,13 +254,13 @@ const NPSSurveyModal = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: 'spring', damping: 20, stiffness: 300 }}
               >
-                <div className="w-16 h-16 rounded-full bg-[#D4AF37]/15 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 size={32} className="text-[#D4AF37]" />
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
+                  <CheckCircle2 size={32} style={{ color: 'var(--color-accent)' }} />
                 </div>
-                <h2 className="text-[18px] font-bold text-white mb-1">
+                <h2 className="text-[18px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
                   {t('nps.survey.thankYouTitle')}
                 </h2>
-                <p className="text-[13px] text-white/50">
+                <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
                   {t('nps.survey.thankYouMessage')}
                 </p>
               </motion.div>

@@ -13,6 +13,7 @@ import {
 import { format, formatDistanceToNow } from 'date-fns';
 import FadeIn from '../../components/platform/FadeIn';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import UserAvatar from '../../components/UserAvatar';
 
 // ── Badges ───────────────────────────────────────────────────
 const roleBadge = {
@@ -117,7 +118,7 @@ export default function SupportConsole() {
     const [membersRes, gymsRes, invitesRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, gym_id, full_name, username, role, created_at, last_active_at, membership_status, is_onboarded, gyms(id, name, slug)')
+        .select('id, gym_id, full_name, username, role, created_at, last_active_at, membership_status, is_onboarded, avatar_url, avatar_type, avatar_value, gyms(id, name, slug)')
         .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
         .limit(30)
         .order('full_name', { ascending: true }),
@@ -335,9 +336,7 @@ export default function SupportConsole() {
                           onClick={() => setQuery(r.name || '')}
                           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0F172A] border border-white/4 hover:border-white/10 hover:bg-[#111827] transition-colors text-left"
                         >
-                          <div className="w-7 h-7 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[11px] font-semibold text-[#D4AF37]">{(r.name || '?')[0].toUpperCase()}</span>
-                          </div>
+                          <UserAvatar user={{ full_name: r.name }} size={28} />
                           <div className="min-w-0 flex-1">
                             <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{r.name}</p>
                             <p className="text-[10px] text-[#6B7280] truncate">{r.gym || 'No gym'} &middot; {r.role}</p>
@@ -393,9 +392,7 @@ export default function SupportConsole() {
                               : 'bg-[#0F172A] border border-white/4 hover:border-white/10 hover:bg-[#111827]'
                           }`}
                         >
-                          <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[13px] font-semibold text-[#D4AF37]">{initial}</span>
-                          </div>
+                          <UserAvatar user={member} size={36} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-[13px] font-medium text-[#E5E7EB] truncate">{member.full_name || 'No name'}</span>
@@ -501,9 +498,7 @@ export default function SupportConsole() {
               <div className="p-4 border-b border-white/6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[16px] font-bold text-[#D4AF37]">{(selectedMember.full_name || '?')[0].toUpperCase()}</span>
-                    </div>
+                    <UserAvatar user={selectedMember} size={44} />
                     <div>
                       <p className="text-[15px] font-semibold text-[#E5E7EB]">{selectedMember.full_name || 'No name'}</p>
                       {selectedMember.username && <p className="text-[12px] text-[#6B7280]">@{selectedMember.username}</p>}

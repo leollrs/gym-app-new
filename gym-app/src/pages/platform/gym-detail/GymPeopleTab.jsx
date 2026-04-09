@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { format, formatDistanceToNow } from 'date-fns';
 import RoleBadge from './RoleBadge';
 import StatusBadge from './StatusBadge';
+import UserAvatar from '../../../components/UserAvatar';
 
 const ROLE_OPTIONS = ['member', 'trainer', 'admin'];
 const STATUS_ACTIONS = ['active', 'deactivated', 'banned'];
@@ -100,9 +101,7 @@ export default function GymPeopleTab({
               >
                 {/* Name */}
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] text-[11px] font-bold flex-shrink-0">
-                    {(m.full_name ?? '?')[0].toUpperCase()}
-                  </div>
+                  <UserAvatar user={m} size={28} />
                   <span className="text-[13px] text-[#E5E7EB] truncate">{m.full_name ?? t('platform.gymDetail.people.unknown')}</span>
                 </div>
 
@@ -189,9 +188,7 @@ export default function GymPeopleTab({
           ) : (
             members.filter(m => m.role === 'admin' || m.role === 'trainer' || m.role === 'super_admin').map(m => (
               <div key={m.id} className="bg-[#0F172A] border border-white/6 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[12px] font-semibold text-[#D4AF37]">{(m.full_name || m.username || '?')[0].toUpperCase()}</span>
-                </div>
+                <UserAvatar user={m} size={36} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{m.full_name || m.username}</p>
                   <p className="text-[11px] text-[#6B7280]">@{m.username}</p>
