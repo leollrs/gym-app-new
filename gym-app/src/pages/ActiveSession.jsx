@@ -10,6 +10,7 @@ import { startWorkoutNotification, updateWorkoutNotification, cancelWorkoutNotif
 import { startLiveActivity, updateLiveActivity, endLiveActivity } from '../lib/liveActivityBridge';
 import { syncWorkoutToWatch, syncWorkoutEnded, onWatchMessage } from '../lib/watchBridge';
 import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { exName, exInstructions, localizeRoutineName } from '../lib/exerciseName';
 import { cacheWorkoutData, getCachedWorkoutData } from '../lib/offlineQueue';
 
@@ -244,7 +245,7 @@ const InSessionCardio = ({ exercise, onComplete, onSkip, t, i18n }) => {
                 className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
                 style={{ backgroundColor: 'var(--color-accent)', color: '#000' }}
               >
-                {t('activeSession.completeSet', 'Complete')}
+                {t('activeSession.completeCardio', 'Complete')}
               </button>
             </div>
           </>
@@ -273,20 +274,20 @@ class ActiveSessionErrorBoundary extends Component {
     return { hasError: true };
   }
   componentDidCatch(error, info) {
-    console.error('ActiveSession error boundary caught:', error, info);
+    // Error boundary caught — error info available via componentDidCatch args
   }
   render() {
     if (this.state.hasError) {
       return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
           <div className="flex flex-col items-center gap-4 px-6 text-center">
-            <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>Something went wrong.</p>
-            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>Your workout data has been saved locally.</p>
+            <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{i18n.t('pages:activeSession.somethingWentWrong')}</p>
+            <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{i18n.t('pages:activeSession.dataSavedLocally')}</p>
             <button
               onClick={() => window.history.back()}
               className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[14px]"
             >
-              Go Back
+              {i18n.t('pages:activeSession.goBack')}
             </button>
           </div>
         </div>
@@ -320,7 +321,7 @@ const PRBanner = ({ exercise, weight, reps, onDismiss, t }) => (
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20 flex-shrink-0"><Trophy size={28} className="text-white drop-shadow-lg" /></div>
       <div className="flex-1 min-w-0">
         <p className="font-extrabold text-[17px] leading-tight text-white tracking-wide uppercase drop-shadow-sm">{t('activeSession.newPersonalRecord')}</p>
-        <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{exercise} — {weight} lbs × {reps}</p>
+        <p className="text-[14px] text-white/90 mt-1 font-semibold truncate">{t('activeSession.prSubtitle', { exercise, weight, reps })}</p>
       </div>
       <button onClick={onDismiss} aria-label="Dismiss" className="w-11 h-11 flex items-center justify-center text-white/70 hover:text-white text-[20px] leading-none ml-1 transition-colors duration-200 flex-shrink-0 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-full">×</button>
     </div>
@@ -702,7 +703,7 @@ const ActiveSession = () => {
         completedSets: 0,
         currentExerciseName: newEx.name,
         startTimestamp: sessionStartTime.current,
-      }).catch(e => console.warn('[LiveActivity] start failed:', e));
+      }).catch(() => {});
     }
     setShowAddExercise(false);
     setExerciseSearch('');
@@ -930,7 +931,7 @@ const ActiveSession = () => {
 
       setDataLoading(false);
       } catch (err) {
-        console.error('ActiveSession load error:', err);
+
         // Attempt to recover from offline cache
         const cached = getCachedWorkoutData(id);
         if (cached?.exercises?.length) {
@@ -945,7 +946,7 @@ const ActiveSession = () => {
           setLoggedSets(initialSets);
           setDataLoading(false);
         } else {
-          setError(err.message || 'Failed to load workout data.');
+          setError(err.message || t('activeSession.loadError'));
           setDataLoading(false);
         }
       }
@@ -967,9 +968,8 @@ const ActiveSession = () => {
       currentExerciseName: exName(exercises[currentExerciseIndex]) ?? '',
       startTimestamp: sessionStartTime.current,
     }).then(() => {
-      console.log('[LiveActivity] started — skipping fallback notification');
-    }).catch(e => {
-      console.warn('[LiveActivity] start failed, using notification fallback:', e);
+      // Live Activity started — skip fallback notification
+    }).catch(() => {
       // Only use notification fallback if Live Activity failed
       if (ts > 0) startWorkoutNotification(sessionStartTime.current, cs, ts);
     });
@@ -1027,7 +1027,7 @@ const ActiveSession = () => {
         exerciseCategory: curEx?.category || curEx?.muscle_group || 'unknown',
         restRemainingSeconds: watchRestRemaining,
       });
-    } catch (e) { console.warn('Live Activity update failed:', e); }
+    } catch (e) { /* Live Activity update failed — non-critical */ }
   }, [loggedSets, dataLoading, isResting, restTimer, currentExerciseIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Session timer — pauses when isPaused, drift-free via Date.now() ─────────
@@ -1122,8 +1122,8 @@ const ActiveSession = () => {
       await supabase.from('session_drafts')
         .upsert(payload, { onConflict: 'profile_id,routine_id' });
     } catch (err) {
-      console.warn('Draft save failed:', err);
-      setSaveWarning('Draft save failed — your data is still saved locally.');
+      // Draft save failed — non-critical, data still in localStorage
+      setSaveWarning(t('activeSession.draftSaveFailed'));
       setTimeout(() => setSaveWarning(''), 3000);
     }
   };
@@ -1631,7 +1631,7 @@ const ActiveSession = () => {
         supabase.rpc('link_class_workout', {
           p_booking_id: classBookingId,
           p_session_id: result.session_id,
-        }).catch((err) => console.warn('Failed to link class booking:', err));
+        }).catch(() => {});
       }
 
       // Prefer server-computed counts (immune to stale closures) with client fallback
@@ -1654,7 +1654,11 @@ const ActiveSession = () => {
         },
       });
     } catch (err) {
-      setSaveError(err.message || 'Something went wrong saving your workout.');
+      // Re-persist the draft so data is never lost on failed saves (e.g. spotty gym WiFi).
+      // localStorage.removeItem only runs after a successful RPC, but we persist
+      // explicitly here as a safety net in case anything in the try block touched it.
+      try { localStorage.setItem(sessionKey, JSON.stringify(saveRef.current)); } catch { }
+      setSaveError(err.message || t('activeSession.saveErrorMessage'));
       setSaving(false);
     }
   };
@@ -1665,13 +1669,13 @@ const ActiveSession = () => {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
         <div className="flex flex-col items-center gap-4 px-6 text-center">
-          <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>Failed to load workout</p>
+          <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('activeSession.failedToLoad')}</p>
           <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{error}</p>
           <button
             onClick={() => navigate(-1)}
             className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[15px]"
           >
-            Go Back
+            {t('activeSession.goBack')}
           </button>
         </div>
       </div>
@@ -1683,8 +1687,8 @@ const ActiveSession = () => {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-2 border-amber-700 border-t-amber-400 rounded-full animate-spin" role="status" aria-busy={true} aria-label="Loading workout" />
-          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>Loading workout…</p>
+          <div className="w-10 h-10 border-2 border-amber-700 border-t-amber-400 rounded-full animate-spin" role="status" aria-busy={true} aria-label={t('activeSession.loadingWorkout')} />
+          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.loadingWorkout')}</p>
         </div>
       </div>
     );
@@ -1695,13 +1699,13 @@ const ActiveSession = () => {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
         <div className="flex flex-col items-center gap-4 px-6 text-center">
-          <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>No exercises found</p>
-          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>This workout may have been modified.</p>
+          <p className="text-[17px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('activeSession.noExercisesFound')}</p>
+          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('activeSession.workoutModified')}</p>
           <button
             onClick={() => navigate(-1)}
             className="mt-4 px-6 py-3 rounded-2xl bg-[#D4AF37] text-black font-bold text-[15px]"
           >
-            Go Back
+            {t('activeSession.goBack')}
           </button>
         </div>
       </div>
@@ -1881,7 +1885,7 @@ const ActiveSession = () => {
                 className="w-full py-3 rounded-2xl font-medium text-[13px] hover:opacity-80 transition-colors"
                 style={{ color: 'var(--color-text-subtle)' }}
               >
-                Go Back
+                {t('activeSession.goBack')}
               </button>
             </div>
           </div>
@@ -1978,7 +1982,7 @@ const ActiveSession = () => {
           totalVolume={totalVolume} duration={formatTime(elapsedTime)}
           completedSets={completedSets} totalSets={totalSets}
           onConfirm={handleFinish} onCancel={() => setShowFinishModal(false)}
-          saving={saving} error={saveError}
+          saving={saving} error={saveError} onRetry={handleFinish}
           sessionRating={sessionRating} onRatingChange={setSessionRating}
         />
       )}

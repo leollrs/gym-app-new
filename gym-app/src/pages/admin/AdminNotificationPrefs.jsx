@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminModal } from '../../components/admin';
+import { logAdminAction } from '../../lib/adminAudit';
+import { AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminModal, Toggle } from '../../components/admin';
 
 // ── Category definitions ──
 const EVENT_CATEGORIES = [
@@ -46,21 +47,6 @@ const CHANNELS = [
   { key: 'push', icon: Smartphone },
   { key: 'email', icon: Mail },
 ];
-
-// ── Toggle switch (matches AdminSettings pattern) ──
-function Toggle({ checked, onChange, label }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-      style={{ backgroundColor: checked ? 'var(--color-accent)' : 'var(--color-text-faint)' }}
-      aria-label={label}
-    >
-      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        style={{ left: checked ? 'calc(100% - 18px)' : '2px' }} />
-    </button>
-  );
-}
 
 // ── Single event row ──
 function EventRow({ pref, onToggle, onChannelsChange, t }) {
@@ -224,6 +210,7 @@ export default function AdminNotificationPrefs() {
       // Re-fetch will trigger seed via RPC
     },
     onSuccess: () => {
+      logAdminAction('reset_notification_prefs', 'admin_notification_prefs', null, { profile_id: profile.id });
       queryClient.invalidateQueries({ queryKey: adminKeys.notificationPrefs(gymId) });
     },
   });

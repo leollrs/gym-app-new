@@ -98,17 +98,33 @@ function formatDetails(details) {
   return JSON.stringify(details, null, 2);
 }
 
+function sanitizeDetailsForExport(details) {
+  if (!details || typeof details !== 'object') return '';
+  // Strip internal IDs and metadata, keep only human-readable fields
+  const sanitized = {};
+  const sensitiveKeys = ['id', 'actor_id', 'entity_id', 'gym_id', 'user_id', 'member_id', 'profile_id', 'token', 'secret', 'password', 'ip_address'];
+  for (const [key, value] of Object.entries(details)) {
+    if (sensitiveKeys.includes(key)) continue;
+    // Skip any value that looks like a UUID
+    if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) continue;
+    sanitized[key] = value;
+  }
+  return Object.keys(sanitized).length > 0 ? JSON.stringify(sanitized) : '';
+}
+
 function buildCSVRows(pages) {
   const rows = [];
   for (const page of pages) {
     for (const entry of page) {
       rows.push({
         date: entry.created_at ? format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
-        actor: entry.profiles?.full_name || entry.actor_id,
+        actor: entry.profiles?.full_name || 'Unknown user',
         action: entry.action,
         entity_type: entry.entity_type || '',
-        entity_id: entry.entity_id || '',
-        details: entry.details ? JSON.stringify(entry.details) : '',
+        entity_ref: entry.entity_type && entry.entity_id
+          ? `${entry.entity_type}#${entry.entity_id.slice(0, 6)}`
+          : '',
+        details: sanitizeDetailsForExport(entry.details),
       });
     }
   }
@@ -222,7 +238,7 @@ export default function AdminAuditLog() {
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => { document.title = 'Admin - Audit Log | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Audit Log | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // Compute date range
   const dateRange = useMemo(() => {

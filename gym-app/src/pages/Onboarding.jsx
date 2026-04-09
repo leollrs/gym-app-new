@@ -286,6 +286,7 @@ const Onboarding = () => {
           ALREADY_USED: 'inviteCode.errors.alreadyUsed',
           EXPIRED: 'inviteCode.errors.expired',
           WRONG_GYM: 'inviteCode.errors.wrongGym',
+          RATE_LIMITED: 'inviteCode.errors.rateLimited',
         };
         setInviteError(t(errorKeys[code] || 'inviteCode.errors.invalidCode'));
         return;

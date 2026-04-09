@@ -25,6 +25,7 @@ import { takePhoto } from '../lib/takePhoto';
 
 import { sanitize } from '../lib/sanitize';
 import { validateImageFile } from '../lib/validateImage';
+import { stripExif } from '../lib/stripExif';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import { exName } from '../lib/exerciseName';
 
@@ -179,9 +180,9 @@ const RichText = ({ text }) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmtVolume = (lbs) => {
-  if (!lbs) return '0 lbs';
-  return lbs >= 1000 ? `${(lbs / 1000).toFixed(1)}k lbs` : `${Math.round(lbs)} lbs`;
+const fmtVolume = (lbs, unit = 'lbs') => {
+  if (!lbs) return `0 ${unit}`;
+  return lbs >= 1000 ? `${(lbs / 1000).toFixed(1)}k ${unit}` : `${Math.round(lbs)} ${unit}`;
 };
 
 // ── Feed item content ─────────────────────────────────────────────────────────
@@ -200,7 +201,7 @@ const FeedContent = ({ type, data, t }) => {
           )}
           {data.total_volume_lbs > 0 && (
             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Zap size={12} /> {fmtVolume(data.total_volume_lbs)}
+              <Zap size={12} /> {fmtVolume(data.total_volume_lbs, t('common:lbs'))}
             </span>
           )}
           {data.exercise_count > 0 && (
@@ -338,7 +339,7 @@ const FeedContent = ({ type, data, t }) => {
                 <span className="text-[12px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><Clock size={11} /> {fmtDuration(data.duration_seconds)}</span>
               )}
               {data.total_volume_lbs > 0 && (
-                <span className="text-[12px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><Zap size={11} /> {fmtVolume(data.total_volume_lbs)}</span>
+                <span className="text-[12px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><Zap size={11} /> {fmtVolume(data.total_volume_lbs, t('common:lbs'))}</span>
               )}
             </div>
           </div>
@@ -447,7 +448,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       if (!cleanQuery) { setMentionResults([]); return; }
       const pattern = `%${cleanQuery}%`;
       const { data } = await supabase
-        .from('profiles')
+        .from('gym_member_profiles_safe')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
         .ilike('username', pattern)
         .limit(5);
@@ -535,7 +536,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       const mentions = [...content.matchAll(/@(\w+)/g)].map(m => m[1]);
       if (mentions.length > 0) {
         const { data: mentionedUsers } = await supabase
-          .from('profiles')
+          .from('gym_member_profiles_safe')
           .select('id, username')
           .in('username', mentions)
           .limit(10);
@@ -669,7 +670,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           <button
             type="button"
             onClick={() => onReport(item.id)}
-            aria-label="Report post"
+            aria-label={t('social.reportPost', 'Report post')}
             className={`flex items-center gap-2 text-[13px] font-semibold transition-colors ml-auto min-w-[44px] min-h-[44px] justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-lg ${
               reportedIds?.has(item.id) ? 'text-red-500' : 'text-[var(--color-text-muted,#6B7280)] hover:text-red-400'
             }`}
@@ -755,7 +756,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
                 type="button"
                 onClick={handleSubmitComment}
                 disabled={!commentText.trim() || submitting}
-                aria-label="Send comment"
+                aria-label={t('social.sendComment', 'Send comment')}
                 className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all bg-[#D4AF37] text-black font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               >
                 <Send size={16} />
@@ -799,7 +800,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
     if (!accepted.length) return;
     const ids = accepted.map((f) => (f.requester_id === userId ? f.addressee_id : f.requester_id));
     supabase
-      .from('profiles')
+      .from('gym_member_profiles_safe')
       .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
       .in('id', ids)
       .limit(200)
@@ -816,7 +817,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
     if (!incoming.length) return;
     const ids = incoming.map((f) => f.requester_id);
     supabase
-      .from('profiles')
+      .from('gym_member_profiles_safe')
       .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
       .in('id', ids)
       .limit(100)
@@ -840,9 +841,8 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
       const clean = raw.replace(/[%_\\,()."']/g, '');
       const pattern = `%${clean}%`;
       supabase
-        .from('profiles')
+        .from('gym_member_profiles_safe')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
-        .eq('gym_id', gymId)
         .neq('id', userId)
         .in('role', ['member', 'trainer'])
         .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
@@ -893,7 +893,7 @@ const FriendsPanel = ({ userId, gymId, friendships, loadFriendships, onClose, t 
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close friends panel"
+          aria-label={t('social.closeFriendsPanel', 'Close friends panel')}
           className="w-11 h-11 rounded-xl hover:bg-white/[0.06] transition-colors duration-200 flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ color: 'var(--color-text-subtle)' }}
         >
@@ -1081,7 +1081,7 @@ const SocialFeed = ({ embedded = false }) => {
   const feedTabIndex = FEED_TABS.indexOf(tab);
   const handleFeedSwipe = (i) => setTab(FEED_TABS[i]);
 
-  useEffect(() => { document.title = 'Social Feed | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Social Feed | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // Pre-load previously reported feed item IDs so flags render red on mount
   useEffect(() => {
@@ -1155,10 +1155,26 @@ const SocialFeed = ({ embedded = false }) => {
     const enrichmentMap = {};
     (enrichment ?? []).forEach(e => { enrichmentMap[e.feed_item_id] = e; });
 
+    // Sign photo URLs for items that have storage paths (not full URLs)
+    const photoPaths = items
+      .filter(i => i.photo_url && !i.photo_url.startsWith('http'))
+      .map(i => i.photo_url);
+    const signedUrlMap = {};
+    if (photoPaths.length > 0) {
+      const { data: signedUrls } = await supabase.storage.from('social-posts').createSignedUrls(photoPaths, 3600);
+      (signedUrls ?? []).forEach(s => {
+        if (s.signedUrl) signedUrlMap[s.path] = s.signedUrl;
+      });
+    }
+
     const enriched = items.map(item => {
       const e = enrichmentMap[item.id] ?? {};
       return {
         ...item,
+        // Replace storage paths with signed URLs; leave full URLs (legacy) as-is
+        photo_url: item.photo_url
+          ? (signedUrlMap[item.photo_url] || item.photo_url)
+          : null,
         reactionCounts:  e.reaction_counts ?? {},
         currentReaction: e.my_reaction ?? null,
         commentCount:    e.comment_count ?? 0,
@@ -1286,7 +1302,6 @@ const SocialFeed = ({ embedded = false }) => {
         setReportedIds(prev => new Set([...prev, reportTarget]));
         showToast(t('social.report.alreadyReported'), 'info');
       } else {
-        console.error('Report error:', error);
         showToast(t('social.report.error'), 'error');
       }
     } else {
@@ -1335,19 +1350,24 @@ const SocialFeed = ({ embedded = false }) => {
   const handleCreatePost = async ({ body, photoFile, workoutSession }) => {
     if (!user || !profile) return;
     let photo_url = null;
+    let signedPhotoUrl = null;
+    let storagePath = null;
     if (photoFile) {
       const validation = await validateImageFile(photoFile);
       if (!validation.valid) {
         showToast(validation.error, 'error');
         return;
       }
-      const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-      const ext = mimeToExt[validation.mime] || 'jpg';
-      const path = `social-posts/${user.id}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(path, photoFile, { contentType: validation.mime || photoFile.type });
+      // Strip EXIF metadata (GPS, device info) before uploading
+      const cleanPhoto = await stripExif(photoFile);
+      storagePath = `social-posts/${user.id}/${Date.now()}.jpg`;
+      const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { contentType: 'image/jpeg' });
       if (!uploadErr) {
-        const { data: urlData } = supabase.storage.from('social-posts').getPublicUrl(path);
-        photo_url = urlData?.publicUrl ?? null;
+        // Use signed URL (1 hour expiry) instead of public URL
+        const { data: signedData } = await supabase.storage.from('social-posts').createSignedUrl(storagePath, 3600);
+        signedPhotoUrl = signedData?.signedUrl ?? null;
+        // Store the storage path in DB (not the signed URL)
+        photo_url = storagePath;
       }
     }
     const itemData = {
@@ -1376,6 +1396,8 @@ const SocialFeed = ({ embedded = false }) => {
     if (!error && newItem) {
       setFeed(prev => [{
         ...newItem,
+        // Use signed URL in state for immediate display
+        photo_url: signedPhotoUrl || newItem.photo_url,
         reactionCounts: {},
         currentReaction: null,
         commentCount: 0,
@@ -1541,8 +1563,19 @@ const SocialFeed = ({ embedded = false }) => {
           </div>
         )}
 
+        {/* Global empty state */}
+        {!loading && feed.length === 0 && (
+          <EmptyState
+            icon={Users}
+            title={t('socialFeed.emptyTitle')}
+            description={t('socialFeed.emptyDescription')}
+            actionLabel={t('social.findFriends')}
+            onAction={() => setShowFriends(true)}
+          />
+        )}
+
         {/* Swipeable feed panels */}
-        {!loading && (
+        {!loading && feed.length > 0 && (
           <SwipeableTabView activeIndex={feedTabIndex} onChangeIndex={handleFeedSwipe} tabKeys={['forYou', 'mine']}>
             {/* For You tab (ranked) */}
             <div>
@@ -1749,7 +1782,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
                 <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{workoutSession.routine_name}</p>
                 <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                   {workoutSession.duration_seconds > 0 && fmtDuration(workoutSession.duration_seconds)}
-                  {workoutSession.total_volume_lbs > 0 && ` · ${fmtVolume(workoutSession.total_volume_lbs)}`}
+                  {workoutSession.total_volume_lbs > 0 && ` · ${fmtVolume(workoutSession.total_volume_lbs, t('common:lbs'))}`}
                 </p>
               </div>
               <button type="button" onClick={() => setWorkoutSession(null)} aria-label={t('social.removeWorkout', 'Remove tagged workout')} style={{ color: 'var(--color-text-subtle)' }}><X size={14} /></button>

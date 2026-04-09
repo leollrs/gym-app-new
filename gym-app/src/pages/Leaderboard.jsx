@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Trophy, BarChart2, Flame, Dumbbell, MapPin, TrendingUp, Target, ChevronRight, ChevronDown, Sparkles, Award, CheckCircle2, X, Swords, UserPlus, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import EmptyState from '../components/EmptyState';
 import {
   useLeaderboard,
   useLeaderboardMostImproved,
@@ -50,6 +52,7 @@ const MILESTONE_CFG = {
 const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, isFriend, onClose, onSendFriendRequest, t }) => {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const { showToast } = useToast();
 
   const handleChallenge = async () => {
     if (sending || sent) return;
@@ -82,8 +85,8 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
 
       setSent(true);
       setTimeout(onClose, 1200);
-    } catch (err) {
-      console.error('[ChallengeModal] Error:', err);
+    } catch {
+      showToast(t('leaderboard.challengeError', 'Could not send challenge'));
     } finally {
       setSending(false);
     }
@@ -407,8 +410,11 @@ const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, 
 const Leaderboard = ({ embedded = false }) => {
   const { t } = useTranslation('pages');
   const { profile, user } = useAuth();
+  const { showToast } = useToast();
   const gymId = profile?.gym_id;
   const uid = user?.id;
+
+  useEffect(() => { document.title = `${t('leaderboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   const [expanded, setExpanded] = useState(null); // which board is expanded
   const [exTimeRange, setExTimeRange] = useState('weekly');
@@ -508,10 +514,10 @@ const Leaderboard = ({ embedded = false }) => {
         status: 'pending',
       });
       if (error) throw error;
-    } catch (err) {
-      console.error('[Leaderboard] Friend request error:', err);
+    } catch {
+      showToast(t('leaderboard.friendRequestError', 'Could not send friend request'));
     }
-  }, [uid, gymId]);
+  }, [uid, gymId, showToast, t]);
 
   // Metric label for the challenge modal
   const challengeMetricLabel = expanded && BOARD_TO_METRIC[expanded]
@@ -561,6 +567,16 @@ const Leaderboard = ({ embedded = false }) => {
         )}
 
         {/* ── Category Cards ── */}
+        {!volume.isLoading && !workouts.isLoading && !streak.isLoading &&
+         !improved.isLoading && !consistency.isLoading && !prs.isLoading && !checkins.isLoading &&
+         (!volume.data?.length && !workouts.data?.length && !streakEntries?.length &&
+          !improved.data?.length && !consistency.data?.length && !prs.data?.length && !checkins.data?.length) ? (
+          <EmptyState
+            icon={Trophy}
+            title={t('leaderboard.emptyTitle', 'No leaderboard entries yet')}
+            description={t('leaderboard.emptyDescription', 'Start working out to appear on the leaderboard!')}
+          />
+        ) : null}
         <div className="space-y-6">
           <CategoryCard
             icon={BarChart2} iconColor="var(--color-blue)" title={t('leaderboard.categories.volume')} subtitle={t('leaderboard.categories.volume_sub')}

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Target, Check, X, Pencil, TrendingUp, TrendingDown, Minus, LayoutDashboard, Sprout, Zap, Microscope } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth } from 'date-fns';
@@ -289,7 +290,11 @@ export default function AdminAnalytics() {
   const { profile } = useAuth();
   const gymId = profile?.gym_id;
   const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'overview';
+  const setActiveTab = useCallback((tab) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]);
   const [period, setPeriod] = useState('30d');
 
   const ANALYTICS_TABS = ANALYTICS_TAB_KEYS.map(tab => ({
@@ -297,7 +302,7 @@ export default function AdminAnalytics() {
     label: t(tab.labelKey, tab.fallback),
   }));
 
-  useEffect(() => { document.title = t('admin.analytics.title', 'Analytics') + ' | TuGymPR'; }, [t]);
+  useEffect(() => { document.title = t('admin.analytics.title', 'Analytics') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
 
   if (!isAuthorized) {
     return (

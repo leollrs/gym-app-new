@@ -17,10 +17,14 @@ export default function AdminModal({
   footer,
 }) {
   const dialogRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
 
-  // Trap focus and handle Escape
+  // Trap focus, handle Escape, and restore focus on close
   useEffect(() => {
     if (!isOpen) return;
+
+    // Save the element that was focused before the modal opened
+    previouslyFocusedRef.current = document.activeElement;
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -31,6 +35,12 @@ export default function AdminModal({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
+
+      // Restore focus to the previously focused element
+      if (previouslyFocusedRef.current && typeof previouslyFocusedRef.current.focus === 'function') {
+        previouslyFocusedRef.current.focus();
+        previouslyFocusedRef.current = null;
+      }
     };
   }, [isOpen, onClose]);
 

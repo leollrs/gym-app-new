@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { generateProgram } from '../../lib/workoutGenerator';
@@ -228,7 +229,7 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
                 </button>
               </div>
               {/* Sets / Reps / Rest controls - compact row below name */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-0.5 -mx-0.5 px-0.5">
+              <div className="flex items-center gap-2 flex-wrap pb-0.5">
                 {/* Sets */}
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <span className="text-[10px] text-[var(--color-text-muted)] mr-0.5">{t('trainerPlans.sets', 'Sets')}:</span>
@@ -311,7 +312,7 @@ const DayCard = ({ day, di, wk, exercises, exName, updateDayName, removeDay, add
 };
 
 // ── Plan Builder (full-page workspace) ───────────────────
-const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) => {
+const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, showToast }) => {
   const isEdit = !!plan;
   const init = plan || {};
   const [clientId, setClientId]     = useState(init.client_id || '');
@@ -331,29 +332,38 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
   // Trainer overrides for auto-generation
   const [overrideDays, setOverrideDays] = useState(null); // null = use client's
   const [overrideMuscles, setOverrideMuscles] = useState([]); // empty = use client's
-  const ALL_MUSCLES = ['Chest', 'Back', 'Shoulders', 'Legs', 'Arms', 'Core', 'Glutes'];
+  const ALL_MUSCLES_KEYS = ['chest', 'back', 'shoulders', 'legs', 'arms', 'core', 'glutes'];
+  const muscleLabel = (key) => t(`trainerPlans.muscle_${key}`, key.charAt(0).toUpperCase() + key.slice(1));
   const toggleMuscle = (m) => setOverrideMuscles(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
 
   useEffect(() => {
     supabase.from('exercises').select('id, name, muscle_group').order('name')
-      .then(({ data }) => setExercises(data || []));
+      .then(({ data, error }) => {
+        if (error) console.error('[TrainerPlans] Failed to load exercises:', error);
+        setExercises(data || []);
+      })
+      .catch(err => console.error('[TrainerPlans] Failed to load exercises:', err));
   }, []);
 
   // Fetch client profile when client changes
   useEffect(() => {
     if (!clientId) { setClientProfile(null); return; }
     (async () => {
-      const { data: ob } = await supabase
-        .from('member_onboarding')
-        .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, priority_muscles')
-        .eq('profile_id', clientId)
-        .maybeSingle();
-      const { data: goals } = await supabase
-        .from('member_goals')
-        .select('goal_type, exercise_id, target_value, current_value')
-        .eq('profile_id', clientId)
-        .eq('is_completed', false);
-      setClientProfile({ onboarding: ob, goals: goals || [] });
+      try {
+        const { data: ob } = await supabase
+          .from('member_onboarding')
+          .select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, priority_muscles')
+          .eq('profile_id', clientId)
+          .maybeSingle();
+        const { data: goals } = await supabase
+          .from('member_goals')
+          .select('goal_type, exercise_id, target_value, current_value')
+          .eq('profile_id', clientId)
+          .eq('is_completed', false);
+        setClientProfile({ onboarding: ob, goals: goals || [] });
+      } catch (err) {
+        console.error('[TrainerPlans] Failed to load client profile:', err);
+      }
     })();
   }, [clientId]);
 
@@ -386,7 +396,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
       // Apply trainer overrides
       const onbWithOverrides = { ...onb };
       if (overrideDays) onbWithOverrides.training_days_per_week = overrideDays;
-      if (overrideMuscles.length > 0) onbWithOverrides.priority_muscles = overrideMuscles;
+      if (overrideMuscles.length > 0) onbWithOverrides.priority_muscles = overrideMuscles.map(m => m.charAt(0).toUpperCase() + m.slice(1));
 
       const result = generateProgram(onbWithOverrides, goals || []);
       const clientName = clients.find(c => c.id === clientId)?.full_name || '';
@@ -493,22 +503,30 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
     if (!name.trim()) { setError(t('trainerPlans.nameRequired', 'Plan name is required.')); return; }
     setSaving(true);
     setError('');
-    const payload = {
-      gym_id: gymId,
-      trainer_id: trainerId,
-      client_id: clientId,
-      name: name.trim(),
-      description: description.trim(),
-      duration_weeks: durationWeeks,
-      weeks,
-      is_active: plan?.is_active ?? true,
-      updated_at: new Date().toISOString(),
-    };
-    const { error: err } = isEdit
-      ? await supabase.from('trainer_workout_plans').update(payload).eq('id', plan.id)
-      : await supabase.from('trainer_workout_plans').insert(payload);
-    if (err) { setError(err.message); setSaving(false); return; }
-    onSaved();
+    try {
+      const payload = {
+        gym_id: gymId,
+        trainer_id: trainerId,
+        client_id: clientId,
+        name: name.trim(),
+        description: description.trim(),
+        duration_weeks: durationWeeks,
+        weeks,
+        is_active: plan?.is_active ?? true,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: err } = isEdit
+        ? await supabase.from('trainer_workout_plans').update(payload).eq('id', plan.id)
+        : await supabase.from('trainer_workout_plans').insert(payload);
+      if (err) { setError(err.message); setSaving(false); return; }
+      onSaved();
+    } catch (err) {
+      console.error('[TrainerPlans] handleSave error:', err);
+      const msg = t('trainerPlans.failedToSavePlan', 'Failed to save plan');
+      setError(msg);
+      showToast?.(msg, 'error');
+      setSaving(false);
+    }
   };
 
   const allWeekNums = Array.from({ length: durationWeeks }, (_, i) => i + 1);
@@ -568,7 +586,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
         {/* Row 2: Client selector + Status + Auto-generate */}
         <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2 flex items-center gap-2 flex-wrap">
           <select value={clientId} onChange={e => setClientId(e.target.value)} disabled={isEdit}
-            className="bg-transparent text-[13px] outline-none disabled:opacity-60 max-w-[180px] truncate cursor-pointer py-1"
+            className="bg-transparent text-[13px] outline-none disabled:opacity-60 max-w-[200px] sm:max-w-[180px] truncate cursor-pointer py-2 min-h-[44px]"
             style={{ color: 'var(--color-text-secondary)' }}>
             <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
@@ -628,7 +646,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
             {/* Compact client info */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] mb-3">
               <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{clientProfile.onboarding.fitness_level || '—'}</span></span>
-              <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{clientProfile.onboarding.primary_goal?.replace(/_/g, ' ') || '—'}</span></span>
+              <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: 'var(--color-text-primary)' }}>{clientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${clientProfile.onboarding.primary_goal}`, clientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
               {clientProfile.onboarding.injuries_notes && (
                 <span><span style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.injuries', 'Injuries')}:</span> <span className="font-semibold text-red-400">{clientProfile.onboarding.injuries_notes}</span></span>
               )}
@@ -640,7 +658,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
               ))}
               {clientProfile.goals.map((g, i) => (
                 <span key={`g${i}`} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }}>
-                  {g.goal_type.replace(/_/g, ' ')}{g.target_value ? ` → ${g.target_value}` : ''}
+                  {t(`trainerNotes.goals.${g.goal_type}`, g.goal_type.replace(/_/g, ' '))}{g.target_value ? ` → ${g.target_value}` : ''}
                 </span>
               ))}
             </div>
@@ -656,14 +674,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
                 <p className="text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
                   {t('trainerPlans.daysPerWeek', 'Days per week')}
                 </p>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 flex-wrap">
                   {[2, 3, 4, 5, 6].map(d => {
                     const clientDays = clientProfile.onboarding.training_days_per_week;
                     const isActive = overrideDays ? overrideDays === d : clientDays === d;
                     const isClientDefault = !overrideDays && clientDays === d;
                     return (
                       <button key={d} onClick={() => setOverrideDays(d === clientDays ? null : d)}
-                        className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all min-h-[36px] relative ${
+                        className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all min-h-[44px] min-w-[44px] relative ${
                           isActive ? 'text-black' : ''
                         }`}
                         style={isActive
@@ -671,13 +689,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
                           : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
                         }>
                         {d}
-                        {isClientDefault && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title="Client's preference" />}
+                        {isClientDefault && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={t('trainerPlans.clientPreference', "Client's preference")} />}
                       </button>
                     );
                   })}
                   {overrideDays && (
                     <button onClick={() => setOverrideDays(null)}
-                      className="px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                      className="px-3 py-2 rounded-lg text-[11px] font-medium transition-colors min-h-[44px]"
                       style={{ color: 'var(--color-text-muted)' }}>
                       {t('trainerPlans.reset', 'Reset')}
                     </button>
@@ -691,26 +709,26 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
                   {t('trainerPlans.targetMuscles', 'Focus muscles')} <span className="opacity-50">({t('trainerPlans.optional', 'optional')})</span>
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {ALL_MUSCLES.map(m => {
+                  {ALL_MUSCLES_KEYS.map(m => {
                     const isSelected = overrideMuscles.includes(m);
-                    const isClientPriority = clientProfile.onboarding.priority_muscles?.includes(m);
+                    const isClientPriority = clientProfile.onboarding.priority_muscles?.map(p => p.toLowerCase()).includes(m);
                     return (
                       <button key={m} onClick={() => toggleMuscle(m)}
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all relative ${
+                        className={`px-3 py-2 rounded-lg text-[11px] font-semibold transition-all relative min-h-[44px] ${
                           isSelected ? 'text-black' : ''
                         }`}
                         style={isSelected
                           ? { backgroundColor: '#10B981' }
                           : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
                         }>
-                        {m}
-                        {isClientPriority && !isSelected && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title="Client's priority" />}
+                        {muscleLabel(m)}
+                        {isClientPriority && !isSelected && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={t('trainerPlans.clientPriority', "Client's priority")} />}
                       </button>
                     );
                   })}
                   {overrideMuscles.length > 0 && (
                     <button onClick={() => setOverrideMuscles([])}
-                      className="px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors"
+                      className="px-3 py-2 rounded-lg text-[11px] font-medium transition-colors min-h-[44px]"
                       style={{ color: 'var(--color-text-muted)' }}>
                       {t('trainerPlans.clearAll', 'Clear')}
                     </button>
@@ -726,17 +744,17 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
           {/* Duration pills */}
           <div className="flex items-center gap-2 mb-3">
             <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{t('trainerPlans.duration', 'Duration')}</p>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap">
               {[4, 6, 8, 10, 12].map(w => (
                 <button key={w} onClick={() => setDuration(w)}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
+                  className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px] ${
                     durationWeeks === w ? 'text-black' : ''
                   }`}
                   style={durationWeeks === w
                     ? { backgroundColor: 'var(--color-accent)' }
                     : { backgroundColor: 'var(--color-bg-deep)', color: 'var(--color-text-muted)' }
                   }>
-                  {w}w
+                  {w}{t('trainerPlans.wSuffix', 'w')}
                 </button>
               ))}
             </div>
@@ -747,7 +765,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
               const stats = weekStats(wk);
               return (
                 <button key={wk} onClick={() => setSelectedWeek(wk)}
-                  className={`shrink-0 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all min-h-[40px] ${
+                  className={`shrink-0 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all min-h-[44px] ${
                     selectedWeek === wk ? 'text-black shadow-sm' : ''
                   }`}
                   style={selectedWeek === wk
@@ -755,7 +773,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
                     : { backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }
                   }>
                   {t('trainerPlans.weekAbbrev', 'Wk')} {wk}
-                  <span className="text-[10px] ml-1 opacity-70">({stats.dayCount}d · {stats.exCount}ex)</span>
+                  <span className="text-[10px] ml-1 opacity-70">({stats.dayCount}{t('trainerPlans.dShort', 'd')} · {stats.exCount}{t('trainerPlans.exShort', 'ex')})</span>
                 </button>
               );
             })}
@@ -774,10 +792,10 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
               <div className="flex gap-1.5">
                 {[4, 6, 8, 10, 12].map(w => (
                   <button key={w} onClick={() => setDuration(w)}
-                    className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors min-h-[36px] ${
+                    className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors min-h-[44px] ${
                       durationWeeks === w ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]' : 'bg-[var(--color-bg-card)]/60 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
                     }`}>
-                    {w}w
+                    {w}{t('trainerPlans.wSuffix', 'w')}
                   </button>
                 ))}
               </div>
@@ -927,6 +945,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t }) =
 export default function TrainerPlans() {
   const { profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
+  const { showToast } = useToast();
 
   // Section toggle: Training vs Nutrition
   const SECTION_TABS = [
@@ -946,6 +965,7 @@ export default function TrainerPlans() {
   const [filterStatus, setFilterStatus] = useState('active'); // 'active' | 'all' | 'archived'
   const [expandedPlan, setExpandedPlan] = useState(null);
   const [adherenceMap, setAdherenceMap] = useState({});
+  const [confirmDeletePlan, setConfirmDeletePlan] = useState(null);
 
   // Nutrition plans state
   const [mealPlans, setMealPlans] = useState([]);
@@ -978,13 +998,16 @@ export default function TrainerPlans() {
   const [generatedMeals, setGeneratedMeals] = useState(null); // 7-day plan
   const [generatingMeals, setGeneratingMeals] = useState(false);
   const [mealPreviewDay, setMealPreviewDay] = useState(0);
-  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const DAY_LABELS = [
+    t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'), t('trainerPlans.dayWed', 'Wed'),
+    t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'), t('trainerPlans.daySat', 'Sat'), t('trainerPlans.daySun', 'Sun'),
+  ];
 
   const MEAL_SLOTS = [
-    { type: 'breakfast', time: '07:00', label: 'Breakfast', label_es: 'Desayuno', color: '#F97316' },
-    { type: 'lunch', time: '12:00', label: 'Lunch', label_es: 'Almuerzo', color: '#EAB308' },
-    { type: 'snack', time: '15:30', label: 'Snack', label_es: 'Merienda', color: '#34D399' },
-    { type: 'dinner', time: '19:00', label: 'Dinner', label_es: 'Cena', color: '#8B5CF6' },
+    { type: 'breakfast', time: '07:00', label: t('trainerPlans.mealBreakfast', 'Breakfast'), color: '#F97316' },
+    { type: 'lunch', time: '12:00', label: t('trainerPlans.mealLunch', 'Lunch'), color: '#EAB308' },
+    { type: 'snack', time: '15:30', label: t('trainerPlans.mealSnack', 'Snack'), color: '#34D399' },
+    { type: 'dinner', time: '19:00', label: t('trainerPlans.mealDinner', 'Dinner'), color: '#8B5CF6' },
   ];
 
   const handleGenerateMeals = () => {
@@ -1102,11 +1125,11 @@ export default function TrainerPlans() {
       target_protein_g: String(result.protein),
       target_carbs_g: String(result.carbs),
       target_fat_g: String(result.fat),
-      name: f.name || `${goal.replace(/_/g, ' ')} plan`.replace(/\b\w/g, c => c.toUpperCase()),
+      name: f.name || t('trainerPlans.autoMealPlanName', '{{goal}} Plan', { goal: goal.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }),
     }));
   };
 
-  useEffect(() => { document.title = 'Trainer - Plans | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('trainerPlans.pageTitle', `Trainer - Plans | ${window.__APP_NAME || 'TuGymPR'}`); }, []);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -1187,6 +1210,7 @@ export default function TrainerPlans() {
       .select('*, profiles!trainer_meal_plans_client_id_fkey(full_name)')
       .eq('trainer_id', profile.id)
       .order('created_at', { ascending: false })
+      .limit(100)
       .then(({ data }) => {
         setMealPlans(data || []);
         setMealPlansLoading(false);
@@ -1202,7 +1226,7 @@ export default function TrainerPlans() {
       meals: (day.meals || []).map(m => ({ id: m.id, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime })),
       totals: day.totals,
     })) : [];
-    await supabase.from('trainer_meal_plans').insert({
+    const { error } = await supabase.from('trainer_meal_plans').insert({
       gym_id: profile.gym_id,
       trainer_id: profile.id,
       client_id: mealForm.client_id,
@@ -1214,6 +1238,11 @@ export default function TrainerPlans() {
       target_fat_g: mealForm.target_fat_g ? parseInt(mealForm.target_fat_g) : null,
       meals: mealsJson,
     });
+    if (error) {
+      setMealSaving(false);
+      showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error');
+      return;
+    }
     setMealSaving(false);
     setShowMealModal(false);
     setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '' });
@@ -1239,26 +1268,38 @@ export default function TrainerPlans() {
   };
 
   const toggleActive = async (plan) => {
-    await supabase.from('trainer_workout_plans')
+    const { error } = await supabase.from('trainer_workout_plans')
       .update({ is_active: !plan.is_active, updated_at: new Date().toISOString() })
       .eq('id', plan.id);
+    if (error) {
+      showToast(t('trainerPlans.errorToggleActive', 'Failed to update plan status'), 'error');
+      return;
+    }
     loadData();
   };
 
   const duplicatePlan = async (plan) => {
     const { id, profiles, created_at, updated_at, ...rest } = plan;
-    await supabase.from('trainer_workout_plans').insert({
+    const { error } = await supabase.from('trainer_workout_plans').insert({
       ...rest,
       name: `${plan.name} ${t('trainerPlans.copySuffix', '(Copy)')}`,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
+    if (error) {
+      showToast(t('trainerPlans.errorDuplicatePlan', 'Failed to duplicate plan'), 'error');
+      return;
+    }
     loadData();
   };
 
   const deletePlan = async (plan) => {
-    if (!confirm(t('trainerPlans.confirmDelete', 'Delete "{{name}}"?', { name: plan.name }))) return;
-    await supabase.from('trainer_workout_plans').delete().eq('id', plan.id);
+    const { error } = await supabase.from('trainer_workout_plans').delete().eq('id', plan.id);
+    if (error) {
+      showToast(t('trainerPlans.errorDeletePlan', 'Failed to delete plan'), 'error');
+      return;
+    }
+    setConfirmDeletePlan(null);
     loadData();
   };
 
@@ -1288,6 +1329,7 @@ export default function TrainerPlans() {
         trainerId={profile.id}
         gymId={profile.gym_id}
         t={t}
+        showToast={showToast}
       />
     );
   }
@@ -1412,7 +1454,7 @@ export default function TrainerPlans() {
                       )}
                     </div>
                     <p className="text-[11px] text-[var(--color-text-muted)]">
-                      {plan.profiles?.full_name || t('trainerPlans.client', 'Client')} · {plan.duration_weeks}w · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {totalEx} {t('trainerPlans.ex', 'ex')}
+                      {plan.profiles?.full_name || t('trainerPlans.client', 'Client')} · {plan.duration_weeks}{t('trainerPlans.wSuffix', 'w')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {totalEx} {t('trainerPlans.ex', 'ex')}
                     </p>
                     {/* Adherence indicator */}
                     {adherenceMap[plan.id] && (() => {
@@ -1481,7 +1523,7 @@ export default function TrainerPlans() {
                           : <><ToggleLeft size={12} /> {t('trainerPlans.activate', 'Activate')}</>}
                       </button>
                       <div className="flex-1" />
-                      <button onClick={() => deletePlan(plan)}
+                      <button onClick={() => setConfirmDeletePlan(plan)}
                         className="px-3 py-1.5 rounded-xl text-[12px] font-medium text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-colors min-h-[44px]">
                         <Trash2 size={12} />
                       </button>
@@ -1574,8 +1616,8 @@ export default function TrainerPlans() {
 
       {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ── */}
       {showMealModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
-          <div className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg overflow-hidden max-h-[92vh] sm:max-h-[88vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
+          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
               <div className="flex items-center gap-2">
@@ -1669,7 +1711,7 @@ export default function TrainerPlans() {
                     <label className="text-[12px] font-medium mb-2 block" style={{ color: 'var(--color-text-secondary)' }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</label>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { key: 'target_calories', label: t('trainerPlans.calories', 'Calories'), placeholder: '2200', color: '#D4AF37' },
+                        { key: 'target_calories', label: t('trainerPlans.calories', 'Calories'), placeholder: '2200', color: 'var(--color-accent)' },
                         { key: 'target_protein_g', label: t('trainerPlans.proteinG', 'Protein (g)'), placeholder: '180', color: '#60A5FA' },
                         { key: 'target_carbs_g', label: t('trainerPlans.carbsG', 'Carbs (g)'), placeholder: '250', color: '#34D399' },
                         { key: 'target_fat_g', label: t('trainerPlans.fatG', 'Fat (g)'), placeholder: '65', color: '#F472B6' },
@@ -1721,7 +1763,7 @@ export default function TrainerPlans() {
                   {generatedMeals[mealPreviewDay] && (
                     <div className="px-4 pt-3">
                       <div className="flex items-center gap-3 mb-3 text-[11px]">
-                        <span style={{ color: '#D4AF37' }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} cal</span>
+                        <span style={{ color: 'var(--color-accent)' }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} cal</span>
                         <span style={{ color: '#60A5FA' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.protein || 0}g P</span>
                         <span style={{ color: '#34D399' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.carbs || 0}g C</span>
                         <span style={{ color: '#F472B6' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.fat || 0}g F</span>
@@ -1734,7 +1776,7 @@ export default function TrainerPlans() {
                       <div className="space-y-2.5 pb-4">
                         {(generatedMeals[mealPreviewDay].meals || []).map((meal, mi) => {
                           const slot = MEAL_SLOTS[mi] || MEAL_SLOTS[3];
-                          const mealLabel = i18n.language === 'es' ? slot.label_es : slot.label;
+                          const mealLabel = slot.label;
                           const mealColor = slot.color;
                           const mealTitle = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
                           return (
@@ -1768,7 +1810,7 @@ export default function TrainerPlans() {
                                 </div>
                                 <p className="text-[13px] font-semibold truncate mb-1" style={{ color: 'var(--color-text-primary)' }}>{mealTitle}</p>
                                 <div className="flex items-center gap-2.5 text-[10px]">
-                                  <span style={{ color: '#D4AF37' }}>{meal.calories} cal</span>
+                                  <span style={{ color: 'var(--color-accent)' }}>{meal.calories} cal</span>
                                   <span style={{ color: '#60A5FA' }}>{meal.protein}g P</span>
                                   <span style={{ color: '#34D399' }}>{meal.carbs}g C</span>
                                   <span style={{ color: '#F472B6' }}>{meal.fat}g F</span>
@@ -1781,8 +1823,8 @@ export default function TrainerPlans() {
 
                       {/* ── Meal Picker Overlay ── */}
                       {mealPickerSlot && (
-                        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setMealPickerSlot(null)}>
-                          <div className="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setMealPickerSlot(null)}>
+                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }} onClick={e => e.stopPropagation()}>
                             <div className="p-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
                               <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
@@ -1818,7 +1860,7 @@ export default function TrainerPlans() {
                                     <div className="flex-1 min-w-0">
                                       <p className="text-[13px] font-semibold truncate">{title}</p>
                                       <div className="flex items-center gap-2.5 mt-0.5 text-[10px]">
-                                        <span style={{ color: '#D4AF37' }}>{meal.calories} cal</span>
+                                        <span style={{ color: 'var(--color-accent)' }}>{meal.calories} cal</span>
                                         <span style={{ color: '#60A5FA' }}>{meal.protein}g P</span>
                                         <span style={{ color: '#34D399' }}>{meal.carbs}g C</span>
                                         <span style={{ color: '#F472B6' }}>{meal.fat}g F</span>
@@ -1858,6 +1900,35 @@ export default function TrainerPlans() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDeletePlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeletePlan(null)} />
+          <div className="relative w-full max-w-sm bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] p-6 space-y-4">
+            <h3 className="text-[16px] font-bold text-[var(--color-text-primary)]">
+              {t('trainerPlans.confirmDelete', 'Delete "{{name}}"?', { name: confirmDeletePlan.name })}
+            </h3>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              {t('trainerPlans.confirmDeleteDescription', 'This action cannot be undone. The plan will be permanently removed.')}
+            </p>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDeletePlan(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-white/8 transition-colors min-h-[44px]"
+              >
+                {t('trainerPlans.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={() => deletePlan(confirmDeletePlan)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors min-h-[44px]"
+              >
+                {t('trainerPlans.deleteConfirm', 'Delete')}
+              </button>
+            </div>
           </div>
         </div>
       )}

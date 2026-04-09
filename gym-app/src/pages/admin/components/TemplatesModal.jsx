@@ -133,11 +133,13 @@ function PreviewBrowser({ preview, genDays, allExercises, estimateDuration, onUs
       {/* Week navigator */}
       <div className="flex items-center justify-between bg-[#111827] border border-white/6 rounded-xl px-3 py-2">
         <button onClick={() => setWeek(w => Math.max(1, w - 1))} disabled={week <= 1}
+          aria-label={t('admin.programs.builder.previousWeek', 'Previous week')}
           className="p-1 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-30 transition-colors">
           <ChevronLeft size={16} />
         </button>
         <span className="text-[13px] font-bold text-[#E5E7EB]">{t('admin.programs.generate.weekN', 'Week {{n}}', { n: week })} <span className="text-[#6B7280] font-normal">/ {totalWeeks}</span></span>
         <button onClick={() => setWeek(w => Math.min(totalWeeks, w + 1))} disabled={week >= totalWeeks}
+          aria-label={t('admin.programs.builder.nextWeek', 'Next week')}
           className="p-1 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] disabled:opacity-30 transition-colors">
           <ChevronRight size={16} />
         </button>

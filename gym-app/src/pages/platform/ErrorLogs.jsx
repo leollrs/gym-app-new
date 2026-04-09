@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Bug, AlertTriangle, Search, Filter, ChevronDown, ChevronRight,
   Monitor, Smartphone, Clock, Building2, Loader2,
@@ -8,19 +8,20 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 const PAGE_SIZE = 50;
 
 const TYPE_CONFIG = {
-  react_crash:        { color: 'red',    label: 'React Crash' },
-  js_error:           { color: 'orange', label: 'JS Error' },
-  promise_rejection:  { color: 'yellow', label: 'Promise Rejection' },
-  api_error:          { color: 'blue',   label: 'API Error' },
-  network_error:      { color: 'gray',   label: 'Network Error' },
-  slow_api:           { color: 'purple', label: 'Slow API' },
-  auth_error:         { color: 'red',    label: 'Auth Error' },
-  http_error:         { color: 'orange', label: 'HTTP Error' },
-  action_failed:      { color: 'amber',  label: 'Action Failed' },
+  react_crash:        { color: 'red',    labelKey: 'platform.errors.typeReactCrash',       fallback: 'React Crash' },
+  js_error:           { color: 'orange', labelKey: 'platform.errors.typeJsError',          fallback: 'JS Error' },
+  promise_rejection:  { color: 'yellow', labelKey: 'platform.errors.typePromiseRejection', fallback: 'Promise Rejection' },
+  api_error:          { color: 'blue',   labelKey: 'platform.errors.typeApiError',         fallback: 'API Error' },
+  network_error:      { color: 'gray',   labelKey: 'platform.errors.typeNetworkError',     fallback: 'Network Error' },
+  slow_api:           { color: 'purple', labelKey: 'platform.errors.typeSlowApi',          fallback: 'Slow API' },
+  auth_error:         { color: 'red',    labelKey: 'platform.errors.typeAuthError',        fallback: 'Auth Error' },
+  http_error:         { color: 'orange', labelKey: 'platform.errors.typeHttpError',        fallback: 'HTTP Error' },
+  action_failed:      { color: 'amber',  labelKey: 'platform.errors.typeActionFailed',     fallback: 'Action Failed' },
 };
 
 const COLOR_MAP = {
@@ -34,33 +35,34 @@ const COLOR_MAP = {
 };
 
 const DATE_RANGES = [
-  { label: 'Last 24h', value: '24h' },
-  { label: '7 days',   value: '7d' },
-  { label: '30 days',  value: '30d' },
-  { label: 'All time', value: 'all' },
+  { labelKey: 'platform.errors.dateRange24h', fallback: 'Last 24h', value: '24h' },
+  { labelKey: 'platform.errors.dateRange7d',  fallback: '7 days',   value: '7d' },
+  { labelKey: 'platform.errors.dateRange30d', fallback: '30 days',  value: '30d' },
+  { labelKey: 'platform.errors.dateRangeAll', fallback: 'All time', value: 'all' },
 ];
 
 const ERROR_TYPES = [
-  { label: 'All Types',           value: 'all' },
-  { label: 'React Crash',         value: 'react_crash' },
-  { label: 'JS Error',            value: 'js_error' },
-  { label: 'Promise Rejection',   value: 'promise_rejection' },
-  { label: 'API Error',           value: 'api_error' },
-  { label: 'Network Error',       value: 'network_error' },
-  { label: 'Slow API',            value: 'slow_api' },
-  { label: 'Auth Error',          value: 'auth_error' },
-  { label: 'HTTP Error',          value: 'http_error' },
-  { label: 'Action Failed',       value: 'action_failed' },
+  { labelKey: 'platform.errors.typeAll',              fallback: 'All Types',         value: 'all' },
+  { labelKey: 'platform.errors.typeReactCrash',       fallback: 'React Crash',       value: 'react_crash' },
+  { labelKey: 'platform.errors.typeJsError',          fallback: 'JS Error',          value: 'js_error' },
+  { labelKey: 'platform.errors.typePromiseRejection', fallback: 'Promise Rejection', value: 'promise_rejection' },
+  { labelKey: 'platform.errors.typeApiError',         fallback: 'API Error',         value: 'api_error' },
+  { labelKey: 'platform.errors.typeNetworkError',     fallback: 'Network Error',     value: 'network_error' },
+  { labelKey: 'platform.errors.typeSlowApi',          fallback: 'Slow API',          value: 'slow_api' },
+  { labelKey: 'platform.errors.typeAuthError',        fallback: 'Auth Error',        value: 'auth_error' },
+  { labelKey: 'platform.errors.typeHttpError',        fallback: 'HTTP Error',        value: 'http_error' },
+  { labelKey: 'platform.errors.typeActionFailed',     fallback: 'Action Failed',     value: 'action_failed' },
 ];
 
-function ErrorRow({ entry }) {
+function ErrorRow({ entry, t }) {
   const [expanded, setExpanded] = useState(false);
-  const config = TYPE_CONFIG[entry.type] || { color: 'blue', label: entry.type };
+  const config = TYPE_CONFIG[entry.type] || { color: 'blue', labelKey: null, fallback: entry.type };
   const colors = COLOR_MAP[config.color] || COLOR_MAP.blue;
-  const userName = entry.user?.full_name || entry.user?.username || 'Unknown';
-  const gymName = entry.gym?.name || (entry.gym_id ? 'Unknown Gym' : '—');
+  const typeLabel = config.labelKey ? t(config.labelKey, config.fallback) : config.fallback;
+  const userName = entry.user?.full_name || entry.user?.username || t('platform.errors.unknown', 'Unknown');
+  const gymName = entry.gym?.name || (entry.gym_id ? t('platform.errors.unknownGym', 'Unknown Gym') : '—');
   const createdAt = new Date(entry.created_at);
-  const message = entry.message || 'No message';
+  const message = entry.message || t('platform.errors.noMessage', 'No message');
   const truncatedMessage = message.length > 120 ? message.slice(0, 120) + '...' : message;
 
   return (
@@ -97,7 +99,7 @@ function ErrorRow({ entry }) {
 
           {/* Type badge */}
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${colors.bg} ${colors.text}`}>
-            {config.label}
+            {typeLabel}
           </span>
 
           {/* Message */}
@@ -112,7 +114,7 @@ function ErrorRow({ entry }) {
         <div className="pl-8 pr-4 pb-4 space-y-3">
           {/* Full message */}
           <div>
-            <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">Full Message</p>
+            <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">{t('platform.errors.fullMessage', 'Full Message')}</p>
             <div className="bg-[#111827]/60 rounded-lg p-3">
               <p className="text-[11px] text-[#E5E7EB] whitespace-pre-wrap break-all font-mono leading-relaxed">
                 {message}
@@ -123,7 +125,7 @@ function ErrorRow({ entry }) {
           {/* Stack trace */}
           {entry.stack && (
             <div>
-              <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">Stack Trace</p>
+              <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">{t('platform.errors.stackTrace', 'Stack Trace')}</p>
               <div className="bg-[#111827]/60 rounded-lg p-3 max-h-[300px] overflow-y-auto">
                 <pre className="text-[11px] text-[#9CA3AF] whitespace-pre-wrap break-all font-mono leading-relaxed">
                   {entry.stack}
@@ -137,7 +139,7 @@ function ErrorRow({ entry }) {
             <div>
               <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium flex items-center gap-1">
                 {entry.device_info?.platform === 'mobile' ? <Smartphone size={12} /> : <Monitor size={12} />}
-                Device Info
+                {t('platform.errors.deviceInfo', 'Device Info')}
               </p>
               <div className="bg-[#111827]/60 rounded-lg p-3">
                 <pre className="text-[11px] text-[#9CA3AF] whitespace-pre-wrap break-all font-mono leading-relaxed">
@@ -150,7 +152,7 @@ function ErrorRow({ entry }) {
           {/* Metadata */}
           {entry.metadata && Object.keys(entry.metadata).length > 0 && (
             <div>
-              <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">Metadata</p>
+              <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mb-1 font-medium">{t('platform.errors.metadata', 'Metadata')}</p>
               <div className="bg-[#111827]/60 rounded-lg p-3">
                 <pre className="text-[11px] text-[#9CA3AF] whitespace-pre-wrap break-all font-mono leading-relaxed">
                   {JSON.stringify(entry.metadata, null, 2)}
@@ -177,6 +179,8 @@ export default function ErrorLogs() {
   const [errorType, setErrorType] = useState('all');
   const [gymFilter, setGymFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef(null);
 
   const [gyms, setGyms] = useState([]);
 
@@ -190,6 +194,15 @@ export default function ErrorLogs() {
       if (data) setGyms(data);
     })();
   }, []);
+
+  // Debounce search input
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchTerm]);
 
   const fetchEntries = useCallback(async (offset = 0, append = false) => {
     if (!append) setLoading(true);
@@ -224,6 +237,11 @@ export default function ErrorLogs() {
       query = query.eq('gym_id', gymFilter);
     }
 
+    // Server-side search by message
+    if (debouncedSearch.trim()) {
+      query = query.ilike('message', `%${debouncedSearch.trim()}%`);
+    }
+
     const { data, error, count } = await query;
 
     if (error) {
@@ -233,16 +251,7 @@ export default function ErrorLogs() {
       return;
     }
 
-    let results = data || [];
-
-    // Client-side search by message
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      results = results.filter((e) => {
-        const msg = e.message || '';
-        return msg.toLowerCase().includes(term);
-      });
-    }
+    const results = data || [];
 
     if (append) {
       setEntries((prev) => [...prev, ...results]);
@@ -254,7 +263,7 @@ export default function ErrorLogs() {
     setHasMore(results.length === PAGE_SIZE);
     if (!append) setLoading(false);
     else setLoadingMore(false);
-  }, [dateRange, errorType, gymFilter, searchTerm]);
+  }, [dateRange, errorType, gymFilter, debouncedSearch]);
 
   // Re-fetch when filters change
   useEffect(() => {
@@ -286,25 +295,25 @@ export default function ErrorLogs() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-6">
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount.toLocaleString()}</p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Total Errors</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.totalErrors', 'Total Errors')}</p>
           </div>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
               {[...new Set(entries.map(e => e.gym_id).filter(Boolean))].length}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Gyms Affected</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.gymsAffected', 'Gyms Affected')}</p>
           </div>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
               {[...new Set(entries.map(e => e.profile_id).filter(Boolean))].length}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Users Affected</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.usersAffected', 'Users Affected')}</p>
           </div>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-red-400 tabular-nums">
               {entries.filter(e => e.type === 'react_crash' || e.type === 'auth_error').length}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Critical Errors</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.criticalErrors', 'Critical Errors')}</p>
           </div>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums truncate">
@@ -312,10 +321,11 @@ export default function ErrorLogs() {
                 const typeCounts = {};
                 entries.forEach(e => { typeCounts[e.type] = (typeCounts[e.type] || 0) + 1; });
                 const top = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
-                return top ? (TYPE_CONFIG[top[0]]?.label || top[0]) : '—';
+                const cfg = top ? TYPE_CONFIG[top[0]] : null;
+                return cfg ? t(cfg.labelKey, cfg.fallback) : '—';
               })()}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">Top Error Type</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.errors.topErrorType', 'Top Error Type')}</p>
           </div>
         </div>
       )}
@@ -340,7 +350,7 @@ export default function ErrorLogs() {
                     : 'text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'
                 }`}
               >
-                {dr.label}
+                {t(dr.labelKey, dr.fallback)}
               </button>
             ))}
           </div>
@@ -352,7 +362,7 @@ export default function ErrorLogs() {
             className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none"
           >
             {ERROR_TYPES.map((et) => (
-              <option key={et.value} value={et.value}>{et.label}</option>
+              <option key={et.value} value={et.value}>{t(et.labelKey, et.fallback)}</option>
             ))}
           </select>
 
@@ -362,7 +372,7 @@ export default function ErrorLogs() {
             onChange={(e) => setGymFilter(e.target.value)}
             className="bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none"
           >
-            <option value="all">All Gyms</option>
+            <option value="all">{t('platform.errors.allGyms', 'All Gyms')}</option>
             {gyms.map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
@@ -373,7 +383,7 @@ export default function ErrorLogs() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
             <input
               type="text"
-              placeholder="Search by error message..."
+              placeholder={t('platform.errors.searchPlaceholder', 'Search by error message...')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#111827] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#6B7280] outline-none focus:border-[#D4AF37]/40 transition-colors"
@@ -386,21 +396,19 @@ export default function ErrorLogs() {
       <div className="hidden md:block bg-[#0F172A] border border-white/6 rounded-t-xl px-5 py-2.5 border-b-0">
         <div className="grid grid-cols-[24px_100px_100px_100px_80px_1fr_80px] gap-3 items-center">
           <span />
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">Time</span>
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">Gym</span>
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">User</span>
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">Type</span>
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">Message</span>
-          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">Page</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerTime', 'Time')}</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerGym', 'Gym')}</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerUser', 'User')}</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerType', 'Type')}</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerMessage', 'Message')}</span>
+          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-medium">{t('platform.errors.headerPage', 'Page')}</span>
         </div>
       </div>
 
       {/* Log entries */}
       <div className="bg-[#0F172A] border border-white/6 rounded-b-xl md:rounded-t-none rounded-xl md:rounded-xl p-4 md:border-t-0 md:rounded-t-none overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          </div>
+          <PlatformSpinner />
         ) : entries.length === 0 ? (
           <div className="text-center py-16">
             <Bug size={32} className="mx-auto text-[#6B7280] mb-3" />
@@ -413,7 +421,7 @@ export default function ErrorLogs() {
           <>
             <div className="divide-y divide-white/4">
               {entries.map((entry) => (
-                <ErrorRow key={entry.id} entry={entry} />
+                <ErrorRow key={entry.id} entry={entry} t={t} />
               ))}
             </div>
 

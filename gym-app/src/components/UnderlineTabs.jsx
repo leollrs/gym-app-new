@@ -56,7 +56,7 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable 
 
   return (
     <div ref={containerRef} className={`relative ${scrollable ? 'overflow-x-auto scrollbar-hide' : ''}`}>
-      <div className={`flex ${scrollable ? 'w-max min-w-full' : ''}`} role="tablist">
+      <div className={`flex gap-1 ${scrollable ? 'w-max min-w-full' : ''}`} role="tablist">
         {normalized.map((tab, i) => (
           <button
             key={tab.key}
@@ -68,9 +68,9 @@ export default function UnderlineTabs({ tabs, activeIndex, onChange, scrollable 
             tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onChange(i)}
             onKeyDown={(e) => handleKeyDown(e, i)}
-            className={`${scrollable ? 'shrink-0 px-4' : 'flex-1'} py-2.5 min-h-[44px] text-[13px] font-semibold text-center transition-colors relative whitespace-nowrap ${
+            className={`${scrollable ? 'shrink-0 px-5 whitespace-nowrap' : 'flex-1 min-w-0 px-2 whitespace-normal'} py-3 min-h-[48px] text-xs sm:text-sm font-semibold text-center transition-colors relative leading-tight rounded-t-md ${
               i === activeIndex
-                ? 'text-[var(--color-text-primary)]'
+                ? 'text-[var(--color-text-primary)] bg-[var(--color-surface)]/60'
                 : 'text-[var(--color-text-muted)]'
             }`}
           >

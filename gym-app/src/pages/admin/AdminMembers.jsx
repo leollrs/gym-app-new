@@ -74,7 +74,7 @@ async function fetchMembers(gymId, page = 0) {
   const from = page * MEMBERS_PAGE_SIZE;
   const to = from + MEMBERS_PAGE_SIZE - 1;
   const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
@@ -209,7 +209,7 @@ export default function AdminMembers() {
 
   const clearSelection = () => { setSelectedIds(new Set()); setBulkAction(null); };
 
-  useEffect(() => { document.title = 'Admin - Members | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Members | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   const { data: initialMembers = [], isLoading, refetch } = useQuery({
     queryKey: adminKeys.members.all(gymId),
@@ -325,7 +325,7 @@ export default function AdminMembers() {
   };
 
   const handleRevokeInvite = async (inviteId) => {
-    const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId);
+    const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId).eq('gym_id', gymId);
     if (error) logger.error('Failed to revoke invite:', error);
     else {
       logAdminAction('revoke_invite', 'invite', inviteId);
@@ -394,7 +394,11 @@ export default function AdminMembers() {
         computed_at: ts,
         followup_sent_at: ts,
       }));
-      await supabase.from('churn_risk_scores').upsert(rows, { onConflict: 'profile_id,gym_id' });
+      const { error: upsertError } = await supabase.from('churn_risk_scores').upsert(rows, { onConflict: 'profile_id,gym_id' });
+      if (upsertError) {
+        logger.error('Bulk followup: churn_risk_scores upsert failed', upsertError);
+        showToast(t('admin.members.bulkScoreUpdateFailed', { defaultValue: 'Follow-ups sent but failed to update risk scores. Please refresh.' }), 'warning');
+      }
     }
     if (successCount < total) {
       showToast(t('admin.members.bulkPartialResult', { success: successCount, total, defaultValue: 'Sent to {{success}} of {{total}} members' }), 'warning');
@@ -407,10 +411,21 @@ export default function AdminMembers() {
 
   const handleBulkFreeze = async () => {
     const ids = [...selectedIds];
-    await supabase.from('profiles').update({ membership_status: 'frozen' }).in('id', ids).eq('gym_id', gymId);
-    ids.forEach(id => logAdminAction('bulk_freeze', 'member', id));
-    refetch();
-    clearSelection();
+    try {
+      const { error } = await supabase.from('profiles').update({ membership_status: 'frozen' }).in('id', ids).eq('gym_id', gymId);
+      if (error) {
+        logger.error('Bulk freeze failed', error);
+        showToast(t('admin.members.bulkFreezeError', { defaultValue: 'Failed to freeze members. Please try again.' }), 'error');
+        return;
+      }
+      ids.forEach(id => logAdminAction('bulk_freeze', 'member', id));
+      showToast(t('admin.members.bulkFreezeSuccess', { count: ids.length, defaultValue: '{{count}} members frozen' }), 'success');
+      refetch();
+      clearSelection();
+    } catch (err) {
+      logger.error('Bulk freeze failed', err);
+      showToast(t('admin.members.bulkFreezeError', { defaultValue: 'Failed to freeze members. Please try again.' }), 'error');
+    }
   };
 
   const handleBulkExportSelected = () => {

@@ -1,18 +1,23 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send } from 'lucide-react';
+import { Users, X, ChevronRight, Search, SortAsc, ExternalLink, UserPlus, Loader2, MessageSquare, CheckSquare, Square, ClipboardList, Send, UserMinus, Ban, AlertTriangle, ShieldBan, MoreHorizontal, CheckCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { encryptMessage } from '../../lib/messageEncryption';
 import logger from '../../lib/logger';
 import { formatDistanceToNow, subDays } from 'date-fns';
+import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import UnderlineTabs from '../../components/UnderlineTabs';
+import useFocusTrap from '../../hooks/useFocusTrap';
 
 // ── Client quick-preview modal ──────────────────────────────────────────────
-const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
-  const { t } = useTranslation('pages');
+const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemove, onBlock }) => {
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const focusTrapRef = useFocusTrap(true, onClose);
 
   const daysInactive = client.last_active_at
     ? Math.floor((Date.now() - new Date(client.last_active_at)) / 86400000)
@@ -36,6 +41,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
+        ref={focusTrapRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="client-preview-title"
@@ -72,7 +78,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
               : null}
             {client.created_at && client.last_active_at ? ' · ' : ''}
             {client.last_active_at
-              ? t('trainerClients.lastSeen', 'Last seen {{time}}', { time: formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true }) })
+              ? t('trainerClients.lastSeen', 'Last seen {{time}}', { time: formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true, locale: dateFnsLocale }) })
               : null}
           </p>
         </div>
@@ -84,7 +90,7 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
             <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide mb-0.5">{t('trainerClients.lastActive', 'Last Active')}</p>
             <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">
               {client.last_active_at
-                ? formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true })
+                ? formatDistanceToNow(new Date(client.last_active_at), { addSuffix: true, locale: dateFnsLocale })
                 : t('trainerClients.never', 'Never')}
             </p>
           </div>
@@ -123,19 +129,50 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen }) => {
         {/* Action buttons */}
         <div className="px-5 pb-5 space-y-2.5">
           <button
-            onClick={onClose}
+            onClick={() => { onClose(); onMessage(client.id); }}
             className="w-full flex items-center justify-center gap-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl py-3 text-[14px] transition-colors min-h-[44px]"
           >
             <MessageSquare size={16} />
             {t('trainerClients.message', 'Message')}
           </button>
-          <button
-            onClick={onOpen}
-            className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl py-3.5 text-[15px] transition-colors min-h-[48px]"
-          >
-            <ExternalLink size={16} />
-            {t('trainerClients.openClient', 'Open Client')}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onOpen}
+              className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl py-3.5 text-[15px] transition-colors min-h-[48px]"
+            >
+              <ExternalLink size={16} />
+              {t('trainerClients.openClient', 'Open Client')}
+            </button>
+            {/* More options menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMoreMenu(prev => !prev)}
+                aria-label={t('trainerClients.moreOptions', 'More options')}
+                className="w-[48px] h-[48px] flex items-center justify-center bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] rounded-xl border border-[var(--color-border-subtle)] transition-colors"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {showMoreMenu && (
+                <div className="absolute bottom-full right-0 mb-1.5 w-48 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-xl shadow-lg overflow-hidden z-10 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <button
+                    onClick={() => { setShowMoreMenu(false); onClose(); onRemove(client); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] transition-colors text-left min-h-[44px]"
+                  >
+                    <UserMinus size={15} className="text-[var(--color-text-muted)]" />
+                    {t('trainerClients.removeClient', 'Remove Client')}
+                  </button>
+                  <div className="mx-3 border-t border-[var(--color-border-subtle)]" />
+                  <button
+                    onClick={() => { setShowMoreMenu(false); onClose(); onBlock(client); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-red-400 hover:bg-red-500/5 transition-colors text-left min-h-[44px]"
+                  >
+                    <ShieldBan size={15} />
+                    {t('trainerClients.blockClient', 'Block Client')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -147,37 +184,46 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   const { t } = useTranslation('pages');
   const [memberSearch, setMemberSearch] = useState('');
   const [members, setMembers] = useState([]);
-  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [addingId, setAddingId] = useState(null);
+  const debounceRef = useRef(null);
+  const focusTrapRef = useFocusTrap(true, onClose);
+
+  const searchMembers = useCallback(async (query) => {
+    if (query.trim().length < 2) {
+      setMembers([]);
+      setLoadingMembers(false);
+      return;
+    }
+    setLoadingMembers(true);
+    const pattern = `%${query.trim()}%`;
+    const { data, error } = await supabase
+      .from('gym_member_profiles_safe')
+      .select('id, full_name, username, last_active_at')
+      .eq('role', 'member')
+      .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
+      .order('full_name')
+      .limit(50);
+    if (error) logger.error('AddClientModal: failed to search members:', error);
+    setMembers(data || []);
+    setLoadingMembers(false);
+  }, [gymId]);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setMemberSearch(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => searchMembers(val), 300);
+  }, [searchMembers]);
 
   useEffect(() => {
-    const fetchMembers = async () => {
-      setLoadingMembers(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, last_active_at')
-        .eq('gym_id', gymId)
-        .eq('role', 'member')
-        .order('full_name');
-      if (error) logger.error('AddClientModal: failed to load members:', error);
-      setMembers(data || []);
-      setLoadingMembers(false);
-    };
-    fetchMembers();
-  }, [gymId]);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
 
   const filtered = useMemo(() => {
     const excluded = new Set(existingClientIds);
-    let list = members.filter(m => !excluded.has(m.id));
-    if (memberSearch.trim()) {
-      const q = memberSearch.toLowerCase();
-      list = list.filter(m =>
-        m.full_name?.toLowerCase().includes(q) ||
-        m.username?.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [members, memberSearch, existingClientIds]);
+    return members.filter(m => !excluded.has(m.id));
+  }, [members, existingClientIds]);
 
   const handleAdd = async (memberId) => {
     setAddingId(memberId);
@@ -198,12 +244,13 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm px-0 sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
+        ref={focusTrapRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-client-title"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] sm:max-h-[80vh] flex flex-col overflow-hidden mx-auto"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -226,8 +273,8 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
               value={memberSearch}
-              onChange={e => setMemberSearch(e.target.value)}
-              placeholder={t('trainerClients.searchMembers', 'Search gym members…')}
+              onChange={handleSearchChange}
+              placeholder={t('trainerClients.searchMembersHint', 'Type at least 2 characters to search…')}
               autoFocus
               aria-label={t('trainerClients.searchMembers', 'Search gym members')}
               className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-xl pl-10 pr-4 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)] transition-colors"
@@ -241,13 +288,18 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
             <div className="flex justify-center py-12">
               <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
             </div>
+          ) : memberSearch.trim().length < 2 ? (
+            <div className="text-center py-10">
+              <Search size={24} className="text-[var(--color-text-muted)] mx-auto mb-2" />
+              <p className="text-[13px] text-[var(--color-text-muted)]">
+                {t('trainerClients.typeToSearch', 'Type at least 2 characters to search')}
+              </p>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-10">
               <Users size={24} className="text-[var(--color-text-muted)] mx-auto mb-2" />
               <p className="text-[13px] text-[var(--color-text-muted)]">
-                {memberSearch.trim()
-                  ? t('trainerClients.noMembersMatch', 'No members match your search')
-                  : t('trainerClients.allMembersAssigned', 'All gym members are already assigned')}
+                {t('trainerClients.noMembersFound', 'No members found')}
               </p>
             </div>
           ) : (
@@ -332,7 +384,7 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -395,35 +447,59 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
   const { showToast } = useToast();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState({ sent: 0, total: 0 });
+  const focusTrapRef = useFocusTrap(true, onClose);
 
   const handleSend = async () => {
     const text = message.trim();
     if (!text) return;
     setSending(true);
+    const total = selectedClients.length;
+    setProgress({ sent: 0, total });
     let successCount = 0;
+    let failCount = 0;
+    const BATCH_SIZE = 5;
+
     try {
-      for (const client of selectedClients) {
-        try {
-          const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: client.id });
-          if (!convId) continue;
-          // Fetch encryption seed
-          const { data: conv } = await supabase
-            .from('conversations')
-            .select('encryption_seed')
-            .eq('id', convId)
-            .single();
-          const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
-          await supabase.from('direct_messages').insert({
-            conversation_id: convId,
-            sender_id: senderId,
-            body: encrypted,
-          });
-          successCount++;
-        } catch (err) {
-          logger.error('ComposeMessage: failed for client', client.id, err);
-        }
+      for (let i = 0; i < selectedClients.length; i += BATCH_SIZE) {
+        const batch = selectedClients.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(async (client) => {
+            try {
+              const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: client.id });
+              if (!convId) return false;
+              const { data: conv } = await supabase
+                .from('conversations')
+                .select('encryption_seed')
+                .eq('id', convId)
+                .single();
+              const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
+              await supabase.from('direct_messages').insert({
+                conversation_id: convId,
+                sender_id: senderId,
+                body: encrypted,
+              });
+              return true;
+            } catch (err) {
+              logger.error('ComposeMessage: failed for client', client.id, err);
+              return false;
+            }
+          })
+        );
+        const batchSuccess = results.filter(Boolean).length;
+        successCount += batchSuccess;
+        failCount += results.length - batchSuccess;
+        setProgress({ sent: Math.min(i + BATCH_SIZE, total), total });
       }
-      showToast(t('trainerClients.messageSentSuccess', 'Message sent to {{count}} clients', { count: successCount }), 'success');
+
+      if (failCount > 0) {
+        showToast(
+          t('trainerClients.messageSentPartial', '{{success}} sent, {{failed}} failed', { success: successCount, failed: failCount }),
+          'warning'
+        );
+      } else {
+        showToast(t('trainerClients.messageSentSuccess', 'Message sent to {{count}} clients', { count: successCount }), 'success');
+      }
       onDone();
     } catch (err) {
       showToast(err.message, 'error');
@@ -435,9 +511,10 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
+        ref={focusTrapRef}
         role="dialog"
         aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -470,7 +547,14 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
             className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {sending ? (
-              <Loader2 size={16} className="animate-spin" />
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                {progress.total > 0 && (
+                  <span className="text-[13px]">
+                    {t('trainerClients.sendingProgress', 'Sending {{sent}}/{{total}}...', { sent: progress.sent, total: progress.total })}
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 <Send size={16} />
@@ -492,7 +576,8 @@ const SORT_KEYS = ['last_active', 'name', 'workouts'];
 export default function TrainerClients() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const { showToast } = useToast();
   const [clients,  setClients]  = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -504,9 +589,72 @@ export default function TrainerClients() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   // Bulk selection
+  const [selectMode, setSelectMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
   const [showAssignProgram, setShowAssignProgram] = useState(false);
   const [showComposeMessage, setShowComposeMessage] = useState(false);
+  // Remove / Block client
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [blockTarget, setBlockTarget] = useState(null);
+  const [removingClient, setRemovingClient] = useState(false);
+  const [blockingClient, setBlockingClient] = useState(false);
+
+  const handleMessageClient = async (clientId) => {
+    try {
+      const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+      if (convId) navigate(`/trainer/messages/${convId}`);
+    } catch (err) {
+      logger.error('Error opening conversation:', err);
+      showToast(t('trainerClients.messageError', 'Could not open conversation'), 'error');
+    }
+  };
+
+  const handleRemoveClient = async () => {
+    if (!removeTarget) return;
+    setRemovingClient(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_clients')
+        .update({ is_active: false })
+        .eq('trainer_id', profile.id)
+        .eq('client_id', removeTarget.id);
+      if (error) throw error;
+      setClients(prev => prev.filter(c => c.id !== removeTarget.id));
+      showToast(t('trainerClients.clientRemoved', '{{name}} has been removed from your clients', { name: removeTarget.full_name }), 'success');
+    } catch (err) {
+      logger.error('RemoveClient: error', err);
+      showToast(err.message, 'error');
+    } finally {
+      setRemovingClient(false);
+      setRemoveTarget(null);
+    }
+  };
+
+  const handleBlockClient = async () => {
+    if (!blockTarget) return;
+    setBlockingClient(true);
+    try {
+      // 1. Block the user (prevents messaging)
+      const { error: blockErr } = await supabase
+        .from('blocked_users')
+        .upsert({ blocker_id: profile.id, blocked_id: blockTarget.id }, { onConflict: 'blocker_id,blocked_id' });
+      if (blockErr) throw blockErr;
+      // 2. Also deactivate the trainer-client relationship
+      await supabase
+        .from('trainer_clients')
+        .update({ is_active: false })
+        .eq('trainer_id', profile.id)
+        .eq('client_id', blockTarget.id);
+      setClients(prev => prev.filter(c => c.id !== blockTarget.id));
+      showToast(t('trainerClients.clientBlocked', '{{name}} has been blocked', { name: blockTarget.full_name }), 'success');
+    } catch (err) {
+      logger.error('BlockClient: error', err);
+      showToast(err.message, 'error');
+    } finally {
+      setBlockingClient(false);
+      setBlockTarget(null);
+    }
+  };
 
   const toggleBulkSelect = (clientId) => {
     setBulkSelected(prev => {
@@ -528,7 +676,7 @@ export default function TrainerClients() {
     return { label: t('trainerClients.churnMedium', 'Medium'), color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
   }
 
-  useEffect(() => { document.title = 'Trainer - Clients | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('trainerClients.pageTitle', `Trainer - Clients | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
@@ -639,6 +787,12 @@ export default function TrainerClients() {
 
   return (
     <div className="px-4 md:px-6 py-6 w-full max-w-5xl mx-auto pb-24 md:pb-12">
+      <style>{`
+        @keyframes slideInLeft {
+          from { opacity: 0; transform: translateX(-12px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
       <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
         style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
@@ -686,6 +840,25 @@ export default function TrainerClients() {
               <SortAsc size={14} />
               <span>{t('trainerClients.sort_' + sortBy, sortBy)}</span>
             </button>
+            <button
+              onClick={() => {
+                if (selectMode) {
+                  setSelectMode(false);
+                  setBulkSelected(new Set());
+                } else {
+                  setSelectMode(true);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-colors shrink-0 border ${
+                selectMode
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border-[var(--color-accent)]/30'
+                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-[var(--color-border-subtle)]'
+              }`}
+              title={selectMode ? t('trainerClients.exitSelect', 'Exit select') : t('trainerClients.selectClients', 'Select clients')}
+            >
+              <CheckCheck size={14} />
+              <span>{t('trainerClients.select', 'Select')}</span>
+            </button>
           </div>
 
           {/* Always-visible compact filter */}
@@ -698,8 +871,10 @@ export default function TrainerClients() {
       )}
 
       {loading ? (
-        <div className="flex justify-center py-24">
-          <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-accent-glow)', borderTopColor: 'var(--color-accent)' }} />
+        <div className="animate-pulse space-y-3 py-4">
+          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
         </div>
       ) : clients.length === 0 ? (
         <div className="text-center py-20">
@@ -737,23 +912,26 @@ export default function TrainerClients() {
               return (
                 <button
                   key={c.id}
-                  onClick={() => setSelected(c)}
+                  onClick={() => selectMode ? toggleBulkSelect(c.id) : setSelected(c)}
                   className={`w-full flex items-center gap-3 px-3.5 sm:px-4 py-4 sm:py-3.5 bg-[var(--color-bg-card)] border rounded-2xl hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-hover)] transition-all text-left overflow-hidden ${
                     bulkSelected.has(c.id) ? 'border-[var(--color-accent)]/40' : 'border-[var(--color-border-subtle)]'
                   }`}
                 >
-                  {/* Bulk select checkbox */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleBulkSelect(c.id); }}
-                    aria-label={t('trainerClients.selectClient', 'Select')}
-                    className="min-w-[36px] min-h-[36px] sm:min-w-[28px] sm:min-h-[28px] flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors flex-shrink-0"
-                  >
-                    {bulkSelected.has(c.id) ? (
-                      <CheckSquare size={18} className="text-[var(--color-accent)]" />
-                    ) : (
-                      <Square size={18} />
-                    )}
-                  </button>
+                  {/* Bulk select checkbox — only visible in select mode */}
+                  {selectMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleBulkSelect(c.id); }}
+                      aria-label={t('trainerClients.selectClient', 'Select')}
+                      className="min-w-[36px] min-h-[36px] sm:min-w-[28px] sm:min-h-[28px] flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors flex-shrink-0 animate-[slideInLeft_0.15s_ease-out]"
+                      style={{ animation: 'slideInLeft 0.15s ease-out' }}
+                    >
+                      {bulkSelected.has(c.id) ? (
+                        <CheckSquare size={18} className="text-[var(--color-accent)]" />
+                      ) : (
+                        <Square size={18} />
+                      )}
+                    </button>
+                  )}
                   <div className="w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] flex items-center justify-center flex-shrink-0 relative">
                     <span className="text-[13px] font-bold text-[var(--color-text-secondary)]">{(c.full_name || 'U')[0]}</span>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--color-bg-primary)] ${
@@ -771,7 +949,7 @@ export default function TrainerClients() {
                     </div>
                     <p className="text-[11px] text-[var(--color-text-muted)]">
                       {c.last_active_at
-                        ? t('trainerClients.activeAgo', 'Active {{time}}', { time: formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true }) })
+                        ? t('trainerClients.activeAgo', 'Active {{time}}', { time: formatDistanceToNow(new Date(c.last_active_at), { addSuffix: true, locale: dateFnsLocale }) })
                         : t('trainerClients.neverActive', 'Never active')}
                     </p>
                   </div>
@@ -799,7 +977,7 @@ export default function TrainerClients() {
                         } catch (err) { logger.error('Error opening conversation:', err); }
                       }}
                       aria-label={t('trainerClients.messageClient', 'Message')}
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors"
+                      className="w-11 h-11 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors"
                     >
                       <MessageSquare size={15} />
                     </button>
@@ -821,6 +999,9 @@ export default function TrainerClients() {
             setSelected(null);
             navigate(`/trainer/clients/${selected.id}`);
           }}
+          onMessage={handleMessageClient}
+          onRemove={(client) => setRemoveTarget(client)}
+          onBlock={(client) => setBlockTarget(client)}
         />
       )}
 
@@ -839,27 +1020,27 @@ export default function TrainerClients() {
 
       {/* Bulk action bar */}
       {bulkSelected.size > 0 && (
-        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl shadow-lg backdrop-blur-sm">
-          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] mr-1">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl shadow-lg backdrop-blur-sm max-w-[calc(100vw-2rem)]">
+          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] mr-1 whitespace-nowrap">
             {t('trainerClients.selectedCount', '{{count}} selected', { count: bulkSelected.size })}
           </span>
           <button
             onClick={() => setShowAssignProgram(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[12px] transition-colors min-h-[36px]"
+            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[12px] transition-colors min-h-[44px]"
           >
             <ClipboardList size={14} />
             {t('trainerClients.assignProgram', 'Assign Program')}
           </button>
           <button
             onClick={() => setShowComposeMessage(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[12px] transition-colors min-h-[36px] border border-[var(--color-border-subtle)]"
+            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[12px] transition-colors min-h-[44px] border border-[var(--color-border-subtle)]"
           >
             <Send size={14} />
             {t('trainerClients.messageAll', 'Message All')}
           </button>
           <button
-            onClick={() => setBulkSelected(new Set())}
-            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors rounded-lg"
+            onClick={() => { setBulkSelected(new Set()); setSelectMode(false); }}
+            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label={t('trainerClients.clearSelection', 'Clear selection')}
           >
             <X size={16} />
@@ -875,6 +1056,7 @@ export default function TrainerClients() {
           onDone={() => {
             setShowAssignProgram(false);
             setBulkSelected(new Set());
+            setSelectMode(false);
             setReloadKey(k => k + 1);
           }}
         />
@@ -888,8 +1070,101 @@ export default function TrainerClients() {
           onDone={() => {
             setShowComposeMessage(false);
             setBulkSelected(new Set());
+            setSelectMode(false);
           }}
         />
+      )}
+
+      {/* Remove Client Confirmation */}
+      {removeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setRemoveTarget(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-5 pt-6 pb-4">
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3">
+                <AlertTriangle size={24} className="text-amber-400" />
+              </div>
+              <h2 className="text-[16px] font-bold text-[var(--color-text-primary)] text-center">
+                {t('trainerClients.removeConfirmTitle', 'Remove Client')}
+              </h2>
+              <p className="text-[13px] text-[var(--color-text-muted)] text-center mt-2">
+                {t('trainerClients.removeConfirmDesc', 'Are you sure you want to remove {{name}} from your client list? This will not delete their account.', { name: removeTarget.full_name })}
+              </p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2.5">
+              <button
+                onClick={() => setRemoveTarget(null)}
+                className="flex-1 py-3 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[14px] transition-colors min-h-[48px]"
+              >
+                {t('trainerClients.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleRemoveClient}
+                disabled={removingClient}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {removingClient ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <>
+                    <UserMinus size={16} />
+                    {t('trainerClients.confirmRemove', 'Remove')}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block Client Confirmation */}
+      {blockTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setBlockTarget(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-[92vw] sm:max-w-sm overflow-hidden mx-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-5 pt-6 pb-4">
+              <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mb-3">
+                <ShieldBan size={24} className="text-red-400" />
+              </div>
+              <h2 className="text-[16px] font-bold text-[var(--color-text-primary)] text-center">
+                {t('trainerClients.blockConfirmTitle', 'Block Client')}
+              </h2>
+              <p className="text-[13px] text-[var(--color-text-muted)] text-center mt-2">
+                {t('trainerClients.blockConfirmDesc', 'Are you sure you want to block {{name}}? They will be removed from your client list and will not be able to send you messages.', { name: blockTarget.full_name })}
+              </p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2.5">
+              <button
+                onClick={() => setBlockTarget(null)}
+                className="flex-1 py-3 bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] font-semibold rounded-xl text-[14px] transition-colors min-h-[48px]"
+              >
+                {t('trainerClients.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleBlockClient}
+                disabled={blockingClient}
+                className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {blockingClient ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <>
+                    <ShieldBan size={16} />
+                    {t('trainerClients.confirmBlock', 'Block')}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

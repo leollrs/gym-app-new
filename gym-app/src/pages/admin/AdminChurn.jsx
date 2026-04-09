@@ -5,8 +5,10 @@ import {
   AlertTriangle, Search, Phone, Filter, Users, Clock, RotateCcw,
   CheckCircle, MessageSquare, Download, Square, CheckSquare, Send,
   UserPlus, X, Sparkles, FlaskConical, Trophy, StopCircle, Plus, ChevronDown, MoreHorizontal, Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
+import { es as esLocale } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,9 +18,10 @@ import { fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
+import { logAdminAction } from '../../lib/adminAudit';
 
 // Shared components
-import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs } from '../../components/admin';
+import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
 
@@ -136,9 +139,16 @@ async function autoDetectReturns(winBackAttempts, gymId) {
 
   if (toUpdate.length > 0) {
     try {
-      await Promise.all(toUpdate.map(id =>
-        supabase.from('win_back_attempts').update({ outcome: 'returned' }).eq('id', id)
+      const results = await Promise.allSettled(toUpdate.map(id =>
+        supabase.from('win_back_attempts').update({ outcome: 'returned' }).eq('id', id).eq('gym_id', gymId).then(res => {
+          if (res.error) throw res.error;
+          return res;
+        })
       ));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        logger.error(`Auto-detect returns: ${failed} of ${toUpdate.length} updates failed`);
+      }
     } catch (err) {
       logger.error('Auto-detect returns: batch update failed', err);
     }
@@ -215,6 +225,19 @@ async function fetchChurnData(gymId) {
     autoDetected = result.autoDetected;
   } catch (_) {}
 
+  // Fetch the most recent computed_at timestamp for staleness indicator
+  let lastComputedAt = null;
+  try {
+    const { data: latestScore } = await supabase
+      .from('churn_risk_scores')
+      .select('computed_at')
+      .eq('gym_id', gymId)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestScore?.computed_at) lastComputedAt = latestScore.computed_at;
+  } catch (_) {}
+
   return {
     members: scored,
     challenges,
@@ -222,14 +245,15 @@ async function fetchChurnData(gymId) {
     autoDetectedReturns: autoDetected,
     contactLogs: contactLogRows,
     campaigns: campaignRows,
+    lastComputedAt,
   };
 }
 
 const outcomeConfig = {
-  returned:       { i18nKey: 'admin.churn.outcomeReturned', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
-  no_response:    { i18nKey: 'admin.churn.outcomeNoResponse', color: '#9CA3AF', bg: 'rgba(156,163,175,0.08)' },
+  returned:       { i18nKey: 'admin.churn.outcomeReturned', color: 'var(--color-success, #10B981)', bg: 'color-mix(in srgb, var(--color-success, #10B981) 12%, transparent)' },
+  no_response:    { i18nKey: 'admin.churn.outcomeNoResponse', color: 'var(--color-text-secondary)', bg: 'color-mix(in srgb, var(--color-text-secondary) 8%, transparent)' },
   still_inactive: { i18nKey: 'admin.churn.outcomeStillInactive', color: '#F59E0B', bg: 'rgba(245,158,11,0.10)' },
-  pending:        { i18nKey: 'admin.churn.outcomePending', color: '#6B7280', bg: 'rgba(107,114,128,0.08)' },
+  pending:        { i18nKey: 'admin.churn.outcomePending', color: 'var(--color-text-muted)', bg: 'color-mix(in srgb, var(--color-text-muted) 8%, transparent)' },
 };
 
 const METHOD_I18N = {
@@ -243,59 +267,73 @@ const METHOD_I18N = {
 // ── Bulk Message Modal ────────────────────────────────────
 function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
   const { t } = useTranslation('pages');
-  const [msg, setMsg] = useState(t('admin.churn.bulkDefaultMessage', '¡Hola! Notamos que no has venido en un tiempo. ¡Te extrañamos — vuelve y aplasta tus metas!'));
+  const { showToast } = useToast();
+  const [msg, setMsg] = useState(t('admin.churn.bulkDefaultMessage'));
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
 
   const handleSend = async () => {
     setSending(true);
+    let failures = [];
     try {
       const notifications = members.map(m => ({
         profile_id: m.id, gym_id: gymId, type: 'admin_message',
         title: t('admin.churn.messageFromGym'), body: msg, data: { source: 'bulk_churn_intel' },
       }));
-      await supabase.from('notifications').insert(notifications);
+      const { error: notifError } = await supabase.from('notifications').insert(notifications);
+      if (notifError) {
+        failures.push('notifications');
+        logger.error('Bulk message: notifications insert failed', notifError);
+      }
 
       const winBackLogs = members.map(m => ({
         user_id: m.id, gym_id: gymId, admin_id: adminId,
         message: msg, offer: null, outcome: 'pending', created_at: new Date().toISOString(),
       }));
-      await supabase.from('win_back_attempts').insert(winBackLogs);
+      const { error: winBackError } = await supabase.from('win_back_attempts').insert(winBackLogs);
+      if (winBackError) {
+        failures.push('win_back_attempts');
+        logger.error('Bulk message: win_back_attempts insert failed', winBackError);
+      }
 
       const contactEntries = members.map(m => ({
         admin_id: adminId, member_id: m.id, gym_id: gymId,
         method: 'in_app_message', note: 'Bulk message from churn intelligence',
       }));
-      await supabase.from('admin_contact_log').insert(contactEntries);
+      const { error: contactError } = await supabase.from('admin_contact_log').insert(contactEntries);
+      if (contactError) {
+        failures.push('admin_contact_log');
+        logger.error('Bulk message: admin_contact_log insert failed', contactError);
+      }
 
-      setSent(true);
-      setTimeout(() => { onSent?.(); onClose(); }, 1200);
+      if (failures.length === 0) {
+        setSent(true);
+        setTimeout(() => { onSent?.(); onClose(); }, 1200);
+      } else if (failures.length < 3) {
+        showToast(t('admin.churn.bulkPartialFailure', { failed: failures.length, total: 3, defaultValue: '{{failed}} of 3 operations failed. Messages may be partially saved.' }), 'warning');
+        setSent(true);
+        setTimeout(() => { onSent?.(); onClose(); }, 1200);
+      } else {
+        showToast(t('admin.churn.bulkAllFailed', { defaultValue: 'All operations failed. Please try again.' }), 'error');
+      }
     } catch (err) {
       logger.error('Bulk message failed', err);
+      showToast(t('admin.churn.bulkSendError', { defaultValue: 'Failed to send bulk message' }), 'error');
     } finally { setSending(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <div className="flex items-center gap-2">
-            <MessageSquare size={16} style={{ color: 'var(--color-accent)' }} />
-            <h3 className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.churn.bulkMessageTitle', 'Mensaje Masivo')}</h3>
-          </div>
-          <button onClick={onClose} aria-label={t('admin.churn.close', 'Cerrar')} style={{ color: 'var(--color-text-muted)' }} className="hover:opacity-80 transition-colors"><X size={18} /></button>
-        </div>
-        <div className="px-5 py-4 space-y-4">
-          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.churn.bulkSendingTo', 'Enviando a {{count}} miembro(s)').replace('{{count}}', members.length)}</p>
-          <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4}
-            className="w-full rounded-xl px-3.5 py-3 text-[13px] outline-none resize-none"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.churn.bulkHint', 'Cada miembro recibirá esto como una notificación en la app.')}</p>
-        </div>
-        <div className="flex gap-3 px-5 py-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+    <AdminModal
+      isOpen={true}
+      onClose={onClose}
+      title={t('admin.churn.bulkMessageTitle')}
+      titleIcon={MessageSquare}
+      size="sm"
+      footer={
+        <>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
             style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-            {t('admin.churn.cancel', 'Cancelar')}
+            {t('admin.churn.bulkCancel')}
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
@@ -303,11 +341,19 @@ function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
               ? { backgroundColor: 'color-mix(in srgb, var(--color-success) 15%, transparent)', color: 'var(--color-success)', border: '1px solid color-mix(in srgb, var(--color-success) 25%, transparent)' }
               : { backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
             }>
-            {sent ? <><CheckCircle size={14} /> {t('admin.churn.bulkSent', '¡Enviado!')}</> : sending ? t('admin.churn.bulkSending', 'Enviando...') : <><Send size={13} /> {t('admin.churn.bulkSendAll', 'Enviar a {{count}}').replace('{{count}}', members.length)}</>}
+            {sent ? <><CheckCircle size={14} /> {t('admin.churn.bulkSent')}</> : sending ? t('admin.churn.bulkSending') : <><Send size={13} /> {t('admin.churn.bulkSendAll', { count: members.length })}</>}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.churn.bulkSendingTo', { count: members.length })}</p>
+        <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={4}
+          className="w-full rounded-xl px-3.5 py-3 text-[13px] outline-none resize-none"
+          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('admin.churn.bulkHint')}</p>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
@@ -340,7 +386,7 @@ function MemberDetailPanel({ member, contactLogs, contactedIds, winBackAttempts,
         ? t('admin.churn.recentlyActive', 'Recently active')
         : t('admin.churn.inactive', 'Inactive');
 
-  const activityColor = daysInactive === null ? '#6B7280' : daysInactive < 1 ? '#10B981' : daysInactive <= 7 ? '#F59E0B' : '#EF4444';
+  const activityColor = daysInactive === null ? 'var(--color-text-muted)' : daysInactive < 1 ? 'var(--color-success, #10B981)' : daysInactive <= 7 ? '#F59E0B' : 'var(--color-danger, #EF4444)';
 
   // Contact history for this member
   const memberContactLogs = contactLogs
@@ -541,13 +587,13 @@ export default function AdminChurn() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
 
   const gymId = profile?.gym_id;
   const adminId = profile?.id;
   const isAuthorized = profile && ['admin', 'super_admin'].includes(profile.role) && !!gymId;
 
-  useEffect(() => { document.title = 'Admin - Churn | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Churn | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   const [tab, setTab] = useState('task-board');
   const [search, setSearch] = useState('');
@@ -561,8 +607,9 @@ export default function AdminChurn() {
 
   const handleDeleteAttempt = async (attemptId) => {
     try {
-      const { error } = await supabase.from('win_back_attempts').delete().eq('id', attemptId);
+      const { error } = await supabase.from('win_back_attempts').delete().eq('id', attemptId).eq('gym_id', gymId);
       if (error) throw error;
+      logAdminAction('delete_win_back_attempt', 'win_back_attempt', attemptId);
       await queryClient.invalidateQueries({ queryKey: adminKeys.churn.all(gymId) });
       setDeletingAttempt(null);
       showToast(t('admin.churn.attemptDeleted', 'Intento eliminado'), 'success');
@@ -604,6 +651,30 @@ export default function AdminChurn() {
         else refetch();
       });
   }, [gymId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Manual refresh scores
+  const [refreshingScores, setRefreshingScores] = useState(false);
+  const handleRefreshScores = useCallback(async () => {
+    if (!gymId || refreshingScores) return;
+    setRefreshingScores(true);
+    try {
+      const { error } = await supabase.rpc('compute_churn_scores', { p_gym_id: gymId });
+      if (error) throw error;
+      await refetch();
+      showToast(t('admin.churn.scoresRefreshed', 'Scores refreshed'), 'success');
+    } catch (err) {
+      logger.error('Manual compute_churn_scores:', err);
+      showToast(err.message || 'Error refreshing scores', 'error');
+    } finally {
+      setRefreshingScores(false);
+    }
+  }, [gymId, refreshingScores, refetch, showToast, t]);
+
+  // Staleness indicator
+  const lastComputedAt = data?.lastComputedAt;
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  const isStale = lastComputedAt ? (Date.now() - new Date(lastComputedAt).getTime()) > TWO_HOURS_MS : false;
+  const dateFnsLocaleOpt = i18n.language?.startsWith('es') ? { locale: esLocale } : {};
 
   // Close overflow menu on click outside
   useEffect(() => {
@@ -668,11 +739,19 @@ export default function AdminChurn() {
 
   const handleEndCampaign = async (campaignId, winnerVariant) => {
     try {
-      await supabase.from('winback_campaigns').update({
+      const { error } = await supabase.from('winback_campaigns').update({
         is_active: false, ended_at: new Date().toISOString(),
-      }).eq('id', campaignId);
-      refetch();
-    } catch (err) { logger.error('Failed to end campaign', err); }
+      }).eq('id', campaignId).eq('gym_id', gymId);
+      if (error) {
+        logger.error('Failed to end campaign', error);
+        showToast(t('admin.churn.endCampaignError', { defaultValue: 'Failed to end campaign' }), 'error');
+      } else {
+        refetch();
+      }
+    } catch (err) {
+      logger.error('Failed to end campaign', err);
+      showToast(t('admin.churn.endCampaignError', { defaultValue: 'Failed to end campaign' }), 'error');
+    }
   };
 
   const atRiskMembers = useMemo(() => {
@@ -769,19 +848,37 @@ export default function AdminChurn() {
     setBulkActionLoading(true);
     try {
       const rows = selectedMembers.map(m => ({ profile_id: m.id, challenge_id: challengeId, gym_id: gymId, score: 0 }));
-      await supabase.from('challenge_participants').upsert(rows, { onConflict: 'profile_id,challenge_id', ignoreDuplicates: true });
-      clearSelection();
-    } catch (err) { logger.error('Bulk add to challenge failed', err); }
+      const { error } = await supabase.from('challenge_participants').upsert(rows, { onConflict: 'profile_id,challenge_id', ignoreDuplicates: true });
+      if (error) {
+        logger.error('Bulk add to challenge failed', error);
+        showToast(t('admin.churn.bulkChallengeError', { defaultValue: 'Failed to add members to challenge. Please try again.' }), 'error');
+      } else {
+        showToast(t('admin.churn.bulkChallengeSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members added to challenge' }), 'success');
+        clearSelection();
+      }
+    } catch (err) {
+      logger.error('Bulk add to challenge failed', err);
+      showToast(t('admin.churn.bulkChallengeError', { defaultValue: 'Failed to add members to challenge. Please try again.' }), 'error');
+    }
     finally { setBulkActionLoading(false); setBulkChallengeId(''); }
   };
 
   const handleBulkMarkContacted = async () => {
     try {
       const entries = selectedMembers.map(m => ({ admin_id: adminId, member_id: m.id, gym_id: gymId, method: 'manual', note: 'Bulk mark contacted' }));
-      await supabase.from('admin_contact_log').insert(entries);
-      clearSelection();
-      refetch();
-    } catch (err) { logger.error('Bulk mark contacted failed', err); }
+      const { error } = await supabase.from('admin_contact_log').insert(entries);
+      if (error) {
+        logger.error('Bulk mark contacted failed', error);
+        showToast(t('admin.churn.bulkContactError', { defaultValue: 'Failed to mark members as contacted' }), 'error');
+      } else {
+        showToast(t('admin.churn.bulkContactSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members marked as contacted' }), 'success');
+        clearSelection();
+        refetch();
+      }
+    } catch (err) {
+      logger.error('Bulk mark contacted failed', err);
+      showToast(t('admin.churn.bulkContactError', { defaultValue: 'Failed to mark members as contacted' }), 'error');
+    }
   };
 
   // DB-backed contact logging
@@ -801,18 +898,36 @@ export default function AdminChurn() {
 
   const handleAddToChallenge = async (member, challengeId) => {
     if (!challengeId) return;
-    await supabase.from('challenge_participants').upsert(
-      { profile_id: member.id, challenge_id: challengeId, gym_id: gymId, score: 0 },
-      { onConflict: 'profile_id,challenge_id', ignoreDuplicates: true }
-    );
+    try {
+      const { error } = await supabase.from('challenge_participants').upsert(
+        { profile_id: member.id, challenge_id: challengeId, gym_id: gymId, score: 0 },
+        { onConflict: 'profile_id,challenge_id', ignoreDuplicates: true }
+      );
+      if (error) {
+        logger.error('Add to challenge failed', error);
+        showToast(t('admin.churn.addChallengeError', { defaultValue: 'Failed to add member to challenge' }), 'error');
+      }
+    } catch (err) {
+      logger.error('Add to challenge failed', err);
+      showToast(t('admin.churn.addChallengeError', { defaultValue: 'Failed to add member to challenge' }), 'error');
+    }
   };
 
   const handleMarkOutcome = async (attemptId, outcome) => {
     setSavingOutcome(attemptId);
     try {
-      await supabase.from('win_back_attempts').update({ outcome }).eq('id', attemptId);
-      setWinBackAttempts(prev => prev.map(a => a.id === attemptId ? { ...a, outcome } : a));
-    } catch (_) {} finally { setSavingOutcome(null); }
+      const { error } = await supabase.from('win_back_attempts').update({ outcome }).eq('id', attemptId).eq('gym_id', gymId);
+      if (error) {
+        logger.error('Mark outcome failed', error);
+        showToast(t('admin.churn.outcomeError', { defaultValue: 'Failed to update outcome' }), 'error');
+      } else {
+        logAdminAction('update_win_back_outcome', 'win_back_attempt', attemptId, { outcome });
+        setWinBackAttempts(prev => prev.map(a => a.id === attemptId ? { ...a, outcome } : a));
+      }
+    } catch (err) {
+      logger.error('Mark outcome failed', err);
+      showToast(t('admin.churn.outcomeError', { defaultValue: 'Failed to update outcome' }), 'error');
+    } finally { setSavingOutcome(null); }
   };
 
   const handleExport = () => {
@@ -941,7 +1056,7 @@ export default function AdminChurn() {
       sortValue: (m) => m.daysSinceLastCheckIn ?? 9999,
       render: (m) => {
         const days = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : null;
-        const color = days === null ? '#6B7280' : days < 7 ? '#10B981' : days < 14 ? '#F59E0B' : '#EF4444';
+        const color = days === null ? 'var(--color-text-muted)' : days < 7 ? 'var(--color-success, #10B981)' : days < 14 ? '#F59E0B' : 'var(--color-danger, #EF4444)';
         return (
           <span className="text-[13px] font-bold tabular-nums" style={{ color }}>
             {days ?? '--'}
@@ -1001,20 +1116,42 @@ export default function AdminChurn() {
         title={t('admin.churn.title', 'Churn Intelligence')}
         subtitle={loading ? t('admin.churn.analyzing', 'Analyzing member activity…') : `${criticalCount} ${t('admin.churn.critical', 'critical')} · ${highRiskCount} ${t('admin.churn.highRisk', 'high risk')} · ${medRiskCount} ${t('admin.churn.mediumRisk', 'medium risk')} · ${churnedMembers.length} ${t('admin.churn.churned', 'churned')}`}
         actions={
-          <button onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
-            <Download size={13} /> {t('admin.churn.export', 'Export')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleRefreshScores} disabled={refreshingScores}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors disabled:opacity-50"
+              title={t('admin.churn.refreshScores', 'Refresh Scores')}>
+              <RefreshCw size={13} className={refreshingScores ? 'animate-spin' : ''} /> {t('admin.churn.refreshScores', 'Refresh Scores')}
+            </button>
+            <button onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+              <Download size={13} /> {t('admin.churn.export', 'Export')}
+            </button>
+          </div>
         }
       />
+
+      {/* Staleness indicator */}
+      {!loading && lastComputedAt && (
+        <div className={`flex items-center gap-2 mt-2 px-3 py-2 rounded-xl text-[12px] ${isStale ? 'bg-[#F59E0B]/8 border border-[#F59E0B]/20' : 'bg-white/3 border border-white/6'}`}>
+          <Clock size={13} className={isStale ? 'text-[#F59E0B]' : 'text-[#6B7280]'} />
+          <span className={isStale ? 'text-[#F59E0B] font-medium' : 'text-[#6B7280]'}>
+            {t('admin.churn.lastUpdated', 'Scores last updated')}: {formatDistanceToNow(new Date(lastComputedAt), { addSuffix: true, ...dateFnsLocaleOpt })}
+          </span>
+          {isStale && (
+            <span className="ml-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#F59E0B]/12 text-[#F59E0B] border border-[#F59E0B]/20">
+              {t('admin.churn.scoresOutdated', 'Scores may be outdated')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Summary Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-6">
         {[
           { label: t('admin.churn.critical', 'Critical'), value: loading ? '—' : criticalCount, color: '#DC2626', sub: t('admin.churn.scoreGte80', 'score ≥ 80'), filterKey: 'critical' },
           { label: t('admin.churn.highRisk', 'High Risk'), value: loading ? '—' : highRiskCount, color: '#EF4444', sub: t('admin.churn.score5579', 'score 55–79'), filterKey: 'high' },
-          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, color: '#D4AF37', sub: t('admin.churn.contactedSub', 'outreach logged'), filterKey: 'contacted' },
-          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, color: '#10B981', sub: t('admin.churn.returnedSub', 'came back'), filterKey: 'returned' },
+          { label: t('admin.churn.filterContacted', 'Contacted'), value: loading ? '—' : contactedCount, color: 'var(--color-accent)', sub: t('admin.churn.contactedSub', 'outreach logged'), filterKey: 'contacted' },
+          { label: t('admin.churn.filterReturned', 'Returned'), value: loading ? '—' : returnedCount, color: 'var(--color-success, #10B981)', sub: t('admin.churn.returnedSub', 'came back'), filterKey: 'returned' },
         ].map(card => (
           <button key={card.label} onClick={() => { setTab('task-board'); setRiskFilter(card.filterKey); }}
             className={`text-left bg-[#0F172A] border rounded-[14px] p-4 border-l-2 overflow-hidden transition-colors hover:border-white/15 ${tab === 'task-board' && riskFilter === card.filterKey ? 'border-white/20 ring-1 ring-white/10' : 'border-white/8'}`}
@@ -1147,7 +1284,7 @@ export default function AdminChurn() {
                   const hasReturned = returnedUserIds.has(m.id);
                   const pills = getTopSignals(m, 2);
                   const daysInactive = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : null;
-                  const daysColor = daysInactive === null ? '#6B7280' : daysInactive < 7 ? '#10B981' : daysInactive < 14 ? '#F59E0B' : '#EF4444';
+                  const daysColor = daysInactive === null ? 'var(--color-text-muted)' : daysInactive < 7 ? 'var(--color-success, #10B981)' : daysInactive < 14 ? '#F59E0B' : 'var(--color-danger, #EF4444)';
                   return (
                     <div key={m.id} onClick={() => { setSelectedMember(m); setMobileDetailOpen(true); }}
                       role="button" tabIndex={0} aria-label={t('admin.churn.viewMemberDetails', { name: m.full_name, defaultValue: 'View details for {{name}}' })}
@@ -1357,18 +1494,18 @@ export default function AdminChurn() {
                           <>
                             <button onClick={() => handleMarkOutcome(attempt.id, 'returned')} disabled={isSaving}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 hover:bg-[#10B981]/18 transition-colors disabled:opacity-40">
-                              <CheckCircle size={11} /> {t('admin.churn.markReturned', 'Marcar Regresó')}
+                              <CheckCircle size={11} /> {t('admin.churn.markReturned', 'Mark Returned')}
                             </button>
                             {outcome !== 'no_response' && (
                               <button onClick={() => handleMarkOutcome(attempt.id, 'no_response')} disabled={isSaving}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors disabled:opacity-40">
-                                {t('admin.churn.noResponse', 'Sin Respuesta')}
+                                {t('admin.churn.noResponse', 'No Response')}
                               </button>
                             )}
                             {outcome !== 'still_inactive' && (
                               <button onClick={() => handleMarkOutcome(attempt.id, 'still_inactive')} disabled={isSaving}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#F59E0B]/8 text-[#F59E0B] border border-[#F59E0B]/15 hover:bg-[#F59E0B]/15 transition-colors disabled:opacity-40">
-                                {t('admin.churn.stillInactive', 'Sigue Inactivo')}
+                                {t('admin.churn.stillInactive', 'Still Inactive')}
                               </button>
                             )}
                           </>
@@ -1377,17 +1514,17 @@ export default function AdminChurn() {
                           <div className="flex gap-1.5 ml-auto">
                             <button onClick={() => handleDeleteAttempt(attempt.id)}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 border border-red-400/25 hover:bg-red-500/25 transition-colors">
-                              <Trash2 size={11} /> {t('admin.churn.confirmDelete', '¿Confirmar?')}
+                              <Trash2 size={11} /> {t('admin.churn.confirmDelete', 'Confirm?')}
                             </button>
                             <button onClick={() => setDeletingAttempt(null)}
                               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors">
-                              {t('admin.churn.cancel', 'Cancelar')}
+                              {t('admin.churn.bulkCancel')}
                             </button>
                           </div>
                         ) : (
                           <button onClick={() => setDeletingAttempt(attempt.id)}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-red-400 border border-red-400/20 hover:bg-red-400/10 transition-colors ml-auto">
-                            <Trash2 size={11} /> {t('admin.churn.deleteAttempt', 'Eliminar')}
+                            <Trash2 size={11} /> {t('admin.churn.deleteAttempt', 'Delete')}
                           </button>
                         )}
                       </div>
@@ -1398,7 +1535,7 @@ export default function AdminChurn() {
               {winBackAttempts.length > winBackVisible && (
                 <button onClick={() => setWinBackVisible(v => v + 10)}
                   className="w-full py-3 text-[12px] font-semibold transition-colors" style={{ color: 'var(--color-accent)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                  {t('admin.churn.showMore', 'Mostrar más')} ({winBackAttempts.length - winBackVisible} {t('admin.churn.remaining', 'restantes')})
+                  {t('admin.churn.showMore', 'Show more')} ({winBackAttempts.length - winBackVisible} {t('admin.churn.remaining', 'remaining')})
                 </button>
               )}
               <p className="text-[11px] text-center py-2" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border-subtle)' }}>

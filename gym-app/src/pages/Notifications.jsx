@@ -10,6 +10,7 @@ import { sanitize } from '../lib/sanitize';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '../contexts/ToastContext';
 
 const TYPE_META = {
   announcement: { icon: Megaphone, color: 'text-blue-400',    bg: 'bg-blue-500/10'   },
@@ -31,12 +32,15 @@ export default function Notifications() {
   const { user, profile, refreshNotifications } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const { data: queryItems, isLoading: queryLoading } = useNotifications(user?.id);
   const { invalidateNotifications } = useInvalidate();
   const [items, setItems]               = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [marking, setMarking]           = useState(false);
   const [displayLimit, setDisplayLimit]   = useState(5);
+
+  useEffect(() => { document.title = `${t('notifications.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Sync TanStack Query data into local state (needed for optimistic updates)
   const loading = queryLoading && items.length === 0;
@@ -106,7 +110,8 @@ export default function Notifications() {
     setItems(prev => prev.filter(n => n.id !== id));
     const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('id', id);
     if (error) {
-      console.error('[Notif] dismiss failed:', error.message, error.code);
+      logger.error('Notifications: dismiss failed:', error);
+      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
       invalidateNotifications(user.id);
     } else {
       invalidateNotifications(user.id);
@@ -122,7 +127,8 @@ export default function Notifications() {
     setItems([]);
     const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('profile_id', user.id).is('dismissed_at', null);
     if (error) {
-      console.error('[Notif] clearAll failed:', error.message, error.code);
+      logger.error('Notifications: clearAll failed:', error);
+      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
     }
     invalidateNotifications(user.id);
     refreshNotifications();
@@ -135,11 +141,10 @@ export default function Notifications() {
     setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: now } : n));
     const { error } = await supabase.from('notifications').update({ read_at: now }).eq('id', id);
     if (error) {
-      console.error('[Notif] markRead failed:', error.message, error.code);
+      logger.error('Notifications: markRead failed:', error);
+      showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
       // Revert optimistic update on failure
       setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: null } : n));
-    } else {
-      console.log('[Notif] markRead success:', id);
     }
     // Invalidate the query cache so TanStack Query doesn't overwrite with stale data
     invalidateNotifications(user.id);
@@ -156,11 +161,10 @@ export default function Notifications() {
       setItems(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }));
       const { error } = await supabase.from('notifications').update({ read_at: now }).eq('profile_id', user.id).is('read_at', null);
       if (error) {
-        console.error('[Notif] markAllRead failed:', error.message, error.code);
+        logger.error('Notifications: markAllRead failed:', error);
+        showToast(t('toasts.somethingWentWrong', { message: error.message }), 'error');
         // Revert optimistic update on failure
         setItems(prev => prev.map(n => unread.includes(n.id) ? { ...n, read_at: null } : n));
-      } else {
-        console.log('[Notif] markAllRead success:', unread.length, 'notifications');
       }
       // Invalidate the query cache so TanStack Query doesn't overwrite with stale data
       invalidateNotifications(user.id);

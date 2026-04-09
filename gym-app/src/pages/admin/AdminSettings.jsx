@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Save, Clock, Upload, Image as ImageIcon, Users, ChevronDown, ChevronUp, Shield, CalendarOff, Plus, Trash2, Palette, Check, RotateCcw, AlertTriangle, Wand2, CalendarDays, Mail, Eye, Bell, Globe, Settings2, Megaphone, Tag, ArrowUp, ArrowDown, Pencil, Sparkles, Sun, Gift, Percent, Cake } from 'lucide-react';
 
 const AdminNotificationPrefs = lazy(() => import('./AdminNotificationPrefs'));
@@ -14,7 +15,7 @@ import { getAllPalettes, getPalette, DEFAULT_PALETTE } from '../../lib/palettes'
 import { analyzeColorPair, autoHarmonize } from '../../lib/themeGenerator';
 import { validateImageFile } from '../../lib/validateImage';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
+import { PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton, AdminPageShell, AdminTabs, AdminModal, Toggle } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 
@@ -147,21 +148,6 @@ async function getSignedLogoUrl(path) {
   return data.signedUrl;
 }
 
-// ── Toggle switch helper ──
-function Toggle({ checked, onChange, label }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-      style={{ backgroundColor: checked ? 'var(--color-accent)' : 'var(--color-text-faint)' }}
-      aria-label={label}
-    >
-      <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        style={{ left: checked ? 'calc(100% - 18px)' : '2px' }} />
-    </button>
-  );
-}
-
 // ── Reward config sub-form ──
 function RewardConfig({ reward, onChange, labelPrefix, t }) {
   const typeLabels = {
@@ -246,7 +232,11 @@ export default function AdminSettings() {
 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [settingsTab, setSettingsTab] = useState('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const settingsTab = searchParams.get('tab') || 'general';
+  const setSettingsTab = useCallback((tab) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]);
 
   // Editable fields
   const [name, setName]           = useState('');
@@ -339,7 +329,7 @@ export default function AdminSettings() {
   const [closureName, setClosureName] = useState('');
   const [closureSaving, setClosureSaving] = useState(false);
 
-  useEffect(() => { document.title = 'Admin - Settings | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Settings | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // ── Load settings ──
   const { data: settingsData, isLoading } = useQuery({
@@ -561,7 +551,7 @@ export default function AdminSettings() {
         cover_image_url: offerForm.cover_image_url || null,
       };
       if (editingOffer) {
-        const { error: upErr } = await supabase.from('gym_offers').update(payload).eq('id', editingOffer.id);
+        const { error: upErr } = await supabase.from('gym_offers').update(payload).eq('id', editingOffer.id).eq('gym_id', gymId);
         if (upErr) throw upErr;
       } else {
         payload.sort_order = offers.length;
@@ -579,8 +569,9 @@ export default function AdminSettings() {
 
   const handleDeleteOffer = async (id) => {
     try {
-      const { error: delErr } = await supabase.from('gym_offers').delete().eq('id', id);
+      const { error: delErr } = await supabase.from('gym_offers').delete().eq('id', id).eq('gym_id', gymId);
       if (delErr) throw delErr;
+      logAdminAction('delete_offer', 'gym_offer', id);
       queryClient.invalidateQueries({ queryKey: offersQueryKey });
       setDeletingOfferId(null);
       showToast(t('admin.offers.deleted'), 'success');
@@ -591,7 +582,7 @@ export default function AdminSettings() {
 
   const handleToggleOfferActive = async (offer) => {
     try {
-      const { error: upErr } = await supabase.from('gym_offers').update({ active: !offer.active }).eq('id', offer.id);
+      const { error: upErr } = await supabase.from('gym_offers').update({ active: !offer.active }).eq('id', offer.id).eq('gym_id', gymId);
       if (upErr) throw upErr;
       queryClient.invalidateQueries({ queryKey: offersQueryKey });
     } catch (err) {
@@ -606,8 +597,8 @@ export default function AdminSettings() {
     const b = offers[swapIdx];
     try {
       await Promise.all([
-        supabase.from('gym_offers').update({ sort_order: swapIdx }).eq('id', a.id),
-        supabase.from('gym_offers').update({ sort_order: index }).eq('id', b.id),
+        supabase.from('gym_offers').update({ sort_order: swapIdx }).eq('id', a.id).eq('gym_id', gymId),
+        supabase.from('gym_offers').update({ sort_order: index }).eq('id', b.id).eq('gym_id', gymId),
       ]);
       queryClient.invalidateQueries({ queryKey: offersQueryKey });
     } catch (err) {
@@ -732,9 +723,9 @@ export default function AdminSettings() {
 
   const handleDeleteClosure = async (id) => {
     try {
-      const { error: delErr } = await supabase.from('gym_closures').delete().eq('id', id);
+      const { error: delErr } = await supabase.from('gym_closures').delete().eq('id', id).eq('gym_id', gymId);
       if (delErr) throw delErr;
-      logAdminAction('update_closures', 'gym', gymId);
+      logAdminAction('delete_closure', 'gym_closure', id);
       setClosures(prev => prev.filter(c => c.id !== id));
       showToast(t('admin.closures.removed'), 'success');
     } catch (err) {

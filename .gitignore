@@ -17,6 +17,10 @@ Lateral_raises_video.mp4
 .env.production
 !.env.example
 
+# Firebase / Google services config
+google-services.json
+GoogleService-Info.plist
+
 # Private keys
 *.key
 *.pem

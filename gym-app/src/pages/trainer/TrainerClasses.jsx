@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { format, addDays, startOfDay } from 'date-fns';
+import { es, enUS } from 'date-fns/locale';
 import UnderlineTabs from '../../components/UnderlineTabs';
 
 const DAYS_OF_WEEK = [
@@ -28,7 +29,7 @@ const TABS = ['myClasses', 'bookings', 'analytics', 'templates'];
 function Spinner({ label }) {
   return (
     <div className="flex items-center gap-2 py-6 justify-center">
-      <div className="w-4 h-4 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+      <div className="w-4 h-4 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
       <span className="text-[12px] text-[var(--color-text-muted)]">{label}</span>
     </div>
   );
@@ -62,15 +63,17 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
 
   const handleDeleteSlot = async (slotId) => {
     const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId);
-    if (!error) {
-      queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
+    if (error) {
+      showToast(t('trainerClasses.errorDeleteSlot', 'Failed to delete slot'), 'error');
+      return;
     }
+    queryClient.invalidateQueries({ queryKey: ['trainer', 'my-classes'] });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-[480px] max-h-[92vh] sm:max-h-[85vh] bg-[var(--color-bg-card)] rounded-t-2xl sm:rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-[480px] max-h-[85vh] bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-default)] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-[var(--color-bg-card)] border-b border-[var(--color-border-subtle)] px-4 py-3 flex items-center justify-between z-10">
           <h3 className="text-[15px] font-bold text-[var(--color-text-primary)]">{t('trainerClasses.classDetails')}</h3>
@@ -114,7 +117,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
               {!adding && (
                 <button
                   onClick={() => setAdding(true)}
-                  className="flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:text-[#C4A030] transition-colors font-medium"
+                  className="flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:text-[#C4A030] transition-colors font-medium min-h-[44px] px-1"
                 >
                   <Plus size={13} /> {t('trainerClasses.addSlot')}
                 </button>
@@ -124,18 +127,18 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
             {schedules.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {schedules.map(slot => (
-                  <div key={slot.id} className="flex items-center justify-between p-2.5 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border-subtle)]">
-                    <span className="text-[12px] text-[var(--color-text-primary)]">
+                  <div key={slot.id} className="flex items-center justify-between gap-2 p-2.5 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border-subtle)]">
+                    <span className="text-[12px] text-[var(--color-text-primary)] flex-shrink-0">
                       {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey || '')}
                     </span>
-                    <span className="text-[12px] text-[var(--color-text-secondary)]">
+                    <span className="text-[12px] text-[var(--color-text-secondary)] flex-1 text-right">
                       {slot.start_time?.slice(0, 5)} – {slot.end_time?.slice(0, 5)}
                     </span>
                     <button
                       onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-muted)] hover:text-red-400 transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
+                      className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-muted)] hover:text-red-400 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))}
@@ -149,7 +152,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                   <select
                     value={newSlot.day_of_week}
                     onChange={e => setNewSlot(s => ({ ...s, day_of_week: Number(e.target.value) }))}
-                    className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                    className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
                   >
                     {DAYS_OF_WEEK.map(d => (
                       <option key={d.value} value={d.value}>{tc(d.labelKey)}</option>
@@ -163,7 +166,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                       type="time"
                       value={newSlot.start_time}
                       onChange={e => setNewSlot(s => ({ ...s, start_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
                     />
                   </div>
                   <div>
@@ -172,7 +175,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
                       type="time"
                       value={newSlot.end_time}
                       onChange={e => setNewSlot(s => ({ ...s, end_time: e.target.value }))}
-                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                      className="w-full bg-[var(--color-bg-input)] border border-[var(--color-border-subtle)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -204,7 +207,7 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc }) {
 }
 
 // ── Tab 1: My Classes ──
-function MyClassesTab({ classes, gymId, t, tc }) {
+function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
   const [selectedClass, setSelectedClass] = useState(null);
 
   // Compute next upcoming date for each class
@@ -267,7 +270,7 @@ function MyClassesTab({ classes, gymId, t, tc }) {
                     </div>
                     {nextDate && (
                       <p className="text-[10px] text-[var(--color-accent)] mt-1.5 font-medium">
-                        {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d')}
+                        {t('trainerClasses.nextDate')}: {format(nextDate, 'EEE, MMM d', { locale: dateLocale })}
                       </p>
                     )}
                   </div>
@@ -293,7 +296,7 @@ function MyClassesTab({ classes, gymId, t, tc }) {
 }
 
 // ── Tab 2: Bookings ──
-function BookingsTab({ classes, t }) {
+function BookingsTab({ classes, t, dateLocale }) {
   const today = startOfDay(new Date());
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
   const [selectedDate, setSelectedDate] = useState(format(today, 'yyyy-MM-dd'));
@@ -343,8 +346,8 @@ function BookingsTab({ classes, t }) {
   return (
     <div className="space-y-4">
       {/* Day pills */}
-      <div className="relative">
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+      <div className="relative -mx-3 sm:-mx-0">
+        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 px-3 sm:px-1 scrollbar-hide">
           {days.map(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             const isActive = dayStr === selectedDate;
@@ -352,13 +355,13 @@ function BookingsTab({ classes, t }) {
               <button
                 key={dayStr}
                 onClick={() => setSelectedDate(dayStr)}
-                className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl min-w-[52px] min-h-[52px] transition-all ${
+                className={`flex-shrink-0 flex flex-col items-center px-2.5 sm:px-3 py-2 rounded-xl min-w-[46px] sm:min-w-[52px] min-h-[52px] transition-all ${
                   isActive
-                    ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[#D4AF37]/30'
+                    ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
                     : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:border-white/12'
                 }`}
               >
-                <span className="text-[10px] font-medium uppercase">{format(day, 'EEE')}</span>
+                <span className="text-[10px] font-medium uppercase">{format(day, 'EEE', { locale: dateLocale })}</span>
                 <span className={`text-[15px] font-bold ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
                   {format(day, 'd')}
                 </span>
@@ -395,9 +398,9 @@ function BookingsTab({ classes, t }) {
                 </div>
                 <div className="space-y-1.5">
                   {classBookings.map(b => (
-                    <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]">
+                    <div key={b.id} className="flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden">
                       {b.profiles?.avatar_url ? (
-                        <img src={b.profiles.avatar_url} alt={b.profiles?.display_name || "Member avatar"} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                        <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
                           <span className="text-[11px] font-bold text-[var(--color-accent)]">
@@ -433,7 +436,7 @@ function BookingsTab({ classes, t }) {
 }
 
 // ── Tab 3: Analytics ──
-function AnalyticsTab({ classes, t }) {
+function AnalyticsTab({ classes, t, dateLocale }) {
   const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id || null);
   const selectedClass = classes.find(c => c.id === selectedClassId);
   const hasTemplate = !!selectedClass?.workout_template_id;
@@ -531,7 +534,7 @@ function AnalyticsTab({ classes, t }) {
                 <>
                   <div className="flex items-center gap-1.5">
                     <p className="text-[22px] font-bold text-[var(--color-text-primary)]">{analytics.avgRating}</p>
-                    <Star size={18} className="text-[var(--color-accent)] fill-[#D4AF37]" />
+                    <Star size={18} className="text-[var(--color-accent)] fill-[var(--color-accent)]" />
                   </div>
                   <div className="mt-2.5 space-y-1">
                     {[5, 4, 3, 2, 1].map(star => {
@@ -540,7 +543,7 @@ function AnalyticsTab({ classes, t }) {
                       return (
                         <div key={star} className="flex items-center gap-1.5">
                           <span className="text-[9px] text-[var(--color-text-muted)] w-3 text-right">{star}</span>
-                          <Star size={8} className="text-[var(--color-accent)] fill-[#D4AF37]" />
+                          <Star size={8} className="text-[var(--color-accent)] fill-[var(--color-accent)]" />
                           <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full bg-[var(--color-accent)]"
@@ -567,10 +570,10 @@ function AnalyticsTab({ classes, t }) {
                 {analytics.recentResults.map((r, i) => (
                   <div
                     key={`${r.profile_id}-${i}`}
-                    className="flex items-center gap-2.5 p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)]"
+                    className="flex flex-wrap items-center gap-2 sm:gap-2.5 p-3 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border-subtle)] overflow-hidden"
                   >
                     {r.profiles?.avatar_url ? (
-                      <img src={r.profiles.avatar_url} alt={r.profiles?.display_name || "Member avatar"} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                      <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('trainerClasses.members')} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/15 flex items-center justify-center flex-shrink-0">
                         <span className="text-[11px] font-bold text-[var(--color-accent)]">
@@ -584,27 +587,29 @@ function AnalyticsTab({ classes, t }) {
                       </span>
                       {r.attended_at && (
                         <span className="text-[10px] text-[var(--color-text-muted)]">
-                          {format(new Date(r.attended_at), 'MMM d')}
+                          {format(new Date(r.attended_at), 'MMM d', { locale: dateLocale })}
                         </span>
                       )}
                     </div>
-                    {r.workout_sessions?.total_volume_lbs != null && (
-                      <span className="text-[11px] text-[var(--color-text-secondary)] flex items-center gap-1 flex-shrink-0">
-                        <Dumbbell size={11} />
-                        {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} {t('trainerClasses.lbs')}
-                      </span>
-                    )}
-                    {r.rating != null && (
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        {[1, 2, 3, 4, 5].map(s => (
-                          <Star
-                            key={s}
-                            size={10}
-                            className={s <= Math.round(r.rating) ? 'text-[var(--color-accent)] fill-[#D4AF37]' : 'text-[var(--color-text-muted)]'}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {r.workout_sessions?.total_volume_lbs != null && (
+                        <span className="text-[11px] text-[var(--color-text-secondary)] flex items-center gap-1">
+                          <Dumbbell size={11} />
+                          {Number(r.workout_sessions.total_volume_lbs).toLocaleString()} {t('trainerClasses.lbs')}
+                        </span>
+                      )}
+                      {r.rating != null && (
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map(s => (
+                            <Star
+                              key={s}
+                              size={10}
+                              className={s <= Math.round(r.rating) ? 'text-[var(--color-accent)] fill-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -643,26 +648,26 @@ function RoutineSelector({ gymId, value, onChange, t }) {
   return (
     <div>
       {selected ? (
-        <div className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl">
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl overflow-hidden">
           <Dumbbell size={14} className="text-[var(--color-accent)] flex-shrink-0" />
-          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate min-w-0">
+          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate min-w-0 break-words">
             {selected.name}
             <span className="text-[var(--color-text-muted)] ml-1.5">
               ({t('trainerClasses.exerciseCount', { count: selected.routine_exercises?.[0]?.count || 0 })})
             </span>
           </span>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-[11px] text-[var(--color-accent)] hover:text-[#C4A030] font-medium transition-colors"
+              className="text-[11px] text-[var(--color-accent)] hover:text-[#C4A030] font-medium transition-colors min-h-[44px] min-w-[44px] px-2 flex items-center justify-center"
             >
               {t('trainerClasses.changeTemplate')}
             </button>
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-[11px] text-red-400 hover:text-red-300 font-medium transition-colors"
+              className="text-[11px] text-red-400 hover:text-red-300 font-medium transition-colors min-h-[44px] min-w-[44px] px-2 flex items-center justify-center"
             >
               {t('trainerClasses.removeTemplate')}
             </button>
@@ -676,7 +681,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={t('trainerClasses.changeTemplate')}
-              className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-xl pl-8 pr-3 py-2.5 text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
             />
           </div>
           {search && filtered.length > 0 && (
@@ -686,7 +691,7 @@ function RoutineSelector({ gymId, value, onChange, t }) {
                   key={r.id}
                   type="button"
                   onClick={() => { onChange(r.id); setSearch(''); }}
-                  className="w-full text-left px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] hover:bg-white/[0.04] transition-colors flex items-center gap-2 min-h-[40px]"
+                  className="w-full text-left px-3 py-2.5 text-[12px] text-[var(--color-text-primary)] hover:bg-white/[0.04] transition-colors flex items-center gap-2 min-h-[44px]"
                 >
                   <Dumbbell size={12} className="text-[var(--color-text-muted)]" />
                   <span className="truncate">{r.name}</span>
@@ -877,11 +882,11 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm overflow-hidden sm:mx-auto"
+        className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto mx-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -892,7 +897,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5 space-y-3">
+        <div className="px-5 pb-5 space-y-3">
           {/* Class name */}
           <div>
             <label className="block text-[11px] font-medium text-[var(--color-text-muted)] mb-1">{t('trainerClasses.className', 'Class Name')}</label>
@@ -975,12 +980,13 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
 // ── Main Page ──
 export default function TrainerClasses() {
   const { profile } = useAuth();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
   const { t: tc } = useTranslation('common');
   const gymId = profile?.gym_id;
   const trainerId = profile?.id;
   const [activeTab, setActiveTab] = useState('myClasses');
   const [showProposeClass, setShowProposeClass] = useState(false);
+  const dateLocale = i18n.language === 'es' ? es : enUS;
 
   useEffect(() => { document.title = t('trainerClasses.documentTitle'); }, [t]);
 
@@ -1021,9 +1027,9 @@ export default function TrainerClasses() {
   };
 
   return (
-    <div className="px-4 md:px-6 py-6 max-w-4xl mx-auto w-full">
+    <div className="px-3 sm:px-4 md:px-6 py-6 max-w-4xl mx-auto w-full overflow-x-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-4"
+      <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6 py-3 mb-4"
         style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
           {t('trainerClasses.subtitle')}
@@ -1063,13 +1069,13 @@ export default function TrainerClasses() {
 
       {/* Tab content */}
       {!isLoading && activeTab === 'myClasses' && (
-        <MyClassesTab classes={classes} gymId={gymId} t={t} tc={tc} />
+        <MyClassesTab classes={classes} gymId={gymId} t={t} tc={tc} dateLocale={dateLocale} />
       )}
       {!isLoading && activeTab === 'bookings' && (
-        <BookingsTab classes={classes} t={t} />
+        <BookingsTab classes={classes} t={t} dateLocale={dateLocale} />
       )}
       {!isLoading && activeTab === 'analytics' && (
-        <AnalyticsTab classes={classes} t={t} />
+        <AnalyticsTab classes={classes} t={t} dateLocale={dateLocale} />
       )}
       {!isLoading && activeTab === 'templates' && (
         <TemplatesTab classes={classes} gymId={gymId} t={t} />

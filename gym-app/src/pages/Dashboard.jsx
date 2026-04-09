@@ -250,7 +250,7 @@ const Dashboard = () => {
     ? Object.values(activeSession.loggedSets).flat().length
     : 0;
 
-  useEffect(() => { document.title = 'Dashboard | TuGymPR'; }, []);
+  useEffect(() => { document.title = t('pages.dashboard.title'); }, [t]);
 
   // Scroll locking for modals
   useEffect(() => {
@@ -338,7 +338,6 @@ const Dashboard = () => {
       const [{ data: rpcData, error: rpcError }, { data: classBookings }, { data: cardioData }] = await Promise.all([rpcPromise, classPromise, cardioPromise]);
 
       if (rpcError) {
-        console.error('get_dashboard_data RPC error:', rpcError);
         if (!cancelled) {
           dispatch({ type: 'SET_LOADING', payload: false });
           setLoadError(t('dashboard.loadError', 'We could not load your dashboard right now. Pull to refresh or try again in a moment.'));

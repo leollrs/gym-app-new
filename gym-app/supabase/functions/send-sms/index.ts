@@ -201,9 +201,6 @@ Deno.serve(async (req) => {
     if (!twilioResp.ok) {
       const errBody = await twilioResp.text();
       console.error('Twilio error:', twilioResp.status, errBody);
-      let twilioMsg = errBody;
-      try { twilioMsg = JSON.parse(errBody)?.message || errBody; } catch {}
-
       // Roll back usage (best-effort)
       try {
         await supabase.rpc('increment_sms_usage', {
@@ -213,7 +210,7 @@ Deno.serve(async (req) => {
         });
       } catch {}
 
-      return jsonResp({ error: `Twilio error: ${twilioMsg}` }, 500);
+      return jsonResp({ error: 'Failed to send SMS' }, 500);
     }
 
     // Twilio succeeded — everything from here is best-effort

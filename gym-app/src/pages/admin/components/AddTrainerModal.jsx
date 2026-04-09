@@ -54,7 +54,7 @@ export default function AddTrainerModal({ isOpen, onClose, allMembers, onPromote
             autoFocus
           />
           {addSearch && (
-            <button onClick={() => setAddSearch('')} className="text-[#6B7280] hover:text-[#9CA3AF]">
+            <button onClick={() => setAddSearch('')} aria-label={t('admin.trainers.clearSearch', 'Clear search')} className="text-[#6B7280] hover:text-[#9CA3AF]">
               <X size={14} />
             </button>
           )}

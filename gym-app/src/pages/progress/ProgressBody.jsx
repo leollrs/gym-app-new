@@ -451,7 +451,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           setTimeout(async () => {
             try {
               const { takePhoto } = await import('../../lib/takePhoto');
-              const file = await takePhoto();
+              const file = await takePhoto({ cameraOnly: true });
               if (file) {
                 const compressed = await compressImage(file);
                 const sideBase64 = await blobToBase64(compressed);
@@ -655,7 +655,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
           {/* Action buttons */}
           <div className="px-6 pb-6">
             <button onClick={async () => {
-                const file = await takePhoto();
+                const file = await takePhoto({ cameraOnly: true });
                 if (file) {
                   const dt = new DataTransfer();
                   dt.items.add(file);
@@ -962,7 +962,7 @@ export default function ProgressBody() {
       // Update local state
       setProgressPhotos(prev => prev.filter(p => p.id !== photo.id));
     } catch (err) {
-      console.error('[ProgressBody] Failed to delete photo:', err);
+      // silent — UI state unchanged on failure
     }
   };
 
@@ -1282,7 +1282,7 @@ export default function ProgressBody() {
               <button
                 key={angle}
                 onClick={async () => {
-                  const file = await takePhoto();
+                  const file = await takePhoto({ cameraOnly: true });
                   if (!file || !user) return;
                   // Validate file type via magic bytes (not just MIME which can be spoofed)
                   const validation = await validateImageFile(file);
@@ -1308,7 +1308,7 @@ export default function ProgressBody() {
                     });
                     loadData();
                   } catch (err) {
-                    console.error('Photo upload failed:', err);
+                    // silent — upload button re-enabled in finally
                   } finally {
                     setUploadingPhoto(false);
                   }

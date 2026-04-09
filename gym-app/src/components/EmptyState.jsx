@@ -32,19 +32,22 @@ const EmptyState = ({
       } ${className}`}
     >
       {Icon && (
-        <div className="w-16 h-16 rounded-2xl bg-[#111827] border border-white/[0.06] flex items-center justify-center mb-4">
-          <Icon size={28} className="text-[#4B5563]" strokeWidth={1.5} />
+        <div
+          className="w-16 h-16 rounded-2xl border border-white/[0.06] flex items-center justify-center mb-4"
+          style={{ backgroundColor: 'var(--color-bg-card)' }}
+        >
+          <Icon size={28} strokeWidth={1.5} style={{ color: 'var(--color-text-muted)' }} />
         </div>
       )}
 
       {title && (
-        <h3 className="text-[16px] font-semibold text-[#E5E7EB] leading-snug">
+        <h3 className="text-[16px] font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
           {title}
         </h3>
       )}
 
       {description && (
-        <p className="text-[13px] text-[#6B7280] mt-1.5 max-w-[280px] leading-relaxed">
+        <p className="text-[13px] mt-1.5 max-w-[280px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
           {description}
         </p>
       )}
@@ -53,7 +56,8 @@ const EmptyState = ({
         <button
           type="button"
           onClick={onAction}
-          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold bg-[#D4AF37] text-black active:scale-95 transition-transform hover:opacity-90"
+          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-transform hover:opacity-90"
+          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
         >
           {actionLabel}
         </button>
@@ -62,7 +66,8 @@ const EmptyState = ({
       {actionLabel && actionTo && !onAction && (
         <Link
           to={actionTo}
-          className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#D4AF37] text-black text-[13px] font-bold active:scale-95 transition-transform"
+          className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold active:scale-95 transition-transform"
+          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
         >
           {actionLabel}
         </Link>

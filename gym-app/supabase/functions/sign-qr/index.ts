@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Fail closed: QR_SIGNING_SECRET must be explicitly configured.
 const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET');
@@ -62,6 +63,25 @@ serve(async (req) => {
     });
     const { data: { user }, error: authErr } = await authClient.auth.getUser();
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
+
+    // ── Rate limiting: max 60 QR signs per user per hour (database-backed) ──
+    {
+      const supabaseRL = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabaseRL
+        .from('ai_rate_limits')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', user.id)
+        .eq('endpoint', 'sign-qr')
+        .gte('created_at', oneHourAgo);
+      if ((count ?? 0) >= 60) {
+        return jsonResp({ error: 'Rate limit exceeded — too many QR sign requests' }, 429);
+      }
+      // Record this request for rate limiting
+      await supabaseRL
+        .from('ai_rate_limits')
+        .insert({ profile_id: user.id, endpoint: 'sign-qr' });
+    }
 
     // ── Sign payload ─────────────────────────────────────────────
     const { payload } = await req.json();

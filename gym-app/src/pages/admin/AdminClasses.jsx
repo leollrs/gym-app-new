@@ -18,7 +18,7 @@ import { validateImageFile } from '../../lib/validateImage';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
   PageHeader, AdminCard, SectionLabel, FadeIn, CardSkeleton,
-  AdminPageShell, FilterBar, AdminModal, StatCard, AdminTabs,
+  AdminPageShell, FilterBar, AdminModal, StatCard, AdminTabs, Toggle,
 } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
@@ -76,23 +76,6 @@ function CoverPreview({ preset, size = 'sm', className = '' }) {
     <div className={`${sz} rounded-xl flex items-center justify-center ${className}`} style={{ background: cover.gradient }}>
       <Icon size={iconSz} className="text-white/90" />
     </div>
-  );
-}
-
-// ── Toggle helper ──
-function Toggle({ checked, onChange, label }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-      style={{ backgroundColor: checked ? 'var(--color-accent, #D4AF37)' : '#6B7280' }}
-      aria-label={label}
-    >
-      <span
-        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        style={{ left: checked ? 'calc(100% - 18px)' : '2px' }}
-      />
-    </button>
   );
 }
 
@@ -215,29 +198,59 @@ function ClassAnalytics({ classId, hasTemplate, t }) {
       const since = thirtyDaysAgo.toISOString();
       const today = new Date().toISOString().slice(0, 10);
 
-      const { data: allBookings } = await supabase
+      // Run all count queries in parallel — each uses head:true so zero rows are transferred
+      const baseQuery = () => supabase
         .from('gym_class_bookings')
-        .select('id, attended, rating, status, booking_date, cancelled_at')
+        .select('id', { count: 'exact', head: true })
         .eq('class_id', classId)
         .gte('created_at', since);
 
-      const bookings = allBookings || [];
-      const total = bookings.length;
-      const attended = bookings.filter(b => b.attended).length;
+      const [
+        { count: total },
+        { count: attended },
+        { count: noShows },
+        { count: confirmedPast },
+        { count: cancelled },
+        { data: ratingRows },
+        ...rest
+      ] = await Promise.all([
+        // Total bookings
+        baseQuery(),
+        // Attended bookings
+        baseQuery().eq('attended', true),
+        // No-shows: confirmed but not attended, past booking date
+        baseQuery().eq('status', 'confirmed').eq('attended', false).lt('booking_date', today),
+        // Confirmed past (confirmed or attended status, past booking date) — for no-show rate denominator
+        baseQuery().in('status', ['confirmed', 'attended']).lt('booking_date', today),
+        // Cancelled bookings
+        baseQuery().eq('status', 'cancelled'),
+        // Ratings — only fetch the small subset that have ratings (typically <5% of bookings)
+        supabase
+          .from('gym_class_bookings')
+          .select('rating')
+          .eq('class_id', classId)
+          .gte('created_at', since)
+          .eq('attended', true)
+          .not('rating', 'is', null),
+        // Recent results (only if class has a workout template)
+        ...(hasTemplate ? [
+          supabase
+            .from('gym_class_bookings')
+            .select('profile_id, rating, notes, attended_at, workout_session_id, profiles(full_name, avatar_url), workout_sessions(total_volume_lbs, completed_at)')
+            .eq('class_id', classId)
+            .eq('attended', true)
+            .order('attended_at', { ascending: false })
+            .limit(20),
+        ] : []),
+      ]);
+
+      const recentResults = hasTemplate ? (rest[0]?.data || []) : [];
+
       const attendanceRate = total > 0 ? Math.round((attended / total) * 100) : 0;
-
-      const noShows = bookings.filter(
-        b => b.status === 'confirmed' && !b.attended && b.booking_date && b.booking_date < today,
-      ).length;
-      const confirmedPast = bookings.filter(
-        b => (b.status === 'confirmed' || b.status === 'attended') && b.booking_date && b.booking_date < today,
-      ).length;
       const noShowRate = confirmedPast > 0 ? Math.round((noShows / confirmedPast) * 100) : 0;
-
-      const cancelled = bookings.filter(b => b.status === 'cancelled').length;
       const cancellationRate = total > 0 ? Math.round((cancelled / total) * 100) : 0;
 
-      const rated = bookings.filter(b => b.rating != null && b.attended);
+      const rated = ratingRows || [];
       const avgRating = rated.length > 0
         ? (rated.reduce((sum, b) => sum + b.rating, 0) / rated.length).toFixed(1)
         : null;
@@ -248,21 +261,9 @@ function ClassAnalytics({ classId, hasTemplate, t }) {
         starDist[idx]++;
       });
 
-      let recentResults = [];
-      if (hasTemplate) {
-        const { data: resultBookings } = await supabase
-          .from('gym_class_bookings')
-          .select('profile_id, rating, notes, attended_at, workout_session_id, profiles(full_name, avatar_url), workout_sessions(total_volume_lbs, completed_at)')
-          .eq('class_id', classId)
-          .eq('attended', true)
-          .order('attended_at', { ascending: false })
-          .limit(20);
-        recentResults = resultBookings || [];
-      }
-
       return {
-        total, attended, attendanceRate, avgRating, starDist, recentResults,
-        noShows, noShowRate, cancelled, cancellationRate,
+        total: total || 0, attended: attended || 0, attendanceRate, avgRating, starDist, recentResults,
+        noShows: noShows || 0, noShowRate, cancelled: cancelled || 0, cancellationRate,
       };
     },
     staleTime: 60 * 1000,
@@ -520,6 +521,7 @@ function InstructorSelector({ gymId, value, valueName, onChange, t }) {
             {selected.role}
           </span>
           <button type="button" onClick={() => { onChange(null, ''); setSearch(''); }}
+            aria-label={t('admin.classes.clearInstructor', 'Clear instructor')}
             className="text-[11px] font-medium transition-colors text-red-400 hover:text-red-300">
             <X size={14} />
           </button>
@@ -587,7 +589,41 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
   const [imagePreview, setImagePreview] = useState(classData?.image_url || '');
   const [coverPreset, setCoverPreset] = useState(classData?.cover_preset || '');
   const [preview, setPreview] = useState(null);
+  const [errors, setErrors] = useState({});
   const { translate, translating } = useAutoTranslate();
+
+  const validateClassForm = () => {
+    const e = {};
+    if (!form.name.trim()) e.name = t('admin.validation.classNameRequired', 'Class name is required');
+    else if (form.name.trim().length < 2) e.name = t('admin.validation.tooShort', { min: 2 });
+    if (form.duration_minutes < 5) e.duration_minutes = t('admin.validation.required', 'This field is required');
+    if (form.max_capacity < 1) e.max_capacity = t('admin.validation.required', 'This field is required');
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleClassBlur = (field) => {
+    const e = { ...errors };
+    if (field === 'name') {
+      if (!form.name.trim()) e.name = t('admin.validation.classNameRequired', 'Class name is required');
+      else if (form.name.trim().length < 2) e.name = t('admin.validation.tooShort', { min: 2 });
+      else delete e.name;
+    }
+    if (field === 'duration_minutes') {
+      if (form.duration_minutes < 5) e.duration_minutes = t('admin.validation.required', 'This field is required');
+      else delete e.duration_minutes;
+    }
+    if (field === 'max_capacity') {
+      if (form.max_capacity < 1) e.max_capacity = t('admin.validation.required', 'This field is required');
+      else delete e.max_capacity;
+    }
+    setErrors(e);
+  };
+
+  const setFormField = (k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    if (errors[k]) setErrors(prev => { const n = { ...prev }; delete n[k]; return n; });
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
@@ -598,7 +634,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
 
   // Step 1: Translate → show preview (single API call, second only if needed)
   const handleTranslateAndPreview = async () => {
-    if (!form.name.trim()) return;
+    if (!validateClassForm()) return;
 
     const texts = [form.name];
     const hasDesc = !!(form.description || '').trim();
@@ -677,13 +713,15 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
         {/* Name */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} *</label>
+            <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} <span className="text-red-400">*</span></label>
             <CharCount value={form.name} max={NAME_MAX} />
           </div>
-          <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setForm(f => ({ ...f, name: e.target.value })); }}
+          <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setFormField('name', e.target.value); }}
+            onBlur={() => handleClassBlur('name')}
             className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.name ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }}
             placeholder="Yoga, Spinning, CrossFit..." />
+          {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
         </div>
 
         {/* Description */}
@@ -692,7 +730,7 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
             <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
             <CharCount value={form.description} max={DESC_MAX} />
           </div>
-          <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setForm(f => ({ ...f, description: e.target.value })); }} rows={2}
+          <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setFormField('description', e.target.value); }} rows={2}
             className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none resize-none transition-colors"
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
         </div>
@@ -709,16 +747,20 @@ function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = 
         {/* Duration + Capacity */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'})</label>
-            <input type="number" min={5} max={480} value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: Number(e.target.value) }))}
+            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'}) <span className="text-red-400">*</span></label>
+            <input type="number" min={5} max={480} value={form.duration_minutes} onChange={e => setFormField('duration_minutes', Number(e.target.value))}
+              onBlur={() => handleClassBlur('duration_minutes')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.duration_minutes ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
+            {errors.duration_minutes && <p className="text-[11px] text-red-400 mt-1">{errors.duration_minutes}</p>}
           </div>
           <div>
-            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')}</label>
-            <input type="number" min={1} max={1000} value={form.max_capacity} onChange={e => setForm(f => ({ ...f, max_capacity: Number(e.target.value) }))}
+            <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')} <span className="text-red-400">*</span></label>
+            <input type="number" min={1} max={1000} value={form.max_capacity} onChange={e => setFormField('max_capacity', Number(e.target.value))}
+              onBlur={() => handleClassBlur('max_capacity')}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.max_capacity ? 'rgba(239, 68, 68, 0.5)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
+            {errors.max_capacity && <p className="text-[11px] text-red-400 mt-1">{errors.max_capacity}</p>}
           </div>
         </div>
 
@@ -1001,7 +1043,7 @@ function ScheduleSlotForm({ onAdd, t, tc }) {
               {selectedDates.map(date => (
                 <span key={date} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#3B82F6]/10 text-[#3B82F6] text-[11px] font-semibold">
                   {fmtDate(date)}
-                  <button type="button" onClick={() => removeDate(date)} className="hover:text-red-400 transition-colors"><X size={10} /></button>
+                  <button type="button" onClick={() => removeDate(date)} aria-label={t('admin.classes.removeDate', 'Remove date')} className="hover:text-red-400 transition-colors"><X size={10} /></button>
                 </span>
               ))}
             </div>
@@ -1174,7 +1216,7 @@ function ClassDetailModal({ classItem, onClose, onAddSlot, onDeleteSlot, dayLabe
                       )}
                       <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}</span>
                     </div>
-                    <button onClick={() => onDeleteSlot(slot.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"><Trash2 size={13} /></button>
+                    <button onClick={() => onDeleteSlot(slot.id)} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"><Trash2 size={13} /></button>
                   </div>
                 ))}
             </div>
@@ -1225,11 +1267,13 @@ function SlotCard({ slot, onEditClass, onDeleteSlot, t }) {
           <Users size={11} /> {slot.class.max_capacity}
         </span>
         <button onClick={() => onEditClass(slot.class)}
+          aria-label={t('admin.classes.editClass', 'Edit class')}
           className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
           style={{ color: 'var(--color-text-muted)' }}>
           <Edit3 size={13} />
         </button>
         <button onClick={() => onDeleteSlot(slot.id)}
+          aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')}
           className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
           style={{ color: 'var(--color-danger, #EF4444)' }}>
           <Trash2 size={13} />
@@ -1681,14 +1725,14 @@ function BookingsTabView({ classes, t, tc, locale = 'es' }) {
           ))}
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => shift(-1)} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+          <button onClick={() => shift(-1)} aria-label={t('admin.classes.previousPeriod', 'Previous period')} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
             <ChevronDown size={16} className="rotate-90" />
           </button>
           <button onClick={goToday} className="px-3.5 py-2 rounded-xl text-[12px] font-bold"
             style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
             {t('admin.classes.today', 'Hoy')}
           </button>
-          <button onClick={() => shift(1)} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+          <button onClick={() => shift(1)} aria-label={t('admin.classes.nextPeriod', 'Next period')} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
             <ChevronDown size={16} className="-rotate-90" />
           </button>
         </div>
@@ -1888,7 +1932,7 @@ export default function AdminClasses() {
   const [deleting, setDeleting] = useState(false);
   const [detailClassId, setDetailClassId] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Classes | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Classes | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // ── Fetch classes ──
   const { data: classes = [], isLoading } = useQuery({
@@ -1995,7 +2039,7 @@ export default function AdminClasses() {
       };
 
       if (formModal?.id) {
-        const { error } = await supabase.from('gym_classes').update(payload).eq('id', formModal.id);
+        const { error } = await supabase.from('gym_classes').update(payload).eq('id', formModal.id).eq('gym_id', gymId);
         if (error) throw error;
         logAdminAction('update_class', 'class', formModal.id);
       } else {
@@ -2029,7 +2073,7 @@ export default function AdminClasses() {
 
   // ── Toggle active ──
   const handleToggleActive = async (cls) => {
-    const { error } = await supabase.from('gym_classes').update({ is_active: !cls.is_active }).eq('id', cls.id);
+    const { error } = await supabase.from('gym_classes').update({ is_active: !cls.is_active }).eq('id', cls.id).eq('gym_id', gymId);
     if (!error) queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
   };
 
@@ -2038,9 +2082,7 @@ export default function AdminClasses() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await supabase.from('gym_class_schedules').delete().eq('class_id', deleteTarget.id);
-      await supabase.from('gym_class_bookings').delete().eq('class_id', deleteTarget.id);
-      const { error } = await supabase.from('gym_classes').delete().eq('id', deleteTarget.id);
+      const { error } = await supabase.rpc('admin_delete_class', { p_class_id: deleteTarget.id });
       if (error) throw error;
       logAdminAction('delete_class', 'class', deleteTarget.id);
       if (deleteTarget.image_path) {
@@ -2075,8 +2117,11 @@ export default function AdminClasses() {
 
   // ── Delete schedule slot ──
   const handleDeleteSlot = async (slotId) => {
-    const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId);
-    if (!error) queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+    const { error } = await supabase.from('gym_class_schedules').delete().eq('id', slotId).eq('gym_id', gymId);
+    if (!error) {
+      logAdminAction('delete_schedule_slot', 'gym_class_schedule', slotId);
+      queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+    }
   };
 
   const dayLabel = (dayNum) => {
@@ -2128,7 +2173,14 @@ export default function AdminClasses() {
             <div className="text-center">
               <CalendarDays size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
               <p className="text-[14px] font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('admin.classes.noClasses')}</p>
-              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noClassesDesc')}</p>
+              <p className="text-[12px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noClassesDesc')}</p>
+              <button
+                onClick={() => setFormModal('new')}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-base)' }}
+              >
+                <Plus size={15} /> {t('admin.classes.addClass')}
+              </button>
             </div>
           </AdminCard>
         </FadeIn>

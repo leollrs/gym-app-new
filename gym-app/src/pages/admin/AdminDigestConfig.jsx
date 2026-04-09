@@ -11,7 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
   PageHeader, AdminCard, AdminPageShell, AdminModal,
-  FadeIn, SectionLabel, StatCard,
+  FadeIn, SectionLabel, StatCard, Toggle,
 } from '../../components/admin';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -43,29 +43,6 @@ const SECTION_COLORS = {
   include_revenue: '#F97316',
   include_nps: '#A78BFA',
 };
-
-// ── Toggle switch component ────────────────────────────────────────────────
-
-function Toggle({ enabled, onChange, ariaLabel, size = 'default' }) {
-  const w = size === 'lg' ? 'w-12 h-7' : 'w-9 h-5';
-  const knob = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4';
-  const offLeft = size === 'lg' ? '3px' : '2px';
-  const onLeft = size === 'lg' ? 'calc(100% - 23px)' : 'calc(100% - 18px)';
-
-  return (
-    <button
-      onClick={() => onChange(!enabled)}
-      aria-label={ariaLabel}
-      className={`${w} rounded-full relative flex-shrink-0 transition-colors focus:ring-2 focus:ring-[#D4AF37]/40 focus:outline-none`}
-      style={{ backgroundColor: enabled ? '#D4AF37' : '#6B7280' }}
-    >
-      <span
-        className={`absolute top-0.5 ${knob} rounded-full bg-white shadow transition-transform`}
-        style={{ left: enabled ? onLeft : offLeft }}
-      />
-    </button>
-  );
-}
 
 // ── Preview Modal ──────────────────────────────────────────────────────────
 
@@ -134,7 +111,7 @@ export default function AdminDigestConfig() {
 
   const [showPreview, setShowPreview] = useState(false);
 
-  useEffect(() => { document.title = t('admin.digestConfig.pageTitle', 'Admin - Digest Settings | TuGymPR'); }, [t]);
+  useEffect(() => { document.title = t('admin.digestConfig.pageTitle', `Admin - Digest Settings | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   const { data: config } = useQuery({
     queryKey: ['admin', 'digest-config', gymId],
@@ -268,7 +245,7 @@ export default function AdminDigestConfig() {
               enabled={form.enabled}
               onChange={(v) => set('enabled', v)}
               ariaLabel={form.enabled ? t('admin.digestConfig.disableDigest') : t('admin.digestConfig.enableDigest')}
-              size="lg"
+              size="md"
             />
           </div>
         </AdminCard>

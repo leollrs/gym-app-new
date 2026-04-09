@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Clock, Users, CalendarCheck, Dumbbell, Star, X, Repeat } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -200,6 +201,8 @@ export default function Classes() {
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
   const { user, profile, gymConfig } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => { document.title = `${t('classes.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Redirect if gym doesn't have classes enabled
   useEffect(() => {
@@ -475,11 +478,12 @@ export default function Classes() {
             <ClassSkeleton />
           </div>
         ) : schedules.length === 0 ? (
-          /* Empty state */
-          <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
-            <CalendarCheck size={40} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
-            <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{t('classes.noClasses')}</p>
-          </div>
+          <EmptyState
+            icon={CalendarCheck}
+            title={t('classes.emptyTitle')}
+            description={t('classes.emptyDescription')}
+            compact
+          />
         ) : (
           <div className="space-y-4">
             {schedules.map((sched) => {

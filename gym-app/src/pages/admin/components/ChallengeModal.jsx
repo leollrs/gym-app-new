@@ -108,8 +108,46 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
 
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const [step, setStep] = useState(1);
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k, v) => {
+    setForm(p => ({ ...p, [k]: v }));
+    // Clear field error on change
+    if (errors[k]) setErrors(prev => { const n = { ...prev }; delete n[k]; return n; });
+  };
+
+  const validateStep1 = () => {
+    const e = {};
+    if (!form.name.trim()) e.name = t('admin.validation.nameRequired', 'Name is required');
+    else if (form.name.trim().length < 3) e.name = t('admin.validation.tooShort', { min: 3 });
+    if (!form.starts_at) e.starts_at = t('admin.validation.startDateRequired', 'Start date is required');
+    if (!form.ends_at) e.ends_at = t('admin.validation.endDateRequired', 'End date is required');
+    if (form.starts_at && form.ends_at && new Date(form.ends_at) <= new Date(form.starts_at)) {
+      e.ends_at = t('admin.validation.endDateAfterStart', 'End date must be after start date');
+    }
+    if (!form.cover_preset) e.cover_preset = t('admin.validation.coverRequired', 'Please select a cover image');
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleBlur = (field) => {
+    const e = { ...errors };
+    if (field === 'name') {
+      if (!form.name.trim()) e.name = t('admin.validation.nameRequired', 'Name is required');
+      else if (form.name.trim().length < 3) e.name = t('admin.validation.tooShort', { min: 3 });
+      else delete e.name;
+    }
+    if (field === 'starts_at') {
+      if (!form.starts_at) e.starts_at = t('admin.validation.startDateRequired', 'Start date is required');
+      else delete e.starts_at;
+    }
+    if (field === 'ends_at') {
+      if (!form.ends_at) e.ends_at = t('admin.validation.endDateRequired', 'End date is required');
+      else if (form.starts_at && new Date(form.ends_at) <= new Date(form.starts_at)) e.ends_at = t('admin.validation.endDateAfterStart', 'End date must be after start date');
+      else delete e.ends_at;
+    }
+    setErrors(e);
+  };
 
   // ── Create mutation ──
   const createMutation = useMutation({
@@ -144,14 +182,8 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
   const saving = createMutation.isPending || updateMutation.isPending;
 
   const handleSave = () => {
-    if (!form.name || !form.starts_at || !form.ends_at) {
-      setError(t('admin.challenges.requiredFields', 'Name, start date, and end date are required.'));
-      showToast(t('admin.challenges.requiredFields', 'Name, start date, and end date are required.'), 'error');
-      return;
-    }
-    if (!form.cover_preset) {
-      setError(t('admin.challenges.coverRequired', 'Please select a cover for the challenge.'));
-      showToast(t('admin.challenges.coverRequired', 'Please select a cover for the challenge.'), 'error');
+    if (!validateStep1()) {
+      setStep(1);
       return;
     }
     setError('');
@@ -191,7 +223,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
     }
   };
 
-  const medals = ['🥇', '🥈', '🥉'];
+  const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 
   const handlePrizeTypeChange = (index, prizeType) => {
     const updated = [...form.rewards];
@@ -210,7 +242,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
     set('rewards', updated);
   };
 
-  const canProceed = form.name && form.starts_at && form.ends_at && form.cover_preset;
+  const canProceed = form.name.trim() && form.starts_at && form.ends_at && form.cover_preset;
 
   return (
     <AdminModal
@@ -227,7 +259,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
             </button>
           )}
           {step === 1 ? (
-            <button onClick={() => { if (!canProceed) { setError(!form.cover_preset ? t('admin.challenges.coverRequired', 'Please select a cover for the challenge.') : t('admin.challenges.requiredFields', 'Name, start date, and end date are required.')); return; } setError(''); setStep(2); }}
+            <button onClick={() => { if (!validateStep1()) return; setError(''); setStep(2); }}
               className="flex items-center justify-center gap-1.5 flex-1 py-3 rounded-xl font-bold text-[14px] text-black bg-[#D4AF37] hover:bg-[#C4A030] transition-colors">
               {t('admin.challenges.nextStep', 'Scoring & Rewards')} <ArrowRight size={14} />
             </button>
@@ -258,10 +290,12 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
       {step === 1 ? (
         <div className="space-y-4">
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.challengeName', 'Challenge Name')}</label>
+            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.challengeName', 'Challenge Name')} <span className="text-red-400">*</span></label>
             <input value={form.name} onChange={e => set('name', e.target.value)}
+              onBlur={() => handleBlur('name')}
               placeholder={t('admin.challenges.namePlaceholder', 'e.g. March Volume Wars')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+              className={`w-full bg-[#111827] border rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:ring-2 focus:outline-none ${errors.name ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
+            {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
           </div>
 
           <div>
@@ -284,14 +318,18 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.startDate', 'Start Date')}</label>
+              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.startDate', 'Start Date')} <span className="text-red-400">*</span></label>
               <input type="datetime-local" value={form.starts_at} onChange={e => set('starts_at', e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+                onBlur={() => handleBlur('starts_at')}
+                className={`w-full bg-[#111827] border rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:ring-2 focus:outline-none ${errors.starts_at ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
+              {errors.starts_at && <p className="text-[11px] text-red-400 mt-1">{errors.starts_at}</p>}
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.endDate', 'End Date')}</label>
+              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.endDate', 'End Date')} <span className="text-red-400">*</span></label>
               <input type="datetime-local" value={form.ends_at} onChange={e => set('ends_at', e.target.value)}
-                className="w-full bg-[#111827] border border-white/6 rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" />
+                onBlur={() => handleBlur('ends_at')}
+                className={`w-full bg-[#111827] border rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:ring-2 focus:outline-none ${errors.ends_at ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
+              {errors.ends_at && <p className="text-[11px] text-red-400 mt-1">{errors.ends_at}</p>}
             </div>
           </div>
 
@@ -322,6 +360,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                 );
               })}
             </div>
+            {errors.cover_preset && <p className="text-[11px] text-red-400 mt-1">{errors.cover_preset}</p>}
           </div>
 
           {error && <p className="text-[12px] text-red-400">{error}</p>}
@@ -429,7 +468,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
           {!form.enableRewards && (
             <div className="text-center py-6">
               <Gift size={28} className="text-[#6B7280] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.challenges.noRewardsHint', 'No rewards configured — challenge will be for bragging rights only')}</p>
+              <p className="text-[13px] text-[#6B7280]">{t('admin.challenges.noRewardsHint', 'No rewards configured \u2014 challenge will be for bragging rights only')}</p>
             </div>
           )}
 

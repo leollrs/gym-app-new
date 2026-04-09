@@ -117,7 +117,7 @@ export default function AdminTrainers() {
   const gymId = profile?.gym_id;
   const { showToast } = useToast();
 
-  useEffect(() => { document.title = t('admin.trainers.pageTitle', 'Admin - Trainers | TuGymPR'); }, [t]);
+  useEffect(() => { document.title = t('admin.trainers.pageTitle', `Admin - Trainers | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   const [trainersTab, setTrainersTab]   = useState('roster');
   const [expanded, setExpanded]         = useState(null);

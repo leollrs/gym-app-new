@@ -19,6 +19,7 @@ import forge from 'https://esm.sh/node-forge@1.3.1?no-dts&target=denonext';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const WEBHOOK_SECRET = Deno.env.get('WEBHOOK_SECRET') || '';
 
 // Punch card pass signing certs
 const PUNCH_PASS_TYPE_ID = Deno.env.get('APPLE_PUNCH_PASS_TYPE_ID') || 'pass.com.tugympr.punchcard';
@@ -39,6 +40,51 @@ const PLACEHOLDER_PNG = new Uint8Array([
   0,0,3,0,1,24,216,95,168,0,0,0,0,73,69,78,
   68,174,66,96,130,
 ]);
+
+/**
+ * Constant-time comparison to prevent timing attacks.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    diff |= bufA[i] ^ bufB[i];
+  }
+  return diff === 0;
+}
+
+async function computeHmacSignature(body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(WEBHOOK_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Verify HMAC-SHA256 webhook signature from x-webhook-signature header.
+ * Returns true if signature is valid, false if invalid, null if header not present.
+ */
+async function verifyWebhookSignature(req: Request, rawBody: string): Promise<boolean | null> {
+  const signatureHeader = req.headers.get('x-webhook-signature');
+  if (!signatureHeader) return null; // Header not present — skip HMAC check
+  if (!WEBHOOK_SECRET) {
+    console.warn('[Wallet] x-webhook-signature header present but WEBHOOK_SECRET not configured');
+    return false;
+  }
+  const expected = await computeHmacSignature(rawBody);
+  return timingSafeEqual(expected, signatureHeader);
+}
 
 function getAuthToken(req: Request): string {
   const header = req.headers.get('Authorization') ?? '';
@@ -80,10 +126,27 @@ serve(async (req: Request) => {
 
   console.log(`[Wallet] ${req.method} /${api.join('/')} query=${url.search}`);
 
+  // ── Read raw body once for HMAC verification + later JSON parsing ──
+  const rawBody = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH'
+    ? await req.text()
+    : '';
+
+  // ── HMAC-SHA256 webhook signature verification (additional security layer) ──
+  // When x-webhook-signature header is present, verify it against the raw body.
+  // If the header is present but the signature is invalid, AND the existing
+  // Apple Wallet auth also fails, reject with 401.
+  const hmacResult = await verifyWebhookSignature(req, rawBody);
+  const hmacPassed = hmacResult === true;
+  const hmacFailed = hmacResult === false; // header present but signature invalid
+
+  if (hmacFailed) {
+    console.warn('[Wallet] HMAC signature verification failed');
+  }
+
   try {
     // ── POST /v1/log ──
     if (api[0] === 'log' && req.method === 'POST') {
-      const body = await req.json().catch(() => ({}));
+      const body = rawBody ? JSON.parse(rawBody) : {};
       console.log('[Wallet Log] Device logs:', JSON.stringify(body));
       return new Response('', { status: 200 });
     }
@@ -94,8 +157,8 @@ serve(async (req: Request) => {
     if (api[0] === 'devices' && req.method === 'GET') {
       // Verify Apple Wallet auth token
       const profile = await verifyAuthToken(req, supabase);
-      if (!profile) {
-        console.warn('[Wallet] GET registrations: invalid auth token');
+      if (!profile && !hmacPassed) {
+        console.warn('[Wallet] GET registrations: no valid auth (Apple Wallet token or HMAC)');
         return new Response('Unauthorized', { status: 401 });
       }
 
@@ -155,14 +218,19 @@ serve(async (req: Request) => {
     if (api[0] === 'devices' && req.method === 'POST') {
       const deviceId = api[1], passTypeId = api[3], serial = api[4];
       const authToken = getAuthToken(req);
-      if (!authToken) return new Response('', { status: 401 });
+      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
 
-      const hashedToken = await hashAuthToken(authToken);
-      const { data: profile } = await supabase.from('profiles').select('id, gym_id')
-        .eq('wallet_auth_token', hashedToken).single();
+      // Profile data is required for registration insert (profile_id, gym_id)
+      let profile: Record<string, unknown> | null = null;
+      if (authToken) {
+        const hashedToken = await hashAuthToken(authToken);
+        const { data } = await supabase.from('profiles').select('id, gym_id')
+          .eq('wallet_auth_token', hashedToken).single();
+        profile = data;
+      }
       if (!profile) return new Response('', { status: 401 });
 
-      const body = await req.json().catch(() => ({}));
+      const body = rawBody ? JSON.parse(rawBody) : {};
       if (!body.pushToken) return new Response('', { status: 400 });
 
       console.log(`[Wallet] Register: device=${deviceId} serial=${serial} profile=${profile.id}`);
@@ -192,7 +260,7 @@ serve(async (req: Request) => {
     if (api[0] === 'devices' && req.method === 'DELETE') {
       const deviceId = api[1], passTypeId = api[3], serial = api[4];
       const authToken = getAuthToken(req);
-      if (!authToken) return new Response('', { status: 401 });
+      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
 
       // Verify the token matches the registration before allowing deletion
       const { data: reg } = await supabase.from('wallet_pass_registrations')
@@ -205,18 +273,21 @@ serve(async (req: Request) => {
       if (!reg) return new Response('', { status: 404 });
 
       // Verify the auth token belongs to the profile that owns this registration
-      const hashedToken = await hashAuthToken(authToken);
-      const { data: profile } = await supabase.from('profiles').select('id')
-        .eq('wallet_auth_token', hashedToken)
-        .eq('id', reg.profile_id)
-        .maybeSingle();
+      // (skip ownership check if HMAC-authenticated — trusted server-to-server call)
+      if (!hmacPassed) {
+        const hashedToken = await hashAuthToken(authToken);
+        const { data: profile } = await supabase.from('profiles').select('id')
+          .eq('wallet_auth_token', hashedToken)
+          .eq('id', reg.profile_id)
+          .maybeSingle();
 
-      if (!profile) {
-        console.warn(`[Wallet] DELETE auth mismatch: device=${deviceId} serial=${serial}`);
-        return new Response('', { status: 401 });
+        if (!profile) {
+          console.warn(`[Wallet] DELETE auth mismatch: device=${deviceId} serial=${serial}`);
+          return new Response('', { status: 401 });
+        }
       }
 
-      console.log(`[Wallet] Unregister: device=${deviceId} serial=${serial} profile=${profile.id}`);
+      console.log(`[Wallet] Unregister: device=${deviceId} serial=${serial}`);
       await supabase.from('wallet_pass_registrations').delete().eq('id', reg.id);
       return new Response('', { status: 200 });
     }
@@ -225,14 +296,20 @@ serve(async (req: Request) => {
     if (api[0] === 'passes' && req.method === 'GET') {
       const passTypeId = api[1], serial = api[2];
       const authToken = getAuthToken(req);
-      if (!authToken) return new Response('', { status: 401 });
+      if (!authToken && !hmacPassed) return new Response('', { status: 401 });
 
       console.log(`[Wallet] Fetch pass: type=${passTypeId} serial=${serial}`);
 
-      const hashedToken = await hashAuthToken(authToken);
-      const { data: profile } = await supabase.from('profiles')
-        .select('id, gym_id, full_name, wallet_auth_token, wallet_pass_serial, qr_code_payload')
-        .eq('wallet_auth_token', hashedToken).single();
+      // Profile data is required to build the pass — auth token must resolve to a profile.
+      // HMAC alone is not sufficient here since we need member-specific data.
+      let profile: Record<string, unknown> | null = null;
+      if (authToken) {
+        const hashedToken = await hashAuthToken(authToken);
+        const { data } = await supabase.from('profiles')
+          .select('id, gym_id, full_name, wallet_auth_token, wallet_pass_serial, qr_code_payload')
+          .eq('wallet_auth_token', hashedToken).single();
+        profile = data;
+      }
       if (!profile) return new Response('', { status: 401 });
 
       // Fetch punch cards (needed for both pass types)

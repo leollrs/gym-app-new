@@ -47,7 +47,7 @@ const SORT_OPTIONS = [
 const StatPill = ({ label, value }) => (
   <div className="flex flex-col items-center px-4 py-2">
     <span className="text-[15px] font-bold tracking-[-0.01em]" style={{ color: 'var(--color-text-primary)' }}>{value}</span>
-    <span className="text-[10.5px] font-medium text-[#5B6276] uppercase tracking-[0.06em] mt-0.5">{label}</span>
+    <span className="text-[10.5px] font-medium uppercase tracking-[0.06em] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
   </div>
 );
 
@@ -1024,6 +1024,8 @@ export const ExerciseLibraryPage = () => {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [editingExercise, setEditingExercise] = useState(null);
 
+  useEffect(() => { document.title = `${t('exerciseLibrary.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
+
   const load = useCallback(async () => {
     if (!user || !profile) return;
     setLoading(true);
@@ -1063,7 +1065,7 @@ export const ExerciseLibraryPage = () => {
       let profileMap = {};
       if (creatorIds.length > 0) {
         const { data: profiles } = await supabase
-          .from('profiles')
+          .from('gym_member_profiles_safe')
           .select('id, full_name, username')
           .in('id', creatorIds);
         profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
@@ -1182,13 +1184,15 @@ export const ExerciseLibraryPage = () => {
     return {};
   };
 
-  const mineExercises   = customExercises.filter(e => e.createdBy === user?.id || savedIds.has(e.id));
-  const friendExercises = customExercises.filter(e => friendIds.has(e.createdBy) && !savedIds.has(e.id));
-  const extraForAll     = [...globalDbExercises, ...customExercises];
+  const mineExercises   = useMemo(() => customExercises.filter(e => e.createdBy === user?.id || savedIds.has(e.id)), [customExercises, user?.id, savedIds]);
+  const friendExercises = useMemo(() => customExercises.filter(e => friendIds.has(e.createdBy) && !savedIds.has(e.id)), [customExercises, friendIds, savedIds]);
+  const extraForAll     = useMemo(() => [...globalDbExercises, ...customExercises], [globalDbExercises, customExercises]);
 
   // Deduplicated count: locals not in DB + all DB exercises
-  const dbIds = new Set([...globalDbExercises, ...customExercises].map(e => e.id));
-  const totalCount = localExercises.filter(e => !dbIds.has(e.id)).length + dbIds.size;
+  const { dbIds, totalCount } = useMemo(() => {
+    const ids = new Set([...globalDbExercises, ...customExercises].map(e => e.id));
+    return { dbIds: ids, totalCount: localExercises.filter(e => !ids.has(e.id)).length + ids.size };
+  }, [globalDbExercises, customExercises]);
 
   const tabs = [
     { key: 'all',     label: t('exerciseLibrary.tabAll') },

@@ -298,6 +298,7 @@ export default function AdminProfile() {
                   <button
                     onClick={() => setShowAvatarPicker(true)}
                     disabled={uploading}
+                    aria-label={t('admin.profile.changeAvatar', 'Change avatar')}
                     className="absolute -bottom-1 -right-1 p-1.5 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
                     style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
                   >
@@ -327,6 +328,7 @@ export default function AdminProfile() {
                   <button
                     onClick={() => updateProfileMutation.mutate({ full_name: editName })}
                     disabled={updateProfileMutation.isPending || !editName.trim()}
+                    aria-label={t('admin.profile.saveName', 'Save name')}
                     className="p-1.5 rounded-lg transition-colors hover:bg-emerald-500/10"
                     style={{ color: 'var(--color-success)' }}
                   >
@@ -334,6 +336,7 @@ export default function AdminProfile() {
                   </button>
                   <button
                     onClick={() => { setEditing(false); setEditName(profile?.full_name || ''); }}
+                    aria-label={t('admin.profile.cancelEdit', 'Cancel editing')}
                     className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
                     style={{ color: 'var(--color-danger)' }}
                   >
@@ -347,6 +350,7 @@ export default function AdminProfile() {
                   </h2>
                   <button
                     onClick={() => { setEditing(true); setEditName(profile?.full_name || ''); }}
+                    aria-label={t('admin.profile.editName', 'Edit name')}
                     className="p-1 rounded-lg transition-colors hover:bg-white/5"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
@@ -598,7 +602,7 @@ export default function AdminProfile() {
               style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
             >
               <AlertTriangle className="w-4 h-4" />
-              {t('admin.profile.deleteAccount', 'Eliminar Cuenta')}
+              {t('admin.profile.deleteAccount', 'Delete Account')}
             </button>
           </FadeIn>
         </div>
@@ -612,13 +616,13 @@ export default function AdminProfile() {
             <div className="p-5">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={18} style={{ color: '#EF4444' }} />
-                <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.profile.deleteAccount', 'Eliminar Cuenta')}</h3>
+                <h3 className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.profile.deleteAccount', 'Delete Account')}</h3>
               </div>
               <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.profile.deleteWarning', 'Esta acción es permanente. Se eliminarán todos tus datos y no se puede deshacer.')}
+                {t('admin.profile.deleteWarning', 'This action is permanent. All your data will be deleted and cannot be undone.')}
               </p>
               <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.profile.deleteTypeConfirm', 'Escribe ELIMINAR para confirmar:')}
+                {t('admin.profile.deleteTypeConfirm', 'Type DELETE to confirm:')}
               </p>
               <input
                 type="text"
@@ -632,12 +636,23 @@ export default function AdminProfile() {
                 <button onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
                   className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors"
                   style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>
-                  {t('admin.profile.cancel', 'Cancelar')}
+                  {t('admin.profile.cancel', 'Cancel')}
                 </button>
                 <button
                   onClick={async () => {
                     setDeleting(true);
                     try {
+                      // Guard: prevent last admin from deleting their account
+                      const { count } = await supabase
+                        .from('profiles')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('gym_id', profile.gym_id)
+                        .eq('role', 'admin');
+                      if (count != null && count <= 1) {
+                        showToast(tc('lastAdminCannotDelete'), 'error');
+                        setDeleting(false);
+                        return;
+                      }
                       await supabase.rpc('delete_own_account');
                       await signOut();
                     } catch (err) {
@@ -649,7 +664,7 @@ export default function AdminProfile() {
                   disabled={deleteInput.toLowerCase() !== 'eliminar' || deleting}
                   className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
                   style={{ backgroundColor: '#EF4444', color: '#fff' }}>
-                  {deleting ? t('admin.profile.deleting', 'Eliminando...') : t('admin.profile.deleteConfirmBtn', 'Eliminar Cuenta')}
+                  {deleting ? t('admin.profile.deleting', 'Deleting...') : t('admin.profile.deleteConfirmBtn', 'Delete Account')}
                 </button>
               </div>
             </div>

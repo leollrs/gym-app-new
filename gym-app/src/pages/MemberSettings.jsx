@@ -29,6 +29,10 @@ export default function MemberSettings() {
   const [unblocking, setUnblocking] = useState(null);
 
   useEffect(() => {
+    document.title = t('settings.title');
+  }, [t]);
+
+  useEffect(() => {
     if (!user?.id) return;
     supabase
       .from('blocked_users')
@@ -192,7 +196,7 @@ export default function MemberSettings() {
                         )}
                       </div>
                       <span className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {block.profiles?.full_name ?? 'Unknown'}
+                        {block.profiles?.full_name ?? t('social.unknownUser')}
                       </span>
                     </div>
                     <button
@@ -346,7 +350,7 @@ export default function MemberSettings() {
                         await deleteAccount();
                       } catch (err) {
                         setDeleting(false);
-                        alert(err.message || 'Failed to delete account');
+                        alert(err.message || t('settings.failedToDelete'));
                       }
                     }}
                     className="flex-1 py-3.5 rounded-xl text-[14px] font-semibold transition-all"

@@ -30,7 +30,7 @@
 		<false/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>TuGymPR uses your camera to foods for nutritional analysis, scan body for measurement analysis, take progress photos and share images with friends. </string>
+	<string>TuGymPR uses your camera to scan QR codes for gym check-in and to take progress photos.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>TuGymPR reads your health data to display steps, sync weight measurements, and track workout activity.</string>
 	<key>NSHealthUpdateUsageDescription</key>

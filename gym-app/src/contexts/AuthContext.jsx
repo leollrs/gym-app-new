@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyBranding } from '../lib/branding';
+import { setAppName } from '../lib/appName';
 import { getPalette } from '../lib/palettes';
 import { resetToDefault } from '../lib/themeGenerator';
 import { setErrorTrackerAuth } from '../lib/errorTracker';
@@ -86,6 +87,7 @@ export const AuthProvider = ({ children }) => {
 
   // Fetch the profile row for a given user id, then apply gym branding
   const fetchProfile = async (userId) => {
+    try {
     // Single RPC call replaces profile + branding + gym + points + notifications queries
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_auth_context');
 
@@ -94,7 +96,7 @@ export const AuthProvider = ({ children }) => {
     if (rpcError || !rpcResult) {
       const { data: fallback } = await supabase
         .from('profiles')
-        .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, avatar_type, avatar_value, avatar_color, avatar_design, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date')
+        .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, avatar_type, avatar_value, avatar_color, avatar_design, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience')
         .eq('id', userId)
         .maybeSingle();
       data = fallback;
@@ -180,7 +182,9 @@ export const AuthProvider = ({ children }) => {
           secondaryColor: branding.accent_color,
         });
       }
-      setGymName(gym?.name || branding?.custom_app_name || '');
+      const resolvedName = gym?.name || branding?.custom_app_name || '';
+      setGymName(resolvedName);
+      setAppName(resolvedName);
       setGymConfig({
         qrEnabled: gym?.qr_enabled ?? false,
         qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
@@ -248,8 +252,6 @@ export const AuthProvider = ({ children }) => {
     } else {
       setMfaRequired(false);
     }
-
-    setLoading(false);
 
     // Defer Watch sync to after render — these queries are non-critical and should
     // not block the auth path. Profile data is already set above.
@@ -350,6 +352,9 @@ export const AuthProvider = ({ children }) => {
         }).catch(() => {});
       }, 0);
     }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -362,11 +367,17 @@ export const AuthProvider = ({ children }) => {
 
     // Subscribe to auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'TOKEN_REFRESHED') {
+        // Only the token changed — profile data is unchanged. Update the user
+        // object in state (new access token) without triggering a loading flash
+        // or a redundant DB round-trip.
+        setUser(session?.user ?? null);
+        return;
+      }
+
       setUser(session?.user ?? null);
-      if (session?.user) {
-        setLoading(true);
-        fetchProfile(session.user.id);
-      } else {
+
+      if (_event === 'SIGNED_OUT' || !session?.user) {
         setProfile(null);
         setGymName('');
         setGymLogoUrl('');
@@ -379,7 +390,25 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
         resetToDefault();
         try { posthog.reset(); } catch {}
+        return;
       }
+
+      if (_event === 'SIGNED_IN') {
+        // Full profile fetch with loading screen for new sign-ins
+        setLoading(true);
+        fetchProfile(session.user.id);
+        return;
+      }
+
+      if (_event === 'USER_UPDATED') {
+        // Profile data may have changed (e.g. email/password update) — refresh
+        // silently in the background without showing the loading screen.
+        fetchProfile(session.user.id);
+        return;
+      }
+
+      // Fallback for any other events (INITIAL_SESSION handled by getSession above)
+      // Do nothing — avoids unnecessary re-fetches.
     });
 
     return () => {
@@ -511,7 +540,7 @@ export const AuthProvider = ({ children }) => {
 
   // Optimistic patch — merges safelisted fields into the local profile
   // immediately without a DB round-trip.  Follow up with refreshProfile() to confirm.
-  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible'];
+  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience'];
   const patchProfile = useCallback((fields) => {
     const safe = Object.fromEntries(
       Object.entries(fields).filter(([k]) => PATCHABLE_FIELDS.includes(k))

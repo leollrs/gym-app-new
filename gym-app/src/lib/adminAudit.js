@@ -16,8 +16,8 @@ export function logAdminAction(action, entityType = null, entityId = null, detai
       p_entity_type: entityType,
       p_entity_id: entityId,
       p_details: details,
-    }).then(() => {}).catch(() => {}); // fire-and-forget
-  } catch (_) {
-    // silently ignore
+    }).then(() => {}).catch(err => console.error('[AuditLog] Failed to log action:', err));
+  } catch (err) {
+    console.error('[AuditLog] Failed to log action:', err);
   }
 }

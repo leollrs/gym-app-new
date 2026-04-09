@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Building2, UserCog, Shield, Snowflake, Settings, Dumbbell, Trophy,
   ChevronDown, Search, Filter, Loader2,
@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 const PAGE_SIZE = 50;
 
@@ -190,11 +191,15 @@ export default function AuditLog() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [uniqueActors, setUniqueActors] = useState(0);
 
   const [dateRange, setDateRange] = useState('7d');
   const [actionType, setActionType] = useState('all');
   const [gymFilter, setGymFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef(null);
 
   const [gyms, setGyms] = useState([]);
 
@@ -209,21 +214,17 @@ export default function AuditLog() {
     })();
   }, []);
 
-  const fetchEntries = useCallback(async (offset = 0, append = false) => {
-    if (!append) setLoading(true);
-    else setLoadingMore(true);
+  // Debounce search input
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchTerm]);
 
-    let query = supabase
-      .from('audit_log')
-      .select(`
-        id, gym_id, actor_id, action, target_type, target_id, metadata, created_at,
-        actor:profiles!audit_log_actor_id_fkey ( id, full_name, username ),
-        gym:gyms!audit_log_gym_id_fkey ( id, name )
-      `)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    // Date range filter
+  // Helper to apply shared filters to a query builder
+  const applyFilters = useCallback((query) => {
     if (dateRange === '24h') {
       query = query.gte('created_at', subHours(new Date(), 24).toISOString());
     } else if (dateRange === '7d') {
@@ -231,18 +232,36 @@ export default function AuditLog() {
     } else if (dateRange === '30d') {
       query = query.gte('created_at', subDays(new Date(), 30).toISOString());
     }
-
-    // Action type filter
     if (actionType !== 'all') {
       query = query.eq('action', actionType);
     }
-
-    // Gym filter
     if (gymFilter !== 'all') {
       query = query.eq('gym_id', gymFilter);
     }
+    if (debouncedSearch.trim()) {
+      query = query.ilike('action', `%${debouncedSearch.trim()}%`);
+    }
+    return query;
+  }, [dateRange, actionType, gymFilter, debouncedSearch]);
 
-    const { data, error } = await query;
+  const fetchEntries = useCallback(async (offset = 0, append = false) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
+
+    // Main data query
+    let query = supabase
+      .from('audit_log')
+      .select(`
+        id, gym_id, actor_id, action, target_type, target_id, metadata, created_at,
+        actor:profiles!audit_log_actor_id_fkey ( id, full_name, username ),
+        gym:gyms!audit_log_gym_id_fkey ( id, name )
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    query = applyFilters(query);
+
+    const { data, error, count } = await query;
 
     if (error) {
       logger.error('Error fetching audit log:', error);
@@ -251,16 +270,7 @@ export default function AuditLog() {
       return;
     }
 
-    let results = data || [];
-
-    // Client-side search by actor name
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      results = results.filter((e) => {
-        const name = e.actor?.full_name || e.actor?.email || '';
-        return name.toLowerCase().includes(term);
-      });
-    }
+    const results = data || [];
 
     if (append) {
       setEntries((prev) => [...prev, ...results]);
@@ -268,10 +278,23 @@ export default function AuditLog() {
       setEntries(results);
     }
 
+    if (count !== null && !append) setTotalCount(count);
     setHasMore(results.length === PAGE_SIZE);
     if (!append) setLoading(false);
     else setLoadingMore(false);
-  }, [dateRange, actionType, gymFilter, searchTerm]);
+
+    // Fetch distinct actor count server-side (only on first page load)
+    if (!append) {
+      let actorListQuery = supabase
+        .from('audit_log')
+        .select('actor_id');
+      actorListQuery = applyFilters(actorListQuery);
+      const { data: actorData } = await actorListQuery;
+      if (actorData) {
+        setUniqueActors([...new Set(actorData.map(r => r.actor_id).filter(Boolean))].length);
+      }
+    }
+  }, [applyFilters]);
 
   // Re-fetch when filters change
   useEffect(() => {
@@ -291,15 +314,15 @@ export default function AuditLog() {
       </div>
 
       {/* Summary strip */}
-      {!loading && entries.length > 0 && (
+      {!loading && (totalCount > 0 || entries.length > 0) && (
         <div className="grid grid-cols-3 md:grid-cols-3 gap-2.5 mb-6">
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
-            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{entries.length}</p>
+            <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{totalCount.toLocaleString()}</p>
             <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.audit.totalActions', 'Total Actions')}</p>
           </div>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
             <p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">
-              {[...new Set(entries.map(e => e.actor?.full_name).filter(Boolean))].length}
+              {uniqueActors}
             </p>
             <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.audit.activeActors', 'Active Actors')}</p>
           </div>
@@ -312,7 +335,7 @@ export default function AuditLog() {
                 return top ? (ACTION_CONFIG[top[0]]?.labelKey ? t(ACTION_CONFIG[top[0]].labelKey) : top[0]) : '—';
               })()}
             </p>
-            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.audit.topAction', 'Top Action')}</p>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">{t('platform.audit.topAction', 'Top Action')}{entries.length < totalCount ? ` (${t('platform.audit.fromLoaded', 'from loaded')})` : ''}</p>
           </div>
         </div>
       )}
@@ -382,9 +405,7 @@ export default function AuditLog() {
       {/* Log entries */}
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-          </div>
+          <PlatformSpinner />
         ) : entries.length === 0 ? (
           <div className="text-center py-16">
             <Settings size={32} className="mx-auto text-[#6B7280] mb-3" />

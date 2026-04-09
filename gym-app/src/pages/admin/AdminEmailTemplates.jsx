@@ -10,7 +10,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, AdminModal, AdminTabs } from '../../components/admin';
+import { logAdminAction } from '../../lib/adminAudit';
+import { PageHeader, AdminCard, FadeIn, AdminModal, AdminTabs, Toggle } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 // ── XSS helpers ───────────────────────────────────────────────
@@ -351,23 +352,6 @@ ${footer.unsubscribeText ? `<a href="#" style="font-size:11px;color:#D1D5DB;text
 </table>
 </body>
 </html>`;
-}
-
-// ── Toggle Component ─────────────────────────────────────────────
-function Toggle({ value, onChange, label }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      aria-label={label}
-      className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-      style={{ backgroundColor: value ? 'var(--color-accent)' : '#6B7280' }}
-    >
-      <span
-        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        style={{ left: value ? 'calc(100% - 18px)' : '2px' }}
-      />
-    </button>
-  );
 }
 
 // ── Variable Pill ────────────────────────────────────────────────
@@ -1111,7 +1095,7 @@ export default function AdminEmailTemplates() {
   const [editing, setEditing] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  useEffect(() => { document.title = 'Admin - Email Templates | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Email Templates | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // ── Supabase query ─────────────────────────────────────────
   const { data: dbTemplates = [], isLoading } = useQuery({
@@ -1175,7 +1159,8 @@ export default function AdminEmailTemplates() {
         .eq('gym_id', gymId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      logAdminAction('delete_email_template', 'gym_email_template', id);
       queryClient.invalidateQueries({ queryKey: adminKeys.emailTemplates(gymId) });
       setDeleteConfirm(null);
       showToast(t('admin.emailTemplates.templateDeleted'), 'success');

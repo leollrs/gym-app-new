@@ -11,6 +11,8 @@ import {
   Activity, Clock, AlertTriangle, Dumbbell, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
+import FadeIn from '../../components/platform/FadeIn';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 // ── Badges ───────────────────────────────────────────────────
 const roleBadge = {
@@ -37,21 +39,8 @@ function Badge({ label, variant }) {
 }
 
 function Spinner() {
-  return (
-    <div className="flex justify-center py-8">
-      <div className="w-7 h-7 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-    </div>
-  );
+  return <PlatformSpinner />;
 }
-
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
 
 function relativeDate(dateStr) {
   if (!dateStr) return 'Never';
@@ -229,6 +218,12 @@ export default function SupportConsole() {
 
   const handleChangeRole = async () => {
     if (!selectedMember || newRole === selectedMember.role) return;
+    // Block super_admin escalation from support console
+    if (newRole === 'super_admin') {
+      showToast(t('platform.support.superAdminBlocked', 'Super admin can only be assigned via database'), 'error');
+      setRoleModal(false);
+      return;
+    }
     setModalSaving(true);
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', selectedMember.id);
     setModalSaving(false);
@@ -749,9 +744,7 @@ export default function SupportConsole() {
             </div>
 
             {modalSaving ? (
-              <div className="flex justify-center py-6">
-                <div className="w-6 h-6 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-              </div>
+              <PlatformSpinner />
             ) : resetCode ? (
               <div className="space-y-3">
                 <p className="text-[12px] text-[#9CA3AF]">{t('platform.support.resetCodeLabel', 'Share this reset code with the member:')}</p>

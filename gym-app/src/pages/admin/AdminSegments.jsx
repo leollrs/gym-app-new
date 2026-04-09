@@ -16,6 +16,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { exportCSV } from '../../lib/csvExport';
 import logger from '../../lib/logger';
+import { logAdminAction } from '../../lib/adminAudit';
 
 import {
   PageHeader, AdminCard, SectionLabel, FadeIn, StatCard,
@@ -319,8 +320,9 @@ export default function AdminSegments() {
   async function handleDelete(segmentId) {
     if (!confirm(t('admin.segments.confirmDelete', 'Delete this segment?'))) return;
     try {
-      const { error } = await supabase.from('member_segments').delete().eq('id', segmentId);
+      const { error } = await supabase.from('member_segments').delete().eq('id', segmentId).eq('gym_id', gymId);
       if (error) throw error;
+      logAdminAction('delete_segment', 'member_segment', segmentId);
       if (selectedSegment?.id === segmentId) setSelectedSegment(null);
       showToast(t('admin.segments.segmentDeleted', 'Segment deleted'), 'success');
       refetch();
@@ -332,7 +334,7 @@ export default function AdminSegments() {
 
   async function handleTogglePin(segment) {
     try {
-      const { error } = await supabase.from('member_segments').update({ is_pinned: !segment.is_pinned, updated_at: new Date().toISOString() }).eq('id', segment.id);
+      const { error } = await supabase.from('member_segments').update({ is_pinned: !segment.is_pinned, updated_at: new Date().toISOString() }).eq('id', segment.id).eq('gym_id', gymId);
       if (error) throw error;
       refetch();
     } catch (err) {
@@ -939,7 +941,7 @@ function SegmentEditorModal({ segment, gymId, adminId, onClose, onSaved }) {
           icon,
           filters,
           updated_at: new Date().toISOString(),
-        }).eq('id', segment.id);
+        }).eq('id', segment.id).eq('gym_id', gymId);
       } else {
         await supabase.from('member_segments').insert({
           gym_id: gymId,

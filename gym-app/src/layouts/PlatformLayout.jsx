@@ -8,6 +8,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 const NAV_SECTIONS = [
   {
     labelKey: 'platformNav.main',
@@ -54,7 +56,33 @@ export default function PlatformLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const moreMenuRef = useRef(null);
+  const lastActivityRef = useRef(Date.now());
+
+  // ── Session inactivity timeout (30 min) ───────────────────────
+  useEffect(() => {
+    const updateActivity = () => { lastActivityRef.current = Date.now(); };
+    const events = ['mousemove', 'keypress', 'click', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, updateActivity, { passive: true }));
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= SESSION_TIMEOUT_MS) {
+        setSessionExpired(true);
+        clearInterval(interval);
+      }
+    }, 30_000); // check every 30s
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, updateActivity));
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleSessionExpiredLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   useEffect(() => {
     setMoreMenuOpen(false);
@@ -86,6 +114,7 @@ export default function PlatformLayout({ children }) {
   }, [location.pathname]);
 
   const handleSignOut = async () => {
+    if (!window.confirm(t('platformLayout.signOutConfirm', 'Are you sure you want to sign out?'))) return;
     await signOut();
     navigate('/login');
   };
@@ -163,7 +192,7 @@ export default function PlatformLayout({ children }) {
         >
           <div className="flex items-center gap-2">
             <Shield size={16} className="text-[#D4AF37]" />
-            <p className="text-[15px] font-bold text-[#E5E7EB]">Platform</p>
+            <p className="text-[15px] font-bold text-[#E5E7EB]">{t('platformLayout.platform', 'Platform')}</p>
           </div>
           <button onClick={handleSignOut} aria-label="Sign out" className="w-11 h-11 flex items-center justify-center text-[#6B7280] hover:text-[#EF4444] transition-colors duration-200">
             <LogOut size={18} />
@@ -183,6 +212,8 @@ export default function PlatformLayout({ children }) {
       {/* Mobile "More" slide-up panel */}
       <div
         ref={moreMenuRef}
+        role="dialog"
+        aria-modal="true"
         className={`md:hidden fixed bottom-0 left-0 right-0 z-[70] transition-transform duration-300 ease-out ${
           moreMenuOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
@@ -250,10 +281,33 @@ export default function PlatformLayout({ children }) {
             aria-expanded={moreMenuOpen}
           >
             <MoreHorizontal size={20} />
-            <span className="text-[10px] font-medium">More</span>
+            <span className="text-[10px] font-medium">{t('platformLayout.more', 'More')}</span>
           </button>
         )}
       </nav>
+
+      {/* Session expired modal */}
+      {sessionExpired && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl p-6 max-w-sm mx-4 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 flex items-center justify-center mx-auto">
+              <AlertTriangle size={22} className="text-[#D4AF37]" />
+            </div>
+            <h2 className="text-[16px] font-semibold text-[#E5E7EB]">
+              {t('platformLayout.sessionExpired', 'Session Expired')}
+            </h2>
+            <p className="text-[13px] text-[#9CA3AF]">
+              {t('platformLayout.sessionExpiredMsg', 'Your session has expired due to inactivity. Please sign in again.')}
+            </p>
+            <button
+              onClick={handleSessionExpiredLogout}
+              className="w-full bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors"
+            >
+              {t('platformLayout.signIn', 'Sign In')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

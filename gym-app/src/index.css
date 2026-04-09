@@ -399,16 +399,16 @@ input::placeholder  { color: var(--color-text-subtle); }
 .text-\[\#d4af37\], .text-\[\#f0a500\]   { color: var(--color-accent) !important; }
 .text-\[\#E6C766\], .text-\[\#FFB833\]   { color: var(--color-accent-soft) !important; }
 .text-\[\#e6c766\], .text-\[\#ffb833\]   { color: var(--color-accent-soft) !important; }
-.text-\[\#C4A030\], .text-\[\#C88400\]   { color: var(--color-accent-dark) !important; }
+.text-\[\#C4A030\], .text-\[\#C88400\], .text-\[\#C5A028\]   { color: var(--color-accent-dark) !important; }
 .text-\[\#B8860B\], .text-\[\#9A6700\]   { color: var(--color-accent-dark) !important; }
 .text-\[\#f2d36b\]   { color: var(--color-accent-soft) !important; }
 .text-\[\#F2D36B\]   { color: var(--color-accent-soft) !important; }
 
 /* Hover text gold / amber */
 .hover\:text-\[\#D4AF37\]:hover, .hover\:text-\[\#F0A500\]:hover { color: var(--color-accent) !important; }
-.hover\:text-\[\#E6C766\]:hover, .hover\:text-\[\#FFB833\]:hover { color: var(--color-accent-soft) !important; }
+.hover\:text-\[\#E6C766\]:hover, .hover\:text-\[\#FFB833\]:hover, .hover\:text-\[\#E5C158\]:hover { color: var(--color-accent-soft) !important; }
 .hover\:text-\[\#f2d36b\]:hover { color: var(--color-accent-soft) !important; }
-.hover\:text-\[\#C4A030\]:hover, .hover\:text-\[\#C88400\]:hover { color: var(--color-accent-dark) !important; }
+.hover\:text-\[\#C4A030\]:hover, .hover\:text-\[\#C88400\]:hover, .hover\:text-\[\#C5A028\]:hover { color: var(--color-accent-dark) !important; }
 .group-hover\:text-\[\#D4AF37\]:is(.group:hover *), .group-hover\:text-\[\#F0A500\]:is(.group:hover *) { color: var(--color-accent) !important; }
 
 /* Background gold / amber (old + new hex values) */
@@ -418,18 +418,23 @@ input::placeholder  { color: var(--color-text-subtle); }
 .bg-\[\#C4A030\], .bg-\[\#C88400\]     { background-color: var(--color-accent-dark) !important; }
 .bg-\[\#B8860B\], .bg-\[\#9A6700\]     { background-color: var(--color-accent-dark) !important; }
 .hover\:bg-\[\#D4AF37\]:hover, .hover\:bg-\[\#F0A500\]:hover { background-color: var(--color-accent) !important; }
-.hover\:bg-\[\#C4A030\]:hover, .hover\:bg-\[\#C88400\]:hover { background-color: var(--color-accent-dark) !important; }
+.hover\:bg-\[\#C4A030\]:hover, .hover\:bg-\[\#C88400\]:hover, .hover\:bg-\[\#C5A028\]:hover { background-color: var(--color-accent-dark) !important; }
 .hover\:bg-\[\#E6C766\]:hover, .hover\:bg-\[\#FFB833\]:hover { background-color: var(--color-accent-soft) !important; }
 
 /* Gold / amber alpha backgrounds (old + new hex values) */
+.bg-\[\#D4AF37\]\/3, .bg-\[\#F0A500\]\/3   { background-color: color-mix(in srgb, var(--color-accent) 3%, transparent) !important; }
 .bg-\[\#D4AF37\]\/5, .bg-\[\#F0A500\]\/5   { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent) !important; }
 .bg-\[\#D4AF37\]\/6, .bg-\[\#F0A500\]\/6   { background-color: color-mix(in srgb, var(--color-accent) 6%, transparent) !important; }
 .bg-\[\#D4AF37\]\/8, .bg-\[\#F0A500\]\/8   { background-color: color-mix(in srgb, var(--color-accent) 8%, transparent) !important; }
 .bg-\[\#D4AF37\]\/10, .bg-\[\#F0A500\]\/10 { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.bg-\[\#D4AF37\]\/12, .bg-\[\#F0A500\]\/12 { background-color: color-mix(in srgb, var(--color-accent) 12%, transparent) !important; }
 .bg-\[\#D4AF37\]\/15, .bg-\[\#F0A500\]\/15 { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.bg-\[\#D4AF37\]\/18, .bg-\[\#F0A500\]\/18 { background-color: color-mix(in srgb, var(--color-accent) 18%, transparent) !important; }
 .bg-\[\#D4AF37\]\/20, .bg-\[\#F0A500\]\/20 { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
 .hover\:bg-\[\#D4AF37\]\/10:hover, .hover\:bg-\[\#F0A500\]\/10:hover { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/12:hover, .hover\:bg-\[\#F0A500\]\/12:hover { background-color: color-mix(in srgb, var(--color-accent) 12%, transparent) !important; }
 .hover\:bg-\[\#D4AF37\]\/15:hover, .hover\:bg-\[\#F0A500\]\/15:hover { background-color: color-mix(in srgb, var(--color-accent) 15%, transparent) !important; }
+.hover\:bg-\[\#D4AF37\]\/18:hover, .hover\:bg-\[\#F0A500\]\/18:hover { background-color: color-mix(in srgb, var(--color-accent) 18%, transparent) !important; }
 .hover\:bg-\[\#D4AF37\]\/20:hover, .hover\:bg-\[\#F0A500\]\/20:hover { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
 
 /* Gold / amber gradient stops (old + new hex values) */
@@ -451,6 +456,9 @@ input::placeholder  { color: var(--color-text-subtle); }
 .hover\:border-\[\#D4AF37\]\/40:hover, .hover\:border-\[\#F0A500\]\/40:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important; }
 .hover\:border-\[\#D4AF37\]\/50:hover, .hover\:border-\[\#F0A500\]\/50:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, transparent) !important; }
 .focus\:border-\[\#D4AF37\]:focus, .focus\:border-\[\#F0A500\]:focus { border-color: var(--color-accent) !important; }
+.focus\:border-\[\#D4AF37\]\/40:focus, .focus\:border-\[\#F0A500\]\/40:focus { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important; }
+.border-\[\#D4AF37\]\/10, .border-\[\#F0A500\]\/10 { border-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
+.border-\[\#D4AF37\]\/25, .border-\[\#F0A500\]\/25 { border-color: color-mix(in srgb, var(--color-accent) 25%, transparent) !important; }
 
 /* Ring gold / amber (old + new hex values) */
 .ring-\[\#D4AF37\], .ring-\[\#F0A500\]     { --tw-ring-color: var(--color-accent) !important; }
@@ -458,6 +466,7 @@ input::placeholder  { color: var(--color-text-subtle); }
 .ring-\[\#D4AF37\]\/30, .ring-\[\#F0A500\]\/30 { --tw-ring-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
 .focus\:ring-\[\#D4AF37\]:focus, .focus\:ring-\[\#F0A500\]:focus { --tw-ring-color: var(--color-accent) !important; }
 .focus\:ring-\[\#D4AF37\]\/20:focus, .focus\:ring-\[\#F0A500\]\/20:focus { --tw-ring-color: color-mix(in srgb, var(--color-accent) 20%, transparent) !important; }
+.focus\:ring-\[\#D4AF37\]\/30:focus, .focus\:ring-\[\#F0A500\]\/30:focus { --tw-ring-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important; }
 
 /* Shadow gold / amber */
 .shadow-\[\#D4AF37\], .shadow-\[\#F0A500\]     { --tw-shadow-color: var(--color-accent) !important; }

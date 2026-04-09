@@ -23,7 +23,7 @@ function isInternalUrl(urlStr: string): boolean {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-webhook-signature, x-signature',
 };
 
 function jsonResp(data: unknown, status = 200) {
@@ -49,6 +49,20 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   let result = 0;
   for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
   return result === 0;
+}
+
+// ── Incoming webhook signature verification ─────────────
+async function computeHmacHex(secret: string, body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── Adapters ─────────────────────────────────────────────
@@ -159,7 +173,20 @@ serve(async (req: Request) => {
       }
     }
 
-    const { integrationId, action, payload } = await req.json();
+    // Read raw body for signature verification (must happen before .json())
+    const rawBody = await req.text();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return jsonResp({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const { integrationId, action, payload } = parsed as {
+      integrationId?: string;
+      action?: string;
+      payload?: Record<string, unknown>;
+    };
     if (!integrationId || !action || !payload) {
       return jsonResp({ error: 'Missing integrationId, action, or payload' }, 400);
     }
@@ -172,6 +199,39 @@ serve(async (req: Request) => {
       .select('id, gym_id, provider, config, is_active, actions_enabled')
       .eq('id', integrationId)
       .single();
+
+    // ── Verify incoming webhook signature ──
+    const incomingSig = req.headers.get('x-webhook-signature') ?? req.headers.get('x-signature');
+    if (incomingSig) {
+      // Determine the verification secret: per-integration config or env fallback
+      const verifySecret =
+        ((integration?.config as Record<string, unknown>)?.webhook_secret as string | undefined)
+        ?? Deno.env.get('WEBHOOK_VERIFY_SECRET');
+
+      if (!verifySecret) {
+        console.warn(
+          `[integration-webhook] Signature header present but no webhook_secret configured for integration ${integrationId}`,
+        );
+        return jsonResp({ error: 'Webhook signature verification not configured' }, 401);
+      }
+
+      // Normalize: strip optional "sha256=" prefix
+      const rawSig = incomingSig.startsWith('sha256=') ? incomingSig.slice(7) : incomingSig;
+      const expectedHex = await computeHmacHex(verifySecret, rawBody);
+
+      if (!(await timingSafeEqual(rawSig, expectedHex))) {
+        console.error(
+          `[integration-webhook] Invalid webhook signature for integration ${integrationId}`,
+        );
+        return jsonResp({ error: 'Invalid webhook signature' }, 401);
+      }
+    } else {
+      // No signature header — allow for backward compatibility but log a warning
+      console.warn(
+        `[integration-webhook] No webhook signature header present for integration ${integrationId}. ` +
+        'Consider configuring webhook_secret for signature verification.',
+      );
+    }
 
     if (fetchErr || !integration) {
       return jsonResp({ error: 'Integration not found' }, 404);

@@ -52,7 +52,7 @@ const RpeSelector = React.memo(({ value, onChange, t }) => (
             key={n}
             type="button"
             onClick={() => onChange(selected ? null : n)}
-            className={`w-[28px] h-[28px] rounded-full text-[11px] font-bold transition-all duration-150 flex items-center justify-center ${
+            className={`w-[36px] h-[36px] min-w-[44px] min-h-[44px] rounded-full text-[12px] font-bold transition-all duration-150 flex items-center justify-center ${
               selected
                 ? `${c.bg} text-white scale-110 shadow-lg`
                 : 'bg-white/[0.04] border border-white/[0.06] hover:border-white/[0.12]'

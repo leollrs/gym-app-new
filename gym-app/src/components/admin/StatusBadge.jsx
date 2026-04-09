@@ -2,6 +2,7 @@
  * Status badge for membership status and risk tiers.
  */
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle, AlertOctagon, Info, CheckCircle } from 'lucide-react';
 
 const STATUS_CONFIG = {
   active:      { dot: true,  key: 'active',      color: 'text-[#10B981]',  bg: 'bg-[#10B981]/10',  border: 'border-[#10B981]/20' },
@@ -12,10 +13,10 @@ const STATUS_CONFIG = {
 };
 
 const RISK_CONFIG = {
-  critical: { key: 'critical', color: '#EF4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.25)' },
-  high:     { key: 'high',     color: '#F97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.25)' },
-  medium:   { key: 'medium',   color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.25)' },
-  low:      { key: 'low',      color: '#10B981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.25)' },
+  critical: { key: 'critical', color: '#EF4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.25)', Icon: AlertOctagon },
+  high:     { key: 'high',     color: '#F97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.25)', Icon: AlertTriangle },
+  medium:   { key: 'medium',   color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.25)', Icon: Info },
+  low:      { key: 'low',      color: '#10B981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.25)', Icon: CheckCircle },
 };
 
 export function StatusBadge({ status }) {
@@ -39,13 +40,16 @@ export function StatusBadge({ status }) {
 export function RiskBadge({ tier, score }) {
   const { t } = useTranslation('pages');
   const cfg = RISK_CONFIG[tier] ?? RISK_CONFIG.low;
+  const RiskIcon = cfg.Icon;
   const label = t(`admin.riskLabels.${(tier || 'low').toLowerCase()}`);
   return (
     <span
       className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border"
       style={{ color: cfg.color, background: cfg.bg, borderColor: cfg.border }}
+      role="status"
+      aria-label={`${label}${score != null ? ` ${typeof score === 'number' && score % 1 === 0 ? score : score?.toFixed?.(1)}` : ''}`}
     >
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cfg.color }} />
+      <RiskIcon size={12} className="flex-shrink-0" aria-hidden="true" />
       {label}
       {score != null && <span className="opacity-60">{typeof score === 'number' && score % 1 === 0 ? score : score?.toFixed?.(1)}</span>}
     </span>

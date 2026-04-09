@@ -134,7 +134,11 @@
     "notifications": "Notificaciones",
     "profile": "Perfil",
     "signOut": "Cerrar sesión",
-    "classes": "Mis Clases"
+    "classes": "Mis Clases",
+    "trainerLabel": "Entrenador",
+    "myGym": "Mi Gimnasio",
+    "skipToContent": "Ir al contenido principal",
+    "trainer": "Entrenador"
   },
   "platformNav": {
     "main": "PRINCIPAL",
@@ -156,7 +160,10 @@
     "platformAdmin": "Admin de Plataforma",
     "superAdmin": "Super Admin",
     "signOut": "Cerrar sesión",
-    "morePages": "Más Páginas"
+    "signOutConfirm": "¿Estás seguro de que quieres cerrar sesión?",
+    "morePages": "Más Páginas",
+    "more": "Más",
+    "platform": "Plataforma"
   },
   "filters": "Filtros",
   "collapse": "Contraer",
@@ -171,7 +178,7 @@
     "todayIsRoutineDay": "Hoy toca {{routine}}",
     "dontForgetRoutine": "No te olvides de tu rutina de {{routine}}. ¡Tu cuerpo está listo!",
     "streakAtRisk": "⚠️ Tu racha está en peligro",
-    "streakAtRiskBody": "Tienes una racha de {{streak}} días — ¡no la pierdas! Ve al gym hoy.",
+    "streakAtRiskBody": "Tu racha de {{count}} días se rompe a medianoche. ¡Un entreno la mantiene viva!",
     "almostThere": "¡Ya casi!",
     "milestoneApproachBody": "{{remaining}} entreno(s) más para desbloquear {{milestone}}.",
     "milestoneApproachBodySingular": "Un entreno más para desbloquear {{milestone}}.",
@@ -202,7 +209,6 @@
     "challengeNudgeTitle": "¿Listo para un reto?",
     "challengeNudgeBody": "¡Completaste 3 entrenos! Únete a \"{{name}}\" y compite con tu gym.",
     "streakAtRiskTitle": "🔥 ¡Tu racha está en riesgo!",
-    "streakAtRiskBody": "Tu racha de {{count}} días se rompe a medianoche. ¡Un entreno la mantiene viva!",
     "workoutsCompleted": "¡{{count}} entreno(s) completado(s)!",
     "workoutsCompletedSingular": "¡{{count}} entreno completado!",
     "workoutsCompletedPlural": "¡{{count}} entrenos completados!",
@@ -352,5 +358,14 @@
         "segments": "Segmentos"
       }
     }
-  }
+  },
+  "roles": {
+    "trainer": "Entrenador",
+    "admin": "Administrador",
+    "super_admin": "Super Admin",
+    "member": "Miembro"
+  },
+  "failedToLoadData": "Error al cargar datos",
+  "lbs": "lbs",
+  "lastAdminCannotDelete": "Eres el único administrador de este gimnasio. Transfiere los derechos de administrador antes de eliminar tu cuenta."
 }

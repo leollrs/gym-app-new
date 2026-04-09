@@ -19,8 +19,6 @@ import { FadeIn, StatCard, AdminCard, CardSkeleton, Avatar, AdminPageShell, Page
 
 // Sub-components (kept)
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
-import MemberDetail from './components/MemberDetail';
-import SendMessageModal from './components/SendMessageModal';
 
 // ── Helpers ──────────────────────────────────────────────
 import { getRiskTier } from '../../lib/churnScore';
@@ -224,10 +222,10 @@ async function fetchOverviewData(gymId) {
 function OverviewSkeleton() {
   return (
     <AdminPageShell className="space-y-6">
-      <div className="h-8 bg-white/[0.04] dark:bg-white/[0.04] rounded-lg w-64 animate-pulse" />
+      <div className="h-8 bg-white/[0.04] rounded-lg w-64 animate-pulse" />
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-[#0F172A] dark:bg-[#0F172A] border border-white/[0.06] rounded-2xl p-5 h-[90px] animate-pulse" />
+          <div key={i} className="bg-[#0F172A] border border-white/[0.06] rounded-2xl p-5 h-[90px] animate-pulse" />
         ))}
       </div>
       <div className="grid lg:grid-cols-[1fr_340px] gap-5">
@@ -255,7 +253,7 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
       >
         <Icon size={14} style={{ color }} />
       </div>
-      <p className="flex-1 text-[12.5px] text-[#E5E7EB] dark:text-[#E5E7EB] leading-snug">{text}</p>
+      <p className="flex-1 text-[12.5px] text-[#E5E7EB] leading-snug">{text}</p>
       <span
         className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0
           transition-transform duration-200 hover:translate-x-0.5"
@@ -268,35 +266,34 @@ function AlertBanner({ icon: Icon, text, actionLabel, color, onClick }) {
 }
 
 // ── Activity Feed Item ──────────────────────────────────
-function ActivityItem({ item, dateFnsLocale, t }) {
+function ActivityItem({ item, dateFnsLocale }) {
   const actionMap = {
-    checkin: { label: t('admin.overview.checkedIn', 'checked in'), color: '#8B5CF6', icon: CalendarCheck },
-    workout: { label: t('admin.overview.completedWorkout', 'completed workout'), color: '#3B82F6', icon: Dumbbell },
-    signup: { label: t('admin.overview.joined', 'joined'), color: '#10B981', icon: UserPlus },
+    checkin: { label: 'checked in', color: '#8B5CF6', icon: CalendarCheck },
+    workout: { label: 'completed workout', color: '#3B82F6', icon: Dumbbell },
+    signup: { label: 'joined', color: '#10B981', icon: UserPlus },
   };
   const meta = actionMap[item.type] || actionMap.checkin;
   const Icon = meta.icon;
 
   return (
-    <div className="flex items-center gap-3 py-2.5 group hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
-      -mx-1 px-1 rounded-lg transition-colors duration-150">
+    <div className="flex items-center gap-3 py-2.5 group hover:bg-white/[0.015]      -mx-1 px-1 rounded-lg transition-colors duration-150">
       <div className="relative flex-shrink-0">
         <Avatar name={item.memberName} size="sm" src={item.avatarUrl} />
         <div
           className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center
-            border-2 border-[#0F172A] dark:border-[#0F172A]"
+            border-2 border-[#0F172A]"
           style={{ background: `${meta.color}20` }}
         >
           <Icon size={8} style={{ color: meta.color }} />
         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] text-[#E5E7EB] dark:text-[#E5E7EB] truncate">
+        <p className="text-[12.5px] text-[#E5E7EB] truncate">
           <span className="font-medium">{item.memberName}</span>
-          <span className="text-[#6B7280] dark:text-[#6B7280] ml-1.5">{meta.label}</span>
+          <span className="text-[#6B7280] ml-1.5">{meta.label}</span>
         </p>
       </div>
-      <span className="text-[10px] text-[#4B5563] dark:text-[#4B5563] flex-shrink-0 tabular-nums
+      <span className="text-[10px] text-[#4B5563] flex-shrink-0 tabular-nums
         opacity-60 group-hover:opacity-100 transition-opacity duration-150">
         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true, ...(dateFnsLocale || {}) })}
       </span>
@@ -305,21 +302,14 @@ function ActivityItem({ item, dateFnsLocale, t }) {
 }
 
 // ── Watchlist Row ────────────────────────────────────────
-function WatchlistRow({ member, t, onTap, onMessage }) {
+function WatchlistRow({ member, t, onMessage }) {
   const tier = getRiskTier(member.score);
   return (
-    <div
-      className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015] dark:hover:bg-white/[0.015]
-        -mx-1 px-1 rounded-lg transition-colors duration-150 cursor-pointer"
-      onClick={() => onTap?.(member)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={e => { if (e.key === 'Enter') onTap?.(member); }}
-    >
+    <div className="flex items-center gap-3 py-2.5 hover:bg-white/[0.015]      -mx-1 px-1 rounded-lg transition-colors duration-150">
       <Avatar name={member.full_name} size="sm" src={member.avatar_url} />
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-medium text-[#E5E7EB] dark:text-[#E5E7EB] truncate">{member.full_name}</p>
-        <p className="text-[10.5px] text-[#6B7280] dark:text-[#6B7280]">
+        <p className="text-[12.5px] font-medium text-[#E5E7EB] truncate">{member.full_name}</p>
+        <p className="text-[10.5px] text-[#6B7280]">
           {member.neverActive
             ? t('admin.overview.neverLogged')
             : t('admin.overview.daysInactive', { count: member.daysInactive })}
@@ -332,7 +322,6 @@ function WatchlistRow({ member, t, onTap, onMessage }) {
           hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/20
           active:scale-95 transition-all duration-150"
         title={t('admin.overview.navMessages', 'Message')}
-        aria-label={t('admin.overview.messageMember', { name: member.full_name, defaultValue: 'Message {{name}}' })}
       >
         <MessageSquare size={12} className="text-[#6B7280] hover:text-[#D4AF37]" />
       </button>
@@ -362,8 +351,8 @@ function DeltaSub({ delta, invert = false }) {
   if (!delta) return null;
   const isPositive = invert ? !delta.positive : delta.positive;
   const color = delta.positive === null
-    ? '#6B7280'
-    : isPositive ? '#10B981' : '#EF4444';
+    ? 'var(--color-text-muted)'
+    : isPositive ? 'var(--color-success, #10B981)' : 'var(--color-danger, #EF4444)';
   return (
     <span className="text-[10.5px] font-medium tabular-nums" style={{ color }}>
       {delta.text}
@@ -377,7 +366,7 @@ function QuickActionButton({ icon: Icon, label, onClick, disabled = false }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold shrink-0
+      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[11.5px] font-semibold
         border transition-all duration-200
         ${disabled
           ? 'text-[#4B5563] bg-white/[0.02] border-white/[0.04] cursor-not-allowed opacity-50'
@@ -404,8 +393,6 @@ export default function AdminOverview() {
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [resetApprovalId, setResetApprovalId] = useState(null);
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [messageMember, setMessageMember] = useState(null);
 
   // Fetch pending password reset requests
   const { data: pendingResets = [], refetch: refetchResets } = useQuery({
@@ -427,7 +414,7 @@ export default function AdminOverview() {
     retry: false,
   });
 
-  useEffect(() => { document.title = 'Admin - Overview | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Overview | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: adminKeys.overview(gymId),
@@ -555,18 +542,18 @@ export default function AdminOverview() {
         <PageHeader
           title={t('admin.overview.title')}
           subtitle={`${format(new Date(), 'EEEE, MMMM d, yyyy', dateFnsLocale)} · ${stats.checkInsToday} ${t('admin.overview.glanceCheckins').toLowerCase()}`}
-          className="mb-4"
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
+              <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
+              {classesEnabled && (
+                <QuickActionButton icon={BookOpen} label={t('admin.overview.navClasses')} onClick={() => navigate('/admin/classes')} />
+              )}
+              <QuickActionButton icon={MessageSquare} label={t('admin.overview.navMessages')} onClick={() => navigate('/admin/messages')} />
+            </div>
+          }
+          className="mb-8"
         />
-      </FadeIn>
-      <FadeIn delay={20}>
-        <div className="flex items-center justify-center gap-2 overflow-x-auto scrollbar-hide mb-8">
-          <QuickActionButton icon={Users} label={t('admin.overview.navMembers')} onClick={() => navigate('/admin/members')} />
-          <QuickActionButton icon={AlertTriangle} label={t('admin.overview.navChurn')} onClick={() => navigate('/admin/churn')} />
-          {classesEnabled && (
-            <QuickActionButton icon={BookOpen} label={t('admin.overview.navClasses')} onClick={() => navigate('/admin/classes')} />
-          )}
-          <QuickActionButton icon={MessageSquare} label={t('admin.overview.navMessages')} onClick={() => navigate('/admin/messages')} />
-        </div>
       </FadeIn>
 
       {/* ════════════════════════════════════════════════════
@@ -574,11 +561,11 @@ export default function AdminOverview() {
            Stat cards are the first visual hero element
          ════════════════════════════════════════════════════ */}
       <FadeIn delay={40}>
-        <p className="text-[11.5px] font-semibold text-[#D4AF37] dark:text-[#D4AF37] uppercase tracking-[0.1em] mb-3">
+        <p className="text-[11.5px] font-semibold text-[#D4AF37] uppercase tracking-[0.1em] mb-3">
           {t('admin.overview.todayGlance', 'Today at a Glance')}
         </p>
       </FadeIn>
-      <div className={`grid gap-3 md:gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
+      <div className={`grid gap-4 mb-8 ${classesEnabled ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
         <FadeIn delay={60}>
           <StatCard
             label={t('admin.overview.glanceCritical', 'Critical')}
@@ -647,10 +634,10 @@ export default function AdminOverview() {
                   <AlertTriangle size={16} className="text-[#EF4444]" />
                 </div>
                 <div>
-                  <p className="text-[14.5px] font-bold text-[#E5E7EB] dark:text-[#E5E7EB] tracking-tight">
+                  <p className="text-[14.5px] font-bold text-[#E5E7EB] tracking-tight">
                     {t('admin.overview.needsAttention', 'Needs Attention Now')}
                   </p>
-                  <p className="text-[11.5px] text-[#6B7280] dark:text-[#6B7280]">
+                  <p className="text-[11.5px] text-[#6B7280]">
                     {t('admin.overview.needsAttentionSub', '{{count}} item(s) requiring your action', { count: needsAttentionCount })}
                   </p>
                 </div>
@@ -681,7 +668,7 @@ export default function AdminOverview() {
                   </div>
                   <div className="divide-y divide-white/[0.04]">
                     {atRisk.slice(0, 3).map(m => (
-                      <WatchlistRow key={m.id} member={m} t={t} onTap={() => setSelectedMember(m)} onMessage={() => setMessageMember(m)} />
+                      <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} />
                     ))}
                   </div>
                 </div>
@@ -693,8 +680,8 @@ export default function AdminOverview() {
                 <CheckCircle size={16} className="text-[#10B981]" />
               </div>
               <div>
-                <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">{t('admin.overview.allClear', 'All Clear')}</p>
-                <p className="text-[11.5px] text-[#6B7280] dark:text-[#6B7280]">{t('admin.overview.noAtRisk')} {t('admin.overview.everyoneActive')}</p>
+                <p className="text-[13.5px] font-semibold text-[#E5E7EB]">{t('admin.overview.allClear', 'All Clear')}</p>
+                <p className="text-[11.5px] text-[#6B7280]">{t('admin.overview.noAtRisk')} {t('admin.overview.everyoneActive')}</p>
               </div>
             </div>
           )}
@@ -713,7 +700,7 @@ export default function AdminOverview() {
               <div className="w-7 h-7 rounded-lg bg-white/[0.04] flex items-center justify-center">
                 <Activity size={13} className="text-[#9CA3AF]" />
               </div>
-              <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">
+              <p className="text-[13.5px] font-semibold text-[#E5E7EB]">
                 {t('admin.overview.recentActivity')}
               </p>
               {recentActivity.length > 0 && (
@@ -732,7 +719,7 @@ export default function AdminOverview() {
             ) : (
               <div className="divide-y divide-white/[0.04]">
                 {recentActivity.map((item, i) => (
-                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} t={t} />
+                  <ActivityItem key={`${item.type}-${item.profile_id}-${item.timestamp}-${i}`} item={item} dateFnsLocale={dateFnsLocale} />
                 ))}
               </div>
             )}
@@ -747,7 +734,7 @@ export default function AdminOverview() {
                 <div className="w-7 h-7 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
                   <AlertTriangle size={13} className="text-[#F59E0B]" />
                 </div>
-                <p className="text-[13.5px] font-semibold text-[#E5E7EB] dark:text-[#E5E7EB]">
+                <p className="text-[13.5px] font-semibold text-[#E5E7EB]">
                   {t('admin.overview.watchlist')}
                 </p>
               </div>
@@ -776,7 +763,7 @@ export default function AdminOverview() {
                 </p>
                 <div className="divide-y divide-white/[0.04]">
                   {atRisk.map(m => (
-                    <WatchlistRow key={m.id} member={m} t={t} onTap={() => setSelectedMember(m)} onMessage={() => setMessageMember(m)} />
+                    <WatchlistRow key={m.id} member={m} t={t} onMessage={() => navigate('/admin/churn')} />
                   ))}
                 </div>
               </>
@@ -784,28 +771,6 @@ export default function AdminOverview() {
           </AdminCard>
         </FadeIn>
       </div>
-
-      {/* Member detail modal — opens when tapping a watchlist row */}
-      {selectedMember && (
-        <MemberDetail
-          member={selectedMember}
-          gymId={gymId}
-          onClose={() => setSelectedMember(null)}
-          onNoteSaved={() => {}}
-          onStatusChanged={() => {}}
-        />
-      )}
-
-      {/* Quick message modal — opens when tapping message icon */}
-      {messageMember && (
-        <SendMessageModal
-          member={messageMember}
-          gymId={gymId}
-          adminId={profile?.id}
-          onClose={() => setMessageMember(null)}
-          onSent={() => setMessageMember(null)}
-        />
-      )}
     </AdminPageShell>
   );
 }

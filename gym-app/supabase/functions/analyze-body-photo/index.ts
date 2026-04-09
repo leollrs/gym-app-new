@@ -5,25 +5,66 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-/** Strip metadata from images (JPEG EXIF + PNG ancillary chunks) to prevent GPS/device info leakage */
+/** Concatenate multiple Uint8Arrays into one */
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((sum, a) => sum + a.length, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.length;
+  }
+  return result;
+}
+
+/** Strip metadata chunks from PNG, keeping only critical/rendering chunks */
+function stripPngMetadata(bytes: Uint8Array): Uint8Array {
+  if (bytes.length < 8) return bytes;
+  const sig = bytes.slice(0, 8);
+
+  const criticalChunks = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'cHRM', 'gAMA', 'iCCP', 'sBIT', 'sRGB', 'pHYs'];
+  const result: Uint8Array[] = [sig];
+  let offset = 8;
+
+  while (offset < bytes.length - 4) {
+    const len = (bytes[offset] << 24) | (bytes[offset+1] << 16) | (bytes[offset+2] << 8) | bytes[offset+3];
+    const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+    const chunkTotal = 12 + len; // 4 len + 4 type + data + 4 crc
+
+    if (criticalChunks.includes(type)) {
+      result.push(bytes.slice(offset, offset + chunkTotal));
+    }
+
+    offset += chunkTotal;
+    if (type === 'IEND') break;
+  }
+
+  return concatUint8Arrays(result);
+}
+
+/** Strip EXIF/metadata from JPEG and PNG to prevent GPS/device info leakage */
 function stripImageMetadata(base64: string): string {
   try {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-    // JPEG (FF D8)
+    let cleanedBytes: Uint8Array;
+
+    // JPEG: starts with FF D8
     if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
       const cleaned: number[] = [0xFF, 0xD8];
       let i = 2;
       while (i < bytes.length - 1) {
         if (bytes[i] !== 0xFF) break;
         const marker = bytes[i + 1];
+        // Remove APP1 (EXIF) and APP2 (ICC profile) markers
         if (marker === 0xE1 || marker === 0xE2) {
           const segLen = (bytes[i + 2] << 8) | bytes[i + 3];
           i += 2 + segLen;
           continue;
         }
+        // Start of scan — rest is image data
         if (marker === 0xDA) {
           for (let j = i; j < bytes.length; j++) cleaned.push(bytes[j]);
           break;
@@ -32,49 +73,43 @@ function stripImageMetadata(base64: string): string {
         for (let j = i; j < i + 2 + segLen; j++) cleaned.push(bytes[j]);
         i += 2 + segLen;
       }
-      const cleanedBytes = new Uint8Array(cleaned);
-      let result = '';
-      for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
-      return btoa(result);
+      cleanedBytes = new Uint8Array(cleaned);
+    }
+    // PNG: starts with 89 50 4E 47
+    else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      cleanedBytes = stripPngMetadata(bytes);
+    }
+    // Other formats (WebP, etc.): return as-is
+    else {
+      return base64;
     }
 
-    // PNG (89 50 4E 47) — strip non-critical chunks (tEXt, iTXt, zTXt, eXIf, etc.)
-    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-      const keep = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'cHRM', 'gAMA', 'iCCP', 'sBIT', 'sRGB', 'pHYs'];
-      const parts: Uint8Array[] = [bytes.slice(0, 8)];
-      let offset = 8;
-      while (offset < bytes.length - 4) {
-        const len = (bytes[offset] << 24) | (bytes[offset+1] << 16) | (bytes[offset+2] << 8) | bytes[offset+3];
-        const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
-        const chunkTotal = 12 + len;
-        if (keep.includes(type)) parts.push(bytes.slice(offset, offset + chunkTotal));
-        offset += chunkTotal;
-        if (type === 'IEND') break;
-      }
-      const totalLen = parts.reduce((s, a) => s + a.length, 0);
-      const out = new Uint8Array(totalLen);
-      let pos = 0;
-      for (const p of parts) { out.set(p, pos); pos += p.length; }
-      let result = '';
-      for (let j = 0; j < out.length; j++) result += String.fromCharCode(out[j]);
-      return btoa(result);
-    }
-
-    return base64;
+    let result = '';
+    for (let j = 0; j < cleanedBytes.length; j++) result += String.fromCharCode(cleanedBytes[j]);
+    return btoa(result);
   } catch {
-    return base64;
+    return base64; // On error, return original
   }
 }
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) throw new Error('ALLOWED_ORIGIN env var is required');
+if (!ALLOWED_ORIGIN) {
+  console.error('FATAL: ALLOWED_ORIGIN environment variable is not set');
+}
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
+  if (!ALLOWED_ORIGIN) {
+    return new Response(JSON.stringify({ error: 'Server misconfiguration' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -108,8 +143,9 @@ serve(async (req) => {
     // ── END AUTH CHECK ─────────────────────────────────────────
 
     if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'OPENAI_API_KEY not configured' }),
+        JSON.stringify({ error: 'Service not available' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

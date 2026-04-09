@@ -6,40 +6,20 @@ import {
 } from 'recharts';
 import {
   Building2, Users, Dumbbell, TrendingUp, TrendingDown,
-  UserPlus, Activity, ArrowUpDown, ChevronRight, AlertTriangle,
+  UserPlus, Activity, ChevronRight, AlertTriangle,
   DollarSign, UserCheck, Signal,
 } from 'lucide-react';
 import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { getMonthlyPrice, getPricingLabel, getMemberBracketLabel } from '../../lib/pricing';
 
 import ChartTooltip from '../../components/ChartTooltip';
-
-// ── Fade-in wrapper ──────────────────────────────────────────
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
-
-// ── Stat Card ────────────────────────────────────────────────
-const StatCard = ({ value, label, icon: Icon, color = '#6366F1', delay = 0 }) => (
-  <FadeIn delay={delay}>
-    <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 overflow-hidden" style={{ borderLeftColor: color }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}18` }}>
-          <Icon className="w-4 h-4" style={{ color }} />
-        </div>
-      </div>
-      <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{value}</p>
-      <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{label}</p>
-    </div>
-  </FadeIn>
-);
+import FadeIn from '../../components/platform/FadeIn';
+import StatCard from '../../components/platform/StatCard';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import SortHeader from '../../components/platform/SortHeader';
 
 // ── Color helpers ────────────────────────────────────────────
 const pctColor = (val, good, warn) => {
@@ -54,16 +34,10 @@ const pctBg = (val, good, warn) => {
   return 'bg-red-500/15';
 };
 
-// ── Loading Spinner ──────────────────────────────────────────
-const Spinner = () => (
-  <div className="flex items-center justify-center py-32">
-    <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-  </div>
-);
-
 // ── Main Component ───────────────────────────────────────────
 export default function PlatformAnalytics() {
   const { profile } = useAuth();
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -82,7 +56,7 @@ export default function PlatformAnalytics() {
   const [topMetric, setTopMetric] = useState('members');
 
   useEffect(() => {
-    document.title = 'Platform Analytics | TuGymPR';
+    document.title = `Platform Analytics | ${window.__APP_NAME || 'TuGymPR'}`;
   }, []);
 
   // ── Fetch all data ─────────────────────────────────────────
@@ -379,47 +353,32 @@ export default function PlatformAnalytics() {
   }, [profiles, gyms]);
 
   // ── Render ─────────────────────────────────────────────────
-  if (loading) return <Spinner />;
-
-  const SortHeader = ({ label, field, className = '' }) => (
-    <th
-      className={`text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5 cursor-pointer select-none hover:text-[#9CA3AF] transition-colors ${className}`}
-      onClick={() => handleSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-40" />
-        {sortKey === field && (
-          <span className="text-[#D4AF37] text-[9px]">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>
-        )}
-      </span>
-    </th>
-  );
+  if (loading) return <PlatformSpinner />;
 
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl pb-28 md:pb-12">
       {/* Header */}
       <FadeIn>
-        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">Analytics</h1>
-        <p className="text-[12px] text-[#6B7280] mb-6">Growth, retention, and revenue</p>
+        <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">{t('platform.analytics.title', 'Analytics')}</h1>
+        <p className="text-[12px] text-[#6B7280] mb-6">{t('platform.analytics.subtitle', 'Growth, retention, and revenue')}</p>
       </FadeIn>
 
       {/* ── Top Stats ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <StatCard value={totalGyms} label="Total Gyms" icon={Building2} color="#6366F1" delay={0} />
-        <StatCard value={totalMembers.toLocaleString()} label="Total Members" icon={Users} color="var(--color-accent)" delay={50} />
-        <StatCard value={totalSessions.toLocaleString()} label="Sessions (30d)" icon={Dumbbell} color="#3B82F6" delay={100} />
-        <StatCard value={`${retentionRate}%`} label="Retention Rate" icon={TrendingUp} color="#10B981" delay={150} />
-        <StatCard value={newMembers30d.toLocaleString()} label="New Members (30d)" icon={UserPlus} color="#8B5CF6" delay={200} />
-        <StatCard value={avgSessionsPerMember} label="Avg Sessions / Member" icon={Activity} color="#F59E0B" delay={250} />
+        <StatCard value={totalGyms} label={t('platform.analytics.totalGyms', 'Total Gyms')} icon={Building2} color="#6366F1" delay={0} />
+        <StatCard value={totalMembers.toLocaleString()} label={t('platform.analytics.totalMembers', 'Total Members')} icon={Users} color="var(--color-accent)" delay={50} />
+        <StatCard value={totalSessions.toLocaleString()} label={t('platform.analytics.sessions30d', 'Sessions (30d)')} icon={Dumbbell} color="#3B82F6" delay={100} />
+        <StatCard value={`${retentionRate}%`} label={t('platform.analytics.retentionRate', 'Retention Rate')} icon={TrendingUp} color="#10B981" delay={150} />
+        <StatCard value={newMembers30d.toLocaleString()} label={t('platform.analytics.newMembers30d', 'New Members (30d)')} icon={UserPlus} color="#8B5CF6" delay={200} />
+        <StatCard value={avgSessionsPerMember} label={t('platform.analytics.avgSessionsPerMember', 'Avg Sessions / Member')} icon={Activity} color="#F59E0B" delay={250} />
       </div>
 
       {/* ── Growth Chart ────────────────────────────────────── */}
       <FadeIn delay={100}>
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
-          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">Member Growth (Last 90 Days)</h2>
+          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.memberGrowth', 'Member Growth (Last 90 Days)')}</h2>
           {growthData.length === 0 ? (
-            <p className="text-[13px] text-[#6B7280] py-12 text-center">No growth data available</p>
+            <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noGrowthData', 'No growth data available')}</p>
           ) : (
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -438,7 +397,7 @@ export default function PlatformAnalytics() {
                   <Area
                     type="monotone"
                     dataKey="newMembers"
-                    name="New Members"
+                    name={t('platform.analytics.newMembers', 'New Members')}
                     stroke="var(--color-accent)"
                     strokeWidth={2}
                     fill="url(#goldGrad)"
@@ -455,10 +414,10 @@ export default function PlatformAnalytics() {
       {/* ── Revenue Stats ─────────────────────────────────────── */}
       <FadeIn delay={120}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatCard value={`$${mrr.toLocaleString()}`} label="Monthly Revenue (MRR)" icon={DollarSign} color="#10B981" delay={0} />
-          <StatCard value={`$${arr.toLocaleString()}`} label="Annual Run Rate (ARR)" icon={TrendingUp} color="#3B82F6" delay={50} />
-          <StatCard value={payingGyms} label="Paying Gyms" icon={Building2} color="#8B5CF6" delay={100} />
-          <StatCard value={`$${avgRevenuePerGym.toFixed(0)}`} label="Avg Revenue / Gym" icon={Activity} color="#F59E0B" delay={150} />
+          <StatCard value={`$${mrr.toLocaleString()}`} label={t('platform.analytics.monthlyRevenue', 'Monthly Revenue (MRR)')} icon={DollarSign} color="#10B981" delay={0} />
+          <StatCard value={`$${arr.toLocaleString()}`} label={t('platform.analytics.annualRunRate', 'Annual Run Rate (ARR)')} icon={TrendingUp} color="#3B82F6" delay={50} />
+          <StatCard value={payingGyms} label={t('platform.analytics.payingGyms', 'Paying Gyms')} icon={Building2} color="#8B5CF6" delay={100} />
+          <StatCard value={`$${avgRevenuePerGym.toFixed(0)}`} label={t('platform.analytics.avgRevenuePerGym', 'Avg Revenue / Gym')} icon={Activity} color="#F59E0B" delay={150} />
         </div>
       </FadeIn>
 
@@ -466,7 +425,7 @@ export default function PlatformAnalytics() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 mb-6">
         <FadeIn delay={140}>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">Monthly Income (Last 12 Months)</h2>
+            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.monthlyIncome', 'Monthly Income (Last 12 Months)')}</h2>
             <div className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyIncomeChart}>
@@ -492,7 +451,7 @@ export default function PlatformAnalytics() {
 
         <FadeIn delay={160}>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
-            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-3">Revenue by Gym</h2>
+            <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-3">{t('platform.analytics.revenueByGym', 'Revenue by Gym')}</h2>
             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
               {revenueByGym.map(gym => (
                 <div
@@ -510,26 +469,26 @@ export default function PlatformAnalytics() {
                       }`}>
                         {gym.pricingLabel}
                       </span>
-                      <span className="text-[10px] text-[#4B5563]">{gym.bracketLabel} members</span>
+                      <span className="text-[10px] text-[#4B5563]">{gym.bracketLabel} {t('platform.analytics.members', 'members')}</span>
                       {gym.isFounding && (
                         <span className="text-[10px] text-[#D4AF37]">★</span>
                       )}
                       {!gym.isActive && (
-                        <span className="text-[10px] text-red-400">inactive</span>
+                        <span className="text-[10px] text-red-400">{t('platform.analytics.inactive', 'inactive')}</span>
                       )}
                     </div>
                   </div>
                   <p className="text-[15px] font-bold text-[#E5E7EB] tabular-nums">
-                    ${gym.price}<span className="text-[10px] text-[#6B7280] font-normal">/mo</span>
+                    ${gym.price}<span className="text-[10px] text-[#6B7280] font-normal">{t('platform.analytics.perMonth', '/mo')}</span>
                   </p>
                 </div>
               ))}
               {revenueByGym.length === 0 && (
-                <p className="text-[13px] text-[#6B7280] py-8 text-center">No gyms yet</p>
+                <p className="text-[13px] text-[#6B7280] py-8 text-center">{t('platform.analytics.noGymsYet', 'No gyms yet')}</p>
               )}
             </div>
             <div className="mt-3 pt-3 border-t border-white/6 flex items-center justify-between px-3">
-              <span className="text-[12px] text-[#9CA3AF]">Total MRR</span>
+              <span className="text-[12px] text-[#9CA3AF]">{t('platform.analytics.totalMrr', 'Total MRR')}</span>
               <span className="text-[16px] font-bold text-emerald-400 tabular-nums">${mrr.toLocaleString()}</span>
             </div>
           </div>
@@ -542,7 +501,7 @@ export default function PlatformAnalytics() {
         <FadeIn delay={150}>
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">Top Gyms</h2>
+              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.topGyms', 'Top Gyms')}</h2>
               <div className="flex gap-1">
                 {['members', 'activity', 'retention'].map(m => (
                   <button
@@ -554,13 +513,13 @@ export default function PlatformAnalytics() {
                         : 'text-[#6B7280] hover:text-[#9CA3AF]'
                     }`}
                   >
-                    {m}
+                    {t(`platform.analytics.${m}Metric`, m)}
                   </button>
                 ))}
               </div>
             </div>
             {topGyms.length === 0 ? (
-              <p className="text-[13px] text-[#6B7280] py-8 text-center">No gym data available</p>
+              <p className="text-[13px] text-[#6B7280] py-8 text-center">{t('platform.analytics.noGymData', 'No gym data available')}</p>
             ) : (
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -578,7 +537,7 @@ export default function PlatformAnalytics() {
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-accent-glow)' }} />
                     <Bar
                       dataKey={topGymsBarKey}
-                      name={topMetric === 'members' ? 'Members' : topMetric === 'activity' ? 'Sessions' : 'Retention %'}
+                      name={topMetric === 'members' ? t('platform.analytics.membersLabel', 'Members') : topMetric === 'activity' ? t('platform.analytics.sessionsLabel', 'Sessions') : t('platform.analytics.retentionPctLabel', 'Retention %')}
                       fill="var(--color-accent)"
                       radius={[0, 4, 4, 0]}
                       barSize={18}
@@ -595,14 +554,14 @@ export default function PlatformAnalytics() {
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 overflow-hidden">
             <div className="flex items-center gap-2 mb-4">
               <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">Struggling Gyms</h2>
+              <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.strugglingGyms', 'Struggling Gyms')}</h2>
             </div>
             {strugglingGyms.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3">
                   <TrendingUp className="w-5 h-5 text-emerald-400" />
                 </div>
-                <p className="text-[13px] text-[#9CA3AF]">All gyms are performing well</p>
+                <p className="text-[13px] text-[#9CA3AF]">{t('platform.analytics.allPerformingWell', 'All gyms are performing well')}</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-[240px] overflow-y-auto">
@@ -618,13 +577,13 @@ export default function PlatformAnalytics() {
                         {gym.activeRate < 30 && (
                           <span className="text-[11px] text-red-400">
                             <TrendingDown className="w-3 h-3 inline mr-0.5" />
-                            {gym.activeRate}% active
+                            {gym.activeRate}% {t('platform.analytics.active', 'active')}
                           </span>
                         )}
                         {gym.churnPct > 20 && (
                           <span className="text-[11px] text-amber-400">
                             <AlertTriangle className="w-3 h-3 inline mr-0.5" />
-                            {gym.churnPct}% high churn
+                            {gym.churnPct}% {t('platform.analytics.highChurn', 'high churn')}
                           </span>
                         )}
                       </div>
@@ -641,20 +600,20 @@ export default function PlatformAnalytics() {
       {/* ── Gym Comparison Table ─────────────────────────────── */}
       <FadeIn delay={250}>
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
-          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">Gym Comparison</h2>
+          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.gymComparison', 'Gym Comparison')}</h2>
           {sortedGyms.length === 0 ? (
-            <p className="text-[13px] text-[#6B7280] py-12 text-center">No gym data available</p>
+            <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noGymData', 'No gym data available')}</p>
           ) : (
             <div className="overflow-x-auto -mx-4 px-4">
               <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-white/6">
-                    <SortHeader label="Gym" field="name" />
-                    <SortHeader label="Members" field="memberCount" />
-                    <SortHeader label="Active %" field="activeRate" />
-                    <SortHeader label="Sessions (30d)" field="sessionCount" />
-                    <SortHeader label="Retention" field="retention" />
-                    <SortHeader label="Churn Risk" field="highChurn" />
+                    <SortHeader label={t('platform.analytics.headerGym', 'Gym')} field="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerMembers', 'Members')} field="memberCount" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerActive', 'Active %')} field="activeRate" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerSessions', 'Sessions (30d)')} field="sessionCount" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerRetention', 'Retention')} field="retention" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHeader label={t('platform.analytics.headerChurnRisk', 'Churn Risk')} field="highChurn" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -664,6 +623,10 @@ export default function PlatformAnalytics() {
                       key={gym.id}
                       className="border-b border-white/4 last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer"
                       onClick={() => navigate(`/platform/gym/${gym.id}`)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={gym.name}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/platform/gym/${gym.id}`); } }}
                     >
                       <td className="px-3 py-3">
                         <span className="text-[13px] font-medium text-[#E5E7EB]">{gym.name}</span>
@@ -690,7 +653,7 @@ export default function PlatformAnalytics() {
                             {gym.highChurn} ({gym.churnPct}%)
                           </span>
                         ) : (
-                          <span className="text-[12px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15">None</span>
+                          <span className="text-[12px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15">{t('platform.analytics.none', 'None')}</span>
                         )}
                       </td>
                       <td className="px-3 py-3">
@@ -927,7 +890,7 @@ export default function PlatformAnalytics() {
                       <p className="text-[13px] font-medium text-[#E5E7EB] truncate">{gym.name}</p>
                       <div className="flex items-center gap-3 mt-0.5">
                         <span className={`text-[11px] font-semibold ${gym.rate < 30 ? 'text-red-400' : 'text-amber-400'}`}>
-                          {gym.rate}% onboarded
+                          {gym.rate}% {t('platform.analytics.onboarded', 'onboarded')}
                         </span>
                         <span className="text-[11px] text-[#6B7280]">
                           {gym.total.toLocaleString()} {t('platform.analytics.members', 'members')}

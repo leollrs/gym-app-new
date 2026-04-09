@@ -264,7 +264,22 @@ export default function BodyMetrics() {
       );
 
     if (error) { setWeightError(error.message); setLoggingWeight(false); return; }
-    addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight').catch(() => {});
+
+    // S12 fix: enforce one weight_logged point award per calendar day.
+    // Pass a stable dedup_key so the server-side unique constraint also blocks
+    // duplicates (e.g. from multiple devices or retried requests).
+    const todayStr = today(); // YYYY-MM-DD
+    const weightDedupKey = `weight_logged:${todayStr}`;
+    const { data: existingLog } = await supabase
+      .from('reward_points_log')
+      .select('id')
+      .eq('profile_id', user.id)
+      .eq('action', 'weight_logged')
+      .eq('dedup_key', weightDedupKey)
+      .maybeSingle();
+    if (!existingLog) {
+      addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight', weightDedupKey).catch(() => {});
+    }
     // Sync weight to Apple Health / Health Connect if enabled
     try {
       const hs = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');

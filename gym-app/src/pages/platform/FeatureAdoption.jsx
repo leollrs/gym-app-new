@@ -7,79 +7,72 @@ import {
 } from 'recharts';
 import {
   Puzzle, Users, Activity, BarChart3, Eye, TrendingUp,
-  ArrowUpDown, ChevronRight, Grid3X3, List, Clock,
+  ChevronRight, Grid3X3, List, Clock,
   AlertTriangle, CheckCircle2, Building2, UserCheck,
 } from 'lucide-react';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import ChartTooltip from '../../components/ChartTooltip';
+import FadeIn from '../../components/platform/FadeIn';
+import StatCard from '../../components/platform/StatCard';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import SortHeader from '../../components/platform/SortHeader';
 
 // ── Feature definitions ─────────────────────────────────────
+// hasCreatedAt: true means the table has a created_at column and we can filter by recency
 const FEATURES_DEF = [
-  { key: 'classes',     labelKey: 'platform.adoption.feat.classes',     labelDefault: 'Classes',       table: 'gym_classes',       field: 'gym_id' },
-  { key: 'challenges',  labelKey: 'platform.adoption.feat.challenges',  labelDefault: 'Challenges',    table: 'gym_challenges',    field: 'gym_id' },
-  { key: 'winback',     labelKey: 'platform.adoption.feat.winback',     labelDefault: 'Churn/Win-back',table: 'win_back_attempts', field: 'gym_id' },
-  { key: 'messaging',   labelKey: 'platform.adoption.feat.messaging',   labelDefault: 'Messaging',     table: 'message_templates', field: 'gym_id' },
-  { key: 'programs',    labelKey: 'platform.adoption.feat.programs',    labelDefault: 'Programs',       table: 'gym_programs',      field: 'gym_id' },
-  { key: 'referrals',   labelKey: 'platform.adoption.feat.referrals',   labelDefault: 'Referrals',      table: 'referral_codes',    field: 'gym_id' },
-  { key: 'rewards',     labelKey: 'platform.adoption.feat.rewards',     labelDefault: 'Rewards',        table: 'reward_milestones', field: 'gym_id' },
-  { key: 'nps',         labelKey: 'platform.adoption.feat.nps',         labelDefault: 'NPS',            table: 'nps_responses',     field: 'gym_id' },
-  { key: 'announcements',labelKey: 'platform.adoption.feat.announcements',labelDefault: 'Announcements', table: 'announcement',      field: 'gym_id' },
-  { key: 'analytics',   labelKey: 'platform.adoption.feat.analytics',   labelDefault: 'Analytics',      table: 'churn_risk_scores', field: 'gym_id' },
-  { key: 'store',       labelKey: 'platform.adoption.feat.store',       labelDefault: 'Store',          table: 'gym_store_products',field: 'gym_id' },
-  { key: 'segments',    labelKey: 'platform.adoption.feat.segments',    labelDefault: 'Segments',       table: 'member_segments',   field: 'gym_id' },
+  { key: 'classes',     labelKey: 'platform.adoption.feat.classes',     labelDefault: 'Classes',       table: 'gym_classes',       field: 'gym_id', hasCreatedAt: true },
+  { key: 'challenges',  labelKey: 'platform.adoption.feat.challenges',  labelDefault: 'Challenges',    table: 'challenges',        field: 'gym_id', hasCreatedAt: true },
+  { key: 'winback',     labelKey: 'platform.adoption.feat.winback',     labelDefault: 'Churn/Win-back',table: 'win_back_attempts', field: 'gym_id', hasCreatedAt: true },
+  { key: 'messaging',   labelKey: 'platform.adoption.feat.messaging',   labelDefault: 'Messaging',     table: 'conversations',     field: 'gym_id', hasCreatedAt: false, timeField: 'last_message_at' },
+  { key: 'programs',    labelKey: 'platform.adoption.feat.programs',    labelDefault: 'Programs',       table: 'gym_programs',      field: 'gym_id', hasCreatedAt: true },
+  { key: 'referrals',   labelKey: 'platform.adoption.feat.referrals',   labelDefault: 'Referrals',      table: 'referral_codes',    field: 'gym_id', hasCreatedAt: true },
+  { key: 'rewards',     labelKey: 'platform.adoption.feat.rewards',     labelDefault: 'Rewards',        table: 'referral_milestones', field: 'gym_id', hasCreatedAt: true },
+  { key: 'nps',         labelKey: 'platform.adoption.feat.nps',         labelDefault: 'NPS',            table: 'nps_responses',     field: 'gym_id', hasCreatedAt: true },
+  { key: 'announcements',labelKey: 'platform.adoption.feat.announcements',labelDefault: 'Announcements', table: 'announcements',     field: 'gym_id', hasCreatedAt: true },
+  { key: 'analytics',   labelKey: 'platform.adoption.feat.analytics',   labelDefault: 'Analytics',      table: 'churn_risk_scores', field: 'gym_id', hasCreatedAt: true },
+  { key: 'store',       labelKey: 'platform.adoption.feat.store',       labelDefault: 'Store',          table: 'gym_store_products',field: 'gym_id', hasCreatedAt: true },
+  { key: 'segments',    labelKey: 'platform.adoption.feat.segments',    labelDefault: 'Segments',       table: 'member_segments',   field: 'gym_id', hasCreatedAt: true },
 ];
 
-// ── Fade-in wrapper ─────────────────────────────────────────
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
-
-// ── Stat Card ───────────────────────────────────────────────
-const StatCard = ({ value, label, icon: Icon, color = '#6366F1', delay = 0 }) => (
-  <FadeIn delay={delay}>
-    <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 overflow-hidden" style={{ borderLeftColor: color }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}18` }}>
-          <Icon className="w-4 h-4" style={{ color }} />
-        </div>
-      </div>
-      <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{value}</p>
-      <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{label}</p>
-    </div>
-  </FadeIn>
-);
-
-// ── Loading Spinner ─────────────────────────────────────────
-const Spinner = () => (
-  <div className="flex items-center justify-center py-32">
-    <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-  </div>
-);
-
 // ── Safe query helper ───────────────────────────────────────
-async function safeQuery(table, field, limit = 1000) {
+// Returns { recent: Set<gym_id>, ever: Set<gym_id> }
+// recent = rows from last 90 days (only when timeCol is provided)
+// ever   = all rows regardless of date
+async function safeQuery(table, field, { timeCol = null, cutoff = null } = {}) {
   try {
-    const { data, error } = await supabase
-      .from(table)
-      .select(field)
-      .limit(limit);
-    if (error) return [];
-    return data || [];
+    // We only need distinct gym_ids — select just that field, cap at 5000
+    let query = supabase.from(table).select(field).limit(5000);
+    const { data, error } = await query;
+    if (error) return { recent: new Set(), ever: new Set() };
+    const rows = data || [];
+    const ever = new Set(rows.map(r => r[field]).filter(Boolean));
+
+    // If table supports time filtering, do a second query for recent rows
+    if (timeCol && cutoff) {
+      try {
+        const { data: recentData, error: recentErr } = await supabase
+          .from(table)
+          .select(field)
+          .gte(timeCol, cutoff)
+          .limit(5000);
+        if (!recentErr && recentData) {
+          return { recent: new Set(recentData.map(r => r[field]).filter(Boolean)), ever };
+        }
+      } catch {
+        // fall through — treat all as "ever"
+      }
+    }
+    return { recent: ever, ever };
   } catch {
-    return [];
+    return { recent: new Set(), ever: new Set() };
   }
 }
 
 // ── Main Component ──────────────────────────────────────────
 export default function FeatureAdoption() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t } = useTranslation('pages');
 
   const FEATURES = useMemo(() =>
     FEATURES_DEF.map(f => ({ ...f, label: t(f.labelKey, f.labelDefault) })),
@@ -88,7 +81,7 @@ export default function FeatureAdoption() {
 
   const [loading, setLoading] = useState(true);
   const [gyms, setGyms] = useState([]);
-  const [featureData, setFeatureData] = useState({});   // { featureKey: Set<gym_id> }
+  const [featureData, setFeatureData] = useState({});   // { featureKey: { recent: Set<gym_id>, ever: Set<gym_id> } }
   const [adminPresence, setAdminPresence] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [viewMode, setViewMode] = useState('heatmap');  // 'heatmap' | 'table'
@@ -96,7 +89,7 @@ export default function FeatureAdoption() {
   const [sortDir, setSortDir] = useState('desc');
 
   useEffect(() => {
-    document.title = `${t('platform.adoption.title', 'Feature Adoption')} | TuGymPR`;
+    document.title = `${t('platform.adoption.title', 'Feature Adoption')} | ${window.__APP_NAME || 'TuGymPR'}`;
   }, [t]);
 
   // ── Fetch all data ────────────────────────────────────────
@@ -112,18 +105,22 @@ export default function FeatureAdoption() {
         .select('id, name, slug, is_active, created_at');
       setGyms(gymData || []);
 
-      // Fetch feature usage in parallel
+      // Fetch feature usage in parallel (with 90-day recency filter)
+      const ninetyDaysAgo = subDays(now, 90).toISOString();
       const featureResults = await Promise.all(
         FEATURES_DEF.map(async (f) => {
-          const rows = await safeQuery(f.table, f.field);
-          const gymIds = new Set(rows.map(r => r[f.field]).filter(Boolean));
-          return { key: f.key, gymIds };
+          const timeCol = f.timeField || (f.hasCreatedAt ? 'created_at' : null);
+          const result = await safeQuery(f.table, f.field, {
+            timeCol,
+            cutoff: timeCol ? ninetyDaysAgo : null,
+          });
+          return { key: f.key, ...result };
         })
       );
 
       const fData = {};
-      featureResults.forEach(({ key, gymIds }) => {
-        fData[key] = gymIds;
+      featureResults.forEach(({ key, recent, ever }) => {
+        fData[key] = { recent, ever };
       });
       setFeatureData(fData);
 
@@ -173,12 +170,16 @@ export default function FeatureAdoption() {
 
   // ── Section 1: Feature Adoption Metrics ───────────────────
 
-  // Per-feature gym count
+  // Per-feature gym count (uses recent/active data)
   const featureCounts = useMemo(() => {
-    return FEATURES.map(f => ({
-      ...f,
-      count: (featureData[f.key] || new Set()).size,
-    }));
+    return FEATURES.map(f => {
+      const d = featureData[f.key] || { recent: new Set(), ever: new Set() };
+      return {
+        ...f,
+        count: d.recent.size,
+        everCount: d.ever.size,
+      };
+    });
   }, [featureData]);
 
   // Most / least used
@@ -192,13 +193,26 @@ export default function FeatureAdoption() {
     return sorted[0] || { label: 'N/A', count: 0 };
   }, [featureCounts]);
 
-  // Per-gym feature count
+  // Per-gym feature count (recent = active in last 90d)
   const gymFeatureMap = useMemo(() => {
-    const map = {}; // gym_id -> Set of feature keys
+    const map = {}; // gym_id -> Set of feature keys (active)
     gyms.forEach(g => { map[g.id] = new Set(); });
     FEATURES_DEF.forEach(f => {
-      const gymIds = featureData[f.key] || new Set();
-      gymIds.forEach(gid => {
+      const d = featureData[f.key] || { recent: new Set(), ever: new Set() };
+      d.recent.forEach(gid => {
+        if (map[gid]) map[gid].add(f.key);
+      });
+    });
+    return map;
+  }, [gyms, featureData]);
+
+  // Per-gym "ever used" feature map (for heatmap differentiation)
+  const gymFeatureEverMap = useMemo(() => {
+    const map = {}; // gym_id -> Set of feature keys (ever)
+    gyms.forEach(g => { map[g.id] = new Set(); });
+    FEATURES_DEF.forEach(f => {
+      const d = featureData[f.key] || { recent: new Set(), ever: new Set() };
+      d.ever.forEach(gid => {
         if (map[gid]) map[gid].add(f.key);
       });
     });
@@ -321,22 +335,7 @@ export default function FeatureAdoption() {
   }, [adminPresence, gymNameMap, adminNameMap, t]);
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) return <Spinner />;
-
-  const SortHeader = ({ label, field, className = '' }) => (
-    <th
-      className={`text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5 cursor-pointer select-none hover:text-[#9CA3AF] transition-colors ${className}`}
-      onClick={() => handleSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-40" />
-        {sortKey === field && (
-          <span className="text-[#D4AF37] text-[9px]">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>
-        )}
-      </span>
-    </th>
-  );
+  if (loading) return <PlatformSpinner />;
 
   const featureLabel = (key) => FEATURES.find(f => f.key === key)?.label || key;
 
@@ -418,7 +417,7 @@ export default function FeatureAdoption() {
       {/* Heatmap View */}
       {viewMode === 'heatmap' && (
         <FadeIn delay={200}>
-          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6 overflow-hidden">
+          <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
             {heatmapGyms.length === 0 ? (
               <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.adoption.noData', 'No gym data available')}</p>
             ) : (
@@ -450,6 +449,10 @@ export default function FeatureAdoption() {
                           key={gym.id}
                           className="border-b border-white/4 last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer"
                           onClick={() => navigate(`/platform/gym/${gym.id}`)}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={gym.name}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/platform/gym/${gym.id}`); } }}
                         >
                           <td className="px-3 py-2 sticky left-0 bg-[#0F172A] z-10">
                             <span className="text-[12px] font-medium text-[#E5E7EB] truncate block max-w-[140px]">
@@ -457,18 +460,25 @@ export default function FeatureAdoption() {
                             </span>
                           </td>
                           {FEATURES.map(f => {
-                            const isUsed = features.has(f.key);
+                            const isActive = features.has(f.key);
+                            const everUsed = (gymFeatureEverMap[gym.id] || new Set()).has(f.key);
+                            const isStale = !isActive && everUsed;
                             return (
                               <td key={f.key} className="px-1.5 py-2 text-center">
                                 <div
                                   className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center transition-colors ${
-                                    isUsed
+                                    isActive
                                       ? 'bg-emerald-500/25 border border-emerald-500/30'
-                                      : 'bg-white/[0.03] border border-white/[0.04]'
+                                      : isStale
+                                        ? 'bg-amber-500/15 border border-amber-500/25'
+                                        : 'bg-white/[0.03] border border-white/[0.04]'
                                   }`}
+                                  title={isActive ? t('platform.adoption.active90d', 'Active (last 90 days)') : isStale ? t('platform.adoption.everUsed', 'Used before, inactive 90+ days') : t('platform.adoption.neverUsed', 'Never used')}
                                 >
-                                  {isUsed ? (
+                                  {isActive ? (
                                     <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  ) : isStale ? (
+                                    <Clock className="w-3 h-3 text-amber-400/70" />
                                   ) : (
                                     <span className="w-1.5 h-1.5 rounded-full bg-[#374151]" />
                                   )}
@@ -492,12 +502,18 @@ export default function FeatureAdoption() {
                 </table>
 
                 {/* Legend */}
-                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/6">
+                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/6 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <div className="w-4 h-4 rounded bg-emerald-500/25 border border-emerald-500/30 flex items-center justify-center">
                       <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
                     </div>
-                    <span className="text-[10px] text-[#9CA3AF]">{t('platform.adoption.activelyUsed', 'Actively used')}</span>
+                    <span className="text-[10px] text-[#9CA3AF]">{t('platform.adoption.active90d', 'Active (last 90 days)')}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                      <Clock className="w-2.5 h-2.5 text-amber-400/70" />
+                    </div>
+                    <span className="text-[10px] text-[#9CA3AF]">{t('platform.adoption.everUsed', 'Used before, inactive 90+ days')}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-4 h-4 rounded bg-white/[0.03] border border-white/[0.04] flex items-center justify-center">
@@ -523,8 +539,8 @@ export default function FeatureAdoption() {
                 <table className="w-full min-w-[600px]">
                   <thead>
                     <tr className="border-b border-white/6">
-                      <SortHeader label={t('platform.adoption.gym', 'Gym')} field="name" />
-                      <SortHeader label={t('platform.adoption.featureList', 'Features Active')} field="featuresActive" />
+                      <SortHeader label={t('platform.adoption.gym', 'Gym')} field="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      <SortHeader label={t('platform.adoption.featureList', 'Features Active')} field="featuresActive" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                       <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">
                         {t('platform.adoption.features', 'Features')}
                       </th>
@@ -537,6 +553,10 @@ export default function FeatureAdoption() {
                         key={gym.id}
                         className="border-b border-white/4 last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer"
                         onClick={() => navigate(`/platform/gym/${gym.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={gym.name}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/platform/gym/${gym.id}`); } }}
                       >
                         <td className="px-3 py-3">
                           <span className="text-[13px] font-medium text-[#E5E7EB]">{gym.name}</span>
@@ -612,10 +632,16 @@ export default function FeatureAdoption() {
                     width={100}
                   />
                   <Tooltip
-                    content={<ChartTooltip formatter={(v) => `${v} ${t('platform.adoption.gyms', 'gyms')}`} />}
+                    content={<ChartTooltip formatter={(v, _name, props) => {
+                      const entry = featureCounts.find(f => f.label === props?.payload?.label);
+                      const ever = entry?.everCount ?? v;
+                      return ever > v
+                        ? `${v} ${t('platform.adoption.active', 'active')} / ${ever} ${t('platform.adoption.everTotal', 'ever')}`
+                        : `${v} ${t('platform.adoption.gyms', 'gyms')}`;
+                    }} />}
                     cursor={{ fill: 'rgba(212,175,55,0.05)' }}
                   />
-                  <Bar dataKey="count" name={t('platform.adoption.gymsUsing', 'Gyms Using')} radius={[0, 4, 4, 0]} barSize={18}>
+                  <Bar dataKey="count" name={t('platform.adoption.gymsUsing', 'Gyms Using (90d)')} radius={[0, 4, 4, 0]} barSize={18}>
                     {featureCounts.map((entry, idx) => (
                       <Cell
                         key={entry.key}

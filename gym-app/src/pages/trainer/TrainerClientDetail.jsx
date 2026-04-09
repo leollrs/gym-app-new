@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Save, Scale, Ruler, TrendingUp, StickyNote, Calendar, BarChart3,
@@ -9,91 +9,136 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { format, subWeeks, subDays, startOfWeek, differenceInWeeks } from 'date-fns';
+import { es } from 'date-fns/locale/es';
+import { enUS } from 'date-fns/locale/en-US';
 import { useTranslation } from 'react-i18next';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import MonthlyProgressReport from '../../components/MonthlyProgressReport';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import ChartTooltip from '../../components/ChartTooltip';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
 
 const TAB_KEYS = ['overview', 'notesFollowUp', 'programNutrition'];
 
+// --- Reducer ---
+const initialState = {
+  // Loading / error
+  loading: true,
+  accessDenied: false,
+  isAssigned: false,
+  _assignmentNotes: null,
+
+  // Client data
+  client: null,
+  onboarding: null,
+  stats: { count: 0, volume: 0 },
+  programName: null,
+  enrollment: null,
+  streak: null,
+
+  // Workout data
+  recentSessions: [],
+  personalRecords: [],
+  weeklyWorkouts: [],
+  workoutsThisWeek: 0,
+
+  // Body data
+  weights: [],
+  measurements: null,
+  progressPhotos: [],
+  checkIns: [],
+
+  // Notes state
+  notesData: { notes: '', injuries: '' },
+  notesSaved: false,
+  savingNotes: false,
+
+  // Follow-up state
+  followups: [],
+  showFollowupModal: false,
+  fuMethod: 'call',
+  fuNote: '',
+  fuOutcome: 'no_answer',
+  savingFollowup: false,
+
+  // Program state
+  availablePrograms: [],
+  assigningProgram: false,
+
+  // Nutrition state
+  nutritionTargets: null,
+  foodLogSummary: [],
+  activeMealPlan: null,
+  savingMealPlan: false,
+  mealPlanForm: { calories: '', protein: '', carbs: '', fat: '', name: '', description: '' },
+  showMealPlanForm: false,
+  nutritionLoaded: false,
+  sampleMeals: null,
+  generatingMeals: false,
+
+  // UI state
+  activeTab: 'overview',
+  showReport: false,
+  showMeasurements: false,
+  showPhotos: false,
+};
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'SET_NOTES_FIELD':
+      return { ...state, notesData: { ...state.notesData, [action.field]: action.value } };
+    case 'SET_MEAL_PLAN_FIELD':
+      return { ...state, mealPlanForm: { ...state.mealPlanForm, [action.field]: action.value } };
+    case 'SET_MEAL_PLAN_FORM':
+      return { ...state, mealPlanForm: { ...state.mealPlanForm, ...action.payload } };
+    case 'PREPEND_FOLLOWUP':
+      return { ...state, followups: [action.followup, ...state.followups] };
+    default:
+      return state;
+  }
+}
+
 export default function TrainerClientNotes() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const notesSavedTimerRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [client, setClient] = useState(null);
-  const [stats, setStats] = useState({ count: 0, volume: 0 });
-  const [programName, setProgramName] = useState(null);
-  const [notesData, setNotesData] = useState({ notes: '', preferences: '', injuries: '', goalReminders: '' });
-  const [notesSaved, setNotesSaved] = useState(false);
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [weights, setWeights] = useState([]);
-  const [measurements, setMeasurements] = useState(null);
-  const [showReport, setShowReport] = useState(false);
-  const [streak, setStreak] = useState(null);
-  const [followups, setFollowups] = useState([]);
-  const [showFollowupModal, setShowFollowupModal] = useState(false);
-  const [fuMethod, setFuMethod] = useState('call');
-  const [fuNote, setFuNote] = useState('');
-  const [fuOutcome, setFuOutcome] = useState('no_answer');
-  const [savingFollowup, setSavingFollowup] = useState(false);
-
-  // New state for 5-tab structure
-  const [recentSessions, setRecentSessions] = useState([]);
-  const [personalRecords, setPersonalRecords] = useState([]);
-  const [weeklyWorkouts, setWeeklyWorkouts] = useState([]);
-  const [onboarding, setOnboarding] = useState(null);
-  const [enrollment, setEnrollment] = useState(null);
-  const [availablePrograms, setAvailablePrograms] = useState([]);
-  const [assigningProgram, setAssigningProgram] = useState(false);
-  const [workoutsThisWeek, setWorkoutsThisWeek] = useState(0);
-
-  // Nutrition tab state
-  const [nutritionTargets, setNutritionTargets] = useState(null);
-  const [foodLogSummary, setFoodLogSummary] = useState([]);
-  const [activeMealPlan, setActiveMealPlan] = useState(null);
-  const [savingMealPlan, setSavingMealPlan] = useState(false);
-  const [mealPlanForm, setMealPlanForm] = useState({ calories: '', protein: '', carbs: '', fat: '', name: '', description: '' });
-  const [showMealPlanForm, setShowMealPlanForm] = useState(false);
-  const [nutritionLoaded, setNutritionLoaded] = useState(false);
-  const [sampleMeals, setSampleMeals] = useState(null);
-  const [generatingMeals, setGeneratingMeals] = useState(false);
-
-  // Progress photos + check-ins
-  const [progressPhotos, setProgressPhotos] = useState([]);
-  const [checkIns, setCheckIns] = useState([]);
-
-  // Collapsible section toggles
-  const [showMeasurements, setShowMeasurements] = useState(false);
-  const [showPhotos, setShowPhotos] = useState(false);
+  // Destructure for readability in JSX
+  const {
+    loading, accessDenied, isAssigned, client, onboarding, stats, programName, enrollment, streak,
+    recentSessions, personalRecords, weeklyWorkouts, workoutsThisWeek,
+    weights, measurements, progressPhotos, checkIns,
+    notesData, notesSaved, savingNotes,
+    followups, showFollowupModal, fuMethod, fuNote, fuOutcome, savingFollowup,
+    availablePrograms, assigningProgram,
+    nutritionTargets, foodLogSummary, activeMealPlan, savingMealPlan, mealPlanForm, showMealPlanForm, nutritionLoaded, sampleMeals, generatingMeals,
+    activeTab, showReport, showMeasurements, showPhotos,
+  } = state;
 
   useEffect(() => { document.title = t('trainerNotes.pageTitle'); }, [t]);
 
+  // Cleanup notesSaved timer on unmount
   useEffect(() => {
-    if (clientId && profile?.id) {
-      loadClientData();
-    }
-  }, [clientId, profile?.id]);
+    return () => {
+      if (notesSavedTimerRef.current) clearTimeout(notesSavedTimerRef.current);
+    };
+  }, []);
 
-  useEffect(() => {
-    if (activeTab === 'programNutrition' && clientId && profile?.id) {
-      loadNutritionData();
-    }
-  }, [activeTab, clientId, profile?.id]);
-
-  async function loadClientData() {
-    setLoading(true);
-    setAccessDenied(false);
+  // Phase 1: verify trainer ↔ client assignment BEFORE any data queries fire.
+  const checkAssignment = useCallback(async () => {
+    dispatch({ type: 'SET', payload: { loading: true, accessDenied: false, isAssigned: false } });
     try {
-      // Verify this client is assigned to the current trainer
       const { data: assignment } = await supabase
         .from('trainer_clients')
         .select('id, notes')
@@ -104,11 +149,22 @@ export default function TrainerClientNotes() {
         .maybeSingle();
 
       if (!assignment) {
-        setAccessDenied(true);
-        setLoading(false);
+        dispatch({ type: 'SET', payload: { accessDenied: true, loading: false, isAssigned: false } });
         return;
       }
 
+      // Assignment confirmed — store notes and set flag so data queries can proceed.
+      dispatch({ type: 'SET', payload: { isAssigned: true, _assignmentNotes: assignment.notes } });
+    } catch (err) {
+      logger.error('Error checking assignment:', err);
+      dispatch({ type: 'SET', payload: { loading: false } });
+    }
+  }, [clientId, profile?.id, profile?.gym_id]);
+
+  // Phase 2: load all client data — only runs after isAssigned is true.
+  const loadClientData = useCallback(async () => {
+    const assignmentNotes = state._assignmentNotes;
+    try {
       const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       const eightWeeksAgo = subWeeks(new Date(), 8).toISOString();
 
@@ -187,77 +243,68 @@ export default function TrainerClientNotes() {
           .gte('started_at', weekStart.toISOString()),
       ]);
 
-      if (clientRes.data) {
-        setClient(clientRes.data);
-        if (clientRes.data.assigned_program_id) {
-          const { data: prog } = await supabase
-            .from('gym_programs')
-            .select('name')
-            .eq('id', clientRes.data.assigned_program_id)
-            .single();
-          if (prog) setProgramName(prog.name);
+      let loadedProgramName = null;
+      let loadedEnrollment = null;
+      if (clientRes.data?.assigned_program_id) {
+        const { data: prog } = await supabase
+          .from('gym_programs')
+          .select('name')
+          .eq('id', clientRes.data.assigned_program_id)
+          .single();
+        if (prog) loadedProgramName = prog.name;
 
-          // Load enrollment
-          const { data: enr } = await supabase
-            .from('gym_program_enrollments')
-            .select('started_at, gym_programs(name, duration_weeks, days_per_week)')
-            .eq('profile_id', clientId)
-            .eq('program_id', clientRes.data.assigned_program_id)
-            .order('started_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          setEnrollment(enr);
-        }
+        const { data: enr } = await supabase
+          .from('gym_program_enrollments')
+          .select('started_at, gym_programs(name, duration_weeks, days_per_week)')
+          .eq('profile_id', clientId)
+          .eq('program_id', clientRes.data.assigned_program_id)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        loadedEnrollment = enr;
       }
 
-      if (statsRes.data) {
-        const totalVolume = statsRes.data.reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-        setStats({ count: statsRes.data.length, volume: totalVolume });
-      }
+      const totalVolume = (statsRes.data || []).reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
 
       // Parse notes - gracefully handle plain string vs JSON
-      if (assignment.notes) {
+      // Merge old preferences and goalReminders into coach notes
+      let parsedNotes = { notes: '', injuries: '' };
+      if (assignmentNotes) {
         try {
-          const parsed = JSON.parse(assignment.notes);
+          const parsed = JSON.parse(assignmentNotes);
           if (typeof parsed === 'object' && parsed !== null) {
-            setNotesData({
-              notes: parsed.notes || '',
-              preferences: parsed.preferences || '',
+            const mergedNotes = [
+              parsed.notes || '',
+              parsed.preferences ? `\n\n--- ${t('trainerNotes.notes.preferencesHeader', 'Preferences')} ---\n${parsed.preferences}` : '',
+              parsed.goalReminders ? `\n\n--- ${t('trainerNotes.notes.goalRemindersHeader', 'Goal Reminders')} ---\n${parsed.goalReminders}` : '',
+            ].join('').trim();
+            parsedNotes = {
+              notes: mergedNotes,
               injuries: parsed.injuries || '',
-              goalReminders: parsed.goalReminders || '',
-            });
+            };
           } else {
-            setNotesData({ notes: assignment.notes, preferences: '', injuries: '', goalReminders: '' });
+            parsedNotes = { notes: assignmentNotes, injuries: '' };
           }
         } catch {
-          // Plain string - treat as main notes
-          setNotesData({ notes: assignment.notes, preferences: '', injuries: '', goalReminders: '' });
+          parsedNotes = { notes: assignmentNotes, injuries: '' };
         }
       }
 
-      setWeights(weightsRes.data || []);
-      setMeasurements(measRes.data?.[0] || null);
-      setStreak(streakRes.data || null);
-      setFollowups(followupsRes.data || []);
-      setRecentSessions(recentRes.data || []);
-      setPersonalRecords(prsRes.data || []);
-      setOnboarding(onbRes.data || null);
-      setWorkoutsThisWeek(thisWeekRes.data?.length || 0);
-
       // Process weekly workout data for chart
+      let processedWeeklyWorkouts = [];
       if (weeklyRes.data) {
         const weekMap = {};
         for (let i = 7; i >= 0; i--) {
           const wk = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 1 });
-          const key = format(wk, 'MMM d');
+          const key = format(wk, 'MMM d', { locale: dateFnsLocale });
           weekMap[key] = 0;
         }
         weeklyRes.data.forEach((s) => {
           const wk = startOfWeek(new Date(s.started_at), { weekStartsOn: 1 });
-          const key = format(wk, 'MMM d');
+          const key = format(wk, 'MMM d', { locale: dateFnsLocale });
           if (weekMap[key] !== undefined) weekMap[key]++;
         });
-        setWeeklyWorkouts(Object.entries(weekMap).map(([week, count]) => ({ week, count })));
+        processedWeeklyWorkouts = Object.entries(weekMap).map(([week, count]) => ({ week, count }));
       }
 
       // Load available programs, progress photos, and check-ins in parallel
@@ -281,8 +328,7 @@ export default function TrainerClientNotes() {
           .order('checked_in_at', { ascending: false })
           .limit(30),
       ]);
-      setAvailablePrograms(progsRes.data || []);
-      // Pre-resolve signed URLs for private progress photos
+
       const photosWithUrls = await Promise.all(
         (photosRes.data || []).map(async (photo) => {
           const { data: urlData } = await supabase.storage
@@ -291,17 +337,51 @@ export default function TrainerClientNotes() {
           return { ...photo, signedUrl: urlData?.signedUrl || '' };
         })
       );
-      setProgressPhotos(photosWithUrls);
-      setCheckIns(checkInsRes.data || []);
+
+      dispatch({
+        type: 'SET',
+        payload: {
+          client: clientRes.data,
+          stats: { count: (statsRes.data || []).length, volume: totalVolume },
+          programName: loadedProgramName,
+          enrollment: loadedEnrollment,
+          weights: weightsRes.data || [],
+          measurements: measRes.data?.[0] || null,
+          streak: streakRes.data || null,
+          followups: followupsRes.data || [],
+          recentSessions: recentRes.data || [],
+          personalRecords: prsRes.data || [],
+          onboarding: onbRes.data || null,
+          workoutsThisWeek: thisWeekRes.data?.length || 0,
+          weeklyWorkouts: processedWeeklyWorkouts,
+          availablePrograms: progsRes.data || [],
+          progressPhotos: photosWithUrls,
+          checkIns: checkInsRes.data || [],
+          notesData: parsedNotes,
+          loading: false,
+        },
+      });
     } catch (err) {
       logger.error('Error loading client data:', err);
-    } finally {
-      setLoading(false);
+      dispatch({ type: 'SET', payload: { loading: false } });
     }
-  }
+  }, [clientId, profile?.id, profile?.gym_id, t, state._assignmentNotes]);
 
-  // Lazy-load nutrition data when the tab is opened
-  async function loadNutritionData() {
+  // Phase 1: run assignment check whenever clientId / trainer changes.
+  useEffect(() => {
+    if (clientId && profile?.id) {
+      checkAssignment();
+    }
+  }, [clientId, profile?.id, checkAssignment]);
+
+  // Phase 2: only fire data queries after assignment is confirmed (enabled: !!isAssigned).
+  useEffect(() => {
+    if (isAssigned) {
+      loadClientData();
+    }
+  }, [isAssigned, loadClientData]);
+
+  const loadNutritionData = useCallback(async () => {
     if (nutritionLoaded) return;
     try {
       const sevenDaysAgo = subDays(new Date(), 7).toISOString().split('T')[0];
@@ -326,9 +406,6 @@ export default function TrainerClientNotes() {
           .maybeSingle(),
       ]);
 
-      setNutritionTargets(targetsRes.data || null);
-      setActiveMealPlan(mealPlanRes.data || null);
-
       // Aggregate food logs by day
       const dayMap = {};
       (logsRes.data || []).forEach(log => {
@@ -338,24 +415,40 @@ export default function TrainerClientNotes() {
         dayMap[log.log_date].carbs += Number(log.carbs_g) || 0;
         dayMap[log.log_date].fat += Number(log.fat_g) || 0;
       });
-      setFoodLogSummary(Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)));
 
       // Pre-fill meal plan form from active plan
+      let loadedMealPlanForm = state.mealPlanForm;
       if (mealPlanRes.data) {
-        setMealPlanForm({
+        loadedMealPlanForm = {
           calories: mealPlanRes.data.target_calories?.toString() || '',
           protein: mealPlanRes.data.target_protein_g?.toString() || '',
           carbs: mealPlanRes.data.target_carbs_g?.toString() || '',
           fat: mealPlanRes.data.target_fat_g?.toString() || '',
           name: mealPlanRes.data.name || '',
           description: mealPlanRes.data.description || '',
-        });
+        };
       }
-      setNutritionLoaded(true);
+
+      dispatch({
+        type: 'SET',
+        payload: {
+          nutritionTargets: targetsRes.data || null,
+          activeMealPlan: mealPlanRes.data || null,
+          foodLogSummary: Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)),
+          mealPlanForm: loadedMealPlanForm,
+          nutritionLoaded: true,
+        },
+      });
     } catch (err) {
       logger.error('Error loading nutrition data:', err);
     }
-  }
+  }, [clientId, profile?.id, nutritionLoaded, state.mealPlanForm]);
+
+  useEffect(() => {
+    if (activeTab === 'programNutrition' && clientId && profile?.id) {
+      loadNutritionData();
+    }
+  }, [activeTab, clientId, profile?.id, loadNutritionData]);
 
   // Auto-calculate macro targets from real client data
   function handleAutoCalculate() {
@@ -368,23 +461,25 @@ export default function TrainerClientNotes() {
     const goal = onboarding?.primary_goal || 'general_fitness';
 
     const result = calculateMacros({ weightLbs, heightInches, age, sex, trainingDays, goal });
-    setMealPlanForm(prev => ({
-      ...prev,
-      calories: result.calories.toString(),
-      protein: result.protein.toString(),
-      carbs: result.carbs.toString(),
-      fat: result.fat.toString(),
-      name: prev.name || `${goal.replace(/_/g, ' ')} plan`.replace(/\b\w/g, c => c.toUpperCase()),
-    }));
+    dispatch({
+      type: 'SET_MEAL_PLAN_FORM',
+      payload: {
+        calories: result.calories.toString(),
+        protein: result.protein.toString(),
+        carbs: result.carbs.toString(),
+        fat: result.fat.toString(),
+        name: mealPlanForm.name || `${t(`trainerNotes.goals.${goal}`, goal.replace(/_/g, ' '))} ${t('trainerNotes.nutrition.planSuffix', 'Plan')}`,
+      },
+    });
     return result;
   }
 
   // Auto-generate full meal plan with sample meals
   async function handleAutoGenerateMeals() {
-    setGeneratingMeals(true);
+    dispatch({ type: 'SET', payload: { generatingMeals: true } });
     try {
       const macros = handleAutoCalculate();
-      if (!macros) { setGeneratingMeals(false); return; }
+      if (!macros) { dispatch({ type: 'SET', payload: { generatingMeals: false } }); return; }
 
       const plan = generateDayPlan({
         targets: macros,
@@ -394,24 +489,33 @@ export default function TrainerClientNotes() {
       });
 
       if (plan?.meals) {
-        setSampleMeals(plan.meals);
         const mealDesc = plan.meals.map(m => `${m.type || t('trainerNotes.nutrition.meal')}: ${m.name} (${Math.round(m.calories)} cal)`).join('\n');
-        setMealPlanForm(prev => ({
-          ...prev,
-          description: `${t('trainerNotes.nutrition.sampleDay')}:\n${mealDesc}`,
-        }));
+        dispatch({
+          type: 'SET',
+          payload: {
+            sampleMeals: plan.meals,
+            showMealPlanForm: true,
+          },
+        });
+        dispatch({
+          type: 'SET_MEAL_PLAN_FORM',
+          payload: {
+            description: `${t('trainerNotes.nutrition.sampleDay')}:\n${mealDesc}`,
+          },
+        });
+      } else {
+        dispatch({ type: 'SET', payload: { showMealPlanForm: true } });
       }
-      setShowMealPlanForm(true);
     } catch (err) {
       logger.error('Error generating meal plan:', err);
     } finally {
-      setGeneratingMeals(false);
+      dispatch({ type: 'SET', payload: { generatingMeals: false } });
     }
   }
 
   async function handleSaveMealPlan() {
     if (!profile?.id || savingMealPlan) return;
-    setSavingMealPlan(true);
+    dispatch({ type: 'SET', payload: { savingMealPlan: true } });
     try {
       // Deactivate existing plan if any
       if (activeMealPlan) {
@@ -441,12 +545,12 @@ export default function TrainerClientNotes() {
         .select()
         .single();
       if (error) throw error;
-      setActiveMealPlan(data);
-      setShowMealPlanForm(false);
+      dispatch({ type: 'SET', payload: { activeMealPlan: data, showMealPlanForm: false } });
     } catch (err) {
       logger.error('Error saving meal plan:', err);
+      showToast(t('trainerNotes.errors.saveMealPlanFailed', 'Could not save meal plan'), 'error');
     } finally {
-      setSavingMealPlan(false);
+      dispatch({ type: 'SET', payload: { savingMealPlan: false } });
     }
   }
 
@@ -457,8 +561,13 @@ export default function TrainerClientNotes() {
         .from('trainer_meal_plans')
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', activeMealPlan.id);
-      setActiveMealPlan(null);
-      setMealPlanForm({ calories: '', protein: '', carbs: '', fat: '', name: '', description: '' });
+      dispatch({
+        type: 'SET',
+        payload: {
+          activeMealPlan: null,
+          mealPlanForm: { calories: '', protein: '', carbs: '', fat: '', name: '', description: '' },
+        },
+      });
     } catch (err) {
       logger.error('Error deactivating meal plan:', err);
     }
@@ -466,7 +575,7 @@ export default function TrainerClientNotes() {
 
   async function handleSaveNotes() {
     if (!profile?.id) return;
-    setSavingNotes(true);
+    dispatch({ type: 'SET', payload: { savingNotes: true } });
     try {
       const serialized = JSON.stringify(notesData);
       await supabase.from('trainer_clients').upsert({
@@ -475,18 +584,23 @@ export default function TrainerClientNotes() {
         client_id: clientId,
         notes: serialized,
       }, { onConflict: 'trainer_id,client_id' });
-      setNotesSaved(true);
-      setTimeout(() => setNotesSaved(false), 2000);
+      dispatch({ type: 'SET', payload: { notesSaved: true } });
+      if (notesSavedTimerRef.current) clearTimeout(notesSavedTimerRef.current);
+      notesSavedTimerRef.current = setTimeout(() => {
+        dispatch({ type: 'SET', payload: { notesSaved: false } });
+        notesSavedTimerRef.current = null;
+      }, 2000);
     } catch (err) {
       logger.error('Error saving notes:', err);
+      showToast(t('trainerNotes.errors.saveNotesFailed', 'Could not save notes'), 'error');
     } finally {
-      setSavingNotes(false);
+      dispatch({ type: 'SET', payload: { savingNotes: false } });
     }
   }
 
   async function handleSaveFollowup() {
     if (!profile?.id) return;
-    setSavingFollowup(true);
+    dispatch({ type: 'SET', payload: { savingFollowup: true } });
     try {
       const { data, error } = await supabase.from('trainer_followups').insert({
         trainer_id: profile.id,
@@ -497,21 +611,21 @@ export default function TrainerClientNotes() {
         outcome: fuOutcome,
       }).select().single();
       if (error) throw error;
-      setFollowups(prev => [data, ...prev]);
-      setShowFollowupModal(false);
-      setFuNote('');
-      setFuMethod('call');
-      setFuOutcome('no_answer');
+      dispatch({ type: 'PREPEND_FOLLOWUP', followup: data });
+      dispatch({
+        type: 'SET',
+        payload: { showFollowupModal: false, fuNote: '', fuMethod: 'call', fuOutcome: 'no_answer' },
+      });
     } catch (err) {
       logger.error('Error saving followup:', err);
     } finally {
-      setSavingFollowup(false);
+      dispatch({ type: 'SET', payload: { savingFollowup: false } });
     }
   }
 
   async function handleAssignProgram(programId) {
     if (!profile?.id || assigningProgram) return;
-    setAssigningProgram(true);
+    dispatch({ type: 'SET', payload: { assigningProgram: true } });
     try {
       // Update profile's assigned_program_id via secure RPC
       await supabase.rpc('trainer_assign_program', { p_member_id: clientId, p_program_id: programId });
@@ -531,7 +645,7 @@ export default function TrainerClientNotes() {
     } catch (err) {
       logger.error('Error assigning program:', err);
     } finally {
-      setAssigningProgram(false);
+      dispatch({ type: 'SET', payload: { assigningProgram: false } });
     }
   }
 
@@ -544,7 +658,7 @@ export default function TrainerClientNotes() {
 
   const OUTCOME_STYLES = {
     no_answer: { label: t('trainerNotes.followUp.outcomes.noAnswer'), color: 'text-[var(--color-text-muted)]', bg: 'bg-white/[0.04]' },
-    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    rescheduled: { label: t('trainerNotes.followUp.outcomes.rescheduled'), color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },
     coming_back: { label: t('trainerNotes.followUp.outcomes.comingBack'), color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
     not_interested: { label: t('trainerNotes.followUp.outcomes.notInterested'), color: 'text-red-400', bg: 'bg-red-500/10' },
     other: { label: t('trainerNotes.followUp.outcomes.other'), color: 'text-[var(--color-text-secondary)]', bg: 'bg-white/[0.04]' },
@@ -584,10 +698,32 @@ export default function TrainerClientNotes() {
     return { name, currentWeek, totalWeeks, daysPerWeek: days_per_week || 3, progressPct };
   }, [enrollment]);
 
+  // Weight chart data (reversed so chart goes left-to-right chronologically)
+  const weightChartData = useMemo(() => {
+    if (weights.length === 0) return [];
+    return [...weights].reverse().map(w => ({
+      date: format(new Date(w.logged_at), 'MMM d', { locale: dateFnsLocale }),
+      weight: w.weight_lbs,
+    }));
+  }, [weights]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 py-6 max-w-[480px] mx-auto">
+        <div className="animate-pulse space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-full" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="space-y-2 flex-1">
+              <div className="h-5 w-32 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+              <div className="h-3 w-24 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          </div>
+          <div className="h-48 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+        </div>
       </div>
     );
   }
@@ -653,7 +789,7 @@ export default function TrainerClientNotes() {
           )}
           {onboarding?.fitness_level && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] text-[var(--color-text-secondary)] capitalize">
-              {onboarding.fitness_level}
+              {t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}
             </span>
           )}
           {programName && (
@@ -669,25 +805,25 @@ export default function TrainerClientNotes() {
         </div>
       </div>
 
-      {/* Quick actions row */}
+      {/* Quick actions row — removed duplicate "Meal Plan" button */}
       <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible scrollbar-hide">
         <button
-          onClick={() => { setActiveTab('notesFollowUp'); setShowFollowupModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[#D4AF37]/30 transition-colors whitespace-nowrap min-h-[44px]"
+          onClick={() => { dispatch({ type: 'SET', payload: { activeTab: 'notesFollowUp', showFollowupModal: true } }); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
         >
           <Phone className="w-3.5 h-3.5" />
           {t('trainerNotes.actions.logFollowUp')}
         </button>
         <button
-          onClick={() => setActiveTab('programNutrition')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[#D4AF37]/30 transition-colors whitespace-nowrap min-h-[44px]"
+          onClick={() => dispatch({ type: 'SET', payload: { activeTab: 'programNutrition' } })}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
         >
           <BookOpen className="w-3.5 h-3.5" />
           {t('trainerNotes.actions.assignProgram')}
         </button>
         <button
-          onClick={() => setShowReport(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[#D4AF37]/30 transition-colors whitespace-nowrap min-h-[44px]"
+          onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
         >
           <BarChart3 className="w-3.5 h-3.5" />
           {t('trainerNotes.actions.monthlyReport')}
@@ -699,17 +835,10 @@ export default function TrainerClientNotes() {
               if (convId) navigate(`/trainer/messages/${convId}`);
             } catch (err) { logger.error('Error opening conversation:', err); }
           }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[#D4AF37]/30 transition-colors whitespace-nowrap min-h-[44px]"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors whitespace-nowrap min-h-[44px]"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           {t('trainerNotes.actions.messageClient', 'Message')}
-        </button>
-        <button
-          onClick={() => setActiveTab('programNutrition')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] hover:border-[#D4AF37]/30 transition-colors whitespace-nowrap min-h-[44px]"
-        >
-          <UtensilsCrossed className="w-3.5 h-3.5" />
-          {t('trainerNotes.actions.mealPlan', 'Meal Plan')}
         </button>
       </div>
 
@@ -718,7 +847,7 @@ export default function TrainerClientNotes() {
         <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
           <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.lastActive')}</p>
           <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)] truncate">
-            {client.last_active_at ? format(new Date(client.last_active_at), 'MMM d') : '--'}
+            {client.last_active_at ? format(new Date(client.last_active_at), 'MMM d', { locale: dateFnsLocale }) : '--'}
           </p>
         </div>
         <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
@@ -744,7 +873,7 @@ export default function TrainerClientNotes() {
         <UnderlineTabs
           tabs={TAB_KEYS.map(key => ({ key, label: t(`trainerNotes.tabs.${key}`) }))}
           activeIndex={TAB_KEYS.indexOf(activeTab)}
-          onChange={i => setActiveTab(TAB_KEYS[i])}
+          onChange={i => dispatch({ type: 'SET', payload: { activeTab: TAB_KEYS[i] } })}
         />
       </div>
 
@@ -762,13 +891,13 @@ export default function TrainerClientNotes() {
                 {onboarding.primary_goal && (
                   <div className="bg-[var(--color-bg-secondary)]/60 rounded-xl px-3 py-2.5">
                     <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.overview.goal')}</p>
-                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{onboarding.primary_goal.replace(/_/g, ' ')}</p>
+                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{t(`trainerNotes.goals.${onboarding.primary_goal}`, onboarding.primary_goal.replace(/_/g, ' '))}</p>
                   </div>
                 )}
                 {onboarding.fitness_level && (
                   <div className="bg-[var(--color-bg-secondary)]/60 rounded-xl px-3 py-2.5">
                     <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.overview.fitnessLevel')}</p>
-                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{onboarding.fitness_level}</p>
+                    <p className="text-[13px] text-[var(--color-text-primary)] capitalize mt-0.5">{t(`trainerNotes.fitnessLevels.${onboarding.fitness_level}`, onboarding.fitness_level)}</p>
                   </div>
                 )}
                 {onboarding.available_equipment && onboarding.available_equipment.length > 0 && (
@@ -809,7 +938,7 @@ export default function TrainerClientNotes() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] text-[var(--color-text-primary)] truncate">{s.name || t('trainerNotes.overview.workout')}</p>
                       <p className="text-[11px] text-[var(--color-text-muted)]">
-                        {format(new Date(s.started_at), 'MMM d')}
+                        {format(new Date(s.started_at), 'MMM d', { locale: dateFnsLocale })}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 text-right shrink-0">
@@ -846,7 +975,7 @@ export default function TrainerClientNotes() {
                   <div key={i} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-[var(--color-bg-secondary)]/60">
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] text-[var(--color-text-primary)] truncate">{pr.exercises?.name || t('trainerNotes.overview.unknownExercise')}</p>
-                      <p className="text-[11px] text-[var(--color-text-muted)]">{format(new Date(pr.achieved_at), 'MMM d, yyyy')}</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)]">{format(new Date(pr.achieved_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{pr.weight_lbs} lbs x {pr.reps}</p>
@@ -872,38 +1001,29 @@ export default function TrainerClientNotes() {
                   <AreaChart data={weeklyWorkouts}>
                     <defs>
                       <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#D4AF37" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#D4AF37" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis
                       dataKey="week"
-                      tick={{ fill: '#6B7280', fontSize: 10 }}
+                      tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
                       axisLine={false}
                       tickLine={false}
                       interval="preserveStartEnd"
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fill: '#6B7280', fontSize: 10 }}
+                      tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
                       axisLine={false}
                       tickLine={false}
                       width={20}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#111827',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        color: '#E5E7EB',
-                      }}
-                      labelStyle={{ color: '#9CA3AF' }}
-                    />
+                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }} />
                     <Area
                       type="monotone"
                       dataKey="count"
-                      stroke="#D4AF37"
+                      stroke="var(--color-accent)"
                       strokeWidth={2}
                       fill="url(#goldGrad)"
                       name={t('trainerNotes.progress.workouts')}
@@ -916,20 +1036,18 @@ export default function TrainerClientNotes() {
             )}
           </div>
 
-          {/* Weight trend */}
+          {/* Weight trend — chart only with latest weight summary */}
           <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <Scale className="w-4 h-4 text-[var(--color-accent)]" />
               <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.progress.weightHistory')}</span>
-              {weights.length > 0 && (
-                <span className="text-[12px] text-[var(--color-text-muted)] ml-auto">{weights.length} {t('trainerNotes.progress.entries')}</span>
-              )}
             </div>
             {weights.length === 0 ? (
               <p className="text-[14px] text-[var(--color-text-muted)]">{t('trainerNotes.progress.noWeightLogs')}</p>
             ) : (
               <>
-                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 mb-4 border border-[#D4AF37]/15">
+                {/* Latest weight summary line */}
+                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 mb-4 border border-[var(--color-accent)]/15">
                   <p className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1">{t('trainerNotes.progress.latestWeight')}</p>
                   <div className="flex items-baseline gap-2">
                     <span className="text-[20px] sm:text-[24px] font-bold text-[var(--color-text-primary)]">{weights[0].weight_lbs}</span>
@@ -948,35 +1066,50 @@ export default function TrainerClientNotes() {
                     )}
                   </div>
                   <p className="text-[12px] text-[var(--color-text-muted)] mt-1">
-                    {format(new Date(weights[0].logged_at), 'EEEE, MMM d, yyyy')}
+                    {format(new Date(weights[0].logged_at), 'EEEE, MMM d, yyyy', { locale: dateFnsLocale })}
                   </p>
                 </div>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {weights.slice(1, 15).map((w, i) => {
-                    const prev = weights[i + 2];
-                    const diff = prev ? (w.weight_lbs - prev.weight_lbs).toFixed(1) : null;
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between py-3 px-4 rounded-xl bg-[var(--color-bg-secondary)]/60"
-                      >
-                        <span className="text-[14px] text-[var(--color-text-secondary)]">
-                          {format(new Date(w.logged_at), 'MMM d, yyyy')}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          {diff && parseFloat(diff) !== 0 && (
-                            <span className={`text-[12px] ${parseFloat(diff) > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                              {parseFloat(diff) > 0 ? '+' : ''}{diff}
-                            </span>
-                          )}
-                          <span className="text-[16px] font-semibold text-[var(--color-text-primary)]">
-                            {w.weight_lbs} <span className="text-[12px] font-normal text-[var(--color-text-muted)]">lbs</span>
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* Weight trend chart */}
+                {weightChartData.length > 1 && (
+                  <div className="h-[160px] sm:h-[180px] overflow-hidden -mx-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={weightChartData}>
+                        <defs>
+                          <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                            <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis
+                          domain={['dataMin - 2', 'dataMax + 2']}
+                          tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={35}
+                        />
+                        <Tooltip
+                          content={<ChartTooltip formatter={(val) => `${val} lbs`} nameLabel={t('trainerNotes.progress.weight', 'Weight')} />}
+                          cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.4 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="weight"
+                          stroke="var(--color-accent)"
+                          strokeWidth={2}
+                          fill="url(#weightGrad)"
+                          name={t('trainerNotes.progress.weight', 'Weight')}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -984,7 +1117,7 @@ export default function TrainerClientNotes() {
           {/* Body measurements (collapsible) */}
           <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
             <button
-              onClick={() => setShowMeasurements(prev => !prev)}
+              onClick={() => dispatch({ type: 'SET', payload: { showMeasurements: !showMeasurements } })}
               className="flex items-center justify-between w-full min-h-[44px]"
             >
               <div className="flex items-center gap-2">
@@ -1001,7 +1134,7 @@ export default function TrainerClientNotes() {
                   <div className="space-y-1.5">
                     {measurements.measured_at && (
                       <p className="text-[11px] text-[var(--color-text-muted)] mb-2">
-                        {t('trainerNotes.progress.measuredOn')} {format(new Date(measurements.measured_at), 'MMM d, yyyy')}
+                        {t('trainerNotes.progress.measuredOn')} {format(new Date(measurements.measured_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
                       </p>
                     )}
                     {[
@@ -1035,7 +1168,7 @@ export default function TrainerClientNotes() {
           {progressPhotos.length > 0 && (
             <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 md:col-span-2">
               <button
-                onClick={() => setShowPhotos(prev => !prev)}
+                onClick={() => dispatch({ type: 'SET', payload: { showPhotos: !showPhotos } })}
                 className="flex items-center justify-between w-full min-h-[44px]"
               >
                 <div className="flex items-center gap-2">
@@ -1056,7 +1189,7 @@ export default function TrainerClientNotes() {
                         loading="lazy"
                       />
                       <span className="absolute bottom-1 left-1 text-[9px] font-medium bg-black/60 text-white px-1.5 py-0.5 rounded">
-                        {format(new Date(photo.taken_at), 'MMM d')}
+                        {format(new Date(photo.taken_at), 'MMM d', { locale: dateFnsLocale })}
                       </span>
                     </div>
                   ))}
@@ -1067,8 +1200,8 @@ export default function TrainerClientNotes() {
 
           {/* Monthly Report */}
           <button
-            onClick={() => setShowReport(true)}
-            className="w-full bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex items-center gap-3 hover:border-[#D4AF37]/30 transition-colors min-h-[44px] md:col-span-2"
+            onClick={() => dispatch({ type: 'SET', payload: { showReport: true } })}
+            className="w-full bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4 flex items-center gap-3 hover:border-[var(--color-accent)]/30 transition-colors min-h-[44px] md:col-span-2"
           >
             <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center">
               <BarChart3 className="w-5 h-5 text-[var(--color-accent)]" />
@@ -1084,9 +1217,9 @@ export default function TrainerClientNotes() {
       {/* ===================== TAB 2: NOTES & FOLLOW-UP ===================== */}
       {activeTab === 'notesFollowUp' && (
         <div className="space-y-4">
-          {/* Notes editor */}
+          {/* Notes editor — 2 textareas: Coach Notes (merged) and Injuries */}
           <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-            {/* Main coach notes */}
+            {/* Coach Notes (merged: notes + preferences + goal reminders) */}
             <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <StickyNote className="w-4 h-4 text-[var(--color-accent)]" />
@@ -1095,39 +1228,20 @@ export default function TrainerClientNotes() {
               <textarea
                 value={notesData.notes}
                 onChange={(e) => {
-                  if (e.target.value.length <= 2000) {
-                    setNotesData(prev => ({ ...prev, notes: e.target.value }));
+                  if (e.target.value.length <= 5000) {
+                    dispatch({ type: 'SET_NOTES_FIELD', field: 'notes', value: e.target.value });
                   }
                 }}
                 placeholder={t('trainerNotes.notes.notesPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
-                rows={6}
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                rows={10}
               />
               <span className="text-[11px] text-[var(--color-text-muted)] mt-1 block">
-                {notesData.notes.length} / 2000
+                {notesData.notes.length} / 5000
               </span>
             </div>
 
-            {/* Preferences */}
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Heart className="w-4 h-4 text-[var(--color-accent)]" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.notes.preferences')}</span>
-              </div>
-              <textarea
-                value={notesData.preferences}
-                onChange={(e) => {
-                  if (e.target.value.length <= 1000) {
-                    setNotesData(prev => ({ ...prev, preferences: e.target.value }));
-                  }
-                }}
-                placeholder={t('trainerNotes.notes.preferencesPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
-                rows={3}
-              />
-            </div>
-
-            {/* Injuries / Limitations */}
+            {/* Injuries / Limitations — kept separate (safety-critical) */}
             <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-4 h-4 text-red-400" />
@@ -1137,31 +1251,12 @@ export default function TrainerClientNotes() {
                 value={notesData.injuries}
                 onChange={(e) => {
                   if (e.target.value.length <= 1000) {
-                    setNotesData(prev => ({ ...prev, injuries: e.target.value }));
+                    dispatch({ type: 'SET_NOTES_FIELD', field: 'injuries', value: e.target.value });
                   }
                 }}
                 placeholder={t('trainerNotes.notes.injuriesPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
-                rows={3}
-              />
-            </div>
-
-            {/* Goal Reminders */}
-            <div className="bg-[var(--color-bg-card)] rounded-2xl border border-[var(--color-border-subtle)] p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Zap className="w-4 h-4 text-[var(--color-accent)]" />
-                <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{t('trainerNotes.notes.goalReminders')}</span>
-              </div>
-              <textarea
-                value={notesData.goalReminders}
-                onChange={(e) => {
-                  if (e.target.value.length <= 1000) {
-                    setNotesData(prev => ({ ...prev, goalReminders: e.target.value }));
-                  }
-                }}
-                placeholder={t('trainerNotes.notes.goalRemindersPlaceholder')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
-                rows={3}
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
+                rows={5}
               />
             </div>
 
@@ -1186,7 +1281,7 @@ export default function TrainerClientNotes() {
 
           {/* Follow-up section */}
           <button
-            onClick={() => setShowFollowupModal(true)}
+            onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: true } })}
             className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-text-on-accent)] text-[14px] font-semibold px-4 py-3 rounded-xl transition-colors min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
@@ -1221,7 +1316,7 @@ export default function TrainerClientNotes() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[12px] text-[var(--color-text-secondary)]">
-                            {format(new Date(fu.created_at), 'MMM d, yyyy h:mm a')}
+                            {format(new Date(fu.created_at), 'MMM d, yyyy h:mm a', { locale: dateFnsLocale })}
                           </span>
                           {outcomeStyle && (
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${outcomeStyle.bg} ${outcomeStyle.color}`}>
@@ -1254,7 +1349,7 @@ export default function TrainerClientNotes() {
 
             {programName ? (
               <div>
-                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[#D4AF37]/15">
+                <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-accent)]/15">
                   <p className="text-[16px] font-semibold text-[var(--color-text-primary)]">{programName}</p>
                   {programProgress && (
                     <>
@@ -1310,7 +1405,7 @@ export default function TrainerClientNotes() {
                       key={prog.id}
                       className={`flex items-center justify-between py-3 px-4 rounded-xl transition-colors ${
                         isAssigned
-                          ? 'bg-[var(--color-accent)]/10 border border-[#D4AF37]/20'
+                          ? 'bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20'
                           : 'bg-[var(--color-bg-secondary)]/60 hover:bg-[var(--color-bg-secondary)]'
                       }`}
                     >
@@ -1329,7 +1424,7 @@ export default function TrainerClientNotes() {
                         <button
                           onClick={() => handleAssignProgram(prog.id)}
                           disabled={assigningProgram}
-                          className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-2 sm:py-1.5 rounded-lg border border-[#D4AF37]/30 hover:bg-[var(--color-accent)]/10 transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-[36px]"
+                          className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-2 sm:py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-[36px]"
                         >
                           {t('trainerNotes.program.assign')}
                         </button>
@@ -1347,7 +1442,7 @@ export default function TrainerClientNotes() {
           {/* Nutrition section */}
           {!nutritionLoaded ? (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
             </div>
           ) : (
             <>
@@ -1363,14 +1458,14 @@ export default function TrainerClientNotes() {
                     <button
                       onClick={handleAutoGenerateMeals}
                       disabled={generatingMeals}
-                      className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px] disabled:opacity-40"
+                      className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px] disabled:opacity-40"
                     >
                       {generatingMeals ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                       {t('trainerNotes.nutrition.autoGenerate', 'Auto-Generate')}
                     </button>
                     <button
-                      onClick={() => setShowMealPlanForm(true)}
-                      className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px]"
+                      onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: true } })}
+                      className="text-[12px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-soft)] px-3 py-1.5 rounded-lg border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/10 transition-colors min-h-[36px]"
                     >
                       {activeMealPlan ? t('trainerNotes.nutrition.editPlan', 'Edit Plan') : t('trainerNotes.nutrition.assignPlan', 'Assign Plan')}
                     </button>
@@ -1379,7 +1474,7 @@ export default function TrainerClientNotes() {
                 </div>
 
                 {activeMealPlan && !showMealPlanForm ? (
-                  <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[#D4AF37]/15">
+                  <div className="bg-[var(--color-bg-secondary)] rounded-xl p-4 border border-[var(--color-accent)]/15">
                     <p className="text-[15px] font-semibold text-[var(--color-text-primary)]">{activeMealPlan.name}</p>
                     {activeMealPlan.description && (
                       <p className="text-[12px] text-[var(--color-text-secondary)] mt-1">{activeMealPlan.description}</p>
@@ -1399,7 +1494,7 @@ export default function TrainerClientNotes() {
                     </div>
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
                       <p className="text-[11px] text-[var(--color-text-muted)]">
-                        {t('trainerNotes.nutrition.since', 'Since')} {format(new Date(activeMealPlan.start_date), 'MMM d, yyyy')}
+                        {t('trainerNotes.nutrition.since', 'Since')} {format(new Date(activeMealPlan.start_date), 'MMM d, yyyy', { locale: dateFnsLocale })}
                       </p>
                       <button
                         onClick={handleDeactivateMealPlan}
@@ -1423,18 +1518,18 @@ export default function TrainerClientNotes() {
                       <label className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.planName', 'Plan Name')}</label>
                       <input
                         value={mealPlanForm.name}
-                        onChange={e => setMealPlanForm(p => ({ ...p, name: e.target.value }))}
+                        onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'name', value: e.target.value })}
                         placeholder={t('trainerNotes.nutrition.planNamePlaceholder', 'e.g. Cutting Phase, Lean Bulk')}
-                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
                       />
                     </div>
                     <div>
                       <label className="text-[11px] text-[var(--color-text-muted)] uppercase tracking-wide mb-1 block">{t('trainerNotes.nutrition.description', 'Description')}</label>
                       <textarea
                         value={mealPlanForm.description}
-                        onChange={e => setMealPlanForm(p => ({ ...p, description: e.target.value }))}
+                        onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: 'description', value: e.target.value })}
                         placeholder={t('trainerNotes.nutrition.descPlaceholder', 'Optional notes for the client…')}
-                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                        className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
                         rows={2}
                       />
                     </div>
@@ -1462,9 +1557,9 @@ export default function TrainerClientNotes() {
                           <input
                             type="number"
                             value={mealPlanForm[key]}
-                            onChange={e => setMealPlanForm(p => ({ ...p, [key]: e.target.value }))}
+                            onChange={e => dispatch({ type: 'SET_MEAL_PLAN_FIELD', field: key, value: e.target.value })}
                             placeholder={placeholder}
-                            className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-2 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] text-center placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+                            className="w-full bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-lg px-2 py-2.5 text-[16px] sm:text-[13px] text-[var(--color-text-primary)] text-center placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors"
                           />
                         </div>
                       ))}
@@ -1472,7 +1567,7 @@ export default function TrainerClientNotes() {
 
                     <div className="flex gap-3 pt-2">
                       <button
-                        onClick={() => setShowMealPlanForm(false)}
+                        onClick={() => dispatch({ type: 'SET', payload: { showMealPlanForm: false } })}
                         className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--color-border-default)] text-[14px] sm:text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
                       >
                         {t('trainerNotes.nutrition.cancel', 'Cancel')}
@@ -1506,18 +1601,28 @@ export default function TrainerClientNotes() {
                         <BarChart data={foodLogSummary} barGap={2}>
                           <XAxis
                             dataKey="date"
-                            tickFormatter={d => format(new Date(d + 'T00:00:00'), 'EEE')}
-                            tick={{ fill: '#6B7280', fontSize: 11 }}
+                            tickFormatter={d => format(new Date(d + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}
+                            tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
                             axisLine={false}
                             tickLine={false}
                           />
                           <YAxis hide />
                           <Tooltip
-                            contentStyle={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }}
-                            labelFormatter={d => format(new Date(d + 'T00:00:00'), 'EEE, MMM d')}
-                            formatter={(val, name) => [Math.round(val), name === 'calories' ? t('trainerNotes.nutrition.cal') : `${name} (g)`]}
+                            content={({ active, payload, label }) => {
+                              if (!active || !payload?.length) return null;
+                              return (
+                                <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle,rgba(255,255,255,0.08))] rounded-2xl px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur-sm text-[12px] min-w-[120px]">
+                                  {label && <p className="text-[var(--color-text-muted)] text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-70">{format(new Date(label + 'T00:00:00'), 'EEE, MMM d', { locale: dateFnsLocale })}</p>}
+                                  {payload.map((entry, i) => (
+                                    <p key={entry.dataKey || i} className="font-semibold leading-snug" style={{ color: entry.color || 'var(--color-accent)' }}>
+                                      {entry.name === 'calories' ? t('trainerNotes.nutrition.cal') : `${entry.name} (g)`}: {Math.round(entry.value)}
+                                    </p>
+                                  ))}
+                                </div>
+                              );
+                            }}
                           />
-                          <Bar dataKey="calories" fill="#D4AF37" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                          <Bar dataKey="calories" fill="var(--color-accent)" radius={[4, 4, 0, 0]} maxBarSize={32} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -1530,7 +1635,7 @@ export default function TrainerClientNotes() {
                         const calPct = calTarget ? Math.round((day.calories / calTarget) * 100) : null;
                         return (
                           <div key={day.date} className="flex items-center gap-2 md:gap-3 py-2 px-2 md:px-3 rounded-xl bg-[var(--color-bg-secondary)]/60 overflow-hidden">
-                            <span className="text-[11px] text-[var(--color-text-muted)] w-8 shrink-0">{format(new Date(day.date + 'T00:00:00'), 'EEE')}</span>
+                            <span className="text-[11px] text-[var(--color-text-muted)] w-8 shrink-0">{format(new Date(day.date + 'T00:00:00'), 'EEE', { locale: dateFnsLocale })}</span>
                             <div className="flex-1 flex items-center gap-1.5 md:gap-3 text-[10px] md:text-[11px] min-w-0 flex-wrap">
                               <span className="text-[var(--color-text-primary)] font-medium whitespace-nowrap">{Math.round(day.calories)} cal</span>
                               <span className="text-blue-400 whitespace-nowrap">P {Math.round(day.protein)}g</span>
@@ -1598,7 +1703,7 @@ export default function TrainerClientNotes() {
       {/* Monthly Report Modal */}
       <MonthlyProgressReport
         isOpen={showReport}
-        onClose={() => setShowReport(false)}
+        onClose={() => dispatch({ type: 'SET', payload: { showReport: false } })}
         profileId={clientId}
       />
 
@@ -1610,7 +1715,7 @@ export default function TrainerClientNotes() {
               <h3 className="text-[16px] sm:text-[17px] font-semibold text-[var(--color-text-primary)]">
                 {t('trainerNotes.followUp.logFollowUp')}
               </h3>
-              <button onClick={() => setShowFollowupModal(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+              <button onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
                 <X size={18} />
               </button>
             </div>
@@ -1628,11 +1733,11 @@ export default function TrainerClientNotes() {
               ].map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}
-                  onClick={() => setFuMethod(value)}
+                  onClick={() => dispatch({ type: 'SET', payload: { fuMethod: value } })}
                   title={label}
                   className={`py-2.5 sm:py-2 rounded-lg flex flex-col items-center gap-1 text-[10px] sm:text-[11px] font-medium transition-colors min-h-[44px] ${
                     fuMethod === value
-                      ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[#D4AF37]/30'
+                      ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
                       : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)] hover:text-[var(--color-text-secondary)]'
                   }`}
                 >
@@ -1648,8 +1753,8 @@ export default function TrainerClientNotes() {
             </label>
             <select
               value={fuOutcome}
-              onChange={(e) => setFuOutcome(e.target.value)}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] mb-4 focus:outline-none focus:border-[#D4AF37]/40 transition-colors min-h-[44px]"
+              onChange={(e) => dispatch({ type: 'SET', payload: { fuOutcome: e.target.value } })}
+              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg px-3 py-2.5 text-[16px] sm:text-[14px] text-[var(--color-text-primary)] mb-4 focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors min-h-[44px]"
             >
               <option value="no_answer">{t('trainerNotes.followUp.outcomes.noAnswer')}</option>
               <option value="rescheduled">{t('trainerNotes.followUp.outcomes.rescheduled')}</option>
@@ -1664,15 +1769,15 @@ export default function TrainerClientNotes() {
             </label>
             <textarea
               value={fuNote}
-              onChange={(e) => setFuNote(e.target.value)}
+              onChange={(e) => dispatch({ type: 'SET', payload: { fuNote: e.target.value } })}
               placeholder={t('trainerNotes.followUp.notePlaceholder')}
-              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[#D4AF37]/40 transition-colors mb-4"
+              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-lg p-3 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)]/40 transition-colors mb-4"
               rows={3}
             />
 
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => setShowFollowupModal(false)}
+                onClick={() => dispatch({ type: 'SET', payload: { showFollowupModal: false } })}
                 className="flex-1 py-3 sm:py-2.5 rounded-xl border border-[var(--color-border-default)] text-[14px] sm:text-[13px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors min-h-[44px]"
               >
                 {t('trainerNotes.followUp.cancel')}

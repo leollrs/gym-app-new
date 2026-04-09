@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Heart, TrendingUp, TrendingDown, Minus, Search,
-  ArrowUpDown, ChevronRight, AlertTriangle, Shield,
+  ChevronRight, AlertTriangle, Shield,
   Activity, Users, UserCheck, BarChart3, Sparkles,
   UserX, LogIn,
 } from 'lucide-react';
@@ -14,16 +14,10 @@ import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import ChartTooltip from '../../components/ChartTooltip';
-
-// ── Fade-in wrapper ──────────────────────────────────────────
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
+import FadeIn from '../../components/platform/FadeIn';
+import StatCard from '../../components/platform/StatCard';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import SortHeader from '../../components/platform/SortHeader';
 
 // ── Health tier config ───────────────────────────────────────
 const HEALTH_TIERS = [
@@ -43,28 +37,6 @@ const getScoreColor = (score) => {
   if (score >= 20) return '#F97316';
   return '#EF4444';
 };
-
-// ── Stat Card ────────────────────────────────────────────────
-const StatCard = ({ value, label, icon: Icon, color = '#6366F1', delay = 0 }) => (
-  <FadeIn delay={delay}>
-    <div className="bg-[#0F172A] border border-white/[0.06] rounded-xl p-4 border-l-2 overflow-hidden" style={{ borderLeftColor: color }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}18` }}>
-          <Icon className="w-4 h-4" style={{ color }} />
-        </div>
-      </div>
-      <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums truncate">{value}</p>
-      <p className="text-[11px] text-[#9CA3AF] mt-1 truncate">{label}</p>
-    </div>
-  </FadeIn>
-);
-
-// ── Loading Spinner ──────────────────────────────────────────
-const Spinner = () => (
-  <div className="flex items-center justify-center py-32">
-    <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-  </div>
-);
 
 // ── Compute health score for a gym ───────────────────────────
 function computeHealthScore({
@@ -103,7 +75,7 @@ function computeHealthScore({
 
 // ── Main Component ───────────────────────────────────────────
 export default function GymHealth() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -120,7 +92,7 @@ export default function GymHealth() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    document.title = 'Gym Health | TuGymPR';
+    document.title = `Gym Health | ${window.__APP_NAME || 'TuGymPR'}`;
   }, []);
 
   // ── Fetch all data ─────────────────────────────────────────
@@ -134,7 +106,7 @@ export default function GymHealth() {
       const [gymRes, profileRes, sessionRes, checkInRes, churnRes, adminRes] = await Promise.all([
         supabase.from('gyms').select('id, name, slug, is_active, created_at'),
         supabase.from('profiles').select('id, gym_id, role, last_active_at, is_onboarded, created_at').eq('role', 'member'),
-        supabase.from('workout_sessions').select('gym_id, profile_id').eq('completed', true).gte('started_at', thirtyDaysAgo),
+        supabase.from('workout_sessions').select('gym_id, profile_id').eq('status', 'completed').gte('started_at', thirtyDaysAgo),
         supabase.from('check_ins').select('gym_id, profile_id').gte('checked_in_at', thirtyDaysAgo),
         supabase.from('churn_risk_scores').select('gym_id, profile_id, score'),
         supabase.from('admin_presence').select('gym_id, last_seen_at').gte('last_seen_at', sevenDaysAgo),
@@ -321,24 +293,8 @@ export default function GymHealth() {
     return <TrendingDown className="w-3.5 h-3.5 text-red-400" />;
   };
 
-  // ── Sort header ────────────────────────────────────────────
-  const SortHeader = ({ label, field, className = '' }) => (
-    <th
-      className={`text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5 cursor-pointer select-none hover:text-[#9CA3AF] transition-colors ${className}`}
-      onClick={() => handleSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-40" />
-        {sortKey === field && (
-          <span className="text-[#D4AF37] text-[9px]">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>
-        )}
-      </span>
-    </th>
-  );
-
   // ── Render ─────────────────────────────────────────────────
-  if (loading) return <Spinner />;
+  if (loading) return <PlatformSpinner />;
 
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-6xl pb-28 md:pb-12">
@@ -376,7 +332,7 @@ export default function GymHealth() {
       {/* ── Main content: Table + Insights ────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         {/* Left column: Chart + Table */}
-        <div className="space-y-6">
+        <div className="space-y-6 order-2 lg:order-1">
           {/* ── Section 2: Health Trend Chart ────────────────── */}
           <FadeIn delay={100}>
             <div className="bg-[#0F172A] border border-white/[0.06] rounded-2xl p-4">
@@ -462,17 +418,17 @@ export default function GymHealth() {
                     <thead>
                       <tr className="border-b border-white/[0.06]">
                         <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5 w-10">#</th>
-                        <SortHeader label={t('platform.gymHealth.col.gym', 'Gym')} field="name" />
-                        <SortHeader label={t('platform.gymHealth.col.score', 'Score')} field="healthScore" />
+                        <SortHeader label={t('platform.gymHealth.col.gym', 'Gym')} field="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.score', 'Score')} field="healthScore" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                         <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">
                           {t('platform.gymHealth.col.tier', 'Tier')}
                         </th>
-                        <SortHeader label={t('platform.gymHealth.col.members', 'Members')} field="totalMembers" />
-                        <SortHeader label={t('platform.gymHealth.col.active', 'Active %')} field="activePct" />
-                        <SortHeader label={t('platform.gymHealth.col.sessions', 'Sess/Mem')} field="sessionsPerMember" />
-                        <SortHeader label={t('platform.gymHealth.col.checkin', 'Check-in')} field="checkinRate" />
-                        <SortHeader label={t('platform.gymHealth.col.churn', 'Avg Churn')} field="avgChurnScore" />
-                        <SortHeader label={t('platform.gymHealth.col.onboard', 'Onboard %')} field="onboardingPct" />
+                        <SortHeader label={t('platform.gymHealth.col.members', 'Members')} field="totalMembers" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.active', 'Active %')} field="activePct" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.sessions', 'Sess/Mem')} field="sessionsPerMember" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.checkin', 'Check-in')} field="checkinRate" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.churn', 'Avg Churn')} field="avgChurnScore" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                        <SortHeader label={t('platform.gymHealth.col.onboard', 'Onboard %')} field="onboardingPct" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                         <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5 w-10">
                           {t('platform.gymHealth.col.trend', '')}
                         </th>
@@ -486,6 +442,10 @@ export default function GymHealth() {
                             key={gym.id}
                             className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer"
                             onClick={() => navigate(`/platform/gym/${gym.id}`)}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={gym.name}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/platform/gym/${gym.id}`); } }}
                           >
                             <td className="px-3 py-3">
                               <span className="text-[12px] text-[#6B7280] tabular-nums">{i + 1}</span>
@@ -563,7 +523,7 @@ export default function GymHealth() {
         </div>
 
         {/* ── Section 4: Key Insights Panel (right sidebar) ──── */}
-        <div className="space-y-4">
+        <div className="space-y-4 order-1 lg:order-2">
           {/* Biggest Improvement */}
           <FadeIn delay={200}>
             <div className="bg-[#0F172A] border border-white/[0.06] rounded-2xl p-4">

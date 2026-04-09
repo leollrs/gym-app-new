@@ -779,7 +779,7 @@ function MonthlyTimeline({ userId }) {
       ]);
 
       if (!cancelled) {
-        if (workoutRes.error) console.error('MonthlyTimeline: workout load error', workoutRes.error);
+        // workoutRes.error is silently ignored — UI gracefully handles missing data
         // Normalize cardio sessions to share the same shape keys used for grouping
         const cardioSessions = (cardioRes.data ?? []).map(c => ({
           ...c,

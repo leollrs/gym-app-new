@@ -118,7 +118,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
       };
 
       if (isEdit) {
-        const { error } = await supabase.from('gym_products').update(payload).eq('id', product.id);
+        const { error } = await supabase.from('gym_products').update(payload).eq('id', product.id).eq('gym_id', gymId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('gym_products').insert(payload);
@@ -311,7 +311,7 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }) => {
-      const { error } = await supabase.from('gym_products').update({ is_active: !is_active }).eq('id', id);
+      const { error } = await supabase.from('gym_products').update({ is_active: !is_active }).eq('id', id).eq('gym_id', gymId);
       if (error) throw error;
     },
     onSuccess: (_, { id, is_active }) => {
@@ -323,7 +323,7 @@ const ProductsTab = ({ gymId, t, addProductOpen, onAddProductClose }) => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('gym_products').delete().eq('id', id);
+      const { error } = await supabase.from('gym_products').delete().eq('id', id).eq('gym_id', gymId);
       if (error) throw error;
     },
     onSuccess: (_, productId) => {
@@ -1005,6 +1005,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                    aria-label={t('admin.store.decreaseQuantity', 'Decrease quantity')}
                     className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors"
                   >
                     <Minus size={16} />
@@ -1012,6 +1013,7 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
                   <span className="text-[20px] font-bold text-[#E5E7EB] w-12 text-center tabular-nums">{quantity}</span>
                   <button
                     onClick={() => setQuantity(q => q + 1)}
+                    aria-label={t('admin.store.increaseQuantity', 'Increase quantity')}
                     className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/6 flex items-center justify-center text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/12 transition-colors"
                   >
                     <Plus size={16} />
@@ -1196,7 +1198,7 @@ export default function AdminStore() {
   const [addProductOpen, setAddProductOpen] = useState(false);
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
 
-  useEffect(() => { document.title = 'Admin - Store | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Store | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   const tabOptions = useMemo(() => [
     { key: 'products', label: t('admin.store.products', 'Products') },

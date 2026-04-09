@@ -218,6 +218,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
             {/* Week navigator */}
             <div className="flex items-center justify-between rounded-xl px-3 py-2.5 mb-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
               <button onClick={() => setCurrentWeek(w => Math.max(1, w - 1))} disabled={currentWeek <= 1}
+                aria-label={t('admin.programs.builder.previousWeek', 'Previous week')}
                 className="p-1.5 rounded-lg disabled:opacity-30 transition-colors text-[#6B7280] hover:text-[#E5E7EB]">
                 <ChevronLeft size={18} />
               </button>
@@ -255,6 +256,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                 </div>
               </div>
               <button onClick={() => setCurrentWeek(w => Math.min(durationWeeks, w + 1))} disabled={currentWeek >= durationWeeks}
+                aria-label={t('admin.programs.builder.nextWeek', 'Next week')}
                 className="p-1.5 rounded-lg disabled:opacity-30 transition-colors text-[#6B7280] hover:text-[#E5E7EB]">
                 <ChevronRight size={18} />
               </button>
@@ -313,6 +315,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                       </div>
                       <button
                         onClick={() => removeDay(currentWeek, di)}
+                        aria-label={t('admin.programs.builder.removeDay', 'Remove day')}
                         className="text-[#6B7280] hover:text-red-400 transition-colors flex-shrink-0"
                       >
                         <X size={14} />
@@ -355,6 +358,7 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                           </div>
                           <button
                             onClick={() => removeExercise(currentWeek, di, ei)}
+                            aria-label={t('admin.programs.builder.removeExercise', 'Remove exercise')}
                             className="text-[#6B7280] hover:text-red-400 transition-colors ml-1 flex-shrink-0"
                           >
                             <Trash2 size={11} />

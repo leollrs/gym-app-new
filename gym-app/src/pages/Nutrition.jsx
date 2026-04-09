@@ -717,7 +717,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeRes
                       const file = await takePhoto();
                       if (file) onPhotoCapture(file);
                     } catch (err) {
-                      console.error('[Nutrition] takePhoto failed:', err);
+                      // takePhoto failed — silently caught
                     }
                   }}
                   className="flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl active:scale-[0.97] transition-all"
@@ -1181,7 +1181,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, lang = 'en' }) =
 
   const displayName = log.food_item
     ? ((lang === 'es' && log.food_item.name_es) ? log.food_item.name_es : log.food_item.name)
-    : (log.custom_name || 'Food');
+    : (log.custom_name || t('nutrition.foodFallback', 'Food'));
   const isAiLogged = !log.food_item_id;
   const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url);
   const loggedAt = new Date(log.created_at);
@@ -1900,7 +1900,7 @@ const WeeklyNutritionSummary = ({ userId, targets, startExpanded = false }) => {
                   {byDate[expandedDay].logs.map((log, i) => (
                     <div key={i} className="flex items-center justify-between py-1">
                       <span className="text-[10px] text-[#9CA3AF] truncate flex-1 mr-2">
-                        {(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}
+                        {(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'))}
                       </span>
                       <span className="text-[10px] font-semibold text-[#6B7280] tabular-nums flex-shrink-0">
                         {log.calories} cal
@@ -2129,7 +2129,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
         localStorage.setItem(legacyStorageKey, planJson);
       }
     } catch (err) {
-      console.error('Failed to save meal plan to localStorage:', err?.message);
+      // localStorage save failed — continue silently
     }
     // Attempt Supabase save
     if (userId) {
@@ -2138,7 +2138,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
         week_start: weekStart,
         plan_data: newPlan,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'profile_id,week_start' }).catch(err => console.error('Failed to save meal plan:', err?.message));
+      }, { onConflict: 'profile_id,week_start' }).catch(() => {});
     }
   }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset]);
 
@@ -2787,7 +2787,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                 : { color: 'var(--color-text-muted)' }
               }>
               <Clock size={12} />
-              Timeline
+              {t('nutrition.timeline', 'Timeline')}
             </button>
           )}
         </div>
@@ -2831,7 +2831,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-[13px] font-semibold truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}</p>
+                          <p className="text-[13px] font-semibold truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'))}</p>
                           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
                             style={{ backgroundColor: `${mt.color}12`, color: mt.color }}>{t(mt.labelKey)}</span>
                         </div>
@@ -2905,7 +2905,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || 'Food')}</p>
+                          <p className="text-[13px] font-semibold truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>{(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'))}</p>
                           <div className="flex items-center gap-1.5 mt-1">
                             <span className="text-[10px] font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{log.calories ?? 0} cal</span>
                             <span className="text-[8px]" style={{ color: 'var(--color-text-subtle)' }}>·</span>
@@ -3549,6 +3549,8 @@ export default function Nutrition({ embedded = false }) {
   const [barcodeProduct, setBarcodeProduct] = useState(null);
   const [barcodeError, setBarcodeError] = useState('');
 
+  useEffect(() => { document.title = `${t('nutrition.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
+
   // Android-only: resume pending photo analysis after WebView restart.
   // On Samsung Android, the OS destroys the WebView when the camera opens.
   // iOS no longer needs this — the Uri fix prevents the OOM page reload.
@@ -3583,16 +3585,16 @@ export default function Nutrition({ embedded = false }) {
           });
           const result = data || {};
           if (fnError) {
-            let msg = fnError.message || 'Analysis service error';
+            let msg = fnError.message || t('nutrition.errorAnalysisService', 'Analysis service error');
             try { const b = await fnError.context?.json(); if (b?.error) msg = b.error; } catch {}
             throw new Error(msg);
           }
-          if (result.error === 'no_food_detected') throw new Error('No food detected in the image. Try a clearer photo.');
+          if (result.error === 'no_food_detected') throw new Error(t('nutrition.errorNoFoodDetected', 'No food detected in the image. Try a clearer photo.'));
           if (result.error) throw new Error(result.error);
-          if (!result.items?.length) throw new Error('Could not identify food items');
+          if (!result.items?.length) throw new Error(t('nutrition.errorCouldNotIdentify', 'Could not identify food items'));
           setPhotoResult(result);
         } catch (err) {
-          setPhotoError(err.message || 'Failed to analyze food photo.');
+          setPhotoError(err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.'));
         } finally {
           setPhotoAnalyzing(false);
         }
@@ -3840,12 +3842,12 @@ export default function Nutrition({ embedded = false }) {
     try {
       // Validate file exists and has content
       if (!file || file.size === 0) {
-        throw new Error('No photo captured. Please try again.');
+        throw new Error(t('nutrition.errorNoPhoto', 'No photo captured. Please try again.'));
       }
 
       // Size guard — takePhoto already compresses, but double-check
       if (file.size > 10 * 1024 * 1024) {
-        throw new Error('Photo is too large. Please try a lower resolution.');
+        throw new Error(t('nutrition.errorPhotoTooLarge', 'Photo is too large. Please try a lower resolution.'));
       }
 
       // Load image with timeout to avoid hanging on corrupt files
@@ -3854,16 +3856,16 @@ export default function Nutrition({ embedded = false }) {
         const objectUrl = URL.createObjectURL(file);
         const timeout = setTimeout(() => {
           URL.revokeObjectURL(objectUrl);
-          reject(new Error('Image took too long to load. The file may be corrupted.'));
+          reject(new Error(t('nutrition.errorImageTimeout', 'Image took too long to load. The file may be corrupted.')));
         }, 15000);
         i.onload = () => { clearTimeout(timeout); URL.revokeObjectURL(objectUrl); resolve(i); };
-        i.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(objectUrl); reject(new Error('Could not load the photo. The file may be corrupted or in an unsupported format.')); };
+        i.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(objectUrl); reject(new Error(t('nutrition.errorImageLoad', 'Could not load the photo. The file may be corrupted or in an unsupported format.'))); };
         i.src = objectUrl;
       });
 
       // Guard against degenerate dimensions
       if (img.width < 10 || img.height < 10) {
-        throw new Error('Photo is too small to analyze.');
+        throw new Error(t('nutrition.errorPhotoTooSmall', 'Photo is too small to analyze.'));
       }
 
       // Thumbnail for preview + DB storage (~10-15KB)
@@ -3884,18 +3886,18 @@ export default function Nutrition({ embedded = false }) {
       const compressed = await new Promise((resolve, reject) => {
         try {
           aiCanvas.toBlob(
-            (blob) => blob ? resolve(blob) : reject(new Error('Failed to compress photo for analysis.')),
+            (blob) => blob ? resolve(blob) : reject(new Error(t('nutrition.errorCompressFailed', 'Failed to compress photo for analysis.'))),
             'image/jpeg',
             0.6
           );
         } catch (e) {
-          reject(new Error('Failed to compress photo for analysis.'));
+          reject(new Error(t('nutrition.errorCompressFailed', 'Failed to compress photo for analysis.')));
         }
       });
 
       // Bail if the compressed blob is still too big for the edge function (~4MB base64 ≈ 3MB binary)
       if (compressed.size > 3 * 1024 * 1024) {
-        throw new Error('Photo is still too large after compression. Please try a smaller photo.');
+        throw new Error(t('nutrition.errorStillTooLarge', 'Photo is still too large after compression. Please try a smaller photo.'));
       }
 
       // Convert to base64
@@ -3904,17 +3906,17 @@ export default function Nutrition({ embedded = false }) {
         r.onload = () => {
           const result = r.result;
           if (!result || typeof result !== 'string') {
-            reject(new Error('Failed to read photo data.'));
+            reject(new Error(t('nutrition.errorReadFailed', 'Failed to read photo data.')));
             return;
           }
           resolve(result.split(',')[1]);
         };
-        r.onerror = () => reject(new Error('Failed to read photo data.'));
+        r.onerror = () => reject(new Error(t('nutrition.errorReadFailed', 'Failed to read photo data.')));
         r.readAsDataURL(compressed);
       });
 
       if (!base64 || base64.length < 100) {
-        throw new Error('Photo data is empty or corrupted.');
+        throw new Error(t('nutrition.errorPhotoEmpty', 'Photo data is empty or corrupted.'));
       }
 
       // Save base64 + thumbnail to localStorage BEFORE the API call.
@@ -3926,23 +3928,19 @@ export default function Nutrition({ embedded = false }) {
       } catch {}
 
       // Call edge function
-      console.log('[FoodAnalysis] Sending image, base64 length:', base64.length);
       const { data, error: fnError } = await supabase.functions.invoke('analyze-food-photo', {
         body: { image: base64, language: i18n.language },
       });
-      console.log('[FoodAnalysis] Response:', { data, fnError: fnError?.message });
-
       // supabase-js puts non-2xx response body in data, error is a FunctionsHttpError
       const result = data || {};
       if (fnError) {
-        let msg = fnError.message || 'Analysis service error';
+        let msg = fnError.message || t('nutrition.errorAnalysisService', 'Analysis service error');
         try { const b = await fnError.context?.json(); if (b?.error) msg = b.error; } catch {}
-        console.error('[FoodAnalysis] Error details:', msg);
         throw new Error(msg);
       }
-      if (result.error === 'no_food_detected') throw new Error('No food detected in the image. Try a clearer photo.');
+      if (result.error === 'no_food_detected') throw new Error(t('nutrition.errorNoFoodDetected', 'No food detected in the image. Try a clearer photo.'));
       if (result.error) throw new Error(result.error);
-      if (!result.items?.length) throw new Error('Could not identify food items');
+      if (!result.items?.length) throw new Error(t('nutrition.errorCouldNotIdentify', 'Could not identify food items'));
 
       setPhotoResult(result);
       // Clear pending data so the recovery useEffect doesn't re-trigger
@@ -3951,8 +3949,7 @@ export default function Nutrition({ embedded = false }) {
         localStorage.removeItem('_pendingFoodThumb');
       } catch {}
     } catch (err) {
-      console.error('[FoodAnalysis] handlePhotoCapture error:', err);
-      setPhotoError(err.message || 'Failed to analyze food photo. Please try again.');
+      setPhotoError(err.message || t('nutrition.errorAnalyzeFailed', 'Failed to analyze food photo. Please try again.'));
       try {
         localStorage.removeItem('_pendingFoodBase64');
         localStorage.removeItem('_pendingFoodThumb');
@@ -4349,7 +4346,7 @@ export default function Nutrition({ embedded = false }) {
             {/* Hint text */}
             <div className="text-center">
               <p className="text-[14px] text-[#E5E7EB] font-medium mb-1">{t('nutrition.scanBarcode')}</p>
-              <p className="text-[12px] text-[#6B7280]">Point your camera at a product barcode</p>
+              <p className="text-[12px] text-[#6B7280]">{t('nutrition.pointCamera', 'Point your camera at a product barcode')}</p>
             </div>
           </div>
         </div>

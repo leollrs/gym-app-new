@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
+import EmptyState from '../components/EmptyState';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
 import { sanitize } from '../lib/sanitize';
 import { Capacitor } from '@capacitor/core';
@@ -39,7 +40,7 @@ const formatTime = (dateStr, t) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-const formatTimestamp = (dateStr) => {
+const formatTimestamp = (dateStr, t) => {
   const d = new Date(dateStr);
   const now = new Date();
   const yesterday = new Date(now);
@@ -49,7 +50,7 @@ const formatTimestamp = (dateStr) => {
   if (d.toDateString() === now.toDateString()) {
     dayPart = '';
   } else if (d.toDateString() === yesterday.toDateString()) {
-    dayPart = 'Yesterday ';
+    dayPart = t('messages.yesterday') + ' ';
   } else {
     dayPart = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ';
   }
@@ -100,7 +101,7 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
       // Search within friends only
       const safeQuery = query.replace(/[%_\\,()."']/g, '');
       const { data } = await supabase
-        .from('profiles')
+        .from('gym_member_profiles_safe')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
         .in('id', friendIds)
         .or(`full_name.ilike.%${safeQuery}%,username.ilike.%${safeQuery}%`)
@@ -125,7 +126,7 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
           <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
             {t('messages.newMessage')}
           </h3>
-          <button onClick={onClose} className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/[0.06]" style={{ color: 'var(--color-text-subtle)' }}>
+          <button onClick={onClose} className="min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center hover:bg-white/[0.06]" style={{ color: 'var(--color-text-subtle)' }}>
             <X size={18} />
           </button>
         </div>
@@ -165,12 +166,12 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
             <button
               key={member.id}
               onClick={() => onSelect(member)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-colors text-left min-h-[48px]"
             >
               <UserAvatar user={member} size={40} />
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                  {member.full_name || member.username || 'Member'}
+                  {member.full_name || member.username || t('messages.member', { defaultValue: 'Member' })}
                 </p>
                 {member.username && (
                   <p className="text-[12px] truncate" style={{ color: 'var(--color-text-subtle)' }}>@{member.username}</p>
@@ -235,7 +236,7 @@ const ChatView = ({ conversationId, onBack }) => {
       const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('gym_member_profiles_safe')
         .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
         .eq('id', otherId)
         .single();
@@ -373,7 +374,7 @@ const ChatView = ({ conversationId, onBack }) => {
 
     // Show timestamp if 5+ min gap from previous message
     if (shouldShowTimestamp(prevMsg?.created_at, msg.created_at)) {
-      chatItems.push({ type: 'timestamp', label: formatTimestamp(msg.created_at), key: `ts-${msg.id}` });
+      chatItems.push({ type: 'timestamp', label: formatTimestamp(msg.created_at, t), key: `ts-${msg.id}` });
     }
 
     const isSent = msg.sender_id === user.id;
@@ -394,7 +395,7 @@ const ChatView = ({ conversationId, onBack }) => {
     });
   }
 
-  const displayName = otherUser?.full_name || otherUser?.username || 'Member';
+  const displayName = otherUser?.full_name || otherUser?.username || t('messages.member', { defaultValue: 'Member' });
 
   return (
     <div className="fixed left-0 right-0 top-0 z-[60] flex flex-col" style={{ background: 'var(--color-bg-primary)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', bottom: kbHeight > 0 ? kbHeight + 'px' : '0px', transition: 'bottom 0.25s ease-out' }}>
@@ -407,7 +408,7 @@ const ChatView = ({ conversationId, onBack }) => {
           onClick={onBack}
           className="flex items-center gap-0.5 px-1 py-2 rounded-lg transition-colors flex-shrink-0 min-w-[44px] min-h-[44px] justify-center"
           style={{ color: 'var(--color-accent, #D4AF37)' }}
-          aria-label="Back"
+          aria-label={t('messages.back', { defaultValue: 'Back' })}
         >
           <ChevronLeft size={28} strokeWidth={2.5} />
         </button>
@@ -416,7 +417,7 @@ const ChatView = ({ conversationId, onBack }) => {
             {displayName}
           </p>
           {otherUser?.role === 'trainer' && (
-            <p className="text-[11px] font-semibold" style={{ color: 'var(--color-accent, #D4AF37)' }}>Trainer</p>
+            <p className="text-[11px] font-semibold" style={{ color: 'var(--color-accent, #D4AF37)' }}>{t('messages.trainer', { defaultValue: 'Trainer' })}</p>
           )}
         </div>
         <div className="flex-shrink-0 w-[44px] flex justify-center">
@@ -755,7 +756,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     const uniqueIds = [...new Set(otherIds)];
 
     const { data: profiles } = await supabase
-      .from('profiles')
+      .from('gym_member_profiles_safe')
       .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
       .in('id', uniqueIds);
 
@@ -793,6 +794,8 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     setConversations(enriched);
     setLoading(false);
   }, [user.id]);
+
+  useEffect(() => { document.title = t('messages.title'); }, [t]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -849,29 +852,29 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
   }, [conversations, searchQuery, archivedIds]);
 
   return (
-    <div>
+    <div className="overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           {onGoBack && (
             <button
               onClick={onGoBack}
-              className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition-colors flex-shrink-0"
+              className="min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition-colors flex-shrink-0"
               style={{ color: 'var(--color-text-muted)' }}
-              aria-label="Back"
+              aria-label={t('messages.back', { defaultValue: 'Back' })}
             >
               <ArrowLeft size={20} />
             </button>
           )}
-          <h1 className="text-[28px] font-black" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+          <h1 className="text-[28px] font-black truncate" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
             {t('messages.title')}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {headerExtra}
           <button
             onClick={onNewMessage}
-            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
             style={{ color: 'var(--color-accent, #D4AF37)' }}
             aria-label={t('messages.newMessage')}
           >
@@ -896,9 +899,11 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.1] flex items-center justify-center"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-[44px] h-[44px] rounded-full flex items-center justify-center"
               >
-                <X size={12} style={{ color: 'var(--color-text-muted)' }} />
+                <span className="w-5 h-5 rounded-full bg-white/[0.1] flex items-center justify-center">
+                  <X size={12} style={{ color: 'var(--color-text-muted)' }} />
+                </span>
               </button>
             )}
           </div>
@@ -910,17 +915,11 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
           <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
         </div>
       ) : conversations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 px-4">
-          <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-            <MessageCircle size={28} style={{ color: 'var(--color-text-subtle)' }} />
-          </div>
-          <p className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            {t('messages.noConversations')}
-          </p>
-          <p className="text-[13px] text-center" style={{ color: 'var(--color-text-subtle)' }}>
-            {t('messages.startConversation')}
-          </p>
-        </div>
+        <EmptyState
+          icon={MessageCircle}
+          title={t('messages.emptyTitle')}
+          description={t('messages.emptyDescription')}
+        />
       ) : filteredConversations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 gap-2 px-4">
           <Search size={24} style={{ color: 'var(--color-text-subtle)' }} />
@@ -932,7 +931,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         <div onClick={handleListClick}>
           {filteredConversations.map((conv, idx) => {
             const other = conv.otherUser;
-            const displayName = other?.full_name || other?.username || 'Member';
+            const displayName = other?.full_name || other?.username || t('messages.member', { defaultValue: 'Member' });
             const preview = conv.lastMessage?.body
               ? sanitize(conv.lastMessage.body.length > 60
                 ? conv.lastMessage.body.slice(0, 60) + '...'
@@ -953,7 +952,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
               >
                 <button
                   onClick={() => onSelectConversation(conv.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors text-left active:bg-white/[0.05]"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors text-left active:bg-white/[0.05] min-h-[56px]"
                   style={idx < filteredConversations.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.04)' } : undefined}
                 >
                   {/* Avatar — 48px */}

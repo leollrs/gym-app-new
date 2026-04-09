@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import { broadcastNotification } from '../../lib/notifications';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
@@ -59,37 +60,18 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
         recurrence_end: form.is_recurring && form.recurrence_end ? form.recurrence_end : null,
       });
       if (err) throw err;
-
-      // Send in-app notifications + push to all members
-      const { data: members } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('gym_id', gymId)
-        .eq('role', 'member');
-
-      if (members?.length) {
-        const dedupBase = `announcement_${form.title.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`;
-        for (const m of members) {
-          await supabase.from('notifications').insert({
-            profile_id: m.id, gym_id: gymId, type: 'announcement',
-            title: form.title, body: form.message,
-            dedup_key: `${dedupBase}_${m.id}`,
-          }).then(({ error }) => { if (error && error.code !== '23505') console.warn('notif insert:', m.id, error); });
-        }
-        const { data: { session } } = await supabase.auth.getSession();
-        const pushHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-        for (const m of members) {
-          await supabase.functions.invoke('send-push-user', {
-            body: { profile_id: m.id, gym_id: gymId, title: form.title, body: form.message, data: { route: '/notifications', type: 'announcement' } },
-            headers: pushHeaders,
-          }).catch(err => console.warn('push failed:', m.id, err));
-        }
-      }
     },
     onSuccess: () => {
       logAdminAction('create_announcement', 'announcement', null, { title: form.title });
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
       showToast(t('admin.announcements.published', 'Announcement published'), 'success');
+      broadcastNotification({
+        gymId,
+        type: 'announcement',
+        title: form.title,
+        body: form.message,
+        dedupKey: `announcement_${form.title.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
+      });
       onClose();
     },
     onError: (err) => { setError(err.message); showToast(err.message, 'error'); },
@@ -236,7 +218,7 @@ export default function AdminAnnouncements() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
 
-  useEffect(() => { document.title = t('admin.announcements.pageTitle', 'Admin - Announcements | TuGymPR'); }, [t]);
+  useEffect(() => { document.title = t('admin.announcements.pageTitle', `Admin - Announcements | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   // ── Fetch announcements ──
   const { data: announcements = [], isLoading } = useQuery({

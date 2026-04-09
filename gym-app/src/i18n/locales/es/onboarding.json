@@ -13,7 +13,8 @@
       "invalidCode": "C\u00f3digo inv\u00e1lido. Revisa e intenta de nuevo.",
       "alreadyUsed": "Este c\u00f3digo ya fue utilizado.",
       "expired": "Este c\u00f3digo ha expirado. Pide uno nuevo en tu gym.",
-      "wrongGym": "Este c\u00f3digo es para otro gym."
+      "wrongGym": "Este c\u00f3digo es para otro gym.",
+      "rateLimited": "Demasiados intentos. Espera un momento e intenta de nuevo."
     }
   },
 

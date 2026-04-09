@@ -10,7 +10,7 @@ import { addPoints } from '../lib/rewardsEngine';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import QRCodeModal from '../components/QRCodeModal';
 
-const METHOD_LABELS = { manual: 'Manual', qr: 'QR Scan', gps: 'GPS' };
+const getMethodLabels = (t) => ({ manual: t('checkIn.manual'), qr: t('checkIn.qrScan'), gps: t('checkIn.gps') });
 const METHOD_COLORS = { manual: 'var(--color-text-muted)', qr: 'var(--color-accent)', gps: 'var(--color-success)' };
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -39,6 +39,7 @@ export default function CheckIn() {
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { document.title = `${t('checkIn.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Already checked in today?
   const todayCheckIn = checkins.find(c => isToday(new Date(c.checked_in_at)));

@@ -6,14 +6,17 @@ import { supabase } from '../../lib/supabase';
 import { encryptMessage } from '../../lib/messageEncryption';
 import { useTranslation } from 'react-i18next';
 import logger from '../../lib/logger';
+import useFocusTrap from '../../hooks/useFocusTrap';
 import Messages from '../Messages';
 
 // ── Broadcast Modal ──────────────────────────────────────────────────────
 function BroadcastModal({ trainerId, onClose }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
+  const focusTrapRef = useFocusTrap(true, onClose);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState({ sent: 0, total: 0 });
 
   const handleSend = async () => {
     const text = message.trim();
@@ -36,32 +39,54 @@ function BroadcastModal({ trainerId, onClose }) {
         return;
       }
 
+      const total = clientIds.length;
+      setProgress({ sent: 0, total });
       let successCount = 0;
-      for (const clientId of clientIds) {
-        try {
-          const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
-          if (!convId) continue;
-          const { data: conv } = await supabase
-            .from('conversations')
-            .select('encryption_seed')
-            .eq('id', convId)
-            .single();
-          const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
-          await supabase.from('direct_messages').insert({
-            conversation_id: convId,
-            sender_id: trainerId,
-            body: encrypted,
-          });
-          successCount++;
-        } catch (err) {
-          logger.error('Broadcast: failed for client', clientId, err);
-        }
+      let failCount = 0;
+      const BATCH_SIZE = 5;
+
+      for (let i = 0; i < clientIds.length; i += BATCH_SIZE) {
+        const batch = clientIds.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(async (clientId) => {
+            try {
+              const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
+              if (!convId) return false;
+              const { data: conv } = await supabase
+                .from('conversations')
+                .select('encryption_seed')
+                .eq('id', convId)
+                .single();
+              const encrypted = await encryptMessage(text, convId, conv?.encryption_seed);
+              await supabase.from('direct_messages').insert({
+                conversation_id: convId,
+                sender_id: trainerId,
+                body: encrypted,
+              });
+              return true;
+            } catch (err) {
+              logger.error('Broadcast: failed for client', clientId, err);
+              return false;
+            }
+          })
+        );
+        const batchSuccess = results.filter(Boolean).length;
+        successCount += batchSuccess;
+        failCount += results.length - batchSuccess;
+        setProgress({ sent: Math.min(i + BATCH_SIZE, total), total });
       }
 
-      showToast(
-        t('trainerMessages.broadcastSent', 'Broadcast sent to {{count}} clients', { count: successCount }),
-        'success'
-      );
+      if (failCount > 0) {
+        showToast(
+          t('trainerMessages.broadcastPartial', '{{success}} sent, {{failed}} failed', { success: successCount, failed: failCount }),
+          'warning'
+        );
+      } else {
+        showToast(
+          t('trainerMessages.broadcastSent', 'Broadcast sent to {{count}} clients', { count: successCount }),
+          'success'
+        );
+      }
       onClose();
     } catch (err) {
       logger.error('Broadcast: error', err);
@@ -74,6 +99,7 @@ function BroadcastModal({ trainerId, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
+        ref={focusTrapRef}
         role="dialog"
         aria-modal="true"
         className="bg-[var(--color-bg-card)] border border-[var(--color-border-default)] rounded-2xl w-full max-w-sm overflow-hidden mx-auto"
@@ -112,7 +138,14 @@ function BroadcastModal({ trainerId, onClose }) {
             className="w-full py-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[14px] transition-colors min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {sending ? (
-              <Loader2 size={16} className="animate-spin" />
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                {progress.total > 0 && (
+                  <span className="text-[13px]">
+                    {t('trainerMessages.sendingProgress', 'Sending {{sent}}/{{total}}...', { sent: progress.sent, total: progress.total })}
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 <Send size={16} />
@@ -146,7 +179,7 @@ export default function TrainerMessages() {
   const broadcastBtn = (
     <button
       onClick={() => setShowBroadcast(true)}
-      className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[12px] transition-colors min-h-[36px]"
+      className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-semibold rounded-xl text-[13px] transition-colors min-h-[44px]"
     >
       <Radio size={14} />
       {t('trainerMessages.broadcast', 'Broadcast')}

@@ -7,8 +7,7 @@ import { subDays } from 'date-fns';
 import { exportCSV } from '../../lib/csvExport';
 import { useTranslation } from 'react-i18next';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { PageHeader, AdminCard, FadeIn, FilterBar, AdminTabs } from '../../components/admin';
-import { SwipeableTabContent } from '../../components/admin/AdminTabs';
+import { PageHeader, AdminCard, FadeIn, FilterBar, AdminTabs, AdminPageShell, ErrorCard } from '../../components/admin';
 
 const METRIC_KEYS = ['volume', 'workouts', 'pr_count', 'checkins', 'improved', 'consistency'];
 const PERIOD_KEYS = ['7', '30', 'all'];
@@ -25,7 +24,7 @@ export default function AdminLeaderboard() {
   const [period, setPeriod] = useState('30');
   const [tier, setTier]     = useState('all');
 
-  useEffect(() => { document.title = 'Admin - Leaderboard | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Leaderboard | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // Clamp period for boards that don't support all-time
   const effectivePeriod = (['improved', 'consistency'].includes(metric) && period === 'all') ? '30' : period;
@@ -34,7 +33,7 @@ export default function AdminLeaderboard() {
   const periodLabel = effectivePeriod === '7' ? 'weekly' : 'monthly';
 
   // ── Fetch leaderboard ──
-  const { data: entries = [], isLoading, refetch } = useQuery({
+  const { data: entries = [], isLoading, isError, refetch } = useQuery({
     queryKey: [...adminKeys.leaderboard(gymId), metric, effectivePeriod, tier],
     queryFn: async () => {
       if (metric === 'pr_count') {
@@ -132,7 +131,7 @@ export default function AdminLeaderboard() {
   };
 
   return (
-    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <AdminPageShell>
       <PageHeader
         title={t('admin.leaderboard.title', 'Leaderboard')}
         subtitle={t('admin.leaderboard.subtitle', 'Live gym rankings')}
@@ -145,7 +144,7 @@ export default function AdminLeaderboard() {
               <Download size={13} />
               {t('admin.leaderboard.export')}
             </button>
-            <button onClick={() => refetch()} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
+            <button onClick={() => refetch()} aria-label={t('admin.leaderboard.refresh', 'Refresh')} className="p-2 rounded-xl bg-[#0F172A] border border-white/6 text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
               <RefreshCw size={15} />
             </button>
           </div>
@@ -187,84 +186,78 @@ export default function AdminLeaderboard() {
       </div>
 
       {/* Table */}
-      <SwipeableTabContent
-        tabs={METRIC_KEYS.map(k => ({ key: k, label: t(`admin.leaderboard.metrics.${k}`, k) }))}
-        active={metric}
-        onChange={setMetric}
-      >
-        {() => (
-          <FadeIn>
-            {/* Member count context */}
-            {!isLoading && entries.length > 0 && totalMembers != null && (
-              <p className="text-[11px] text-[#6B7280] mb-2">
-                {t('admin.leaderboard.showingContext', {
-                  defaultValue: 'Showing top {{count}} of {{total}} members',
-                  count: entries.length,
-                  total: totalMembers,
-                })}
-              </p>
-            )}
-            <AdminCard className="overflow-hidden !p-0">
-              {isLoading ? (
-                <div className="flex justify-center py-16">
-                  <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <FadeIn>
+        {/* Member count context */}
+        {!isLoading && entries.length > 0 && totalMembers != null && (
+          <p className="text-[11px] text-[#6B7280] mb-2">
+            {t('admin.leaderboard.showingContext', {
+              defaultValue: 'Showing top {{count}} of {{total}} members',
+              count: entries.length,
+              total: totalMembers,
+            })}
+          </p>
+        )}
+        <AdminCard className="overflow-hidden !p-0">
+          {isLoading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
+            </div>
+          ) : isError ? (
+            <div className="p-4"><ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} /></div>
+          ) : entries.length === 0 ? (
+            <div className="text-center py-16">
+              <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
+              <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/4">
+              {/* Column header */}
+              <div className="flex items-center gap-4 px-5 py-2 bg-white/[0.02]">
+                <div className="w-8 text-center text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">#</div>
+                <div className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
+                  {t('admin.leaderboard.member', 'Member')}
                 </div>
-              ) : entries.length === 0 ? (
-                <div className="text-center py-16">
-                  <Trophy size={28} className="text-[#4B5563] mx-auto mb-2" />
-                  <p className="text-[13px] text-[#6B7280]">{t('admin.leaderboard.noData', 'No data yet for this period')}</p>
+                <div className="hidden md:block w-24" />
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563] flex-shrink-0">
+                  {columnUnit}
                 </div>
-              ) : (
-                <div className="divide-y divide-white/4">
-                  {/* Column header */}
-                  <div className="flex items-center gap-4 px-5 py-2 bg-white/[0.02]">
-                    <div className="w-8 text-center text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">#</div>
-                    <div className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
-                      {t('admin.leaderboard.member', 'Member')}
-                    </div>
-                    <div className="hidden md:block w-24" />
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563] flex-shrink-0">
-                      {columnUnit}
+              </div>
+              {entries.map((e, i) => (
+                <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
+                  <div className="w-8 text-center">
+                    {i < 3 ? (
+                      <span className="text-[18px]">{MEDAL[i]}</span>
+                    ) : (
+                      <span className="text-[13px] font-bold text-[#4B5563]">{i + 1}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
+                      {e.name}
+                    </p>
+                    {e.tier && (
+                      <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
+                    )}
+                  </div>
+                  <div className="hidden md:block w-24 flex-shrink-0">
+                    <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
                     </div>
                   </div>
-                  {entries.map((e, i) => (
-                    <div key={e.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all ${i < 3 ? 'bg-[#D4AF37]/3' : ''}`}>
-                      <div className="w-8 text-center">
-                        {i < 3 ? (
-                          <span className="text-[18px]">{MEDAL[i]}</span>
-                        ) : (
-                          <span className="text-[13px] font-bold text-[#4B5563]">{i + 1}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-[14px] font-semibold truncate ${i === 0 ? 'text-[#D4AF37]' : 'text-[#E5E7EB]'}`}>
-                          {e.name}
-                        </p>
-                        {e.tier && (
-                          <span className="text-[10px] text-[#4B5563] capitalize">{t(`admin.leaderboard.tiers.${e.tier}`, e.tier)}</span>
-                        )}
-                      </div>
-                      <div className="hidden md:block w-24 flex-shrink-0">
-                        <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${entries[0]?.score ? Math.round((e.score / entries[0].score) * 100) : 0}%`, background: i === 0 ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)' }} />
-                        </div>
-                      </div>
-                      <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
-                        {formatScore(e)}
-                        {!['improved', 'consistency'].includes(metric) && (
-                          <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
-                        )}
-                      </p>
-                    </div>
-                  ))}
+                  <p className="text-[14px] font-bold text-[#9CA3AF] flex-shrink-0">
+                    {formatScore(e)}
+                    {!['improved', 'consistency'].includes(metric) && (
+                      <span className="text-[11px] font-normal text-[#6B7280] ml-1">{scoreLabel}</span>
+                    )}
+                  </p>
                 </div>
-              )}
-            </AdminCard>
-          </FadeIn>
-        )}
-      </SwipeableTabContent>
+              ))}
+            </div>
+          )}
+        </AdminCard>
+      </FadeIn>
 
-      <p className="text-[11px] text-[#4B5563] text-center mt-3">{t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}</p>
-    </div>
+      <p className="text-[11px] text-center mt-3" style={{ color: 'var(--color-text-faint)' }}>{t('admin.leaderboard.realtimeHint', 'Updates in real time as members log workouts')}</p>
+    </AdminPageShell>
   );
 }

@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { subDays, format, startOfWeek, startOfDay, endOfDay } from 'date-fns';
+import { es } from 'date-fns/locale/es';
+import { enUS } from 'date-fns/locale/en-US';
 import {
   AlertTriangle, Activity, MessageSquare, X, Trophy, Flame, Clock, Eye,
   Users, TrendingUp, CalendarCheck, ShieldAlert,
@@ -13,8 +15,10 @@ import { useTranslation } from 'react-i18next';
 export default function TrainerDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [clients, setClients] = useState([]);
   const [weekSessions, setWeekSessions] = useState([]);
   const [prevWeekSessions, setPrevWeekSessions] = useState([]);
@@ -30,7 +34,7 @@ export default function TrainerDashboard() {
   const [recentPRs, setRecentPRs] = useState([]);
   const [activeStreaks, setActiveStreaks] = useState([]);
 
-  useEffect(() => { document.title = `${t('trainerDashboard.title')} | TuGymPR`; }, [t]);
+  useEffect(() => { document.title = `${t('trainerDashboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
@@ -168,6 +172,7 @@ export default function TrainerDashboard() {
       setContactedMap(cMap);
     } catch (err) {
       logger.error('Failed to load dashboard data:', err);
+      setError(err?.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
@@ -424,13 +429,62 @@ export default function TrainerDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[var(--color-accent)]/30 border-t-[var(--color-accent)] rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--color-bg-primary)] px-4 py-6 max-w-[480px] mx-auto">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 w-48 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          </div>
+          <div className="h-40 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          <div className="space-y-3">
+            <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+            <div className="h-16 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)' }} />
+          </div>
+        </div>
       </div>
     );
   }
 
-  const todayDate = format(new Date(), 'EEEE, MMMM d');
+  if (clients.length === 0) {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg-primary)] overflow-x-hidden">
+        <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 md:pb-12" style={{ paddingBottom: 'max(7rem, calc(7rem + env(safe-area-inset-bottom)))' }}>
+          <div className="sticky top-0 z-20 backdrop-blur-2xl -mx-3 sm:-mx-6 lg:-mx-8 px-3 sm:px-6 lg:px-8 py-3 mb-4"
+            style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--color-border-subtle) 50%, transparent)' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>
+              {t('trainerDashboard.title', 'Dashboard')}
+            </p>
+            <h1 className="text-[22px] font-black tracking-tight" style={{ fontFamily: "'Barlow Condensed', sans-serif", color: 'var(--color-text-primary)' }}>
+              {format(new Date(), 'EEEE, MMMM d', { locale: dateFnsLocale })}
+            </h1>
+          </div>
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--color-accent)]/10 flex items-center justify-center mb-4">
+              <Users size={28} style={{ color: 'var(--color-accent)' }} />
+            </div>
+            <p className="text-[16px] font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)' }}>
+              {t('trainerDashboard.noClients', 'No clients assigned yet')}
+            </p>
+            <p className="text-[13px] max-w-[320px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+              {t('trainerDashboard.noClientsDesc', 'Your dashboard will come to life once you have clients assigned. Ask your gym admin to assign clients to you.')}
+            </p>
+            <button
+              onClick={() => navigate('/trainer/clients')}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-primary)' }}
+            >
+              <Users size={15} />
+              {t('trainerDashboard.goToClients', 'View Clients')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const todayDate = format(new Date(), 'EEEE, MMMM d', { locale: dateFnsLocale });
   const sessionsToday = todaySessions.length;
   const subtitle = sessionsToday > 0
     ? t('trainerDashboard.subtitleSessions', { count: sessionsToday })
@@ -441,29 +495,29 @@ export default function TrainerDashboard() {
     {
       icon: Users,
       value: `${activeThisWeek}/${totalClients}`,
-      label: 'Active Clients',
-      sub: `${activeClientsPct}% this week`,
+      label: t('trainerDashboard.kpiActiveClients'),
+      sub: t('trainerDashboard.kpiActiveClientsPct', { pct: activeClientsPct }),
       borderColor: '#3B82F6',
     },
     {
       icon: TrendingUp,
       value: avgSessionsPerClient,
-      label: 'Avg Sessions/Client',
-      sub: 'This week',
+      label: t('trainerDashboard.kpiAvgSessions'),
+      sub: t('trainerDashboard.kpiThisWeek'),
       borderColor: '#10B981',
     },
     {
       icon: ShieldAlert,
       value: `${retentionPct}%`,
-      label: 'Client Retention',
-      sub: 'Last 30 days',
+      label: t('trainerDashboard.kpiClientRetention'),
+      sub: t('trainerDashboard.kpiLast30Days'),
       borderColor: retentionPct >= 80 ? '#10B981' : retentionPct >= 60 ? '#F59E0B' : '#EF4444',
     },
     {
       icon: CalendarCheck,
       value: workoutsThisWeek,
-      label: 'This Week',
-      sub: `${workoutsThisWeek} completed session${workoutsThisWeek !== 1 ? 's' : ''}`,
+      label: t('trainerDashboard.kpiThisWeek'),
+      sub: t('trainerDashboard.kpiCompletedSessions', { count: workoutsThisWeek }),
       borderColor: '#8B5CF6',
     },
   ];
@@ -486,6 +540,23 @@ export default function TrainerDashboard() {
             {subtitle}
           </h1>
         </div>
+
+        {/* ── Error Banner ── */}
+        {error && (
+          <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+            <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-medium text-red-400">{t('trainerDashboard.errorTitle', 'Failed to load dashboard')}</p>
+              <p className="text-[12px] text-red-400/70 mt-0.5 truncate">{error}</p>
+            </div>
+            <button
+              onClick={() => { setError(null); fetchDashboardData(); }}
+              className="shrink-0 text-[12px] font-semibold text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+            >
+              {t('trainerDashboard.retry', 'Retry')}
+            </button>
+          </div>
+        )}
 
         {/* ══════════════ Section 1: KPI Stat Cards ══════════════ */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
@@ -517,7 +588,7 @@ export default function TrainerDashboard() {
           <div>
             <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
               <AlertTriangle size={16} className="text-red-400" />
-              Needs Attention
+              {t('trainerDashboard.needsAttention')}
             </h2>
             <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
               {needsAttentionClients.map((item) => {
@@ -534,11 +605,13 @@ export default function TrainerDashboard() {
                       <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">{name}</p>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[11px] text-orange-400">
-                          {item.daysInactive >= 30 ? '30+' : item.daysInactive} days inactive
+                          {item.daysInactive >= 30
+                            ? t('trainerDashboard.daysInactive30Plus')
+                            : t('trainerDashboard.daysInactive', { count: item.daysInactive })}
                         </span>
                         {hasHighChurn && (
                           <span className="text-[11px] font-bold text-red-400">
-                            Churn: {item.churnScore}
+                            {t('trainerDashboard.churnLabel')}: {item.churnScore}
                           </span>
                         )}
                       </div>
@@ -549,7 +622,7 @@ export default function TrainerDashboard() {
                       className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-blue-500/10 flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
                     >
                       <MessageSquare size={13} className="text-blue-400" />
-                      <span className="text-[11px] font-medium text-blue-400">Message</span>
+                      <span className="text-[11px] font-medium text-blue-400">{t('trainerDashboard.messageBtn')}</span>
                     </button>
                   </div>
                 );
@@ -580,7 +653,7 @@ export default function TrainerDashboard() {
                       <p className="text-[12px] text-[var(--color-text-muted)] truncate">{session.title}</p>
                     </div>
                     <span className="text-[13px] text-[var(--color-text-secondary)] shrink-0">
-                      {format(new Date(session.scheduled_at), 'h:mm a')}
+                      {format(new Date(session.scheduled_at), 'h:mm a', { locale: dateFnsLocale })}
                     </span>
                   </div>
                 );
@@ -605,7 +678,7 @@ export default function TrainerDashboard() {
                     <p className="text-[12px] text-[var(--color-text-muted)] truncate">{session.title}</p>
                   </div>
                   <span className="text-[13px] text-[var(--color-text-secondary)] shrink-0">
-                    {format(new Date(session.scheduled_at), 'h:mm a')}
+                    {format(new Date(session.scheduled_at), 'h:mm a', { locale: dateFnsLocale })}
                   </span>
                 </div>
               ))}
@@ -625,7 +698,7 @@ export default function TrainerDashboard() {
           <div>
             <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
               <Trophy size={16} className="text-[#D4AF37]" />
-              <span>Recent PRs</span>
+              <span>{t('trainerDashboard.recentPRs')}</span>
             </h2>
             <div className="bg-[var(--color-bg-card)] border rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]" style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}>
               {recentPRs.map((pr) => {
@@ -643,12 +716,12 @@ export default function TrainerDashboard() {
                       <p className="text-[12px] text-[var(--color-text-muted)] truncate">
                         {pr.exercises?.name || t('trainerDashboard.exerciseFallback')}
                         <span className="mx-1.5 text-[var(--color-text-muted)]">&middot;</span>
-                        <span className="font-semibold text-[#D4AF37]">{pr.weight_lbs} lbs</span>
+                        <span className="font-semibold text-[#D4AF37]">{pr.weight_lbs} {t('common:lbs')}</span>
                         <span className="text-[var(--color-text-muted)]"> x {pr.reps}</span>
                       </p>
                     </div>
                     <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
-                      {format(new Date(pr.recorded_at), 'MMM d')}
+                      {format(new Date(pr.recorded_at), 'MMM d', { locale: dateFnsLocale })}
                     </span>
                   </div>
                 );
@@ -662,7 +735,7 @@ export default function TrainerDashboard() {
           <div>
             <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
               <Flame size={16} className="text-orange-400" />
-              <span>Client Streaks</span>
+              <span>{t('trainerDashboard.clientStreaks')}</span>
             </h2>
             <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
               {activeStreaks.map((s) => {
@@ -717,7 +790,7 @@ export default function TrainerDashboard() {
                         )}
                         <span className="text-[11px] text-[var(--color-text-muted)]">
                           {item.client.last_active_at
-                            ? `${t('trainerDashboard.lastActive')} ${format(new Date(item.client.last_active_at), 'MMM d')}`
+                            ? `${t('trainerDashboard.lastActive')} ${format(new Date(item.client.last_active_at), 'MMM d', { locale: dateFnsLocale })}`
                             : t('trainerDashboard.noActivityRecorded')}
                         </span>
                       </div>

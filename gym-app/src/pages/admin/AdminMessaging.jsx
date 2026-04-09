@@ -95,36 +95,37 @@ function ConversationActionMenu({ convoId, memberId, isArchived, isBlocked, onAr
         <MoreVertical size={14} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden"
+        <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl shadow-xl overflow-hidden"
+          style={{ backgroundColor: '#fff', border: '1px solid rgba(0,0,0,0.1)' }}
           onClick={(e) => e.stopPropagation()}>
           {isArchived ? (
             <button onClick={() => { onUnarchive(convoId); setOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#1F2937] hover:bg-gray-100 transition-colors text-left">
               <ArchiveRestore size={14} className="text-[#6B7280]" />
               {t('admin.messaging.unarchive', 'Desarchivar')}
             </button>
           ) : (
             <button onClick={() => { onArchive(convoId); setOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#1F2937] hover:bg-gray-100 transition-colors text-left">
               <Archive size={14} className="text-[#6B7280]" />
               {t('admin.messaging.archive', 'Archivar')}
             </button>
           )}
           <button onClick={() => { onDelete(convoId); setOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-400 hover:bg-red-500/[0.06] transition-colors text-left">
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-500 hover:bg-red-50 transition-colors text-left">
             <Trash2 size={14} />
-            {t('admin.messaging.deleteConversation', 'Eliminar conversacion')}
+            {t('admin.messaging.deleteConversation', 'Eliminar conversación')}
           </button>
-          <div className="h-px bg-white/6" />
+          <div className="h-px bg-gray-200" />
           {isBlocked ? (
             <button onClick={() => { onUnblock(memberId); setOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#E5E7EB] hover:bg-white/[0.06] transition-colors text-left">
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-[#1F2937] hover:bg-gray-100 transition-colors text-left">
               <ShieldOff size={14} className="text-[#6B7280]" />
               {t('admin.messaging.unblockUser', 'Desbloquear usuario')}
             </button>
           ) : (
             <button onClick={() => { onBlock(memberId, convoId); setOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-400 hover:bg-red-500/[0.06] transition-colors text-left">
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] text-red-500 hover:bg-red-50 transition-colors text-left">
               <Ban size={14} />
               {t('admin.messaging.blockUser', 'Bloquear usuario')}
             </button>
@@ -151,7 +152,7 @@ export default function AdminMessaging() {
 
   const [activeTab, setActiveTab] = useState('dm');
 
-  useEffect(() => { document.title = `Admin - ${t('admin.messaging.title')} | TuGymPR`; }, [t]);
+  useEffect(() => { document.title = `Admin - ${t('admin.messaging.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   return (
     <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
@@ -342,7 +343,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
     if (msgErr) { logger.error('AdminMessaging: delete msgs:', msgErr); showToast('Error', 'error'); return; }
 
     const { error: convoErr } = await supabase.from('conversations')
-      .delete().eq('id', convoId);
+      .delete().eq('id', convoId).eq('gym_id', gymId);
     if (convoErr) { logger.error('AdminMessaging: delete convo:', convoErr); showToast('Error', 'error'); return; }
 
     logAdminAction('delete_conversation', 'conversation', convoId);
@@ -371,6 +372,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       showToast('Error', 'error');
       return;
     }
+    logAdminAction('block_user', 'member', memberId, { conversation_id: convoId });
     setBlockedUserIds(prev => [...prev, memberId]);
     // Auto-archive the conversation
     handleArchive(convoId);
@@ -387,6 +389,7 @@ function DirectMessagesTab({ gymId, adminId, gym, searchParams, t, dateFnsLocale
       showToast('Error', 'error');
       return;
     }
+    logAdminAction('unblock_user', 'member', memberId);
     setBlockedUserIds(prev => prev.filter(id => id !== memberId));
     showToast(t('admin.messaging.unblockUser', 'Desbloqueado'), 'success');
   }, [adminId, showToast, t]);
@@ -993,7 +996,8 @@ function ScheduledMessagesTab({ gymId, t }) {
       const { error } = await supabase
         .from('drip_campaign_steps')
         .update({ is_active, updated_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('gym_id', gymId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1009,7 +1013,8 @@ function ScheduledMessagesTab({ gymId, t }) {
       const { error } = await supabase
         .from('drip_campaign_steps')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('gym_id', gymId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1222,7 +1227,8 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
         const { error } = await supabase
           .from('drip_campaign_steps')
           .update(payload)
-          .eq('id', editingStep.id);
+          .eq('id', editingStep.id)
+          .eq('gym_id', gymId);
         if (error) throw error;
       } else {
         const { error } = await supabase

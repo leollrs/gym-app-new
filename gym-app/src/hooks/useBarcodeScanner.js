@@ -38,7 +38,7 @@ export default function useBarcodeScanner({
 
     // Enter = terminator
     if (e.key === 'Enter') {
-      console.log('[Scanner] Enter pressed, buffer:', bufferRef.current, 'len:', bufferRef.current.length);
+      // console.log('[Scanner] Enter pressed, buffer:', bufferRef.current, 'len:', bufferRef.current.length);
       if (bufferRef.current.length >= minLength) {
         e.preventDefault();
         e.stopPropagation();
@@ -46,7 +46,7 @@ export default function useBarcodeScanner({
         bufferRef.current = '';
         suppressingRef.current = false;
         setLastScanTime(Date.now());
-        console.log('[Scanner] SCAN DETECTED:', text);
+        // console.log('[Scanner] SCAN DETECTED:', text);
         onScanRef.current?.(text);
       } else {
         bufferRef.current = '';
@@ -78,7 +78,7 @@ export default function useBarcodeScanner({
     } else {
       // Gap too long — human typing, reset
       if (bufferRef.current.length > 1) {
-        console.log('[Scanner] Buffer reset (gap too long:', Math.round(gap), 'ms), had:', bufferRef.current);
+        // console.log('[Scanner] Buffer reset (gap too long:', Math.round(gap), 'ms), had:', bufferRef.current);
       }
       bufferRef.current = e.key;
       suppressingRef.current = false;

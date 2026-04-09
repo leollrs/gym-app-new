@@ -49,6 +49,8 @@ export default function LiveCardio() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
+  useEffect(() => { document.title = t('cardio.title', 'Live Cardio') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
+
   // Restore state from localStorage on mount
   const [state] = useState(() => {
     try {
@@ -205,7 +207,6 @@ export default function LiveCardio() {
       showToast(t('cardio.loggedSuccess', 'Cardio logged!'), 'success');
       navigate('/', { replace: true });
     } catch (err) {
-      console.error('Failed to log cardio:', err);
       showToast(t('cardio.logError', 'Failed to log. Try again.'), 'error');
       setSubmitting(false);
     }

@@ -61,9 +61,11 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [referralCount, setReferralCount] = useState(0);
 
   const [memberStatus, setMemberStatus] = useState(member.membership_status ?? 'active');
+  const [memberStatusUpdatedAt, setMemberStatusUpdatedAt] = useState(member.membership_status_updated_at ?? null);
   const [statusReason, setStatusReason] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [statusConflict, setStatusConflict] = useState(false);
 
   const [externalId, setExternalId] = useState(member.qr_external_id ?? '');
   const [externalIdSaving, setExternalIdSaving] = useState(false);
@@ -208,14 +210,19 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setEmailSaving(true);
     setEmailSaved(false);
     try {
-      // Update email in profiles table
-      await supabase.from('profiles').update({ email: memberEmail.trim() }).eq('id', member.id).eq('gym_id', gymId);
+      // Update email in both auth.users and profiles via RPC
+      const { error } = await supabase.rpc('admin_update_member_email', {
+        p_member_id: member.id,
+        p_new_email: memberEmail.trim(),
+      });
+      if (error) throw error;
       logAdminAction('update_email', 'member', member.id, { email: memberEmail.trim() });
       originalEmailRef.current = memberEmail.trim();
       setEmailSaved(true);
       setTimeout(() => setEmailSaved(false), 2000);
     } catch (err) {
       logger.error('Failed to update email:', err);
+      showToast?.(err?.message || t('admin.members.emailUpdateFailed', 'Failed to update email'), 'error');
     }
     setEmailSaving(false);
   };
@@ -247,18 +254,51 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     }
   };
 
+  const refetchMemberStatus = async () => {
+    const { data } = await supabase.from('profiles')
+      .select('membership_status, membership_status_updated_at')
+      .eq('id', member.id).eq('gym_id', gymId).single();
+    if (data) {
+      setMemberStatus(data.membership_status ?? 'active');
+      setMemberStatusUpdatedAt(data.membership_status_updated_at ?? null);
+    }
+  };
+
   const handleConfirmStatusAction = async () => {
     if (!pendingAction) return;
     setStatusSaving(true);
+    setStatusConflict(false);
     const nextStatus = statusActionMap[pendingAction].next;
     const oldStatus = memberStatus;
-    await supabase.from('profiles').update({
+    const now = new Date().toISOString();
+
+    // Optimistic locking: only update if the record hasn't been modified since we loaded it
+    let query = supabase.from('profiles').update({
       membership_status: nextStatus,
-      membership_status_updated_at: new Date().toISOString(),
+      membership_status_updated_at: now,
       membership_status_reason: statusReason || null,
     }).eq('id', member.id).eq('gym_id', gymId);
+
+    if (memberStatusUpdatedAt) {
+      query = query.eq('membership_status_updated_at', memberStatusUpdatedAt);
+    } else {
+      query = query.is('membership_status_updated_at', null);
+    }
+
+    const { data, error } = await query.select('id');
+    const rowsUpdated = data?.length ?? 0;
+
+    if (error || rowsUpdated === 0) {
+      // Conflict: another admin modified this member — refetch and alert
+      await refetchMemberStatus();
+      setStatusConflict(true);
+      setStatusSaving(false);
+      return;
+    }
+
     logAdminAction('change_status', 'member', member.id, { from: oldStatus, to: nextStatus });
     setMemberStatus(nextStatus);
+    setMemberStatusUpdatedAt(now);
     setPendingAction(null);
     setShowStatusConfirm(false);
     setStatusReason('');
@@ -527,7 +567,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 {getStatusActions(memberStatus).map(action => {
                   const cfg = statusActionMap[action];
                   return (
-                    <button key={action} onClick={() => { setPendingAction(action); setShowStatusConfirm(true); }}
+                    <button key={action} onClick={() => { setPendingAction(action); setShowStatusConfirm(true); setStatusConflict(false); }}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-colors whitespace-nowrap ${cfg.btnColor} ${cfg.btnBg}`}>
                       {action === 'ban' || action === 'cancel' ? <UserX size={12} /> : action === 'freeze' ? <Ban size={12} /> : <UserCheck size={12} />}
                       {t(`admin.memberDetail.statusActions.${action}`, { defaultValue: cfg.label })}
@@ -682,14 +722,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         {/* Status action confirmation modal */}
         <AdminModal
           isOpen={showStatusConfirm && !!pendingAction}
-          onClose={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); }}
+          onClose={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); setStatusConflict(false); }}
           title={t('admin.memberDetail.confirmStatusTitle', { defaultValue: 'Confirm Action' })}
           titleIcon={AlertTriangle}
           size="sm"
           footer={
             <>
               <button
-                onClick={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); }}
+                onClick={() => { setShowStatusConfirm(false); setPendingAction(null); setStatusReason(''); setStatusConflict(false); }}
                 className="flex-1 py-2 rounded-lg text-[12px] font-medium border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors whitespace-nowrap"
               >
                 {tc('cancel')}
@@ -720,6 +760,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               aria-label={t('admin.memberDetail.reasonPlaceholder', { defaultValue: 'Reason (optional)' })}
               className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[12px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             />
+            {statusConflict && (
+              <div className="flex items-center gap-2 p-2.5 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-lg">
+                <AlertTriangle size={14} className="text-[#F59E0B] flex-shrink-0" />
+                <p className="text-[11px] text-[#F59E0B]">
+                  {t('admin.memberDetail.statusConflict', { defaultValue: 'This member was modified by another admin. The status has been refreshed. Please review and try again.' })}
+                </p>
+              </div>
+            )}
           </div>
         </AdminModal>
       </div>

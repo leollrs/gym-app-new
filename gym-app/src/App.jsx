@@ -210,6 +210,7 @@ const LoadingScreen = () => (
 // ── GYM DEACTIVATED SCREEN ────────────────────────────────
 const GymDeactivatedScreen = () => {
   const { signOut, gymName } = useAuth();
+  const { t } = useTranslation('pages');
   return (
     <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
@@ -218,20 +219,20 @@ const GymDeactivatedScreen = () => {
             <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">Account Deactivated</h1>
+        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">{t('blocking.gymDeactivatedTitle')}</h1>
         <p className="text-[14px] text-[#9CA3AF] mb-2">
           {gymName
-            ? `Your gym "${gymName}" has been deactivated by the platform administrator.`
-            : 'Your gym has been deactivated by the platform administrator.'}
+            ? t('blocking.gymDeactivatedBodyNamed', { gymName })
+            : t('blocking.gymDeactivatedBody')}
         </p>
         <p className="text-[13px] text-[#6B7280] mb-8">
-          All accounts associated with this gym have been suspended. Please contact your gym owner or our support team for more information.
+          {t('blocking.gymDeactivatedDetail')}
         </p>
         <button
           onClick={signOut}
           className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-6 py-3 text-[13px] font-medium transition-colors"
         >
-          Sign Out
+          {t('blocking.signOut')}
         </button>
       </div>
     </div>
@@ -241,6 +242,7 @@ const GymDeactivatedScreen = () => {
 // ── MEMBER BLOCKED SCREEN (individual deactivation/ban) ───
 const MemberBlockedScreen = () => {
   const { signOut, memberBlocked } = useAuth();
+  const { t } = useTranslation('pages');
   const isBanned = memberBlocked === 'banned';
   return (
     <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
@@ -255,23 +257,23 @@ const MemberBlockedScreen = () => {
           </svg>
         </div>
         <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">
-          {isBanned ? 'Account Banned' : 'Account Deactivated'}
+          {isBanned ? t('blocking.memberBannedTitle') : t('blocking.memberDeactivatedTitle')}
         </h1>
         <p className="text-[14px] text-[#9CA3AF] mb-2">
           {isBanned
-            ? 'Your account has been banned by an administrator.'
-            : 'Your account has been deactivated by an administrator.'}
+            ? t('blocking.memberBannedBody')
+            : t('blocking.memberDeactivatedBody')}
         </p>
         <p className="text-[13px] text-[#6B7280] mb-8">
           {isBanned
-            ? 'You are no longer able to access this platform. If you believe this is a mistake, please contact your gym administration.'
-            : 'Your access has been temporarily suspended. Please contact your gym administration for more information.'}
+            ? t('blocking.memberBannedDetail')
+            : t('blocking.memberDeactivatedDetail')}
         </p>
         <button
           onClick={signOut}
           className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-6 py-3 text-[13px] font-medium transition-colors"
         >
-          Sign Out
+          {t('blocking.signOut')}
         </button>
       </div>
     </div>
@@ -281,6 +283,7 @@ const MemberBlockedScreen = () => {
 // ── PROFILE UNAVAILABLE SCREEN ─────────────────────────────
 const ProfileUnavailableScreen = () => {
   const { signOut } = useAuth();
+  const { t } = useTranslation('pages');
   return (
     <div className="min-h-screen bg-[#05070B] flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
@@ -289,22 +292,22 @@ const ProfileUnavailableScreen = () => {
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M3.055 19h17.89c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L1.323 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
-        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">We could not load your account</h1>
+        <h1 className="text-xl font-bold text-[#E5E7EB] mb-3">{t('blocking.profileUnavailableTitle')}</h1>
         <p className="text-[14px] text-[#9CA3AF] mb-8">
-          This usually means your profile has not loaded yet or the network request failed.
+          {t('blocking.profileUnavailableBody')}
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
             onClick={() => window.location.reload()}
             className="bg-[#D4AF37] hover:bg-[#E6C766] text-black rounded-xl px-5 py-3 text-[13px] font-semibold transition-colors"
           >
-            Retry
+            {t('blocking.retry')}
           </button>
           <button
             onClick={signOut}
             className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-5 py-3 text-[13px] font-medium transition-colors"
           >
-            Sign Out
+            {t('blocking.signOut')}
           </button>
         </div>
       </div>
@@ -848,9 +851,7 @@ function App() {
         element={
           <ProtectedRoute>
             <div className="app-wrapper">
-              <a href="#main-content" className="skip-to-content">
-                Skip to main content
-              </a>
+              <a href="#main-content" className="skip-to-content">{t('adminNav.skipToMain')}</a>
               <Navigation />
               <AppTour userId={user?.id} />
               <div id="main-content" role="main">

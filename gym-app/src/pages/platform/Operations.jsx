@@ -9,7 +9,10 @@ import {
 import { formatDistanceToNow, subHours, subMinutes } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { logAdminAction } from '../../lib/adminAudit';
 import logger from '../../lib/logger';
+import FadeIn from '../../components/platform/FadeIn';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 // ── Health status helpers ────────────────────────────────────
 const STATUS = {
@@ -25,15 +28,6 @@ const SEVERITY = {
   medium:   { labelKey: 'platform.ops.sevMedium',   fallback: 'Medium',   bg: 'bg-amber-500/15',  text: 'text-amber-400',  border: 'border-amber-500/20',  dot: 'bg-amber-400' },
   low:      { labelKey: 'platform.ops.sevLow',      fallback: 'Low',      bg: 'bg-blue-500/15',   text: 'text-blue-400',   border: 'border-blue-500/20',   dot: 'bg-blue-400' },
 };
-
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
 
 // ── Health status card ───────────────────────────────────────
 function HealthCard({ label, icon: Icon, status, detail, delay = 0, t }) {
@@ -82,7 +76,7 @@ function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAckn
             {gymsAffected > 0 && (
               <span className="flex items-center gap-1">
                 <Building2 size={10} />
-                {gymsAffected} gym{gymsAffected !== 1 ? 's' : ''} affected
+                {t('platform.ops.gymsAffected', { count: gymsAffected })}
               </span>
             )}
             <span className="flex items-center gap-1">
@@ -96,9 +90,38 @@ function IncidentCard({ severity, area, message, gymsAffected, startedAt, onAckn
             onClick={onAcknowledge}
             className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors"
           >
-            Acknowledge
+            {t('platform.ops.acknowledge')}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Confirmation modal ──────────────────────────────────────
+function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
+  const { t } = useTranslation('pages');
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-2">{title}</h3>
+        <p className="text-[13px] text-[#9CA3AF] leading-relaxed mb-6">{message}</p>
+        <div className="flex items-center gap-3 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors"
+          >
+            {t('platform.ops.cancel')}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/20 transition-colors"
+          >
+            {t('platform.ops.confirm')}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -115,6 +138,8 @@ function KillSwitch({ label, description, enabled, onToggle, loading: busy }) {
       <button
         onClick={onToggle}
         disabled={busy}
+        role="switch"
+        aria-checked={enabled}
         className={`flex-shrink-0 w-10 h-5.5 rounded-full transition-colors duration-200 relative ${
           enabled ? 'bg-emerald-500/30' : 'bg-white/10'
         }`}
@@ -171,6 +196,9 @@ export default function Operations() {
   });
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [savingFeature, setSavingFeature] = useState(null);
+
+  // Confirmation modal
+  const [confirmModal, setConfirmModal] = useState({ open: false, title: '', message: '', onConfirm: null });
 
   // Stats
   const [stats, setStats] = useState({
@@ -248,22 +276,62 @@ export default function Operations() {
       details.storage = err.message;
     }
 
-    // 4. Edge functions — lightweight check
+    // 4. Edge functions — invoke a function and check if runtime is reachable
     try {
-      newHealth.edge = 'healthy';
-      details.edge = 'Available';
-    } catch {
-      newHealth.edge = 'unknown';
-      details.edge = 'Unable to check';
+      const start = performance.now();
+      const { error } = await supabase.functions.invoke('health-check', { method: 'POST' });
+      const elapsed = Math.round(performance.now() - start);
+      if (error) {
+        // A 404 (function not found) or 401 still means the edge runtime responded
+        const msg = error.message || '';
+        const isRuntimeReachable = msg.includes('404') || msg.includes('not found')
+          || msg.includes('401') || msg.includes('403') || msg.includes('Invalid');
+        if (isRuntimeReachable) {
+          newHealth.edge = elapsed > 3000 ? 'degraded' : 'healthy';
+          details.edge = elapsed > 3000 ? `Slow: ${elapsed}ms` : `${elapsed}ms`;
+        } else {
+          newHealth.edge = 'degraded';
+          details.edge = msg || 'Unexpected error';
+        }
+      } else {
+        newHealth.edge = elapsed > 3000 ? 'degraded' : 'healthy';
+        details.edge = `${elapsed}ms`;
+      }
+    } catch (err) {
+      // Network/connection error — runtime unreachable
+      newHealth.edge = 'failing';
+      details.edge = err.message || 'Connection failed';
     }
 
     // 5. Realtime — check channel subscription capability
     try {
-      newHealth.realtime = 'healthy';
-      details.realtime = 'Connected';
-    } catch {
-      newHealth.realtime = 'unknown';
-      details.realtime = 'Unable to check';
+      const realtimeResult = await new Promise((resolve) => {
+        const channel = supabase.channel('health-check-' + Date.now());
+        const timeout = setTimeout(() => {
+          channel.unsubscribe();
+          supabase.removeChannel(channel);
+          resolve({ status: 'degraded', detail: 'Timeout (5s)' });
+        }, 5000);
+
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            clearTimeout(timeout);
+            channel.unsubscribe();
+            supabase.removeChannel(channel);
+            resolve({ status: 'healthy', detail: 'Connected' });
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            clearTimeout(timeout);
+            channel.unsubscribe();
+            supabase.removeChannel(channel);
+            resolve({ status: 'failing', detail: `Status: ${status}` });
+          }
+        });
+      });
+      newHealth.realtime = realtimeResult.status;
+      details.realtime = realtimeResult.detail;
+    } catch (err) {
+      newHealth.realtime = 'failing';
+      details.realtime = err.message || 'Connection failed';
     }
 
     setHealth(newHealth);
@@ -447,7 +515,7 @@ export default function Operations() {
     return () => clearInterval(interval);
   }, [handleRefresh]);
 
-  const toggleFeature = async (key) => {
+  const executeToggleFeature = async (key) => {
     setSavingFeature(key);
     const newVal = !features[key];
     setFeatures(prev => ({ ...prev, [key]: newVal }));
@@ -458,13 +526,33 @@ export default function Operations() {
         value: String(newVal),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'key' });
+      logAdminAction('toggle_feature_flag', 'platform_config', null, { flag: key, enabled: newVal });
     } catch {
       setFeatures(prev => ({ ...prev, [key]: !newVal }));
     }
     setSavingFeature(null);
   };
 
-  const toggleMaintenance = async () => {
+  const toggleFeature = (key, label) => {
+    const isEnabled = features[key];
+    if (isEnabled) {
+      // Disabling a feature — requires confirmation
+      setConfirmModal({
+        open: true,
+        title: t('platform.ops.confirmDisableTitle', { feature: label }),
+        message: t('platform.ops.confirmAffectsAllGyms'),
+        onConfirm: () => {
+          setConfirmModal(prev => ({ ...prev, open: false }));
+          executeToggleFeature(key);
+        },
+      });
+    } else {
+      // Re-enabling is safe — no confirmation needed
+      executeToggleFeature(key);
+    }
+  };
+
+  const executeToggleMaintenance = async () => {
     const newVal = !maintenanceMode;
     setMaintenanceMode(newVal);
     try {
@@ -478,6 +566,19 @@ export default function Operations() {
     }
   };
 
+  const toggleMaintenance = () => {
+    const titleKey = maintenanceMode ? 'platform.ops.confirmDisableMaintenanceTitle' : 'platform.ops.confirmEnableMaintenanceTitle';
+    setConfirmModal({
+      open: true,
+      title: t(titleKey),
+      message: t('platform.ops.confirmAffectsAll'),
+      onConfirm: () => {
+        setConfirmModal(prev => ({ ...prev, open: false }));
+        executeToggleMaintenance();
+      },
+    });
+  };
+
   const overallStatus = Object.values(health).some(s => s === 'failing')
     ? 'failing'
     : Object.values(health).some(s => s === 'degraded')
@@ -489,11 +590,7 @@ export default function Operations() {
   const overallCfg = STATUS[overallStatus];
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-      </div>
-    );
+    return <PlatformSpinner />;
   }
 
   return (
@@ -502,9 +599,9 @@ export default function Operations() {
       <FadeIn>
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-[22px] font-bold text-[#E5E7EB]">Operations</h1>
+            <h1 className="text-[22px] font-bold text-[#E5E7EB]">{t('platform.ops.title')}</h1>
             <p className="text-[12px] text-[#6B7280] mt-0.5 flex items-center gap-2">
-              Live platform health
+              {t('platform.ops.subtitle')}
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${overallCfg.bg} ${overallCfg.text} ${overallCfg.border} border`}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: overallCfg.color }} />
                 {t(overallCfg.labelKey, overallCfg.fallback)}
@@ -521,13 +618,13 @@ export default function Operations() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              Refresh
+              {t('platform.ops.refresh')}
             </button>
             <button
               onClick={() => navigate('/platform/error-logs')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10 border border-white/6 transition-colors"
             >
-              Error Logs
+              {t('platform.ops.errorLogs')}
             </button>
           </div>
         </div>
@@ -544,14 +641,14 @@ export default function Operations() {
       {/* Health strip */}
       <FadeIn delay={50}>
         <div className="mb-6">
-          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">Service Health</p>
+          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.serviceHealth')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-            <HealthCard label="API"       icon={Zap}       status={health.api}      detail={healthDetails.api}      delay={60}  t={t} />
-            <HealthCard label="Auth"      icon={Lock}      status={health.auth}     detail={healthDetails.auth}     delay={80}  t={t} />
-            <HealthCard label="Database"  icon={Database}  status={health.database} detail={healthDetails.database} delay={100} t={t} />
-            <HealthCard label="Storage"   icon={HardDrive} status={health.storage}  detail={healthDetails.storage}  delay={120} t={t} />
-            <HealthCard label="Edge Fns"  icon={Zap}       status={health.edge}     detail={healthDetails.edge}     delay={140} t={t} />
-            <HealthCard label="Realtime"  icon={Wifi}      status={health.realtime} detail={healthDetails.realtime} delay={160} t={t} />
+            <HealthCard label={t('platform.ops.labelApi')}      icon={Zap}       status={health.api}      detail={healthDetails.api}      delay={60}  t={t} />
+            <HealthCard label={t('platform.ops.labelAuth')}     icon={Lock}      status={health.auth}     detail={healthDetails.auth}     delay={80}  t={t} />
+            <HealthCard label={t('platform.ops.labelDatabase')} icon={Database}  status={health.database} detail={healthDetails.database} delay={100} t={t} />
+            <HealthCard label={t('platform.ops.labelStorage')}  icon={HardDrive} status={health.storage}  detail={healthDetails.storage}  delay={120} t={t} />
+            <HealthCard label={t('platform.ops.labelEdgeFns')}  icon={Zap}       status={health.edge}     detail={healthDetails.edge}     delay={140} t={t} />
+            <HealthCard label={t('platform.ops.labelRealtime')} icon={Wifi}      status={health.realtime} detail={healthDetails.realtime} delay={160} t={t} />
           </div>
         </div>
       </FadeIn>
@@ -561,7 +658,7 @@ export default function Operations() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em]">
-              Active Incidents
+              {t('platform.ops.activeIncidents')}
               {incidents.length > 0 && (
                 <span className="ml-2 text-red-400 bg-red-500/15 px-1.5 py-0.5 rounded-full text-[10px] normal-case">
                   {incidents.length}
@@ -573,8 +670,8 @@ export default function Operations() {
           {incidents.length === 0 ? (
             <div className="bg-[#0F172A] border border-emerald-500/20 rounded-xl p-6 text-center">
               <CheckCircle2 size={28} className="mx-auto text-emerald-400 mb-2" />
-              <p className="text-[13px] font-medium text-emerald-400">All systems operational</p>
-              <p className="text-[11px] text-[#6B7280] mt-1">No active incidents detected</p>
+              <p className="text-[13px] font-medium text-emerald-400">{t('platform.ops.allSystemsOperational')}</p>
+              <p className="text-[11px] text-[#6B7280] mt-1">{t('platform.ops.noActiveIncidents')}</p>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -590,13 +687,13 @@ export default function Operations() {
       {incidents.length > 0 && (
         <FadeIn delay={220}>
           <div className="mb-6">
-            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">Blast Radius</p>
+            <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.blastRadius')}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Affected gyms */}
               <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
                 <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3 flex items-center gap-2">
                   <Building2 size={13} />
-                  Affected Gyms
+                  {t('platform.ops.affectedGyms')}
                   {affectedGyms.length > 0 && (
                     <span className="text-[10px] text-red-400 bg-red-500/15 px-1.5 py-0.5 rounded-full">
                       {affectedGyms.length}
@@ -604,7 +701,7 @@ export default function Operations() {
                   )}
                 </p>
                 {affectedGyms.length === 0 ? (
-                  <p className="text-[12px] text-[#6B7280]">No specific gyms identified</p>
+                  <p className="text-[12px] text-[#6B7280]">{t('platform.ops.noGymsIdentified')}</p>
                 ) : (
                   <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
                     {affectedGyms.map((gym) => (
@@ -628,10 +725,10 @@ export default function Operations() {
               <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
                 <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3 flex items-center gap-2">
                   <AlertTriangle size={13} />
-                  Affected Features
+                  {t('platform.ops.affectedFeatures')}
                 </p>
                 {affectedFeatures.length === 0 ? (
-                  <p className="text-[12px] text-[#6B7280]">No specific features identified</p>
+                  <p className="text-[12px] text-[#6B7280]">{t('platform.ops.noFeaturesIdentified')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {affectedFeatures.map((feature) => (
@@ -653,25 +750,25 @@ export default function Operations() {
       {/* Quick stats */}
       <FadeIn delay={260}>
         <div className="mb-6">
-          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">Platform Snapshot</p>
+          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.platformSnapshot')}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
               <p className="text-[20px] font-bold text-[#E5E7EB] tabular-nums">{stats.totalErrors24h}</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">Errors (24h)</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">{t('platform.ops.errors24h')}</p>
             </div>
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
               <p className="text-[20px] font-bold text-[#E5E7EB] tabular-nums">{stats.totalGyms}</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">Total Gyms</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">{t('platform.ops.totalGyms')}</p>
             </div>
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
               <p className="text-[20px] font-bold text-[#E5E7EB] tabular-nums">{stats.activeGyms}</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">Active Gyms</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">{t('platform.ops.activeGyms')}</p>
             </div>
             <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5">
               <p className="text-[20px] font-bold text-emerald-400 tabular-nums">
                 {stats.totalGyms > 0 ? Math.round((stats.activeGyms / stats.totalGyms) * 100) : 0}%
               </p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">Uptime Rate</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">{t('platform.ops.activeGymRate')}</p>
             </div>
           </div>
         </div>
@@ -680,7 +777,7 @@ export default function Operations() {
       {/* Immediate actions */}
       <FadeIn delay={300}>
         <div className="mb-6">
-          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">Immediate Actions</p>
+          <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-[0.08em] mb-3">{t('platform.ops.immediateActions')}</p>
 
           {/* Maintenance mode banner */}
           <div className={`bg-[#0F172A] border rounded-xl p-4 mb-3 ${
@@ -694,105 +791,93 @@ export default function Operations() {
                   <AlertTriangle size={16} className={maintenanceMode ? 'text-amber-400' : 'text-[#6B7280]'} />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-[#E5E7EB]">Maintenance Mode</p>
+                  <p className="text-[13px] font-semibold text-[#E5E7EB]">{t('platform.ops.maintenanceMode')}</p>
                   <p className="text-[11px] text-[#6B7280]">
                     {maintenanceMode
-                      ? 'Active — users see maintenance banner'
-                      : 'Disabled — platform operating normally'}
+                      ? t('platform.ops.maintenanceActive')
+                      : t('platform.ops.maintenanceDisabled')}
                   </p>
                 </div>
               </div>
               <button
                 onClick={toggleMaintenance}
+                role="switch"
+                aria-checked={maintenanceMode}
                 className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
                   maintenanceMode
                     ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
                     : 'bg-white/5 text-[#9CA3AF] hover:text-[#E5E7EB] hover:bg-white/10'
                 }`}
               >
-                {maintenanceMode ? 'Disable' : 'Enable'}
+                {maintenanceMode ? t('platform.ops.disable') : t('platform.ops.enable')}
               </button>
             </div>
           </div>
 
           {/* Feature kill switches */}
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
-            <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">Feature Kill Switches</p>
+            <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">{t('platform.ops.featureKillSwitches')}</p>
             <KillSwitch
-              label="Referrals"
-              description="Disable referral codes and sharing globally"
+              label={t('platform.ops.killReferrals')}
+              description={t('platform.ops.killReferralsDesc')}
               enabled={features.referrals}
-              onToggle={() => toggleFeature('referrals')}
+              onToggle={() => toggleFeature('referrals', t('platform.ops.killReferrals'))}
               loading={savingFeature === 'referrals'}
             />
             <KillSwitch
-              label="Classes"
-              description="Disable class booking system globally"
+              label={t('platform.ops.killClasses')}
+              description={t('platform.ops.killClassesDesc')}
               enabled={features.classes}
-              onToggle={() => toggleFeature('classes')}
+              onToggle={() => toggleFeature('classes', t('platform.ops.killClasses'))}
               loading={savingFeature === 'classes'}
             />
             <KillSwitch
-              label="Social Feed"
-              description="Disable social feed and posts globally"
+              label={t('platform.ops.killSocial')}
+              description={t('platform.ops.killSocialDesc')}
               enabled={features.social}
-              onToggle={() => toggleFeature('social')}
+              onToggle={() => toggleFeature('social', t('platform.ops.killSocial'))}
               loading={savingFeature === 'social'}
             />
             <KillSwitch
-              label="Messaging"
-              description="Disable direct messaging globally"
+              label={t('platform.ops.killMessaging')}
+              description={t('platform.ops.killMessagingDesc')}
               enabled={features.messaging}
-              onToggle={() => toggleFeature('messaging')}
+              onToggle={() => toggleFeature('messaging', t('platform.ops.killMessaging'))}
               loading={savingFeature === 'messaging'}
             />
             <KillSwitch
-              label="QR Check-in"
-              description="Disable QR code check-in globally"
+              label={t('platform.ops.killQr')}
+              description={t('platform.ops.killQrDesc')}
               enabled={features.qr}
-              onToggle={() => toggleFeature('qr')}
+              onToggle={() => toggleFeature('qr', t('platform.ops.killQr'))}
               loading={savingFeature === 'qr'}
             />
             <KillSwitch
-              label="Challenges"
-              description="Disable challenge system globally"
+              label={t('platform.ops.killChallenges')}
+              description={t('platform.ops.killChallengesDesc')}
               enabled={features.challenges}
-              onToggle={() => toggleFeature('challenges')}
+              onToggle={() => toggleFeature('challenges', t('platform.ops.killChallenges'))}
               loading={savingFeature === 'challenges'}
             />
             <KillSwitch
-              label="Nutrition"
-              description="Disable nutrition tracking and AI scanning"
+              label={t('platform.ops.killNutrition')}
+              description={t('platform.ops.killNutritionDesc')}
               enabled={features.nutrition}
-              onToggle={() => toggleFeature('nutrition')}
+              onToggle={() => toggleFeature('nutrition', t('platform.ops.killNutrition'))}
               loading={savingFeature === 'nutrition'}
             />
           </div>
         </div>
       </FadeIn>
 
-      {/* Quick links */}
-      <FadeIn delay={340}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-          {[
-            { label: 'Error Logs', to: '/platform/error-logs', icon: AlertTriangle, color: '#EF4444' },
-            { label: 'Audit Log', to: '/platform/audit-log', icon: Shield, color: '#8B5CF6' },
-            { label: 'Gyms', to: '/platform', icon: Building2, color: '#3B82F6' },
-            { label: 'Support', to: '/platform/support', icon: Eye, color: '#10B981' },
-          ].map(({ label, to, icon: Icon, color }) => (
-            <button
-              key={to}
-              onClick={() => navigate(to)}
-              className="bg-[#0F172A] border border-white/6 rounded-xl p-3.5 text-left hover:bg-[#111827] hover:border-white/10 transition-all group"
-            >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: `${color}18` }}>
-                <Icon size={15} style={{ color }} />
-              </div>
-              <p className="text-[12px] font-medium text-[#9CA3AF] group-hover:text-[#E5E7EB] transition-colors">{label}</p>
-            </button>
-          ))}
-        </div>
-      </FadeIn>
+      {/* Confirmation modal for dangerous toggles */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+      />
     </div>
   );
 }

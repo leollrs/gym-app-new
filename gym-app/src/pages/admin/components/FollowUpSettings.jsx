@@ -264,7 +264,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                             </select>
                           )}
                           {steps.length > 1 && (
-                            <button onClick={() => removeStep(i)} className="ml-auto text-[#6B7280] hover:text-[#EF4444] transition-colors"><X size={13} /></button>
+                            <button onClick={() => removeStep(i)} aria-label={t('adminChurn.followUp.removeStep', { defaultValue: 'Remove step' })} className="ml-auto text-[#6B7280] hover:text-[#EF4444] transition-colors"><X size={13} /></button>
                           )}
                         </div>
 
@@ -306,7 +306,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                               <div>
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className="text-[10px] font-bold text-[#818CF8] bg-[#818CF8]/10 px-1.5 py-0.5 rounded">B</span>
-                                  <button onClick={() => removeVariantB(i)} className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-auto">
+                                  <button onClick={() => removeVariantB(i)} aria-label={t('adminChurn.ab.removeVariantB', { defaultValue: 'Remove variant B' })} className="text-[#6B7280] hover:text-[#EF4444] transition-colors ml-auto">
                                     <X size={11} />
                                   </button>
                                 </div>

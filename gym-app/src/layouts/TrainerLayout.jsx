@@ -24,7 +24,7 @@ const sidebarLinkClass = (active) =>
 export default function TrainerLayout({ children }) {
   const { t } = useTranslation('common');
   const { profile, gymName, gymLogoUrl, gymConfig, signOut } = useAuth();
-  const classesEnabled = gymConfig?.classes_enabled !== false;
+  const classesEnabled = gymConfig?.classesEnabled !== false;
   const NAV = BASE_NAV.filter(n => !n.requiresClasses || classesEnabled);
   const navigate = useNavigate();
 
@@ -37,7 +37,7 @@ export default function TrainerLayout({ children }) {
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profile.id)
-      .eq('is_read', false)
+      .is('read_at', null)
       .then(({ count }) => setUnreadNotifs(count || 0));
     supabase
       .from('direct_messages')
@@ -55,7 +55,7 @@ export default function TrainerLayout({ children }) {
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--color-bg-primary)' }}>
-      <a href="#main-content" className="skip-to-content">Skip to main content</a>
+      <a href="#main-content" className="skip-to-content">{t('trainerNav.skipToContent')}</a>
 
       {/* ── Desktop sidebar ─────────────────────────── */}
       <aside
@@ -63,7 +63,7 @@ export default function TrainerLayout({ children }) {
         style={{ borderRight: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-secondary)' }}
       >
         <Link to="/my-gym" className="px-5 py-5 no-underline" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--color-accent)' }}>Trainer</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--color-accent)' }}>{t('trainerNav.trainer')}</p>
           <div className="flex items-center gap-2.5">
             {gymLogoUrl && (
               <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-7 h-7 rounded-lg object-contain flex-shrink-0"

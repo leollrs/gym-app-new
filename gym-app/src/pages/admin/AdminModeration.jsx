@@ -11,13 +11,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
-import { logAdminAction } from '../../lib/adminAudit';
 import {
   PageHeader, FilterBar, Avatar, StatCard, AdminCard,
   AdminPageShell, AdminModal, AdminTable, FadeIn, SectionLabel,
   Skeleton, ErrorCard, AdminTabs,
 } from '../../components/admin';
-import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -316,7 +314,6 @@ const PostsTab = ({ gymId }) => {
       .from('activity_feed_items')
       .update({ is_deleted: !post.is_deleted })
       .eq('id', post.id);
-    logAdminAction('moderate_post', 'post', post.id, { action: post.is_deleted ? 'restore' : 'delete' });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'posts'], (old) =>
       (old || []).map(p => p.id === post.id ? { ...p, is_deleted: !p.is_deleted } : p)
     );
@@ -397,6 +394,7 @@ const PostsTab = ({ gymId }) => {
               onClick={(e) => { e.stopPropagation(); setExpandedRow(expandedRow === row.id ? null : row.id); }}
               className="p-2 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-all"
               title={t('admin.moderation.details', { defaultValue: 'Details' })}
+              aria-label={t('admin.moderation.details', { defaultValue: 'Details' })}
             >
               <ChevronRight size={15} className={`transition-transform ${expandedRow === row.id ? 'rotate-90' : ''}`} />
             </button>
@@ -404,6 +402,7 @@ const PostsTab = ({ gymId }) => {
               onClick={(e) => { e.stopPropagation(); handleToggleDelete(row); }}
               disabled={busy}
               title={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
+              aria-label={row.is_deleted ? t('admin.moderation.restore', { defaultValue: 'Restore' }) : t('admin.moderation.delete', { defaultValue: 'Delete' })}
               className={`p-2 rounded-lg transition-all disabled:opacity-40 ${
                 row.is_deleted
                   ? 'text-emerald-500 hover:bg-emerald-500/10'
@@ -513,7 +512,6 @@ const CommentsTab = ({ gymId }) => {
       .from('feed_comments')
       .update({ is_deleted: !comment.is_deleted })
       .eq('id', comment.id);
-    logAdminAction('moderate_comment', 'comment', comment.id, { action: comment.is_deleted ? 'restore' : 'delete' });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'comments'], (old) =>
       (old || []).map(c => c.id === comment.id ? { ...c, is_deleted: !c.is_deleted } : c)
     );
@@ -676,7 +674,6 @@ const ReportsTab = ({ gymId }) => {
         .eq('id', report.feed_item_id);
     }
 
-    logAdminAction('action_report', 'report', report.id, { status: newStatus });
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'reports'], (old) =>
       (old || []).map(r => r.id === report.id ? { ...r, status: newStatus, reviewed_at: new Date().toISOString() } : r)
     );
@@ -783,6 +780,7 @@ const ReportsTab = ({ gymId }) => {
               onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'actioned'); }}
               disabled={busy}
               title={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
+              aria-label={t('admin.moderation.actionRemove', { defaultValue: 'Remove Content' })}
               className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
             >
               <XCircle size={15} />
@@ -791,6 +789,7 @@ const ReportsTab = ({ gymId }) => {
               onClick={(e) => { e.stopPropagation(); handleUpdateStatus(row, 'dismissed'); }}
               disabled={busy}
               title={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
+              aria-label={t('admin.moderation.dismiss', { defaultValue: 'Dismiss' })}
               className="p-2 rounded-lg text-[#6B7280] hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-40"
             >
               <CheckCircle size={15} />
@@ -799,6 +798,7 @@ const ReportsTab = ({ gymId }) => {
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); setSelectedReport(row); }}
+            aria-label={t('admin.moderation.viewReport', { defaultValue: 'View report' })}
             className="p-2 rounded-lg text-[#6B7280] hover:text-[#9CA3AF] hover:bg-white/[0.04] transition-all"
           >
             <Eye size={15} />
@@ -842,7 +842,7 @@ export default function AdminModeration() {
   const { t } = useTranslation('pages');
   const [tab, setTab] = useState('reports');
 
-  useEffect(() => { document.title = 'Admin - Moderation | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Admin - Moderation | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   const gymId = profile?.gym_id;
 
@@ -926,14 +926,15 @@ export default function AdminModeration() {
           </div>
         </AdminCard>
       ) : (
-        <SwipeableTabContent tabs={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon, count: t.count }))} active={tab} onChange={setTab}>
-          {(tabKey) => {
-            if (tabKey === 'reports') return <ReportsTab gymId={gymId} />;
-            if (tabKey === 'posts') return <PostsTab gymId={gymId} />;
-            if (tabKey === 'comments') return <CommentsTab gymId={gymId} />;
-            return null;
-          }}
-        </SwipeableTabContent>
+        <FadeIn delay={0.05} key={tab}>
+          {tab === 'reports' ? (
+            <ReportsTab gymId={gymId} />
+          ) : tab === 'posts' ? (
+            <PostsTab gymId={gymId} />
+          ) : (
+            <CommentsTab gymId={gymId} />
+          )}
+        </FadeIn>
       )}
     </AdminPageShell>
   );

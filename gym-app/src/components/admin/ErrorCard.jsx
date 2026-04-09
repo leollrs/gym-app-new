@@ -3,8 +3,11 @@
  * Shows a subtle red-tinted card with retry button.
  */
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-export default function ErrorCard({ message = 'Failed to load data', onRetry }) {
+export default function ErrorCard({ message, onRetry }) {
+  const { t } = useTranslation('common');
+  const displayMessage = message || t('failedToLoadData');
   return (
     <div className="bg-red-500/[0.04] border border-red-500/10 rounded-[14px] p-4">
       <div className="flex items-center gap-3">
@@ -12,7 +15,7 @@ export default function ErrorCard({ message = 'Failed to load data', onRetry }) 
           <AlertTriangle size={15} className="text-red-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-red-400 font-medium">{message}</p>
+          <p className="text-[13px] text-red-400 font-medium">{displayMessage}</p>
         </div>
         {onRetry && (
           <button
@@ -20,7 +23,7 @@ export default function ErrorCard({ message = 'Failed to load data', onRetry }) 
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-[#9CA3AF] bg-white/4 border border-white/6 hover:text-[#E5E7EB] hover:bg-white/6 transition-colors flex-shrink-0"
           >
             <RefreshCw size={12} />
-            Retry
+            {t('retry')}
           </button>
         )}
       </div>

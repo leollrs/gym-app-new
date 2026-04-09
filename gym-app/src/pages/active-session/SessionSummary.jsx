@@ -13,7 +13,7 @@ const RATING_EMOJIS = [
   { value: 5, emoji: '\u{1F525}' },
 ];
 
-const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, sessionRating, onRatingChange }) => {
+const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, onRetry, sessionRating, onRatingChange }) => {
   const { t } = useTranslation('pages');
   return (
   <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm">
@@ -70,8 +70,18 @@ const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedS
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-800 rounded-2xl p-3 mb-4 text-[13px] text-red-400">
-          {error}
+        <div className="bg-red-900/30 border border-red-800 rounded-2xl p-3 mb-4">
+          <p className="text-[13px] text-red-400 mb-1">{error}</p>
+          <p className="text-[12px] text-red-400/70 mb-2">{t('sessionSummary.workoutSavedLocally')}</p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              disabled={saving}
+              className="w-full py-2 rounded-xl font-bold text-[13px] bg-red-700/40 border border-red-600/50 text-red-300 disabled:opacity-50 transition-colors active:bg-red-700/60"
+            >
+              {t('sessionSummary.retrySave')}
+            </button>
+          )}
         </div>
       )}
 

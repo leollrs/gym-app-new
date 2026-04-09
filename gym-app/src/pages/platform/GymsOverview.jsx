@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Building2, Users, Activity, Dumbbell,
@@ -13,54 +13,9 @@ import { useToast } from '../../contexts/ToastContext';
 import { logAdminAction } from '../../lib/adminAudit';
 import logger from '../../lib/logger';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
-
-const useCountUp = (end, duration = 800) => {
-  const [value, setValue] = useState(0);
-  const rafRef = useRef(null);
-  useEffect(() => {
-    const target = typeof end === 'number' ? end : parseInt(end) || 0;
-    if (target === 0) { setValue(0); return; }
-    const start = performance.now();
-    const step = (now) => {
-      const t = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setValue(Math.round(eased * target));
-      if (t < 1) rafRef.current = requestAnimationFrame(step);
-    };
-    rafRef.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [end, duration]);
-  return value;
-};
-
-const FadeIn = ({ delay = 0, children, className = '' }) => (
-  <div
-    className={`animate-fade-in-up ${className}`}
-    style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
-  >
-    {children}
-  </div>
-);
-
-const StatCard = ({ label, value, icon: Icon, borderColor, suffix, delay = 0 }) => {
-  const animated = useCountUp(value, 900);
-  return (
-    <FadeIn delay={delay}>
-      <div
-        className="bg-[#0F172A] border border-white/6 rounded-xl p-4 border-l-2 hover:border-white/10 hover:bg-[#111827] transition-all duration-300 group overflow-hidden"
-        style={{ borderLeftColor: borderColor }}
-      >
-        <div className="flex items-center justify-between mb-2">
-          <Icon size={16} className="text-[#6B7280] group-hover:text-[#9CA3AF] transition-colors" />
-        </div>
-        <p className="text-[24px] font-bold text-[#E5E7EB] leading-none tabular-nums tracking-tight truncate">
-          {animated.toLocaleString()}{suffix && <span className="text-[14px] font-normal text-[#6B7280] ml-1">{suffix}</span>}
-        </p>
-        <p className="text-[11px] text-[#9CA3AF] mt-1 group-hover:text-[#D1D5DB] transition-colors truncate">{label}</p>
-      </div>
-    </FadeIn>
-  );
-};
+import FadeIn from '../../components/platform/FadeIn';
+import StatCard from '../../components/platform/StatCard';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 const PLAN_COLORS = {
   starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', labelKey: 'platform.gyms.planStarter',    fallback: 'Starter' },
@@ -238,11 +193,7 @@ export default function GymsOverview() {
   }, [gyms, memberCounts, sessionCounts]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
-      </div>
-    );
+    return <PlatformSpinner />;
   }
 
   return (
@@ -268,12 +219,12 @@ export default function GymsOverview() {
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 mb-6">
-        <StatCard label="Total Gyms" value={gyms.length} icon={Building2} borderColor="var(--color-accent, #D4AF37)" delay={50} />
-        <StatCard label="Active Gyms" value={activeGyms} icon={Activity} borderColor="#10B981" delay={80} />
-        <StatCard label="Inactive" value={inactiveGyms} icon={Building2} borderColor="#EF4444" delay={110} />
-        <StatCard label="Total Members" value={totalMembers} icon={Users} borderColor="#3B82F6" delay={140} />
-        <StatCard label="New This Month" value={newGymsThisMonth} icon={TrendingUp} borderColor="#8B5CF6" delay={170} />
-        <StatCard label="Struggling" value={strugglingGyms} icon={AlertTriangle} borderColor="#F59E0B" delay={200} />
+        <StatCard label={t('platform.gyms.totalGyms', 'Total Gyms')} value={gyms.length} icon={Building2} borderColor="var(--color-accent, #D4AF37)" delay={50} />
+        <StatCard label={t('platform.gyms.activeGyms', 'Active Gyms')} value={activeGyms} icon={Activity} borderColor="#10B981" delay={80} />
+        <StatCard label={t('platform.gyms.inactiveLabel', 'Inactive')} value={inactiveGyms} icon={Building2} borderColor="#EF4444" delay={110} />
+        <StatCard label={t('platform.gyms.totalMembers', 'Total Members')} value={totalMembers} icon={Users} borderColor="#3B82F6" delay={140} />
+        <StatCard label={t('platform.gyms.newThisMonth', 'New This Month')} value={newGymsThisMonth} icon={TrendingUp} borderColor="#8B5CF6" delay={170} />
+        <StatCard label={t('platform.gyms.struggling', 'Struggling')} value={strugglingGyms} icon={AlertTriangle} borderColor="#F59E0B" delay={200} />
       </div>
 
       {/* Filters toolbar */}
@@ -285,7 +236,7 @@ export default function GymsOverview() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, slug, or owner..."
+              placeholder={t('platform.gyms.searchPlaceholder', 'Search by name, slug, or owner...')}
               className="w-full bg-[#111827] border border-white/6 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
             />
           </div>
@@ -328,19 +279,19 @@ export default function GymsOverview() {
         {filtered.length === 0 ? (
           <div className="bg-[#0F172A] border border-white/6 rounded-xl p-12 text-center">
             <Building2 size={32} className="mx-auto text-[#4B5563] mb-3" />
-            <p className="text-[14px] text-[#6B7280]">No gyms found</p>
+            <p className="text-[14px] text-[#6B7280]">{t('platform.gyms.noGymsFound', 'No gyms found')}</p>
           </div>
         ) : (
           <div className="bg-[#0F172A] border border-white/6 rounded-xl overflow-hidden">
             {/* Desktop header */}
             <div className="hidden md:grid grid-cols-[1fr_100px_80px_80px_80px_100px_120px_32px] gap-4 px-4 py-3 border-b border-white/6 text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">
-              <span>Gym</span>
-              <span>Plan</span>
-              <span className="text-right">Members</span>
-              <span className="text-center">Health</span>
-              <span className="text-center">Status</span>
-              <span>Last Activity</span>
-              <span>Owner</span>
+              <span>{t('platform.gyms.headerGym', 'Gym')}</span>
+              <span>{t('platform.gyms.headerPlan', 'Plan')}</span>
+              <span className="text-right">{t('platform.gyms.headerMembers', 'Members')}</span>
+              <span className="text-center">{t('platform.gyms.headerHealth', 'Health')}</span>
+              <span className="text-center">{t('platform.gyms.headerStatus', 'Status')}</span>
+              <span>{t('platform.gyms.headerLastActivity', 'Last Activity')}</span>
+              <span>{t('platform.gyms.headerOwner', 'Owner')}</span>
               <span />
             </div>
             {filtered.map((gym) => {
@@ -365,7 +316,7 @@ export default function GymsOverview() {
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${health.bg} ${health.color}`}>
                       {t(health.labelKey, health.fallback)}
                     </span>
-                    <span className="text-[11px] text-[#6B7280]">{memberCounts[gym.id] || 0} members</span>
+                    <span className="text-[11px] text-[#6B7280]">{memberCounts[gym.id] || 0} {t('platform.gyms.members', 'members')}</span>
                   </div>
 
                   {/* Desktop: Plan */}
@@ -392,7 +343,7 @@ export default function GymsOverview() {
 
                   {/* Desktop: Last activity */}
                   <p className="hidden md:flex items-center text-[11px] text-[#6B7280] truncate">
-                    {sessionCounts[gym.id] ? `${sessionCounts[gym.id]} sessions` : 'No activity'}
+                    {sessionCounts[gym.id] ? `${sessionCounts[gym.id]} ${t('platform.gyms.sessions', 'sessions')}` : t('platform.gyms.noActivity', 'No activity')}
                   </p>
 
                   {/* Desktop: Owner */}

@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { validateImageFile } from '../lib/validateImage';
+import { stripExif } from '../lib/stripExif';
 import logger from '../lib/logger';
 import AvatarPicker from '../components/AvatarPicker';
 import GoalsSection from '../components/GoalsSection';
@@ -130,7 +131,7 @@ const Profile = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('activity');
 
-  useEffect(() => { document.title = 'Profile | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Profile | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   // Data state
   const [gymName, setGymName]                         = useState('');
@@ -381,13 +382,13 @@ const Profile = () => {
           return;
         }
 
-        const mimeToExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
-        const ext = mimeToExt[file.type] || 'jpg';
-        const path = `${user.id}/${Date.now()}.${ext}`;
+        // Strip EXIF metadata (GPS, device info) before uploading
+        const cleanFile = await stripExif(file);
+        const path = `${user.id}/${Date.now()}.jpg`;
 
         const { error: storageErr } = await supabase.storage
           .from('avatars')
-          .upload(path, file, { upsert: true, contentType: validation.mime || file.type });
+          .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
         if (storageErr) throw storageErr;
 
         const { data: urlData } = supabase.storage
@@ -433,7 +434,7 @@ const Profile = () => {
     const trimmedName = identityDraft.full_name.trim();
 
     if (!trimmedName) {
-      showToast('Name cannot be empty', 'error');
+      showToast(t('profile.nameEmpty'), 'error');
       return;
     }
 
@@ -454,17 +455,17 @@ const Profile = () => {
         .eq('id', user.id);
       if (error) {
         if (error.message?.includes('unique') || error.code === '23505') {
-          showToast('That username is already taken', 'error');
+          showToast(t('profile.usernameTaken'), 'error');
         } else {
-          showToast('Failed to save: ' + error.message, 'error');
+          showToast(t('profile.saveFailed') + ': ' + error.message, 'error');
         }
         return;
       }
       refreshProfile();
       setEditingIdentity(false);
-      showToast('Profile updated', 'success');
+      showToast(t('profile.saved'), 'success');
     } catch (err) {
-      showToast('Failed to save: ' + (err.message ?? 'Unknown error'), 'error');
+      showToast(t('profile.saveFailed') + ': ' + (err.message ?? 'Unknown error'), 'error');
     } finally {
       setSavingIdentity(false);
     }
@@ -645,7 +646,7 @@ const Profile = () => {
           <div className="grid grid-cols-4 gap-0 w-full">
             <HeroStat label={t('profile.workouts')} value={loading ? '—' : sessions.length} />
             <HeroStat label={t('profile.checkIns')} value={loading ? '—' : monthlyCheckIns} />
-            <HeroStat label={t('profile.volume')}   value={loading ? '—' : volumeStr} sub="lbs" />
+            <HeroStat label={t('profile.volume')}   value={loading ? '—' : volumeStr} sub={t('common:lbs')} />
             <HeroStat label={t('profile.records')} value={loading ? '—' : prs.length} />
           </div>
         </div>

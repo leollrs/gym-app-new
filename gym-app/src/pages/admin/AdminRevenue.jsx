@@ -65,7 +65,7 @@ export default function AdminRevenue() {
   const [period, setPeriod] = useState('30d');
   const [visibleCanjes, setVisibleCanjes] = useState(10);
 
-  useEffect(() => { document.title = t('admin.revenue.pageTitle', 'Admin - Revenue | TuGymPR'); }, [t]);
+  useEffect(() => { document.title = t('admin.revenue.pageTitle', `Admin - Revenue | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   // Reset canjes pagination when period filter changes
   useEffect(() => { setVisibleCanjes(10); }, [period]);

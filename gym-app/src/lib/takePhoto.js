@@ -63,16 +63,18 @@ async function compressIfNeeded(file, maxBytes = MAX_FILE_SIZE) {
 }
 
 /**
- * Take a photo using the native file input with camera capture.
+ * Pick or take a photo using the native file input.
  * Works on iOS, Android, and web without triggering WebView crashes.
- * @returns {Promise<File|null>} The captured image as a File, or null if cancelled.
+ * @param {object} [options]
+ * @param {boolean} [options.cameraOnly=false] If true, forces camera capture (no album).
+ * @returns {Promise<File|null>} The image as a File, or null if cancelled.
  */
-export async function takePhoto() {
+export async function takePhoto({ cameraOnly = false } = {}) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.capture = 'environment';
+    if (cameraOnly) input.capture = 'environment';
     // Input MUST be in the DOM — iOS and Android WebViews don't reliably
     // deliver the change event to detached input elements.
     input.style.position = 'fixed';

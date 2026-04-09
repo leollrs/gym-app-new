@@ -222,11 +222,13 @@ table tr:nth-child(even){background:#f8fafc}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => setSummaryMonth(m => m + 1)}
+              aria-label={t('admin.analytics.previousMonth', 'Previous month')}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
               <ChevronLeft size={14} className="text-[var(--color-text-muted)]" />
             </button>
             <span className="text-[12px] md:text-[13px] font-medium text-[var(--color-text-primary)] min-w-[80px] md:min-w-[120px] text-center">{s.label}</span>
             <button onClick={() => setSummaryMonth(m => Math.max(0, m - 1))} disabled={summaryMonth === 0}
+              aria-label={t('admin.analytics.nextMonth', 'Next month')}
               className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-30">
               <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
             </button>
@@ -285,7 +287,7 @@ table tr:nth-child(even){background:#f8fafc}
                   <h2 className="text-[18px] font-extrabold text-[#0A0D14] tracking-tight truncate">{t('admin.analytics.reportTitle', 'Monthly Performance Report')}</h2>
                   <p className="text-[13px] text-[#0A0D14]/70 mt-0.5">{s.label}</p>
                 </div>
-                <button onClick={() => setShowReport(false)} className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 transition-colors mt-0.5">
+                <button onClick={() => setShowReport(false)} aria-label={t('admin.analytics.closeReport', 'Close report')} className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 transition-colors mt-0.5">
                   <X size={16} className="text-[#0A0D14]" />
                 </button>
               </div>

@@ -29,12 +29,13 @@ const PUSH_KEY_ID = Deno.env.get('APPLE_PUSH_KEY_ID') || '';
 const TEAM_ID = Deno.env.get('APPLE_TEAM_ID') || '';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const corsHeaders = ALLOWED_ORIGIN
+  ? {
+      'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    }
+  : null;
 
 /**
  * Build a JWT for APNs authentication (ES256 / P-256).
@@ -101,6 +102,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 serve(async (req: Request) => {
+  if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

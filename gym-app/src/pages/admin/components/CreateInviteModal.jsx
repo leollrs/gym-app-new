@@ -319,6 +319,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                 </div>
                 <button
                   onClick={() => { setReferrerInfo(null); setReferralCode(''); setReferralError(null); }}
+                  aria-label={t('admin.createInvite.clearReferrer', 'Clear referrer')}
                   className="p-1.5 rounded-lg transition-colors"
                   style={{ color: 'var(--color-text-subtle)' }}
                 >

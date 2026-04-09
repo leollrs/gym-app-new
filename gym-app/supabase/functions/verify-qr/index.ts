@@ -20,17 +20,24 @@ function jsonResp(data: unknown, status = 200) {
 
 /**
  * Constant-time comparison to prevent timing attacks.
+ * Uses HMAC-SHA256 to normalize both inputs to the same length before
+ * comparing, so the comparison time does not leak the expected value's length.
  */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  let diff = 0;
-  for (let i = 0; i < bufA.length; i++) {
-    diff |= bufA[i] ^ bufB[i];
-  }
-  return diff === 0;
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyA = await crypto.subtle.importKey('raw', enc.encode(a), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const keyB = await crypto.subtle.importKey('raw', enc.encode(b), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const msg = enc.encode('timing-safe-compare');
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign('HMAC', keyA, msg),
+    crypto.subtle.sign('HMAC', keyB, msg),
+  ]);
+  const bytesA = new Uint8Array(sigA);
+  const bytesB = new Uint8Array(sigB);
+  if (bytesA.length !== bytesB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bytesA.length; i++) result |= bytesA[i] ^ bytesB[i];
+  return result === 0;
 }
 
 async function hmacSign(payload: string): Promise<string> {
@@ -82,6 +89,26 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await authClient.auth.getUser();
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
 
+    // ── Database-based rate limiting (60 requests per user per hour) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: rlError } = await authClient
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', user.id)
+      .eq('endpoint', 'verify-qr')
+      .gte('created_at', oneHourAgo);
+
+    if (rlError) {
+      console.error('Rate limit check failed:', rlError);
+      return jsonResp({ error: 'Internal server error' }, 500);
+    }
+
+    if ((count ?? 0) >= 60) {
+      return jsonResp({ error: 'Rate limit exceeded — max 60 requests per hour' }, 429);
+    }
+
+    await authClient.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'verify-qr' });
+
     // ── Verify signature ─────────────────────────────────────────
     const { payload, signature } = await req.json();
     if (typeof payload !== 'string' || typeof signature !== 'string') {
@@ -89,7 +116,7 @@ serve(async (req) => {
     }
 
     const expected = await hmacSign(payload);
-    const valid = timingSafeEqual(expected, signature);
+    const valid = await timingSafeEqual(expected, signature);
 
     if (!valid) {
       return jsonResp({ valid: false });
@@ -102,8 +129,8 @@ serve(async (req) => {
       return jsonResp({ error: 'Invalid payload format' }, 400);
     }
 
-    // ── Check expiration (5-minute window) ───────────────────────
-    const QR_EXPIRY_MS = 60_000; // 60 seconds
+    // ── Check expiration (3-minute window) ───────────────────────
+    const QR_EXPIRY_MS = 180_000; // 3 minutes
     const timestamp = parseInt(parts[parts.length - 1]);
 
     if (isNaN(timestamp)) {

@@ -105,15 +105,16 @@ export async function getUserPoints(userId) {
 
 // ── addPoints ────────────────────────────────────────────────────────────────
 // Single RPC call that inserts log + upserts totals atomically (was 3 round trips).
-export async function addPoints(userId, gymId, action, points, description) {
+export async function addPoints(userId, gymId, action, points, description, dedupKey) {
   if (!userId || !points) return null;
 
   const { data, error } = await supabase.rpc('add_reward_points', {
-    p_user_id: userId,
-    p_gym_id: gymId,
-    p_action: action,
-    p_points: points,
+    p_user_id:    userId,
+    p_gym_id:     gymId,
+    p_action:     action,
+    p_points:     points,
     p_description: description || null,
+    p_dedup_key:  dedupKey || null,
   });
 
   if (error) {

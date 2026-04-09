@@ -133,7 +133,7 @@ export default function AdminPrograms() {
   const [programSearch, setProgramSearch] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
 
-  useEffect(() => { document.title = t('admin.programs.pageTitle', 'Admin - Programs | TuGymPR'); }, [t]);
+  useEffect(() => { document.title = t('admin.programs.pageTitle', `Admin - Programs | ${window.__APP_NAME || 'TuGymPR'}`); }, [t]);
 
   // ── Queries ──────────────────────────────────────────────
 
@@ -197,7 +197,7 @@ export default function AdminPrograms() {
   const saveMutation = useMutation({
     mutationFn: async ({ programId, payload }) => {
       if (programId) {
-        const { error } = await supabase.from('gym_programs').update(payload).eq('id', programId);
+        const { error } = await supabase.from('gym_programs').update(payload).eq('id', programId).eq('gym_id', gymId);
         if (error) throw error;
         logAdminAction('update_program', 'program', programId);
       } else {
@@ -216,7 +216,7 @@ export default function AdminPrograms() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('gym_programs').delete().eq('id', id);
+      const { error } = await supabase.from('gym_programs').delete().eq('id', id).eq('gym_id', gymId);
       if (error) throw error;
       logAdminAction('delete_program', 'program', id);
     },
@@ -433,7 +433,7 @@ export default function AdminPrograms() {
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${p.is_published ? 'text-emerald-400 bg-emerald-500/10' : 'text-[#6B7280] bg-white/6'}`}>
                           {p.is_published ? t('admin.programs.published', 'Published') : t('admin.programs.draft', 'Draft')}
                         </span>
-                        <button onClick={() => setEditing(p)} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors p-1">
+                        <button onClick={() => setEditing(p)} aria-label={t('admin.programs.editProgram', 'Edit program')} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors p-1">
                           <ChevronRight size={16} />
                         </button>
                         {confirmDeleteId === p.id ? (
@@ -449,7 +449,7 @@ export default function AdminPrograms() {
                             </button>
                           </div>
                         ) : (
-                          <button onClick={() => setConfirmDeleteId(p.id)} className="text-[#6B7280] hover:text-red-400 transition-colors p-1">
+                          <button onClick={() => setConfirmDeleteId(p.id)} aria-label={t('admin.programs.deleteProgram', 'Delete program')} className="text-[#6B7280] hover:text-red-400 transition-colors p-1">
                             <Trash2 size={14} />
                           </button>
                         )}

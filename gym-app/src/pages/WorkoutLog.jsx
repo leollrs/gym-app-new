@@ -176,7 +176,7 @@ const WorkoutLog = ({ embedded = false }) => {
   const [loading, setLoading]   = useState(true);
   const [visibleCount, setVisibleCount] = useState(embedded ? 5 : 20);
 
-  useEffect(() => { document.title = 'Workout Log | TuGymPR'; }, []);
+  useEffect(() => { document.title = `Workout Log | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
 
   useEffect(() => {
     if (!user) return;

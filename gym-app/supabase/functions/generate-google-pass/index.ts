@@ -27,14 +27,16 @@ const ISSUER_ID = Deno.env.get('GOOGLE_WALLET_ISSUER_ID') || '';
 const SERVICE_ACCOUNT_KEY_B64 = Deno.env.get('GOOGLE_WALLET_KEY_BASE64') || '';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const corsHeaders = ALLOWED_ORIGIN
+  ? {
+      'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    }
+  : null;
 
 serve(async (req: Request) => {
+  if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -55,6 +57,32 @@ serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // ── Database-based rate limiting (10 requests per user per hour) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: rlError } = await supabase
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', user.id)
+      .eq('endpoint', 'generate-google-pass')
+      .gte('created_at', oneHourAgo);
+
+    if (rlError) {
+      console.error('Rate limit check failed:', rlError);
+      return new Response(
+        JSON.stringify({ error: 'Internal server error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if ((count ?? 0) >= 10) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-google-pass' });
 
     // ── Request body ──
     const { payload, memberName, gymName } = await req.json();
@@ -173,7 +201,7 @@ serve(async (req: Request) => {
       aud: 'google',
       typ: 'savetowallet',
       iat: now,
-      origins: [ALLOWED_ORIGIN || 'https://app.tugympr.com'],
+      origins: [ALLOWED_ORIGIN],
       payload: {
         genericClasses: [passClass],
         genericObjects: [passObject],

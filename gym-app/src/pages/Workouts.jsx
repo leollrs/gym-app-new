@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2,
@@ -41,8 +41,11 @@ const ExpandableText = ({ text }) => {
 };
 
 // Local fallback map (English only — used until DB data loads)
-const localExerciseMap = {};
-exerciseLibrary.forEach(e => { localExerciseMap[e.id] = e; });
+const localExerciseMap = (() => {
+  const map = {};
+  exerciseLibrary.forEach(e => { map[e.id] = e; });
+  return map;
+})();
 
 // ── Program detail modal (gym programs) ──────────────────
 const ExerciseWhyTooltip = ({ exercise, onboarding, lang }) => {
@@ -225,7 +228,8 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
       .then(({ data }) => {
         setExercises(data || []);
         setLoaded(true);
-      });
+      })
+      .catch(() => setLoaded(true));
   }, [routineId]);
 
   return (
@@ -277,6 +281,8 @@ const Workouts = () => {
   const { profile, user } = useAuth();
   const { routines, loading, createRoutine, deleteRoutine, refetch } = useRoutines();
   const { t, i18n } = useTranslation('pages');
+
+  useEffect(() => { document.title = `${t('workouts.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   // Dynamically loaded program templates (~396KB)
   const [programTemplates, setProgramTemplates] = useState([]);
@@ -1285,17 +1291,14 @@ const Workouts = () => {
         {loading ? (
           <Skeleton variant="list-item" count={3} />
         ) : routines.length === 0 ? (
-          <div className="rounded-2xl py-12 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-            <Dumbbell size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
-            <p className="text-[14px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noRoutinesYet')}</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="mt-4 w-full max-w-[220px] mx-auto py-3 rounded-2xl text-[14px] font-semibold transition-all active:scale-[0.97]"
-              style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: '#000', border: 'none' }}
-            >
-              {t('workouts.createRoutine')}
-            </button>
-          </div>
+          <EmptyState
+            icon={Dumbbell}
+            title={t('workouts.emptyTitle')}
+            description={t('workouts.emptyDescription')}
+            actionLabel={t('workouts.createRoutine')}
+            onAction={() => setShowCreateModal(true)}
+            compact
+          />
         ) : (() => {
           const visible = showAllRoutines ? routines : routines.slice(0, 3);
           const hiddenCount = routines.length - 3;

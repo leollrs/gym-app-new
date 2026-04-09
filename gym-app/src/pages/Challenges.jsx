@@ -11,6 +11,7 @@ import UnderlineTabs from '../components/UnderlineTabs';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { sanitize } from '../lib/sanitize';
+import { useToast } from '../contexts/ToastContext';
 import { DAILY_CHALLENGES, seededIndex } from '../lib/dailyChallenges';
 
 // ── Helpers ────────────────────────────────────────────────
@@ -1034,6 +1035,7 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
 const METRIC_LABELS = { volume: 'metricVolume', workouts: 'metricWorkouts', prs: 'metricPrs' };
 
 const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
+  const { showToast } = useToast();
   const [duels, setDuels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
@@ -1075,7 +1077,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
 
       setDuels(prev => prev.map(d => d.id === duel.id ? { ...d, status: 'active' } : d));
     } catch (err) {
-      console.error('[FriendDuels] Accept error:', err);
+      showToast(t('challenges.friendDuels.acceptError', 'Could not accept duel'));
     } finally {
       setProcessing(null);
     }
@@ -1095,7 +1097,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
 
       setDuels(prev => prev.filter(d => d.id !== duel.id));
     } catch (err) {
-      console.error('[FriendDuels] Decline error:', err);
+      showToast(t('challenges.friendDuels.declineError', 'Could not decline duel'));
     } finally {
       setProcessing(null);
     }
@@ -1276,7 +1278,7 @@ export default function Challenges({ embedded = false }) {
   const chalTabIndex = TABS.indexOf(tab);
   const handleChalSwipe = (i) => setTab(TABS[i]);
 
-  useEffect(() => { document.title = 'Challenges | TuGymPR'; }, []);
+  useEffect(() => { document.title = `${t('challenges.title', 'Challenges')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   useEffect(() => {
     if (!profile?.gym_id || !user?.id) return;
@@ -1293,13 +1295,26 @@ export default function Challenges({ embedded = false }) {
     load();
   }, [profile?.gym_id, user?.id]);
 
+  // Check if the user has already earned challenge_joined points for a specific challenge.
+  // This prevents the farming exploit: join → leave → rejoin → repeat for unlimited points.
+  const hasEarnedChallengeJoinPoints = async (challengeId) => {
+    const { data } = await supabase
+      .from('reward_points_log')
+      .select('id')
+      .eq('profile_id', user.id)
+      .eq('action', 'challenge_joined')
+      .ilike('description', `%${challengeId}%`)
+      .limit(1);
+    return data && data.length > 0;
+  };
+
   const handleJoin = async (challengeId) => {
     // null challengeId = refresh signal from TeamFormationModal (team already joined)
     if (!challengeId) {
       const { data: pData } = await supabase.from('challenge_participants')
         .select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500);
       setParticipants(pData || []);
-      addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
+      // Points for team joins are awarded in the team-specific flow; skip here to avoid double-award.
       return;
     }
 
@@ -1318,7 +1333,19 @@ export default function Challenges({ embedded = false }) {
       .single();
     if (!error && data) {
       setParticipants(prev => [...prev, data]);
-      addPoints(user.id, profile.gym_id, 'challenge_joined', 25, 'Joined a challenge').catch(() => {});
+      // Guard: only award points if this user hasn't already earned them for this challenge.
+      // The server-side unique constraint (dedup_key) is the authoritative enforcement;
+      // this check avoids a silent rejection from the DB by skipping the call entirely.
+      const alreadyEarned = await hasEarnedChallengeJoinPoints(challengeId);
+      if (!alreadyEarned) {
+        addPoints(
+          user.id,
+          profile.gym_id,
+          'challenge_joined',
+          25,
+          `Joined a challenge (${challengeId})`,
+        ).catch(() => {});
+      }
     }
   };
 

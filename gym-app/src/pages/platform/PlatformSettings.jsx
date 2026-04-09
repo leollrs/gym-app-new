@@ -33,8 +33,10 @@ import {
   Save,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
 import { exercises as localExercises } from '../../data/exercises';
+import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
 // Build a lookup of local hardcoded videos by exercise name
 const LOCAL_VIDEO_MAP = {};
@@ -65,14 +67,10 @@ function Badge({ count }) {
 }
 
 function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-10">
-      <Loader2 className="w-5 h-5 text-[#D4AF37] animate-spin" />
-    </div>
-  );
+  return <PlatformSpinner />;
 }
 
-function ConfirmDialog({ message, onConfirm, onCancel }) {
+function ConfirmDialog({ message, onConfirm, onCancel, cancelLabel = 'Cancel', deleteLabel = 'Delete' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
@@ -80,10 +78,10 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
         <p className="text-[13px] text-[#E5E7EB] mb-5">{message}</p>
         <div className="flex gap-3 justify-end">
           <button onClick={onCancel} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">
-            Cancel
+            {cancelLabel}
           </button>
           <button onClick={onConfirm} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg px-4 py-2 text-[12px] font-semibold">
-            Delete
+            {deleteLabel}
           </button>
         </div>
       </div>
@@ -148,6 +146,8 @@ function VideoPreview({ videoUrl }) {
 /* ───────────────────────── Exercise Row (expandable) ───────────────────────── */
 
 function ExerciseRow({ ex, onDelete, onUpdate }) {
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -299,43 +299,43 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
               /* ── Detail view ── */
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-semibold text-[#9CA3AF]">Details</p>
+                  <p className="text-[12px] font-semibold text-[#9CA3AF]">{tp('details')}</p>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
                       className="flex items-center gap-1 text-[11px] text-[#D4AF37] hover:text-[#E6C766]"
                     >
-                      <Pencil className="w-3 h-3" /> Edit
+                      <Pencil className="w-3 h-3" /> {tp('edit')}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onDelete(); }}
                       className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-red-400"
                     >
-                      <Trash2 className="w-3 h-3" /> Delete
+                      <Trash2 className="w-3 h-3" /> {tp('delete')}
                     </button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px]">
                   <div>
-                    <span className="text-[#6B7280]">Muscle Group: </span>
+                    <span className="text-[#6B7280]">{tp('muscleGroup')}: </span>
                     <span className="text-[#E5E7EB]">{ex.muscle_group || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Equipment: </span>
-                    <span className="text-[#E5E7EB]">{ex.equipment || 'None'}</span>
+                    <span className="text-[#6B7280]">{tp('equipment')}: </span>
+                    <span className="text-[#E5E7EB]">{ex.equipment || tp('none')}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Default Sets: </span>
+                    <span className="text-[#6B7280]">{tp('defaultSets')}: </span>
                     <span className="text-[#E5E7EB]">{ex.default_sets}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Default Reps: </span>
+                    <span className="text-[#6B7280]">{tp('defaultReps')}: </span>
                     <span className="text-[#E5E7EB]">{ex.default_reps}</span>
                   </div>
                   {createdDate && (
                     <div className="col-span-2">
-                      <span className="text-[#6B7280]">Created: </span>
+                      <span className="text-[#6B7280]">{tp('created')}: </span>
                       <span className="text-[#E5E7EB]">{createdDate}</span>
                     </div>
                   )}
@@ -343,7 +343,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
 
                 {ex.instructions && (
                   <div>
-                    <p className="text-[11px] text-[#6B7280] mb-0.5">Instructions</p>
+                    <p className="text-[11px] text-[#6B7280] mb-0.5">{tp('instructions')}</p>
                     <p className="text-[12px] text-[#9CA3AF] whitespace-pre-wrap">{ex.instructions}</p>
                   </div>
                 )}
@@ -353,34 +353,34 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
             ) : (
               /* ── Edit form ── */
               <div>
-                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">Edit Exercise</p>
-                <Field label="Name *">
+                <p className="text-[12px] font-semibold text-[#9CA3AF] mb-3">{tp('editExercise')}</p>
+                <Field label={`${tp('nameLabel')} *`}>
                   <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} />
                 </Field>
-                <Field label="Muscle Group *">
+                <Field label={`${tp('muscleGroup')} *`}>
                   <select className={inputCls} value={form.muscle_group} onChange={(e) => set('muscle_group', e.target.value)}>
-                    <option value="">Select...</option>
+                    <option value="">{tp('select')}</option>
                     {MUSCLE_GROUPS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </Field>
-                <Field label="Equipment">
+                <Field label={tp('equipment')}>
                   <select className={inputCls} value={form.equipment} onChange={(e) => set('equipment', e.target.value)}>
-                    <option value="">None</option>
+                    <option value="">{tp('none')}</option>
                     {EQUIPMENT.map((e) => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Default Sets">
+                  <Field label={tp('defaultSets')}>
                     <input className={inputCls} type="number" min={1} value={form.default_sets} onChange={(e) => set('default_sets', e.target.value)} />
                   </Field>
-                  <Field label="Default Reps">
+                  <Field label={tp('defaultReps')}>
                     <input className={inputCls} type="number" min={1} value={form.default_reps} onChange={(e) => set('default_reps', e.target.value)} />
                   </Field>
                 </div>
-                <Field label="Instructions">
-                  <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Coaching cues..." />
+                <Field label={tp('instructions')}>
+                  <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder={tp('coachingCues')} />
                 </Field>
-                <Field label="Exercise Video (optional)">
+                <Field label={tp('exerciseVideo')}>
                   {ex.video_url && !removeVideo && !newVideoFile && (
                     <div className="mb-2">
                       <VideoPreview videoUrl={ex.video_url} />
@@ -389,13 +389,13 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                         onClick={() => setRemoveVideo(true)}
                         className="text-[11px] text-red-400 hover:text-red-300 mt-1"
                       >
-                        Remove Video
+                        {tp('removeVideo')}
                       </button>
                     </div>
                   )}
                   {removeVideo && !newVideoFile && (
-                    <p className="text-[11px] text-[#6B7280] mb-1">Video will be removed on save.{' '}
-                      <button type="button" onClick={() => setRemoveVideo(false)} className="text-[#D4AF37] hover:text-[#E6C766]">Undo</button>
+                    <p className="text-[11px] text-[#6B7280] mb-1">{tp('videoWillBeRemoved')}{' '}
+                      <button type="button" onClick={() => setRemoveVideo(false)} className="text-[#D4AF37] hover:text-[#E6C766]">{tp('undo')}</button>
                     </p>
                   )}
                   <input
@@ -408,14 +408,14 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
                 </Field>
                 <div className="flex justify-end gap-3 mt-2">
                   <button onClick={handleCancel} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">
-                    Cancel
+                    {tp('cancel')}
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={saving || !form.name.trim() || !form.muscle_group}
                     className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
                   >
-                    {saving ? (newVideoFile ? 'Uploading...' : 'Saving...') : 'Save Changes'}
+                    {saving ? (newVideoFile ? tp('uploading') : tp('saving')) : tp('saveChanges')}
                   </button>
                 </div>
               </div>
@@ -484,14 +484,14 @@ export default function PlatformSettings() {
   const [programs, setPrograms] = useState([]);
   const [platformStats, setPlatformStats] = useState({ gyms: 0, members: 0 });
 
-  /* ── email template toggles (UI-only) ── */
+  /* ── email template toggles (persisted to platform_config) ── */
   const [emailToggles, setEmailToggles] = useState({
     welcome: true,
     passwordReset: true,
     weeklyDigest: true,
   });
 
-  /* ── feature flags (UI-only) ── */
+  /* ── feature flags (persisted to platform_config) ── */
   const [featureFlags, setFeatureFlags] = useState({
     aiFoodScanner: true,
     aiBodyAnalysis: true,
@@ -502,13 +502,8 @@ export default function PlatformSettings() {
     classBooking: false,
   });
 
-  /* ── default gym config ── */
-  const [gymDefaults, setGymDefaults] = useState(() => {
-    try {
-      const saved = localStorage.getItem('platform_gym_defaults');
-      return saved ? JSON.parse(saved) : { ...DEFAULT_GYM_CONFIG };
-    } catch { return { ...DEFAULT_GYM_CONFIG }; }
-  });
+  /* ── default gym config (persisted to platform_config) ── */
+  const [gymDefaults, setGymDefaults] = useState({ ...DEFAULT_GYM_CONFIG });
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
   /* ── system health ── */
@@ -610,10 +605,75 @@ export default function PlatformSettings() {
     setHealth({ supabase: sbOk, activeUsers: activeCount, loadingHealth: false });
   }, []);
 
+  /* ────────────────── platform_config persistence ────────────────── */
+
+  const fetchPlatformConfig = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('platform_config')
+        .select('key, value')
+        .or('key.like.feature_%,key.like.email_%,key.eq.gym_defaults');
+
+      if (!error && data) {
+        const flags = {};
+        const emails = {};
+        data.forEach(({ key, value }) => {
+          if (key.startsWith('feature_')) {
+            const flagKey = key.replace('feature_', '');
+            flags[flagKey] = value === 'true' || value === true;
+          } else if (key.startsWith('email_')) {
+            const emailKey = key.replace('email_', '');
+            emails[emailKey] = value === 'true' || value === true;
+          } else if (key === 'gym_defaults') {
+            try {
+              const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+              setGymDefaults(prev => ({ ...prev, ...parsed }));
+            } catch { /* keep defaults */ }
+          }
+        });
+        if (Object.keys(flags).length) setFeatureFlags(prev => ({ ...prev, ...flags }));
+        if (Object.keys(emails).length) setEmailToggles(prev => ({ ...prev, ...emails }));
+      }
+    } catch { /* silent — use defaults */ }
+  }, []);
+
+  const toggleFeatureFlag = async (key) => {
+    const newVal = !featureFlags[key];
+    setFeatureFlags(prev => ({ ...prev, [key]: newVal }));
+    try {
+      await supabase.from('platform_config').upsert({
+        key: `feature_${key}`,
+        value: String(newVal),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+      logAdminAction('toggle_feature_flag', 'platform_config', null, { flag: key, enabled: newVal });
+    } catch { /* silent */ }
+  };
+
+  const toggleEmailFlag = async (key) => {
+    const newVal = !emailToggles[key];
+    setEmailToggles(prev => ({ ...prev, [key]: newVal }));
+    try {
+      await supabase.from('platform_config').upsert({
+        key: `email_${key}`,
+        value: String(newVal),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+      logAdminAction('toggle_email_flag', 'platform_config', null, { flag: key, enabled: newVal });
+    } catch { /* silent */ }
+  };
+
   /* ────────────────── save gym defaults ────────────────── */
 
-  const saveGymDefaults = () => {
-    localStorage.setItem('platform_gym_defaults', JSON.stringify(gymDefaults));
+  const saveGymDefaults = async () => {
+    try {
+      await supabase.from('platform_config').upsert({
+        key: 'gym_defaults',
+        value: JSON.stringify(gymDefaults),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+      logAdminAction('save_gym_defaults', 'platform_config', null, { defaults: gymDefaults });
+    } catch { /* silent */ }
     setDefaultsSaved(true);
     setTimeout(() => setDefaultsSaved(false), 2000);
   };
@@ -624,6 +684,7 @@ export default function PlatformSettings() {
     fetchPrograms();
     fetchStats();
     fetchHealth();
+    fetchPlatformConfig();
   }, []);
 
   /* ────────────────── delete handler ────────────────── */
@@ -658,19 +719,19 @@ export default function PlatformSettings() {
 
   return (
     <div className="px-4 py-6 max-w-[480px] mx-auto md:max-w-4xl space-y-4 pb-28 md:pb-12">
-      <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">Platform Settings</h1>
+      <h1 className="text-[22px] font-bold text-[#E5E7EB] mb-0.5 truncate">{tp('title')}</h1>
       <p className="text-[12px] text-[#6B7280] mb-4">
-        Shared configuration and global systems
+        {tp('sharedConfigSubtitle')}
       </p>
 
       {/* Category tabs */}
       <div className="flex gap-1 border-b border-white/6 mb-5 overflow-x-auto scrollbar-hide">
         {[
-          { key: 'content', label: 'Shared Content' },
-          { key: 'comms', label: 'Communications' },
-          { key: 'defaults', label: 'Defaults' },
-          { key: 'system', label: 'System' },
-          { key: 'health', label: 'Health' },
+          { key: 'content', label: tp('tabContent') },
+          { key: 'comms', label: tp('tabComms') },
+          { key: 'defaults', label: tp('tabDefaults') },
+          { key: 'system', label: tp('tabSystem') },
+          { key: 'health', label: tp('tabHealth') },
         ].map(t => (
           <button
             key={t.key}
@@ -721,7 +782,7 @@ export default function PlatformSettings() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#6B7280]" />
                 <input
                   className={`${inputCls} pl-8`}
-                  placeholder="Search exercises..."
+                  placeholder={tp('searchExercises')}
                   value={exSearch}
                   onChange={(e) => setExSearch(e.target.value)}
                 />
@@ -731,7 +792,7 @@ export default function PlatformSettings() {
                 value={exMuscleFilter}
                 onChange={(e) => setExMuscleFilter(e.target.value)}
               >
-                <option value="">All Muscle Groups</option>
+                <option value="">{tp('allMuscleGroups')}</option>
                 {MUSCLE_GROUPS.map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
@@ -740,12 +801,12 @@ export default function PlatformSettings() {
                 onClick={() => setShowExModal(true)}
                 className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Exercise
+                <Plus className="w-3.5 h-3.5" /> {tp('addExercise')}
               </button>
             </div>
 
             <p className="text-[12px] text-[#6B7280] mb-3">
-              {filteredExercises.length} global exercise{filteredExercises.length !== 1 ? 's' : ''}
+              {filteredExercises.length} {tp('globalExerciseCount')}
             </p>
 
             {/* list */}
@@ -759,7 +820,7 @@ export default function PlatformSettings() {
                 />
               ))}
               {filteredExercises.length === 0 && (
-                <p className="text-[12px] text-[#4B5563] text-center py-6">No exercises found.</p>
+                <p className="text-[12px] text-[#4B5563] text-center py-6">{tp('noExercisesFound')}</p>
               )}
             </div>
           </>
@@ -780,13 +841,13 @@ export default function PlatformSettings() {
           <>
             <div className="flex items-center justify-between mb-4">
               <p className="text-[12px] text-[#6B7280]">
-                {achievements.length} global achievement{achievements.length !== 1 ? 's' : ''}
+                {achievements.length} {tp('globalAchievementCount')}
               </p>
               <button
                 onClick={() => setShowAchModal(true)}
                 className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Achievement
+                <Plus className="w-3.5 h-3.5" /> {tp('addAchievement')}
               </button>
             </div>
 
@@ -799,7 +860,7 @@ export default function PlatformSettings() {
                   <div className="min-w-0">
                     <p className="text-[13px] text-[#E5E7EB] truncate">{ach.name}</p>
                     <p className="text-[11px] text-[#6B7280]">
-                      {ach.type} &middot; Req: {ach.requirement_value} &middot; {ach.description || '—'}
+                      {ach.type} &middot; {tp('req')}: {ach.requirement_value} &middot; {ach.description || '—'}
                     </p>
                   </div>
                   <button
@@ -811,7 +872,7 @@ export default function PlatformSettings() {
                 </div>
               ))}
               {achievements.length === 0 && (
-                <p className="text-[12px] text-[#4B5563] text-center py-6">No achievements defined.</p>
+                <p className="text-[12px] text-[#4B5563] text-center py-6">{tp('noAchievementsDefined')}</p>
               )}
             </div>
           </>
@@ -832,13 +893,13 @@ export default function PlatformSettings() {
           <>
             <div className="flex items-center justify-between mb-4">
               <p className="text-[12px] text-[#6B7280]">
-                {programs.length} global template{programs.length !== 1 ? 's' : ''}
+                {programs.length} {tp('globalTemplateCount')}
               </p>
               <button
                 onClick={() => setShowProgModal(true)}
                 className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Template
+                <Plus className="w-3.5 h-3.5" /> {tp('addTemplate')}
               </button>
             </div>
 
@@ -851,7 +912,7 @@ export default function PlatformSettings() {
                   <div className="min-w-0">
                     <p className="text-[13px] text-[#E5E7EB] truncate">{prog.name}</p>
                     <p className="text-[11px] text-[#6B7280]">
-                      {prog.difficulty_level} &middot; {prog.duration_weeks} weeks &middot; {prog.description || '—'}
+                      {prog.difficulty_level} &middot; {prog.duration_weeks} {tp('weeks')} &middot; {prog.description || '—'}
                     </p>
                   </div>
                   <button
@@ -863,7 +924,7 @@ export default function PlatformSettings() {
                 </div>
               ))}
               {programs.length === 0 && (
-                <p className="text-[12px] text-[#4B5563] text-center py-6">No program templates.</p>
+                <p className="text-[12px] text-[#4B5563] text-center py-6">{tp('noProgramTemplates')}</p>
               )}
             </div>
           </>
@@ -928,7 +989,7 @@ export default function PlatformSettings() {
                 <p className="text-[11px] text-[#6B7280]">{desc}</p>
               </div>
               <button
-                onClick={() => setEmailToggles(prev => ({ ...prev, [key]: !prev[key] }))}
+                onClick={() => toggleEmailFlag(key)}
                 className="ml-3 shrink-0"
               >
                 {emailToggles[key] ? (
@@ -969,7 +1030,7 @@ export default function PlatformSettings() {
                 <span className={`text-[10px] font-medium ${featureFlags[key] ? 'text-emerald-400' : 'text-[#6B7280]'}`}>
                   {featureFlags[key] ? tp('enabled') : tp('disabled')}
                 </span>
-                <button onClick={() => setFeatureFlags(prev => ({ ...prev, [key]: !prev[key] }))}>
+                <button onClick={() => toggleFeatureFlag(key)}>
                   {featureFlags[key] ? (
                     <ToggleRight className="w-6 h-6 text-emerald-400" />
                   ) : (
@@ -1178,9 +1239,11 @@ export default function PlatformSettings() {
 
       {confirmDelete && (
         <ConfirmDialog
-          message={`Delete "${confirmDelete.label}"? This action cannot be undone.`}
+          message={t('platformSettings.confirmDeleteMsg', { name: confirmDelete.label, defaultValue: `Delete "${confirmDelete.label}"? This action cannot be undone.` })}
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(null)}
+          cancelLabel={tp('cancel')}
+          deleteLabel={tp('delete')}
         />
       )}
     </div>
@@ -1221,6 +1284,8 @@ function InfoCard({ label, value }) {
 const EXERCISE_CATEGORIES = ['Strength', 'Hypertrophy', 'Power', 'Endurance', 'Mobility'];
 
 function ExerciseModal({ onClose, onSaved }) {
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [videoFile, setVideoFile] = useState(null);
@@ -1287,40 +1352,40 @@ function ExerciseModal({ onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Add Global Exercise" onClose={onClose}>
-      <Field label="Name *">
-        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Barbell Bench Press" />
+    <Modal title={tp('addGlobalExercise')} onClose={onClose}>
+      <Field label={`${tp('nameLabel')} *`}>
+        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tp('exerciseNamePlaceholder')} />
       </Field>
-      <Field label="Muscle Group *">
+      <Field label={`${tp('muscleGroup')} *`}>
         <select className={inputCls} value={form.muscle_group} onChange={(e) => set('muscle_group', e.target.value)}>
-          <option value="">Select...</option>
+          <option value="">{tp('select')}</option>
           {MUSCLE_GROUPS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Equipment *">
+        <Field label={`${tp('equipment')} *`}>
           <select className={inputCls} value={form.equipment} onChange={(e) => set('equipment', e.target.value)}>
             {EQUIPMENT.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
         </Field>
-        <Field label="Category *">
+        <Field label={`${tp('category')} *`}>
           <select className={inputCls} value={form.category} onChange={(e) => set('category', e.target.value)}>
             {EXERCISE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Default Sets">
+        <Field label={tp('defaultSets')}>
           <input className={inputCls} type="number" min={1} value={form.default_sets} onChange={(e) => set('default_sets', e.target.value)} />
         </Field>
-        <Field label="Default Reps">
-          <input className={inputCls} value={form.default_reps} onChange={(e) => set('default_reps', e.target.value)} placeholder="e.g. 10 or 8-12" />
+        <Field label={tp('defaultReps')}>
+          <input className={inputCls} value={form.default_reps} onChange={(e) => set('default_reps', e.target.value)} placeholder={tp('repsPlaceholder')} />
         </Field>
       </div>
-      <Field label="Instructions">
-        <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Optional coaching cues..." />
+      <Field label={tp('instructions')}>
+        <textarea className={`${inputCls} min-h-[80px] resize-none`} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder={tp('optionalCoachingCues')} />
       </Field>
-      <Field label="Exercise Video (optional)">
+      <Field label={tp('exerciseVideo')}>
         <input
           type="file"
           accept="video/*"
@@ -1331,13 +1396,13 @@ function ExerciseModal({ onClose, onSaved }) {
       </Field>
       {error && <p className="text-[12px] text-red-400">{error}</p>}
       <div className="flex justify-end gap-3 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
         <button
           onClick={handleSave}
           disabled={saving || !form.name.trim() || !form.muscle_group || !form.equipment || !form.category}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
-          {saving ? (videoFile ? 'Uploading...' : 'Saving...') : 'Save Exercise'}
+          {saving ? (videoFile ? tp('uploading') : tp('saving')) : tp('saveExercise')}
         </button>
       </div>
     </Modal>
@@ -1347,6 +1412,8 @@ function ExerciseModal({ onClose, onSaved }) {
 /* ───────────────── Achievement Modal ───────────────── */
 
 function AchievementModal({ onClose, onSaved }) {
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
@@ -1372,27 +1439,27 @@ function AchievementModal({ onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Add Global Achievement" onClose={onClose}>
-      <Field label="Name *">
-        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. First Workout" />
+    <Modal title={tp('addGlobalAchievement')} onClose={onClose}>
+      <Field label={`${tp('nameLabel')} *`}>
+        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tp('achievementNamePlaceholder')} />
       </Field>
-      <Field label="Type *">
-        <input className={inputCls} value={form.type} onChange={(e) => set('type', e.target.value)} placeholder="e.g. streak, volume, pr" />
+      <Field label={`${tp('type')} *`}>
+        <input className={inputCls} value={form.type} onChange={(e) => set('type', e.target.value)} placeholder={tp('typePlaceholder')} />
       </Field>
-      <Field label="Requirement Value">
+      <Field label={tp('requirementValue')}>
         <input className={inputCls} type="number" min={1} value={form.requirement_value} onChange={(e) => set('requirement_value', e.target.value)} />
       </Field>
-      <Field label="Description">
-        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional description..." />
+      <Field label={tp('description')}>
+        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder={tp('optionalDescription')} />
       </Field>
       <div className="flex justify-end gap-3 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
         <button
           onClick={handleSave}
           disabled={saving || !form.name.trim() || !form.type.trim()}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
-          {saving ? 'Saving...' : 'Save Achievement'}
+          {saving ? tp('saving') : tp('saveAchievement')}
         </button>
       </div>
     </Modal>
@@ -1402,6 +1469,8 @@ function AchievementModal({ onClose, onSaved }) {
 /* ───────────────── Program Template Modal ───────────────── */
 
 function ProgramModal({ onClose, onSaved }) {
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
@@ -1427,29 +1496,29 @@ function ProgramModal({ onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Add Global Program Template" onClose={onClose}>
-      <Field label="Name *">
-        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. PPL Hypertrophy 12-Week" />
+    <Modal title={tp('addGlobalTemplate')} onClose={onClose}>
+      <Field label={`${tp('nameLabel')} *`}>
+        <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tp('templateNamePlaceholder')} />
       </Field>
-      <Field label="Difficulty Level">
+      <Field label={tp('difficultyLevel')}>
         <select className={inputCls} value={form.difficulty_level} onChange={(e) => set('difficulty_level', e.target.value)}>
           {DIFFICULTY_LEVELS.map((d) => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
         </select>
       </Field>
-      <Field label="Duration (weeks)">
+      <Field label={tp('durationWeeks')}>
         <input className={inputCls} type="number" min={1} max={52} value={form.duration_weeks} onChange={(e) => set('duration_weeks', e.target.value)} />
       </Field>
-      <Field label="Description">
-        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional program description..." />
+      <Field label={tp('description')}>
+        <textarea className={`${inputCls} min-h-[60px] resize-none`} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder={tp('optionalProgramDescription')} />
       </Field>
       <div className="flex justify-end gap-3 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
         <button
           onClick={handleSave}
           disabled={saving || !form.name.trim()}
           className="bg-[#D4AF37] text-black hover:bg-[#E6C766] rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40"
         >
-          {saving ? 'Saving...' : 'Save Template'}
+          {saving ? tp('saving') : tp('saveTemplate')}
         </button>
       </div>
     </Modal>

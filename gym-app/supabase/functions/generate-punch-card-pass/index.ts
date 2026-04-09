@@ -21,12 +21,13 @@ const PASS_KEY_B64 = Deno.env.get('APPLE_PUNCH_KEY_BASE64') || '';
 const WWDR_CERT_B64 = Deno.env.get('APPLE_WWDR_CERT_BASE64') || '';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
-if (!ALLOWED_ORIGIN) console.warn('CORS: ALLOWED_ORIGIN env var not set, using default');
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'https://app.tugympr.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const corsHeaders = ALLOWED_ORIGIN
+  ? {
+      'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    }
+  : null;
 
 const PLACEHOLDER_PNG = new Uint8Array([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
@@ -150,6 +151,7 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 }
 
 serve(async (req: Request) => {
+  if (!corsHeaders) return new Response('Server misconfiguration: ALLOWED_ORIGIN not set', { status: 500 });
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -184,6 +186,32 @@ serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // ── Database-based rate limiting (10 requests per user per hour) ──
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: rlError } = await supabase
+      .from('ai_rate_limits')
+      .select('*', { count: 'exact', head: true })
+      .eq('profile_id', userId)
+      .eq('endpoint', 'generate-punch-card-pass')
+      .gte('created_at', oneHourAgo);
+
+    if (rlError) {
+      console.error('Rate limit check failed:', rlError);
+      return new Response(
+        JSON.stringify({ error: 'Internal server error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if ((count ?? 0) >= 10) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded — max 10 requests per hour' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    await supabase.from('ai_rate_limits').insert({ profile_id: userId, endpoint: 'generate-punch-card-pass' });
 
     // ── Fetch profile ──
     const { data: profile } = await supabase

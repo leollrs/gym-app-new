@@ -13,7 +13,8 @@
       "invalidCode": "Invalid code. Check and try again.",
       "alreadyUsed": "This code has already been used.",
       "expired": "This code has expired. Ask your gym for a new one.",
-      "wrongGym": "This code is for a different gym."
+      "wrongGym": "This code is for a different gym.",
+      "rateLimited": "Too many attempts. Please wait and try again."
     }
   },
 

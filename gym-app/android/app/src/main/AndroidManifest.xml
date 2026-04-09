@@ -10,7 +10,6 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
         android:largeHeap="true"
-        android:localeConfig="@xml/locales_config"
         android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
@@ -28,23 +27,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link: tugympr:// custom URL scheme -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="tugympr" />
-            </intent-filter>
+            <!--
+                SECURITY: Custom URI schemes (tugympr://, com.tugympr.app://) are NOT
+                verified by Android — any malicious app can register the same scheme and
+                intercept deep links (intent hijacking). Only Android App Links with
+                autoVerify="true" and a valid /.well-known/assetlinks.json on the domain
+                are cryptographically verified.
 
-            <!-- Deep link: com.tugympr.app:// (matching Capacitor custom_url_scheme) -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.tugympr.app" />
-            </intent-filter>
+                The tugympr:// scheme was only used by iOS Siri Shortcuts
+                (AppIntents.swift) and is not referenced by any Android or web code.
+                The com.tugympr.app:// scheme was unused (Capacitor uses androidScheme:
+                "https", not a custom URL scheme).
 
-            <!-- Android App Links: https://tugympr.com deep links -->
+                Both custom schemes have been removed. All deep linking on Android should
+                use verified App Links (https://tugympr.com/...) below.
+
+                If you must re-add a custom scheme (e.g., for push notification deep
+                links), limit exposure by NOT including BROWSABLE category, or validate
+                the caller in MainActivity.onCreate() before acting on the intent.
+            -->
+
+            <!-- Android App Links (verified): https://tugympr.com deep links.
+                 Requires /.well-known/assetlinks.json hosted at tugympr.com with the
+                 app's signing certificate SHA-256 fingerprint. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

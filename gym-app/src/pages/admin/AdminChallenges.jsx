@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
-import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs } from '../../components/admin';
+import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs, AdminPageShell, ErrorCard } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
 import ChallengeSuggestionCard from './components/ChallengeSuggestionCard';
@@ -32,12 +32,12 @@ const ParticipantList = ({ challengeId, gymId }) => {
 
   if (isLoading) return (
     <div className="py-3 flex justify-center">
-      <div className="w-4 h-4 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+      <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
     </div>
   );
 
   if (participants.length === 0) return (
-    <p className="text-[12px] text-[#6B7280] text-center py-2">{t('admin.challenges.noParticipants', 'No participants yet')}</p>
+    <p className="text-[12px] text-center py-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noParticipants', 'No participants yet')}</p>
   );
 
   return (
@@ -46,11 +46,11 @@ const ParticipantList = ({ challengeId, gymId }) => {
         const name = p.profiles?.full_name ?? '?';
         const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         return (
-          <div key={p.profile_id} className="flex items-center gap-1.5 bg-[#111827] rounded-xl px-2.5 py-1.5">
-            <div className="w-6 h-6 rounded-full bg-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-[9px] font-bold text-[#D4AF37]">{initials}</span>
+          <div key={p.profile_id} className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 20%, transparent)' }}>
+              <span className="text-[9px] font-bold" style={{ color: 'var(--color-accent)' }}>{initials}</span>
             </div>
-            <span className="text-[11px] font-medium text-[#E5E7EB]">{name}</span>
+            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-primary)' }}>{name}</span>
           </div>
         );
       })}
@@ -156,18 +156,18 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
     <div className="mt-3 space-y-2">
       {loading ? (
         <div className="py-4 flex justify-center">
-          <div className="w-5 h-5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-[12px] text-[#6B7280] text-center py-3">{t('admin.challenges.noActivity', 'No activity yet')}</p>
+        <p className="text-[12px] text-center py-3" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noActivity', 'No activity yet')}</p>
       ) : (
         entries.map((e, i) => (
-          <div key={e.id} className="flex items-center gap-3 py-2 px-3 bg-[#111827] rounded-xl">
-            <span className={`text-[13px] font-bold w-5 text-center ${i === 0 ? 'text-[#D4AF37]' : i === 1 ? 'text-[#9CA3AF]' : i === 2 ? 'text-amber-700' : 'text-[#6B7280]'}`}>
+          <div key={e.id} className="flex items-center gap-3 py-2 px-3 rounded-xl" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+            <span className="text-[13px] font-bold w-5 text-center" style={{ color: i === 0 ? 'var(--color-accent)' : i === 1 ? 'var(--color-text-secondary)' : i === 2 ? '#B45309' : 'var(--color-text-muted)' }}>
               {i + 1}
             </span>
-            <p className="flex-1 text-[13px] font-medium text-[#E5E7EB] truncate">{e.name}</p>
-            <p className="text-[12px] font-semibold text-[#9CA3AF]">
+            <p className="flex-1 text-[13px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{e.name}</p>
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
               {e.score.toLocaleString()} {scoreLabel}
             </p>
           </div>
@@ -195,10 +195,10 @@ export default function AdminChallenges() {
   const [awardingId, setAwardingId] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState({});
 
-  useEffect(() => { document.title = t('admin.challenges.title', 'Challenges') + ' | TuGymPR'; }, [t]);
+  useEffect(() => { document.title = t('admin.challenges.title', 'Challenges') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
 
   // ── Fetch challenges ──
-  const { data: challenges = [], isLoading } = useQuery({
+  const { data: challenges = [], isLoading, isError, refetch } = useQuery({
     queryKey: adminKeys.challenges(gymId),
     queryFn: async () => {
       const [{ data: challengeData }, { data: parts }, { data: prizes }] = await Promise.all([
@@ -244,8 +244,7 @@ export default function AdminChallenges() {
   // ── Delete mutation ──
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      await supabase.from('challenge_participants').delete().eq('challenge_id', id);
-      const { error } = await supabase.from('challenges').delete().eq('id', id);
+      const { error } = await supabase.rpc('admin_delete_challenge', { p_challenge_id: id });
       if (error) throw error;
     },
     onSuccess: (_, challengeId) => {
@@ -259,13 +258,13 @@ export default function AdminChallenges() {
   });
 
   return (
-    <div className="px-4 py-6 pb-28 md:pb-12 max-w-[1600px] mx-auto">
+    <AdminPageShell>
       <PageHeader
         title={t('admin.challenges.title', 'Challenges')}
         subtitle={t('admin.challenges.subtitle', 'Create and manage gym challenges')}
         actions={
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors">
+            className="flex items-center gap-2 px-4 py-2.5 text-black font-bold text-[13px] rounded-xl transition-colors" style={{ backgroundColor: 'var(--color-accent)' }}>
             <Plus size={15} /> {t('admin.challenges.newChallenge', 'New Challenge')}
           </button>
         }
@@ -324,11 +323,14 @@ export default function AdminChallenges() {
               {[0, 1, 2].map(i => <CardSkeleton key={i} h="h-[80px]" />)}
             </div>
           );
+          if (isError) return (
+            <ErrorCard message={t('common:failedToLoadData')} onRetry={refetch} />
+          );
           if (filtered.length === 0) return (
             <div className="text-center py-20">
-              <Trophy size={32} className="text-[#6B7280] mx-auto mb-3" />
-              <p className="text-[14px] text-[#6B7280]">{emptyMsgMap[tabKey]}</p>
-              <p className="text-[12px] text-[#6B7280] mt-1">{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
+              <Trophy size={32} className="mx-auto mb-3" style={{ color: 'var(--color-text-muted)' }} />
+              <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>{emptyMsgMap[tabKey]}</p>
+              <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.challenges.noChallengesHint', 'Create your first challenge to get members competing')}</p>
             </div>
           );
           return (
@@ -344,24 +346,24 @@ export default function AdminChallenges() {
                         {c.cover_preset ? (
                           <ChallengeCoverBadge preset={c.cover_preset} />
                         ) : (
-                          <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
-                            <Trophy size={17} className="text-[#D4AF37]" />
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
+                            <Trophy size={17} style={{ color: 'var(--color-accent)' }} />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{c.name}</p>
-                          <p className="text-[11px] text-[#6B7280]">
+                          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{c.name}</p>
+                          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                             {format(new Date(c.start_date), 'MMM d', dateFnsLocale)} – {format(new Date(c.end_date), 'MMM d, yyyy', dateFnsLocale)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#6B7280] flex-shrink-0">
+                        <div className="flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
                           <Users size={11} />
                           <span>{c._participantCount}</span>
                         </div>
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge.color} flex-shrink-0`}>
                           {t(badge.labelKey)}
                         </span>
-                        <ChevronDown size={16} className={`text-[#6B7280] transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={16} className={`transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
                       </button>
                       {/* Award Prizes — surfaced prominently on ended challenges */}
                       {isPast(new Date(c.end_date)) && c.reward_description && !c._prizesAwarded && (
@@ -369,7 +371,8 @@ export default function AdminChallenges() {
                           <button
                             onClick={(e) => { e.stopPropagation(); setAwardingId(c.id); awardPrizesMutation.mutate(c.id); }}
                             disabled={awardPrizesMutation.isPending && awardingId === c.id}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-[#D4AF37] text-black font-bold text-[13px] rounded-xl hover:bg-[#C4A030] transition-colors disabled:opacity-50 w-full justify-center"
+                            className="flex items-center gap-2 px-4 py-2.5 text-black font-bold text-[13px] rounded-xl transition-colors disabled:opacity-50 w-full justify-center"
+                            style={{ backgroundColor: 'var(--color-accent)' }}
                           >
                             <Award size={15} />
                             {awardPrizesMutation.isPending && awardingId === c.id
@@ -393,7 +396,7 @@ export default function AdminChallenges() {
                           {/* Edit / Delete buttons */}
                           <div className="flex items-center gap-2 mt-3 mb-3">
                             <button onClick={(e) => { e.stopPropagation(); setEditChallenge(c); }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[#E5E7EB] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg transition-colors">
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-white/5 hover:bg-white/10 border rounded-lg transition-colors" style={{ color: 'var(--color-text-primary)', borderColor: 'var(--color-border-subtle)' }}>
                               <Pencil size={12} /> {t('admin.challenges.edit', 'Edit')}
                             </button>
                             {deleteConfirm === c.id ? (
@@ -401,7 +404,7 @@ export default function AdminChallenges() {
                                 <span className="text-[12px] text-red-400">{t('admin.challenges.deleteConfirm')}</span>
                                 <button onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}
                                   className="px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
-                                  style={{ backgroundColor: '#EF4444', color: '#fff' }}>
+                                  style={{ backgroundColor: 'var(--color-danger, #EF4444)', color: '#fff' }}>
                                   {deleteMutation.isPending ? t('admin.challenges.deleting', 'Eliminando...') : t('admin.challenges.confirm', 'Confirmar')}
                                 </button>
                                 <button onClick={() => setDeleteConfirm(null)}
@@ -419,10 +422,10 @@ export default function AdminChallenges() {
                           </div>
 
                           {c.description && (
-                            <p className="text-[12px] text-[#9CA3AF] mt-3 mb-2">{c.description}</p>
+                            <p className="text-[12px] mt-3 mb-2" style={{ color: 'var(--color-text-secondary)' }}>{c.description}</p>
                           )}
                           <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[11px] text-[#6B7280] bg-white/5 px-2 py-0.5 rounded-lg capitalize">{c.type.replace('_', ' ')}</span>
+                            <span className="text-[11px] bg-white/5 px-2 py-0.5 rounded-lg capitalize" style={{ color: 'var(--color-text-muted)' }}>{c.type.replace('_', ' ')}</span>
                             {badge.labelKey === 'admin.challenges.live' && (
                               <span className="flex items-center gap-1 text-[11px] text-emerald-400">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -438,17 +441,17 @@ export default function AdminChallenges() {
                             if (!rewards || !Array.isArray(rewards)) return null;
                             const medals = ['🥇', '🥈', '🥉'];
                             return (
-                              <div className="mb-4 bg-[#111827] rounded-xl p-3 border border-[#D4AF37]/10">
+                              <div className="mb-4 rounded-xl p-3 border" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}>
                                 <div className="flex items-center gap-1.5 mb-2">
-                                  <Gift size={12} className="text-[#D4AF37]" />
-                                  <p className="text-[11px] font-semibold text-[#D4AF37] uppercase tracking-wide">{t('admin.challenges.rewards', 'Rewards')}</p>
+                                  <Gift size={12} style={{ color: 'var(--color-accent)' }} />
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-accent)' }}>{t('admin.challenges.rewards', 'Rewards')}</p>
                                 </div>
                                 <div className="space-y-1.5">
                                   {rewards.map((r, i) => (
                                     <div key={i} className="flex items-center gap-2 text-[12px]">
                                       <span>{medals[i]}</span>
-                                      <span className="text-[#E5E7EB] font-medium">{r.points} pts</span>
-                                      {r.prize && <span className="text-[#9CA3AF]">+ {r.prize}</span>}
+                                      <span className="font-medium" style={{ color: 'var(--color-text-primary)' }}>{r.points} pts</span>
+                                      {r.prize && <span style={{ color: 'var(--color-text-secondary)' }}>+ {r.prize}</span>}
                                     </div>
                                   ))}
                                 </div>
@@ -470,9 +473,9 @@ export default function AdminChallenges() {
                               onClick={() => setLeaderboardOpen(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
                               className="flex items-center gap-2 w-full py-2.5 px-3 rounded-xl bg-white/4 hover:bg-white/6 border border-white/6 transition-colors"
                             >
-                              <BarChart3 size={14} className="text-[#D4AF37]" />
-                              <span className="text-[12px] font-semibold text-[#E5E7EB]">{t('admin.challenges.viewLeaderboard', 'View Leaderboard')}</span>
-                              <ChevronDown size={14} className={`ml-auto text-[#6B7280] transition-transform ${leaderboardOpen[c.id] ? 'rotate-180' : ''}`} />
+                              <BarChart3 size={14} style={{ color: 'var(--color-accent)' }} />
+                              <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('admin.challenges.viewLeaderboard', 'View Leaderboard')}</span>
+                              <ChevronDown size={14} className={`ml-auto transition-transform ${leaderboardOpen[c.id] ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
                             </button>
                             {leaderboardOpen[c.id] && (
                               <ChallengeLeaderboard challenge={c} gymId={gymId} />
@@ -516,6 +519,6 @@ export default function AdminChallenges() {
           challenge={editChallenge}
         />
       )}
-    </div>
+    </AdminPageShell>
   );
 }

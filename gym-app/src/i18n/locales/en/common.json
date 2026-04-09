@@ -134,7 +134,11 @@
     "notifications": "Notifications",
     "profile": "Profile",
     "signOut": "Sign out",
-    "classes": "My Classes"
+    "classes": "My Classes",
+    "trainerLabel": "Trainer",
+    "myGym": "My Gym",
+    "skipToContent": "Skip to main content",
+    "trainer": "Trainer"
   },
   "platformNav": {
     "main": "MAIN",
@@ -156,7 +160,10 @@
     "platformAdmin": "Platform Admin",
     "superAdmin": "Super Admin",
     "signOut": "Sign out",
-    "morePages": "More Pages"
+    "signOutConfirm": "Are you sure you want to sign out?",
+    "morePages": "More Pages",
+    "more": "More",
+    "platform": "Platform"
   },
   "filters": "Filters",
   "collapse": "Collapse",
@@ -171,7 +178,7 @@
     "todayIsRoutineDay": "Today is {{routine}} day",
     "dontForgetRoutine": "Don't forget to hit your {{routine}} routine. Your body's ready for it!",
     "streakAtRisk": "⚠️ Your streak is at risk",
-    "streakAtRiskBody": "You have a {{streak}}-day streak — don't let it break! Hit the gym today.",
+    "streakAtRiskBody": "Your {{count}}-day streak breaks at midnight. One workout keeps it alive!",
     "almostThere": "Almost there!",
     "milestoneApproachBody": "{{remaining}} more workout(s) to unlock {{milestone}}.",
     "milestoneApproachBodySingular": "{{remaining}} more workout to unlock {{milestone}}.",
@@ -202,7 +209,6 @@
     "challengeNudgeTitle": "Ready for a challenge?",
     "challengeNudgeBody": "You've completed 3 workouts! Join \"{{name}}\" and compete with your gym.",
     "streakAtRiskTitle": "🔥 Your streak is at risk!",
-    "streakAtRiskBody": "Your {{count}}-day streak breaks at midnight. One workout keeps it alive!",
     "workoutsCompleted": "{{count}} workout(s) completed!",
     "workoutsCompletedSingular": "{{count}} workout completed!",
     "workoutsCompletedPlural": "{{count}} workouts completed!",
@@ -352,5 +358,14 @@
         "segments": "Segments"
       }
     }
-  }
+  },
+  "roles": {
+    "trainer": "Trainer",
+    "admin": "Admin",
+    "super_admin": "Super Admin",
+    "member": "Member"
+  },
+  "failedToLoadData": "Failed to load data",
+  "lbs": "lbs",
+  "lastAdminCannotDelete": "You are the only admin for this gym. Transfer admin rights before deleting your account."
 }
