@@ -23,7 +23,7 @@ const DAYS_OF_WEEK = [
   { value: 6, labelKey: 'days.saturday' },
 ];
 
-const TABS = ['myClasses', 'bookings', 'analytics', 'templates'];
+const TABS = ['myClasses', 'bookings', 'analytics'];
 
 // ── Shared spinner ──
 function Spinner({ label }) {

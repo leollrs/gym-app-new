@@ -6,7 +6,7 @@ import { subDays, format, startOfWeek, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
 import {
-  AlertTriangle, Activity, MessageSquare, X, Trophy, Flame, Clock, Eye,
+  AlertTriangle, MessageSquare, X, Trophy, Flame,
   Users, TrendingUp, CalendarCheck, ShieldAlert,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -21,12 +21,9 @@ export default function TrainerDashboard() {
   const [error, setError] = useState(null);
   const [clients, setClients] = useState([]);
   const [weekSessions, setWeekSessions] = useState([]);
-  const [prevWeekSessions, setPrevWeekSessions] = useState([]);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
   const [todaySessions, setTodaySessions] = useState([]);
   const [churnScores, setChurnScores] = useState({});
-  const [trainerNotes, setTrainerNotes] = useState([]);
-  const [contactedMap, setContactedMap] = useState({});
   const [callModal, setCallModal] = useState(null);
   const [callNote, setCallNote] = useState('');
   const [callOutcome, setCallOutcome] = useState('no_answer');
@@ -66,10 +63,8 @@ export default function TrainerDashboard() {
 
       if (clientIds.length === 0) {
         setWeekSessions([]);
-        setPrevWeekSessions([]);
         setUpcomingSessions([]);
         setTodaySessions([]);
-        setTrainerNotes([]);
         setRecentPRs([]);
         setActiveStreaks([]);
         setLoading(false);
@@ -88,7 +83,7 @@ export default function TrainerDashboard() {
       setChurnScores(churnMap);
 
       // 3. Fetch all parallel data
-      const [weekRes, prevWeekRes, upcomingRes, todayRes, notesRes, followupsRes, prsRes, streaksRes] = await Promise.all([
+      const [weekRes, , upcomingRes, todayRes, , , prsRes, streaksRes] = await Promise.all([
         supabase
           .from('workout_sessions')
           .select('id, profile_id, name, started_at, total_volume_lbs, duration_seconds')
@@ -147,29 +142,17 @@ export default function TrainerDashboard() {
       ]);
 
       if (weekRes.error) logger.error('TrainerDashboard: failed to load week sessions:', weekRes.error);
-      if (prevWeekRes.error) logger.error('TrainerDashboard: failed to load prev week sessions:', prevWeekRes.error);
       if (upcomingRes.error) logger.error('TrainerDashboard: failed to load upcoming sessions:', upcomingRes.error);
       if (todayRes.error) logger.error('TrainerDashboard: failed to load today sessions:', todayRes.error);
-      if (notesRes.error) logger.error('TrainerDashboard: failed to load notes:', notesRes.error);
       if (prsRes.error) logger.error('TrainerDashboard: failed to load PRs:', prsRes.error);
       if (streaksRes.error) logger.error('TrainerDashboard: failed to load streaks:', streaksRes.error);
 
       setWeekSessions(weekRes.data || []);
-      setPrevWeekSessions(prevWeekRes.data || []);
       setUpcomingSessions(upcomingRes.data || []);
       setTodaySessions(todayRes.data || []);
-      setTrainerNotes(notesRes.data || []);
       setRecentPRs(prsRes.data || []);
       setActiveStreaks(streaksRes.data || []);
 
-      // Build contacted map: client_id -> most recent followup date
-      const cMap = {};
-      (followupsRes.data || []).forEach(row => {
-        if (!cMap[row.client_id]) {
-          cMap[row.client_id] = row.created_at;
-        }
-      });
-      setContactedMap(cMap);
     } catch (err) {
       logger.error('Failed to load dashboard data:', err);
       setError(err?.message || 'Failed to load dashboard data');
@@ -179,46 +162,7 @@ export default function TrainerDashboard() {
   }
 
   // --- Reach-out actions ---
-  async function logFollowup(clientId, method, note) {
-    try {
-      const { error } = await supabase.from('trainer_followups').insert({
-        trainer_id: profile.id,
-        client_id: clientId,
-        gym_id: profile.gym_id,
-        method,
-        note: note || null,
-        outcome: null,
-      });
-      if (error) throw error;
-      setContactedMap(prev => ({ ...prev, [clientId]: new Date().toISOString() }));
-    } catch (err) {
-      logger.error('Failed to log followup:', err);
-    }
-  }
 
-  async function handlePush(member) {
-    setSubmittingAction(`push-${member.id}`);
-    try {
-      await supabase.from('notifications').insert({
-        profile_id: member.id,
-        gym_id: profile.gym_id,
-        type: 'trainer_message',
-        title: t('trainerDashboard.reachOut.pushTitle', { name: profile.full_name || t('trainerDashboard.yourTrainerFallback') }),
-        body: t('trainerDashboard.reachOut.pushBody'),
-      });
-      await logFollowup(member.id, 'push', 'Sent push notification');
-    } catch (err) {
-      logger.error('Failed to send push:', err);
-    } finally {
-      setSubmittingAction(null);
-    }
-  }
-
-  function handleCallOpen(member) {
-    setCallModal(member);
-    setCallNote('');
-    setCallOutcome('no_answer');
-  }
 
   async function handleCallSubmit() {
     if (!callModal) return;
@@ -232,7 +176,6 @@ export default function TrainerDashboard() {
         note: callNote || null,
         outcome: callOutcome,
       });
-      setContactedMap(prev => ({ ...prev, [callModal.id]: new Date().toISOString() }));
       setCallModal(null);
     } catch (err) {
       logger.error('Failed to log call:', err);
@@ -283,111 +226,6 @@ export default function TrainerDashboard() {
       .slice(0, 5);
   }, [clients, churnScores, sevenDaysAgoDate]);
 
-  const fourteenDaysAgo = subDays(new Date(), 14);
-  const atRiskClients = clients
-    .filter((m) => {
-      const churn = churnScores[m.id];
-      if (churn) return churn.score >= 30;
-      const lastActive = m.last_active_at ? new Date(m.last_active_at) : null;
-      return !lastActive || lastActive < fourteenDaysAgo;
-    })
-    .sort((a, b) => {
-      const aScore = churnScores[a.id]?.score ?? 0;
-      const bScore = churnScores[b.id]?.score ?? 0;
-      if (bScore !== aScore) return bScore - aScore;
-      const aDate = a.last_active_at ? new Date(a.last_active_at) : new Date(0);
-      const bDate = b.last_active_at ? new Date(b.last_active_at) : new Date(0);
-      return aDate - bDate;
-    });
-
-  // Unified "needs attention" list: at-risk, volume decline, inactive, follow-up overdue
-  const needsAttentionList = useMemo(() => {
-    const contactedClientIds = new Set(trainerNotes.map(n => n.client_id));
-    const items = [];
-    const seenIds = new Set();
-
-    // 1. At-risk clients (highest priority)
-    atRiskClients.forEach(c => {
-      const churn = churnScores[c.id];
-      const score = churn ? Math.round(churn.score) : null;
-      items.push({
-        client: c,
-        reason: score
-          ? t('trainerDashboard.attention.atRiskScore', { score })
-          : t('trainerDashboard.attention.inactive'),
-        priority: 1,
-        type: 'at-risk',
-      });
-      seenIds.add(c.id);
-    });
-
-    // 2. Declining volume
-    clients.forEach(c => {
-      if (seenIds.has(c.id)) return;
-      const thisWeekVol = weekSessions
-        .filter(s => s.profile_id === c.id)
-        .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-      const prevWeekVol = prevWeekSessions
-        .filter(s => s.profile_id === c.id)
-        .reduce((sum, s) => sum + (s.total_volume_lbs || 0), 0);
-      if (prevWeekVol > 0 && thisWeekVol < prevWeekVol) {
-        const dropPct = Math.round(((prevWeekVol - thisWeekVol) / prevWeekVol) * 100);
-        if (dropPct > 20) {
-          items.push({
-            client: c,
-            reason: t('trainerDashboard.attention.volumeDeclined', { pct: dropPct }),
-            priority: 2,
-            type: 'volume',
-          });
-          seenIds.add(c.id);
-        }
-      }
-    });
-
-    // 3. Inactive (no workout in 8+ days, not already flagged)
-    const eightDaysAgo = subDays(new Date(), 8);
-    clients.forEach(c => {
-      if (seenIds.has(c.id)) return;
-      const lastActive = c.last_active_at ? new Date(c.last_active_at) : null;
-      if (!lastActive || lastActive < eightDaysAgo) {
-        const days = lastActive ? Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24)) : 30;
-        items.push({
-          client: c,
-          reason: t('trainerDashboard.attention.noActivity', { days }),
-          priority: 3,
-          type: 'inactive',
-        });
-        seenIds.add(c.id);
-      }
-    });
-
-    // 4. Follow-up overdue (no contact in 7+ days, not already flagged)
-    clients.forEach(c => {
-      if (seenIds.has(c.id)) return;
-      if (!contactedClientIds.has(c.id)) {
-        items.push({
-          client: c,
-          reason: t('trainerDashboard.attention.followUpOverdue'),
-          priority: 4,
-          type: 'followup',
-        });
-        seenIds.add(c.id);
-      }
-    });
-
-    items.sort((a, b) => a.priority - b.priority);
-    return items;
-  }, [clients, atRiskClients, churnScores, weekSessions, prevWeekSessions, trainerNotes, t]);
-
-  // Priority clients for Section 3 (top 5 needing attention)
-  const priorityClients = useMemo(() => {
-    return needsAttentionList.slice(0, 5).map(item => {
-      const daysInactive = getDaysInactive(item.client.last_active_at);
-      const churn = churnScores[item.client.id];
-      return { ...item, daysInactive, churn };
-    });
-  }, [needsAttentionList, churnScores]);
-
   // Client name map
   const clientMap = {};
   clients.forEach((m) => {
@@ -398,34 +236,6 @@ export default function TrainerDashboard() {
     return name ? name.charAt(0).toUpperCase() : '?';
   }
 
-  function getDaysInactive(lastActiveAt) {
-    if (!lastActiveAt) return '30+';
-    return Math.floor((Date.now() - new Date(lastActiveAt).getTime()) / (1000 * 60 * 60 * 24));
-  }
-
-  function getChurnLevel(score) {
-    if (score >= 80) return { label: t('trainer.churnCritical'), color: 'text-red-400', bg: 'bg-red-500/10' };
-    if (score >= 55) return { label: t('trainer.churnHigh'), color: 'text-orange-400', bg: 'bg-orange-500/10' };
-    return { label: t('trainer.churnMedium'), color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
-  }
-
-  function getAttentionColor(type) {
-    switch (type) {
-      case 'at-risk': return { text: 'text-red-400', bg: 'bg-red-500/10', icon: AlertTriangle };
-      case 'volume': return { text: 'text-amber-400', bg: 'bg-amber-500/10', icon: Activity };
-      case 'inactive': return { text: 'text-orange-400', bg: 'bg-orange-500/10', icon: Clock };
-      case 'followup': return { text: 'text-blue-400', bg: 'bg-blue-500/10', icon: MessageSquare };
-      default: return { text: 'text-[var(--color-text-secondary)]', bg: 'bg-white/[0.04]', icon: AlertTriangle };
-    }
-  }
-
-  function getStatusBadge(status) {
-    switch (status) {
-      case 'confirmed': return { label: t('trainerDashboard.statusConfirmed'), cls: 'bg-emerald-500/10 text-emerald-400' };
-      case 'completed': return { label: t('trainerDashboard.statusCompleted'), cls: 'bg-blue-500/10 text-blue-400' };
-      default: return { label: t('trainerDashboard.statusScheduled'), cls: 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' };
-    }
-  }
 
   if (loading) {
     return (
@@ -617,9 +427,11 @@ export default function TrainerDashboard() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handlePush(item.client)}
-                      disabled={submittingAction === `push-${item.client.id}`}
-                      className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-blue-500/10 flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                      onClick={async () => {
+                        const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: item.client.id });
+                        if (convId) navigate(`/trainer/messages/${convId}`);
+                      }}
+                      className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-blue-500/10 flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors"
                     >
                       <MessageSquare size={13} className="text-blue-400" />
                       <span className="text-[11px] font-medium text-blue-400">{t('trainerDashboard.messageBtn')}</span>
@@ -763,51 +575,7 @@ export default function TrainerDashboard() {
           </div>
         )}
 
-        {/* ── Priority Clients (existing at-risk list) ── */}
-        {priorityClients.length > 0 && (
-          <div>
-            <h2 className="text-[16px] md:text-[18px] font-bold text-[var(--color-text-primary)] mb-3">
-              {t('trainerDashboard.priorityClientsTitle')}
-            </h2>
-            <div className="bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)] rounded-2xl overflow-hidden divide-y divide-[var(--color-border-subtle)]">
-              {priorityClients.map((item) => {
-                const name = item.client.full_name || item.client.username || t('trainerDashboard.unknownFallback');
-                const level = item.churn ? getChurnLevel(item.churn.score) : null;
-                return (
-                  <div key={item.client.id} className="flex items-center gap-3 px-4 py-3.5">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${level ? level.bg : 'bg-amber-500/10'}`}>
-                      <span className={`text-[13px] font-semibold ${level ? level.color : 'text-amber-400'}`}>
-                        {getInitial(name)}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] text-[var(--color-text-primary)] font-medium truncate">{name}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        {level && (
-                          <span className={`text-[11px] font-bold ${level.color}`}>
-                            {t('trainerDashboard.riskLabel')}: {Math.round(item.churn.score)}
-                          </span>
-                        )}
-                        <span className="text-[11px] text-[var(--color-text-muted)]">
-                          {item.client.last_active_at
-                            ? `${t('trainerDashboard.lastActive')} ${format(new Date(item.client.last_active_at), 'MMM d', { locale: dateFnsLocale })}`
-                            : t('trainerDashboard.noActivityRecorded')}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => navigate(`/trainer/clients/${item.client.id}`)}
-                      className="shrink-0 min-h-[36px] h-8 px-3 rounded-xl bg-[var(--color-accent)]/10 flex items-center gap-1.5 hover:bg-[var(--color-accent)]/20 transition-colors"
-                    >
-                      <Eye size={13} className="text-[var(--color-accent)]" />
-                      <span className="text-[11px] font-medium text-[var(--color-accent)]">{t('trainerDashboard.view')}</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* Priority Clients removed — redundant with Needs Attention section */}
       </div>
 
       {/* Call Note Modal */}
