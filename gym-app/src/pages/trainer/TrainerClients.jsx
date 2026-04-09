@@ -806,7 +806,8 @@ export default function TrainerClients() {
           </h1>
           <button
             onClick={() => setShowAddClient(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] text-[var(--color-text-on-accent)] font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             <UserPlus size={16} />
             {t('trainerClients.addClient', 'Add Client')}

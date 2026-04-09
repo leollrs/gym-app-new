@@ -1041,7 +1041,7 @@ export default function TrainerClasses() {
           </h1>
           <button
             onClick={() => setShowProposeClass(true)}
-            className="flex items-center gap-1.5 px-3 py-2.5 font-bold rounded-xl text-[12px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2.5 font-bold rounded-xl text-[13px] transition-colors min-h-[44px] shrink-0 hover:brightness-110 active:scale-95"
             style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
           >
             <Plus size={15} />
