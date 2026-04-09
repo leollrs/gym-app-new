@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { useToast } from '../../contexts/ToastContext';
@@ -794,6 +795,7 @@ export default function AdminSettings() {
       applyBranding({ primaryColor, secondaryColor: accentColor });
     },
     onSuccess: () => {
+      posthog?.capture('admin_branding_updated');
       queryClient.invalidateQueries({ queryKey: adminKeys.settings(gymId) });
       refreshProfile();
       setPaletteSaved(true);

@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
+import posthog from 'posthog-js';
 import useScanClaim from '../../../hooks/useScanClaim';
 import { parseQRContent } from '../../../lib/scanRouter';
 
@@ -162,6 +163,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
         email: email.trim(),
         has_referral: !!referrerInfo,
       });
+      posthog?.capture('admin_member_invited', { method: 'direct_add' });
 
       setResult({ profileId: newProfile.id, code: linkCode, name: name.trim() });
       setPhase('result');

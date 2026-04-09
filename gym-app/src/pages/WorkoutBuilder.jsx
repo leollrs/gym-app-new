@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { clearCache } from '../lib/queryCache';
 import { exName } from '../lib/exerciseName';
+import { usePostHog } from '@posthog/react';
 
 const nanoid = (len = 8) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -197,6 +198,7 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText, t }) => {
 };
 
 const WorkoutBuilder = () => {
+  const posthog = usePostHog();
   const { t } = useTranslation('pages');
   const { id } = useParams();
   const navigate = useNavigate();
@@ -416,6 +418,7 @@ const WorkoutBuilder = () => {
 
       setOriginalExercises([...routineExercises]);
       clearCache(`dash:${user.id}`);
+      posthog?.capture('workout_built', { exercise_count: routineExercises.length });
 
       if (andExit) {
         navigate(returnTo);

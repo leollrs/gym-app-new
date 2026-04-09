@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, QrCode } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -19,6 +20,7 @@ export default function CheckIn() {
   const { user, profile, gymName, gymConfig } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation('pages');
+  const posthog = usePostHog();
 
   const [checkins,  setCheckins]  = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -104,7 +106,7 @@ export default function CheckIn() {
           <>
             {/* QR Code button */}
             <button
-              onClick={() => setShowQR(true)}
+              onClick={() => { posthog?.capture('check_in', { method: 'qr' }); setShowQR(true); }}
               aria-label="Show QR code for check-in"
               className="w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 mb-5 transition-all duration-300 active:scale-95 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
               style={{

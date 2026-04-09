@@ -14,6 +14,7 @@ import i18n from 'i18next';
 import { exName, exInstructions, localizeRoutineName } from '../lib/exerciseName';
 import { cacheWorkoutData, getCachedWorkoutData } from '../lib/offlineQueue';
 
+import { usePostHog } from '@posthog/react';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
 import Confetti from '../components/Confetti';
@@ -335,6 +336,7 @@ const ActiveSession = () => {
   const location = useLocation();
   const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
+  const posthog = usePostHog();
 
   // ── Class booking context (when starting from a class template) ────────────
   const classBookingId = location.state?.classBookingId ?? null;
@@ -958,6 +960,7 @@ const ActiveSession = () => {
   // ── Persistent lock-screen notification + Live Activity ─────────────────────
   useEffect(() => {
     if (dataLoading || !exercises.length) return;
+    posthog?.capture('workout_started', { routine_name: routineName, exercise_count: exercises.length });
     const cs = Object.values(loggedSets).flat().filter(s => s.completed).length;
     const ts = Object.values(loggedSets).flat().length;
     // Start Live Activity (lock screen + Dynamic Island) — iOS only
@@ -1617,6 +1620,13 @@ const ActiveSession = () => {
       const { data: result, error: rpcError } = await supabase.rpc('complete_workout', { p_payload: payload });
       if (rpcError) throw rpcError;
 
+      posthog?.capture('workout_completed', {
+        duration_seconds: elapsedTime,
+        total_volume: totalVolume,
+        sets_completed: completedSets,
+        prs_hit: sessionPRs.length,
+      });
+
       sessionEndedRef.current = true;
       localStorage.removeItem(sessionKey);
       // Also clear DB draft
@@ -2008,7 +2018,7 @@ const ActiveSession = () => {
         onSetCurrentExerciseIndex={setCurrentExerciseIndex}
         onDismissResumedBanner={() => setShowResumedBanner(false)}
         watchHeartRate={watchHeartRate}
-        onDiscardSession={() => { sessionEndedRef.current = true; localStorage.removeItem(sessionKey); supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
+        onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; localStorage.removeItem(sessionKey); supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
       {/* Rest Timer Overlay */}

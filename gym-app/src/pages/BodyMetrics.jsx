@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import ChartTooltip from '../components/ChartTooltip';
+import { usePostHog } from '@posthog/react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -144,6 +145,7 @@ const getProgressColor = (metric, delta, primaryGoal) => {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function BodyMetrics() {
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
@@ -280,6 +282,7 @@ export default function BodyMetrics() {
     if (!existingLog) {
       addPoints(user.id, profile.gym_id, 'weight_logged', 10, 'Logged body weight', weightDedupKey).catch(() => {});
     }
+    posthog?.capture('weight_logged', { value: w });
     // Sync weight to Apple Health / Health Connect if enabled
     try {
       const hs = JSON.parse(localStorage.getItem('tugympr_health_settings') || '{}');

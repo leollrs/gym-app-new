@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -2046,6 +2047,7 @@ export default function AdminClasses() {
         const { data: inserted, error } = await supabase.from('gym_classes').insert(payload).select('id').single();
         if (error) throw error;
         logAdminAction('create_class', 'class', inserted.id, { name: formData.name });
+        posthog?.capture('admin_class_created');
 
         // Insert pending schedule slots for new class
         if (formData.pendingSlots?.length > 0 && inserted?.id) {
@@ -2085,6 +2087,7 @@ export default function AdminClasses() {
       const { error } = await supabase.rpc('admin_delete_class', { p_class_id: deleteTarget.id });
       if (error) throw error;
       logAdminAction('delete_class', 'class', deleteTarget.id);
+      posthog?.capture('admin_class_deleted');
       if (deleteTarget.image_path) {
         await supabase.storage.from('class-images').remove([deleteTarget.image_path]);
       }

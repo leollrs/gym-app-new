@@ -11,6 +11,7 @@ import {
   SlidersHorizontal, Sparkles, RefreshCw, BarChart2, ChevronDown, ChevronUp,
   Calendar, ScanLine, ScanBarcode, Loader, ArrowUp, ArrowDown,
 } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
@@ -2062,6 +2063,7 @@ const PLANNER_SLOT_KEYS = ['breakfast', 'lunch', 'dinner'];
 
 const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false }) => {
   const { t, i18n } = useTranslation('pages');
+  const posthogPlanner = usePostHog();
   const lang = i18n.language || 'en';
   const [plan, setPlan] = useState({});
   const [toast, setToast] = useState('');
@@ -2150,6 +2152,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       carbs: targets?.daily_carbs_g || 200,
       fat: targets?.daily_fat_g || 65,
     };
+    posthogPlanner?.capture('meal_plan_generated', { plan_type: 'week' });
     const weekPlan = generateWeekPlan({ targets: macroTargets, favorites: [], lang });
     const newPlan = { ...plan };
     weekDates.forEach((date, i) => {
@@ -3518,6 +3521,7 @@ const NutritionNav = ({ view, setView }) => {
 export default function Nutrition({ embedded = false }) {
   const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
+  const posthog = usePostHog();
   const lang = i18n.language || 'en';
 
   const [view, setViewRaw] = useState('home');
@@ -3640,7 +3644,12 @@ export default function Nutrition({ embedded = false }) {
   const toggleSaveRecipe = (id) => {
     setSavedRecipeIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        posthog?.capture('recipe_saved');
+      }
       return next;
     });
   };
@@ -3765,6 +3774,7 @@ export default function Nutrition({ embedded = false }) {
           if (!product) {
             setBarcodeError(t('nutrition.productNotFound'));
           } else {
+            posthog?.capture('food_scanned', { method: 'barcode' });
             setBarcodeProduct(product);
           }
         } catch (err) {
@@ -3942,6 +3952,7 @@ export default function Nutrition({ embedded = false }) {
       if (result.error) throw new Error(result.error);
       if (!result.items?.length) throw new Error(t('nutrition.errorCouldNotIdentify', 'Could not identify food items'));
 
+      posthog?.capture('food_scanned', { method: 'photo' });
       setPhotoResult(result);
       // Clear pending data so the recovery useEffect doesn't re-trigger
       try {
@@ -3991,6 +4002,8 @@ export default function Nutrition({ embedded = false }) {
       .select('*, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)')
       .single();
     if (!error && data) {
+      // Track manual food logging (photo/barcode tracked at scan time)
+      if (food.id) posthog?.capture('food_scanned', { method: 'manual' });
       setTodayLogs(prev => [data, ...prev]);
       setLogFood(null);
       setSearchOpen(false);

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { sanitize } from '../../lib/sanitize';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { broadcastNotification } from '../../lib/notifications';
 import { PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton, AdminTabs } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
@@ -63,6 +64,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
     },
     onSuccess: () => {
       logAdminAction('create_announcement', 'announcement', null, { title: form.title });
+      posthog?.capture('admin_announcement_sent', { type: form.type });
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
       showToast(t('admin.announcements.published', 'Announcement published'), 'success');
       broadcastNotification({

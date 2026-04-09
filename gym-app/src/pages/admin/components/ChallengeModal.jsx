@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { AdminModal } from '../../../components/admin';
 
 const CHALLENGE_TYPES = [
@@ -157,6 +158,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
     },
     onSuccess: () => {
       logAdminAction('create_challenge', 'challenge', null);
+      posthog?.capture('admin_challenge_created', { source: 'manual' });
       queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
       showToast(t('admin.challenges.challengeCreated', 'Challenge created'), 'success');
       onClose();

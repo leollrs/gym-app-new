@@ -231,6 +231,14 @@ export const AuthProvider = ({ children }) => {
           gym_id: data.gym_id,
           platform: window.Capacitor?.getPlatform?.() || 'web',
         });
+        posthog?.capture('app_session_started', {
+          role: data.role,
+          gym_id: data.gym_id,
+          is_onboarded: data.is_onboarded,
+          membership_status: data.membership_status,
+          has_avatar: !!data.avatar_url,
+          language: data.preferred_language,
+        });
       } catch {}
 
 

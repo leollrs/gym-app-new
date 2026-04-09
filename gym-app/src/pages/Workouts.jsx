@@ -18,6 +18,7 @@ import { exercises as exerciseLibrary } from '../data/exercises';
 import { useTranslation } from 'react-i18next';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
 import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/programAdaptation';
+import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
 import { getExerciseReasoning } from '../lib/exerciseReasoning';
 
@@ -214,7 +215,7 @@ const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
 };
 
 // ── Routine detail (expandable) ──────────────────────────
-const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
+const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => {
   const { t } = useTranslation('pages');
   const [exercises, setExercises] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -258,6 +259,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId }) => {
       <div className="flex flex-col gap-2 mt-3 pt-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <Link
           to={`/session/${routineId}`}
+          onClick={onStart}
           className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
           style={{ backgroundColor: 'var(--color-accent)', color: '#000000' }}
         >
@@ -281,6 +283,7 @@ const Workouts = () => {
   const { profile, user } = useAuth();
   const { routines, loading, createRoutine, deleteRoutine, refetch } = useRoutines();
   const { t, i18n } = useTranslation('pages');
+  const posthog = usePostHog();
 
   useEffect(() => { document.title = `${t('workouts.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -654,6 +657,7 @@ const Workouts = () => {
   };
   const handleSaveCreateModal = async ({ name, exercises }) => {
     const routine = await createRoutine(name);
+    posthog?.capture('routine_created');
     if (exercises?.length > 0) {
       const rows = exercises.map((ex, i) => ({
         routine_id: routine.id, exercise_id: ex.id, position: i + 1,
@@ -1211,7 +1215,7 @@ const Workouts = () => {
                             <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--color-text-subtle)' }} />
                           </button>
                           {isExpanded && (
-                            <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} />
+                            <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
                           )}
                         </div>
                       );
@@ -1338,7 +1342,7 @@ const Workouts = () => {
                         <Trash2 size={13} />
                       </button>
                       {isExpanded && (
-                        <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} />
+                        <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
                       )}
                     </div>
                   );

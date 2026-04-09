@@ -15,6 +15,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import QRCodeModal from '../components/QRCodeModal';
 import { formatDistanceToNow } from 'date-fns';
+import { usePostHog } from '@posthog/react';
 
 const REFERRAL_BASE_URL = 'https://tugympr.app/referral';
 
@@ -23,6 +24,7 @@ export default function Referrals() {
   const { user, profile, gymName } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation('pages');
+  const posthog = usePostHog();
 
   const [referralCode, setReferralCode] = useState(null);
   const [referralConfig, setReferralConfig] = useState(null);
@@ -52,6 +54,7 @@ export default function Referrals() {
             .rpc('generate_referral_code', { p_profile_id: user.id, p_gym_id: gymId });
           if (!rpcErr && generated) {
             setReferralCode(generated);
+            posthog?.capture('referral_code_generated');
           }
         }
       }
@@ -105,6 +108,7 @@ export default function Referrals() {
     try {
       await navigator.clipboard.writeText(referralCode);
       setCopied(true);
+      posthog?.capture('referral_code_shared', { method: 'copy' });
       showToast(t('referrals.codeCopied'), 'success');
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -126,9 +130,11 @@ export default function Referrals() {
           text: message,
           url: referralLink,
         });
+        posthog?.capture('referral_code_shared', { method: 'native_share' });
       } else {
         // Fallback: copy link
         await navigator.clipboard.writeText(`${message}\n${referralLink}`);
+        posthog?.capture('referral_code_shared', { method: 'copy' });
         showToast(t('referrals.linkCopied'), 'success');
       }
     } catch {
@@ -227,7 +233,7 @@ export default function Referrals() {
                   />
                 </div>
                 <button
-                  onClick={() => setShowQRModal(true)}
+                  onClick={() => { setShowQRModal(true); posthog?.capture('referral_code_shared', { method: 'qr' }); }}
                   aria-label={t('referrals.openQR', 'Open QR code fullscreen')}
                   className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] rounded-xl text-[13px] font-semibold mb-3 transition-all duration-200 active:scale-[0.97]"
                   style={{

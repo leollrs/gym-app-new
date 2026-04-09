@@ -12,6 +12,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
   PageHeader, AdminCard, AdminModal, FadeIn, CardSkeleton,
@@ -147,6 +148,7 @@ const RewardModal = ({ isOpen, onClose, gymId, reward, t }) => {
       }
     },
     onSuccess: () => {
+      if (!isEdit) posthog?.capture('admin_reward_created', { name: form.name.trim() });
       queryClient.invalidateQueries({ queryKey: rewardKeys.all(gymId) });
       showToast(t('admin.rewards.saved', 'Reward saved'), 'success');
       onClose();

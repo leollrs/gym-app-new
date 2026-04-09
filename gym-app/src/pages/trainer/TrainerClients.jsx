@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { encryptMessage } from '../../lib/messageEncryption';
+import posthog from 'posthog-js';
 import logger from '../../lib/logger';
 import { formatDistanceToNow, subDays } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
@@ -235,6 +236,7 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
         is_active: true,
       }, { onConflict: 'trainer_id,client_id' });
       if (error) throw error;
+      posthog?.capture('trainer_client_added');
       onAdded(memberId);
     } catch (err) {
       logger.error('AddClientModal: failed to assign client:', err);
@@ -369,6 +371,7 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
       }));
       const { error } = await supabase.from('gym_program_enrollments').upsert(rows, { onConflict: 'program_id,profile_id' });
       if (error) throw error;
+      posthog?.capture('trainer_program_assigned', { client_count: selectedClients.length });
       showToast(t('trainerClients.programAssignedSuccess', 'Program assigned to {{count}} clients', { count: selectedClients.length }), 'success');
       onDone();
     } catch (err) {

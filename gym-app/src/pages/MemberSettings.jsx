@@ -8,6 +8,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { exportWorkoutHistory, exportPersonalRecords, exportBodyMetrics } from '../lib/exportData';
+import { usePostHog } from '@posthog/react';
 
 const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -18,6 +19,7 @@ export default function MemberSettings() {
   const navigate = useNavigate();
   const { deleteAccount, user, profile } = useAuth();
   const { t, i18n } = useTranslation('pages');
+  const posthog = usePostHog();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -104,6 +106,7 @@ export default function MemberSettings() {
                 type="button"
                 onClick={async () => {
                   i18n.changeLanguage(lang.code);
+                  posthog?.capture('language_changed', { new_language: lang.code });
                   if (user?.id) {
                     await supabase.from('profiles').update({ preferred_language: lang.code }).eq('id', user.id);
                   }
@@ -234,6 +237,7 @@ export default function MemberSettings() {
                   setExporting(prev => ({ ...prev, [item.key]: true }));
                   try {
                     await item.fn(user.id);
+                    posthog?.capture('data_exported', { export_type: item.key });
                     showToast(t('settings.exportSuccess'), 'success');
                   } catch (err) {
                     showToast(t('settings.exportError'), 'error');

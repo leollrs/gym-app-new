@@ -8,6 +8,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import posthog from 'posthog-js';
 import logger from '../../lib/logger';
 import { format, addDays, startOfDay } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
@@ -871,6 +872,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
         },
       });
       if (error) throw error;
+      posthog?.capture('trainer_class_proposed');
       showToast(t('trainerClasses.proposalSent', 'Proposal sent to admin'), 'success');
       onClose();
     } catch (err) {

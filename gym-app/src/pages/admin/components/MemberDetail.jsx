@@ -10,6 +10,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import logger from '../../../lib/logger';
 import { getRiskTier } from '../../../lib/churnScore';
 import { logAdminAction } from '../../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { Avatar, SectionLabel, AdminModal } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
 
@@ -297,6 +298,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     }
 
     logAdminAction('change_status', 'member', member.id, { from: oldStatus, to: nextStatus });
+    if (nextStatus === 'frozen') posthog?.capture('admin_member_frozen');
     setMemberStatus(nextStatus);
     setMemberStatusUpdatedAt(now);
     setPendingAction(null);

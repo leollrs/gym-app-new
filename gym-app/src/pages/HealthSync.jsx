@@ -5,11 +5,13 @@ import { ArrowLeft, Heart, Activity, Dumbbell, RefreshCw, Settings } from 'lucid
 import { isAvailable, readTodaySteps, readWeeklyActivitySummary, requestPermissions } from '../lib/healthSync';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { usePostHog } from '@posthog/react';
 
 const HealthSync = () => {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { user } = useAuth();
+  const posthog = usePostHog();
 
   const [connected, setConnected] = useState(false);
   const [available, setAvailable] = useState(false);
@@ -98,6 +100,7 @@ const HealthSync = () => {
       await requestPermissions();
       setConnected(true);
       await persistConnected(true);
+      posthog?.capture('health_sync_connected', { provider: isIOS ? 'apple' : 'google' });
       // Enable all syncs (settings kept in localStorage for now)
       localStorage.setItem('tugympr_health_settings', JSON.stringify({
         syncWeight: true, syncWorkouts: true, importWeight: true,
@@ -106,6 +109,7 @@ const HealthSync = () => {
       if (/iphone|ipad/i.test(navigator.userAgent)) {
         setConnected(true);
         await persistConnected(true);
+        posthog?.capture('health_sync_connected', { provider: 'apple' });
       }
     }
     setConnecting(false);
@@ -114,6 +118,7 @@ const HealthSync = () => {
   const handleDisconnect = async () => {
     setConnected(false);
     await persistConnected(false);
+    posthog?.capture('health_sync_disconnected');
     localStorage.setItem('tugympr_health_settings', JSON.stringify({
       syncWeight: false, syncWorkouts: false, importWeight: false,
     }));

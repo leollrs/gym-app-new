@@ -25,6 +25,7 @@ import { es as esLocale } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { usePostHog } from '@posthog/react';
 
 const WalletPass = registerPlugin('WalletPass');
 
@@ -974,6 +975,7 @@ const TAB_KEYS = ['rewards', 'purchases', 'history'];
 export default function Rewards() {
   const { t, i18n } = useTranslation('pages');
   const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const posthog = usePostHog();
   const [tab, setTab] = useState('rewards');
   const [loading, setLoading] = useState(true);
   const [pointsData, setPointsData] = useState({ total_points: 0, lifetime_points: ctxLifetimePoints ?? 0 });
@@ -1073,6 +1075,7 @@ export default function Rewards() {
 
     setRedeemTarget(null);
     setSuccessReward({ reward, redemptionId: data?.redemption_id || 'unknown' });
+    posthog?.capture('reward_redeemed', { reward_name: reward.name, points_cost: reward.cost });
     loadData();
   };
 

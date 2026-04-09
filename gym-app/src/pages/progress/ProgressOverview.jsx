@@ -25,6 +25,7 @@ import ChartTooltip from '../../components/ChartTooltip';
 import { sanitize } from '../../lib/sanitize';
 import { formatStatNumber, statFontSize } from '../../lib/formatStatValue';
 import GoalsSection from '../../components/GoalsSection';
+import { usePostHog } from '@posthog/react';
 
 export default function ProgressOverview() {
   const { t, i18n } = useTranslation('pages');

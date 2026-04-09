@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -671,6 +672,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
 // DAILY_CHALLENGES and seededIndex imported from ../lib/dailyChallenges
 
 const DailyChallenge = ({ userId, gymId, t }) => {
+  const posthogDaily = usePostHog();
   const today = new Date();
   const dateString = format(today, 'yyyy-MM-dd');
   const todayStart = startOfDay(today).toISOString();
@@ -781,6 +783,7 @@ const DailyChallenge = ({ userId, gymId, t }) => {
             });
             addPoints(userId, gymId, 'daily_challenge', 25, 'Daily challenge completed').catch(() => {});
           }
+          posthogDaily?.capture('daily_challenge_completed', { challenge_name: challenge.title });
           localStorage.setItem(storageKey, 'true');
         }
       } catch (_) {
@@ -1271,6 +1274,7 @@ const TABS = ['live', 'upcoming', 'ended'];
 export default function Challenges({ embedded = false }) {
   const { t } = useTranslation('pages');
   const { profile, user } = useAuth();
+  const posthog = usePostHog();
   const [challenges, setChallenges]       = useState([]);
   const [participants, setParticipants]   = useState([]);
   const [loading, setLoading]             = useState(true);
@@ -1333,6 +1337,7 @@ export default function Challenges({ embedded = false }) {
       .single();
     if (!error && data) {
       setParticipants(prev => [...prev, data]);
+      posthog?.capture('challenge_joined', { challenge_name: challenge.name, challenge_type: challenge.type });
       // Guard: only award points if this user hasn't already earned them for this challenge.
       // The server-side unique constraint (dedup_key) is the authoritative enforcement;
       // this check avoids a silent rejection from the DB by skipping the call entirely.
@@ -1350,12 +1355,14 @@ export default function Challenges({ embedded = false }) {
   };
 
   const handleLeave = async (challengeId) => {
+    const challenge = challenges.find(c => c.id === challengeId);
     const { error } = await supabase
       .from('challenge_participants')
       .delete()
       .eq('challenge_id', challengeId)
       .eq('profile_id', user.id);
     if (!error) {
+      posthog?.capture('challenge_left', { challenge_name: challenge?.name });
       setParticipants(prev => prev.filter(p => !(p.challenge_id === challengeId && p.profile_id === user.id)));
     }
   };

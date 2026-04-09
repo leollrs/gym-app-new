@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import posthog from 'posthog-js';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { generateProgram } from '../../lib/workoutGenerator';
@@ -519,6 +520,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         ? await supabase.from('trainer_workout_plans').update(payload).eq('id', plan.id)
         : await supabase.from('trainer_workout_plans').insert(payload);
       if (err) { setError(err.message); setSaving(false); return; }
+      if (!isEdit) posthog?.capture('trainer_plan_created');
       onSaved();
     } catch (err) {
       console.error('[TrainerPlans] handleSave error:', err);

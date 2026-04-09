@@ -8,6 +8,7 @@ import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
+import posthog from 'posthog-js';
 
 /**
  * InviteModal — "Invite Member" (Invitar Miembro)
@@ -53,6 +54,7 @@ export default function InviteModal({ gymId, onClose }) {
         has_email: !!email.trim(),
         has_phone: !!phone.trim(),
       });
+      posthog?.capture('admin_member_invited', { method: 'invite_link' });
     } catch (err) {
       logger.error('InviteModal: generate failed:', err);
       setError(err.message || 'Something went wrong');

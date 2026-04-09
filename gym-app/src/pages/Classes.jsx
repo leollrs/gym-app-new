@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Clock, Users, CalendarCheck, Dumbbell, Star, X, Repeat } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
 import EmptyState from '../components/EmptyState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -201,6 +202,7 @@ export default function Classes() {
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
   const { user, profile, gymConfig } = useAuth();
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   useEffect(() => { document.title = `${t('classes.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -316,8 +318,10 @@ export default function Classes() {
     if (error) {
       setToast({ msg: error.message, type: 'error' });
     } else if (data?.status === 'waitlisted') {
+      posthog?.capture('class_waitlisted', { class_id: classId });
       setToast({ msg: t('classes.classFull'), type: 'info' });
     } else {
+      posthog?.capture('class_booked', { class_id: classId });
       setToast({ msg: t('classes.bookingConfirmed'), type: 'success' });
     }
     setActionLoading(null);
@@ -331,6 +335,7 @@ export default function Classes() {
     if (error) {
       setToast({ msg: error.message, type: 'error' });
     } else {
+      posthog?.capture('class_cancelled', { booking_id: bookingId });
       setToast({ msg: t('classes.bookingCancelled'), type: 'info' });
     }
     setActionLoading(null);

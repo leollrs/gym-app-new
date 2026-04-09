@@ -16,6 +16,7 @@ import {
 import { formatStatNumber } from '../lib/formatStatValue';
 import { supabase } from '../lib/supabase';
 import { sendNotification, NOTIFICATION_TYPES } from '../lib/notifications';
+import { usePostHog } from '@posthog/react';
 
 // ── Helpers ─────────────────────────────────────────────────
 const ACCENT = 'var(--color-success)';
@@ -414,6 +415,7 @@ const Leaderboard = ({ embedded = false }) => {
   const gymId = profile?.gym_id;
   const uid = user?.id;
 
+  const posthog = usePostHog();
   useEffect(() => { document.title = `${t('leaderboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
   const [expanded, setExpanded] = useState(null); // which board is expanded
@@ -499,6 +501,7 @@ const Leaderboard = ({ embedded = false }) => {
   const handleExpand = (key) => {
     setExTimeRange('weekly');
     setExpanded(key);
+    posthog?.capture('leaderboard_viewed', { category: key });
   };
 
   const handleChallenge = useCallback((entry, isFriend) => {

@@ -8,6 +8,7 @@ import {
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Droplets, PersonStanding, Flame,
 } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -419,6 +420,7 @@ const CommentRow = ({ comment }) => (
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
 const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onBlock, onDelete, onProfilePreview, reportedIds, t }) => {
+  const posthogCard = usePostHog();
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments]         = useState(null);
   const [commentText, setCommentText]   = useState('');
@@ -531,6 +533,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
       .select('id, content, created_at, profiles(full_name, avatar_url)')
       .single();
     if (!error && newComment) {
+      posthogCard?.capture('social_comment_added');
       setComments(prev => [...(prev ?? []), newComment]);
       // Send notifications for @mentions
       const mentions = [...content.matchAll(/@(\w+)/g)].map(m => m[1]);
@@ -1062,6 +1065,7 @@ const SocialFeed = ({ embedded = false }) => {
   const { t } = useTranslation('pages');
   const { user, profile, gymName, gymLogoUrl } = useAuth();
   const { showToast } = useToast();
+  const posthog = usePostHog();
   const [feed, setFeed]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1217,6 +1221,7 @@ const SocialFeed = ({ embedded = false }) => {
   };
 
   const handleReact = async (feedItemId, reactionType) => {
+    posthog?.capture('social_like_toggled', { reaction_type: reactionType });
     setFeed(prev => prev.map(item => {
       if (item.id !== feedItemId) return item;
       const counts = { ...(item.reactionCounts ?? {}) };
@@ -1394,6 +1399,7 @@ const SocialFeed = ({ embedded = false }) => {
       .select('id, actor_id, gym_id, type, data, body, photo_url, created_at, post_type, profiles(full_name, username, avatar_url, avatar_type, avatar_value)')
       .single();
     if (!error && newItem) {
+      posthog?.capture('social_post_created', { has_photo: !!photoFile });
       setFeed(prev => [{
         ...newItem,
         // Use signed URL in state for immediate display

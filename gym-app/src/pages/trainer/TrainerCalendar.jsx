@@ -3,6 +3,7 @@ import { Plus, X, ChevronLeft, ChevronRight, CalendarDays, Clock, Check, XCircle
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import posthog from 'posthog-js';
 import {
   format, addWeeks, subWeeks, startOfWeek, endOfWeek, addDays,
   isSameDay, isToday, isBefore, setHours, setMinutes, subHours,
@@ -257,9 +258,11 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
       let count = 0;
       let cur = baseDate;
       while (cur <= endLimit) { count++; cur = addWeeks(cur, step); }
+      posthog?.capture('trainer_session_created', { recurring: true, count });
       showToast(t('pages:trainerCalendar.recurringSessionsCreated', { count }), 'success');
     } else {
       showToast(isEdit ? t('pages:trainerCalendar.sessionUpdated') : t('pages:trainerCalendar.sessionScheduled'), 'success');
+      if (!isEdit) posthog?.capture('trainer_session_created', { recurring: false });
     }
     onSaved();
   };

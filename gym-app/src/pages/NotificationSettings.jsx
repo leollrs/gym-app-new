@@ -4,11 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Bell, BellOff, Settings } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { usePostHog } from '@posthog/react';
 
 export default function NotificationSettings() {
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
+  const posthog = usePostHog();
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -32,6 +34,7 @@ export default function NotificationSettings() {
       notif_reward_reminders: newVal,
     };
     await supabase.from('profiles').update(updates).eq('id', user.id);
+    posthog?.capture('notification_setting_toggled', { setting_name: 'all_notifications', enabled: newVal });
     setSaving(false);
   };
 

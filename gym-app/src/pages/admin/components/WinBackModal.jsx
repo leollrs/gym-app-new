@@ -7,6 +7,7 @@ import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
 import { logAdminAction } from '../../../lib/adminAudit';
+import posthog from 'posthog-js';
 
 export default function WinBackModal({ member, gymId, adminId, activeCampaign, onClose, onSent, memberEmail: emailProp, memberPhone }) {
   const { t } = useTranslation('pages');
@@ -173,6 +174,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
       } catch (_) {}
 
       logAdminAction('send_winback', 'member', member.id, { channel, offer: rewardName });
+      posthog?.capture('admin_winback_sent', { method: channel });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
     } catch (err) {

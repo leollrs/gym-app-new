@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { PageHeader, AdminCard, FadeIn, CardSkeleton, SectionLabel, AdminTabs, AdminPageShell, ErrorCard } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ChallengeModal from './components/ChallengeModal';
@@ -249,6 +250,7 @@ export default function AdminChallenges() {
     },
     onSuccess: (_, challengeId) => {
       logAdminAction('delete_challenge', 'challenge', challengeId);
+      posthog?.capture('admin_challenge_deleted');
       queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
       showToast(t('admin.challenges.challengeDeleted', 'Challenge deleted'), 'success');
       setDeleteConfirm(null);
@@ -292,6 +294,7 @@ export default function AdminChallenges() {
             const { error } = await supabase.from('challenges').insert(payload);
             if (error) throw error;
             logAdminAction('create_challenge', 'challenge', null, { source: 'ai_suggestion' });
+            posthog?.capture('admin_challenge_created', { source: 'ai_suggestion', type: suggestion.challenge_type });
             queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
             showToast(t('admin.challenges.challengeCreated', 'Reto creado'), 'success');
           } catch (err) {

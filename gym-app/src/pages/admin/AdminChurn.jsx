@@ -19,6 +19,7 @@ import { exportCSV } from '../../lib/csvExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 
 // Shared components
 import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
@@ -307,6 +308,7 @@ function BulkMessageModal({ members, gymId, adminId, onClose, onSent }) {
       }
 
       if (failures.length === 0) {
+        posthog?.capture('admin_winback_sent', { method: 'bulk_message', count: members.length });
         setSent(true);
         setTimeout(() => { onSent?.(); onClose(); }, 1200);
       } else if (failures.length < 3) {

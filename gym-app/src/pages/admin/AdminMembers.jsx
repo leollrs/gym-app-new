@@ -14,6 +14,7 @@ import { getRiskTier, fetchMembersWithChurnScores } from '../../lib/churnScore';
 import { exportCSV } from '../../lib/csvExport';
 import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics } from '../../lib/exportData';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
@@ -419,6 +420,7 @@ export default function AdminMembers() {
         return;
       }
       ids.forEach(id => logAdminAction('bulk_freeze', 'member', id));
+      posthog?.capture('admin_member_frozen', { bulk: true, count: ids.length });
       showToast(t('admin.members.bulkFreezeSuccess', { count: ids.length, defaultValue: '{{count}} members frozen' }), 'success');
       refetch();
       clearSelection();

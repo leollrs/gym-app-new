@@ -22,6 +22,7 @@ import ChartTooltip from '../../components/ChartTooltip';
 import { takePhoto } from '../../lib/takePhoto';
 import { validateImageFile } from '../../lib/validateImage';
 import { useToast } from '../../contexts/ToastContext';
+import { usePostHog } from '@posthog/react';
 
 // ── Goal-aware progress color helper ─────────────────────────────────────────
 
@@ -350,6 +351,7 @@ const blobToBase64 = (blob) => new Promise((resolve) => {
 
 const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => {
   const { t, i18n } = useTranslation('pages');
+  const posthog = usePostHog();
   const empty = MEASUREMENT_FIELDS.reduce((a, f) => ({ ...a, [f.key]: '' }), {});
   const initialForm = existing
     ? MEASUREMENT_FIELDS.reduce(
@@ -524,6 +526,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
     try {
       const body = { image: frontBase64, language: i18n.language };
       if (sideBase64) body.sideImage = sideBase64;
+      posthog?.capture('ai_body_analysis_requested');
 
       const { data, error: fnError } = await supabase.functions.invoke('analyze-body-photo', { body });
 
@@ -577,6 +580,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
         .from('body_measurements')
         .upsert(payload, { onConflict: 'profile_id,measured_at' });
       if (err) throw new Error(err.message);
+      posthog?.capture('body_metric_logged', { metric_type: 'measurements' });
       onSaved();
       handleClose();
     } catch (err) {
@@ -860,6 +864,7 @@ export default function ProgressBody() {
   const { t, i18n } = useTranslation('pages');
   const { user, profile } = useAuth();
   const { showToast } = useToast();
+  const posthog = usePostHog();
   const [state, dispatch] = useReducer(bodyReducer, bodyInitialState);
   const {
     weightLogs, chartData, period, weightInput, loggingWeight,
@@ -1006,6 +1011,7 @@ export default function ProgressBody() {
       return;
     }
     dispatch({ type: 'CLEAR_WEIGHT_INPUT' });
+    posthog?.capture('body_metric_logged', { metric_type: 'weight' });
     loadData();
     dispatch({ type: 'SET_LOGGING_WEIGHT', payload: false });
   };
@@ -1306,6 +1312,7 @@ export default function ProgressBody() {
                       taken_at: today(),
                       is_private: true,
                     });
+                    posthog?.capture('progress_photo_taken');
                     loadData();
                   } catch (err) {
                     // silent — upload button re-enabled in finally

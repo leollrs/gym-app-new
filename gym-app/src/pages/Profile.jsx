@@ -25,6 +25,7 @@ import { ACHIEVEMENT_DEFS, ACHIEVEMENT_CATEGORIES, fetchAchievementData, awardAc
 import { getRewardTier, getUserPoints } from '../lib/rewardsEngine';
 import { getLevel } from '../components/LevelBadge';
 import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
+import { usePostHog } from '@posthog/react';
 
 // Map achievement icon names → lucide components
 const ICON_MAP = {
@@ -129,6 +130,7 @@ const Profile = () => {
   const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [activeTab, setActiveTab] = useState('activity');
 
   useEffect(() => { document.title = `Profile | ${window.__APP_NAME || 'TuGymPR'}`; }, []);
@@ -416,6 +418,7 @@ const Profile = () => {
       }
 
       setAvatarPickerOpen(false);
+      posthog?.capture('avatar_changed', { type });
       showToast(t('toasts.avatarUpdated'), 'success');
       // Also refresh from DB to ensure full consistency
       refreshProfile();

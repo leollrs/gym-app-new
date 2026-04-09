@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { logAdminAction } from '../../lib/adminAudit';
+import posthog from 'posthog-js';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
@@ -130,6 +131,7 @@ const ProductModal = ({ isOpen, onClose, gymId, product, t }) => {
         logAdminAction('update_product', 'product', product.id, { name: form.name.trim() });
       } else {
         logAdminAction('create_product', 'product', null, { name: form.name.trim() });
+        posthog?.capture('admin_product_created', { category: form.category });
       }
       queryClient.invalidateQueries({ queryKey: storeKeys.products(gymId) });
       showToast(isEdit ? t('admin.store.productUpdated', 'Product updated') : t('admin.store.productCreated', 'Product created'), 'success');

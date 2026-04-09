@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import posthog from 'posthog-js';
 
 let _authContext = null;
 
@@ -101,12 +102,19 @@ export async function trackError(type, error, extra = {}) {
       cleanExtra[k] = typeof v === 'string' ? scrubSensitive(v) : v;
     }
 
+    const component = extra.componentStack ? 'ErrorBoundary' : extra.component || undefined;
+
+    // Send to PostHog for correlation with user sessions
+    try {
+      posthog?.capture('$exception', { message, stack, component, type });
+    } catch {}
+
     await supabase.from('error_logs').insert({
       type,
       message,
       stack: stack || undefined,
       page,
-      component: extra.componentStack ? 'ErrorBoundary' : extra.component || undefined,
+      component,
       device_info: getDeviceInfo(),
       metadata: Object.keys(cleanExtra).length > 0 ? cleanExtra : undefined,
       profile_id: _authContext?.profile?.id || null,

@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
 import { sanitize } from '../lib/sanitize';
 import { Capacitor } from '@capacitor/core';
+import { usePostHog } from '@posthog/react';
 
 // Keyboard plugin — only available on native platforms
 let Keyboard = null;
@@ -189,6 +190,7 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
 const ChatView = ({ conversationId, onBack }) => {
   const { t } = useTranslation('pages');
   const { user } = useAuth();
+  const posthog = usePostHog();
   const [messages, setMessages] = useState([]);
   const [otherUser, setOtherUser] = useState(null);
   const [input, setInput] = useState('');
@@ -337,6 +339,7 @@ const ChatView = ({ conversationId, onBack }) => {
     });
 
     if (!error) {
+      posthog?.capture('dm_sent', { is_first_message: messages.length === 0 });
       // Optimistic: add to local state immediately
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(), // temp ID, will be replaced by realtime
@@ -1005,6 +1008,7 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const posthog = usePostHog();
   const [showPicker, setShowPicker] = useState(false);
   const [embeddedConvId, setEmbeddedConvId] = useState(null);
 
@@ -1035,6 +1039,7 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
     setShowPicker(false);
     const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: member.id });
     if (convId) {
+      posthog?.capture('conversation_started');
       handleSelectConversation(convId);
     }
   };

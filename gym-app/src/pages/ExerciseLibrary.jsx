@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { useTranslation } from 'react-i18next';
 import { exName, exInstructions } from '../lib/exerciseName';
+import { usePostHog } from '@posthog/react';
 
 /* ── Resolve a video path to a full public URL ──────────────────────────────── */
 const resolveVideoUrl = (path) => {
@@ -54,6 +55,7 @@ const StatPill = ({ label, value }) => (
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
 const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite }) => {
   const { t } = useTranslation('pages');
+  const posthog = usePostHog();
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -80,7 +82,7 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
         aria-expanded={expanded}
         aria-label={`${exName(exercise)} - ${exercise.muscle}, ${exercise.equipment}`}
         className="flex items-center gap-3.5 px-4 py-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
-        onClick={() => { setExpanded(e => !e); setDetailTab('overview'); setShowFullDescription(false); }}
+        onClick={() => { setExpanded(e => { if (!e) posthog?.capture('exercise_viewed', { exercise_name: exName(exercise), muscle_group: exercise.muscle }); return !e; }); setDetailTab('overview'); setShowFullDescription(false); }}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); setDetailTab('overview'); setShowFullDescription(false); } }}
       >
         <div
@@ -1014,6 +1016,7 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
 export const ExerciseLibraryPage = () => {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
+  const posthog = usePostHog();
   const [tab, setTab]               = useState('all');
   const [customExercises, setCustom] = useState([]);
   const [globalDbExercises, setGlobalDb] = useState([]);
@@ -1116,6 +1119,7 @@ export const ExerciseLibraryPage = () => {
       return { error: error.message };
     }
 
+    posthog?.capture('custom_exercise_created');
     await supabase.from('user_saved_exercises').insert({ user_id: user.id, exercise_id: id });
 
     const normalized = {
