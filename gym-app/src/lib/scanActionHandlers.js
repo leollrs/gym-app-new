@@ -156,89 +156,75 @@ export async function handleRewardRedemptionScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.wrongGym', 'QR code is for a different gym') };
   }
 
-  // Try reward_redemptions first (points store redemptions)
-  const { data: redemption } = await supabase
-    .from('reward_redemptions')
-    .select('id, profile_id, reward_name, points_spent, status')
-    .eq('id', parsed.redemptionId)
-    .eq('gym_id', gymId)
-    .maybeSingle();
-
-  // Fallback: try referral_rewards (referral reward choice)
-  const { data: referralReward } = !redemption
-    ? await supabase
-        .from('referral_rewards')
-        .select('id, profile_id, reward_type, reward_value, choice_status')
-        .eq('id', parsed.redemptionId)
-        .eq('gym_id', gymId)
-        .maybeSingle()
-    : { data: null };
-
-  if (!redemption && !referralReward) {
-    return { success: false, message: t('admin.scan.redemptionNotFound', 'Redemption not found') };
-  }
-
-  // Handle referral reward (pending choice)
-  if (referralReward) {
-    if (referralReward.choice_status === 'chosen' || referralReward.choice_status === 'auto_assigned') {
-      return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
-    }
-    // Referral rewards need to be claimed via the picker, not the scanner
-    const { data: member } = await supabase
-      .from('profiles')
-      .select('full_name, avatar_url')
-      .eq('id', referralReward.profile_id)
-      .single();
-    return {
-      success: true,
-      message: t('admin.scan.referralRewardPending', '{{name}} has a pending referral reward to pick', { name: member?.full_name || 'Member' }),
-      memberName: member?.full_name,
-      memberId: referralReward.profile_id,
-      avatarUrl: member?.avatar_url,
-      data: { pendingChoice: true },
-    };
-  }
-
-  // Handle store redemption
-  if (redemption.status === 'claimed') {
-    return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
-  }
-
-  if (redemption.status === 'expired' || redemption.status === 'cancelled') {
-    return { success: false, message: t('admin.scan.redemptionExpired', 'This redemption has expired or was cancelled') };
-  }
-
-  if (redemption.profile_id !== parsed.memberId) {
-    return { success: false, message: t('admin.scan.memberMismatch', 'Redemption does not belong to this member') };
-  }
-
-  // Claim via RPC (deducts points + marks claimed atomically)
-  const { error: claimErr } = await supabase.rpc('claim_redemption', {
-    p_redemption_id: redemption.id,
-  });
-
-  if (claimErr) {
-    logger.error('Redemption claim failed:', claimErr);
-    return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
-  }
-
-  logAdminAction('claim_reward', 'member', parsed.memberId, { reward: redemption.reward_name });
-
-  // Get member name
+  // Get member name up front (admin can read profiles in same gym)
   const { data: member } = await supabase
     .from('profiles')
     .select('full_name, avatar_url, qr_external_id')
     .eq('id', parsed.memberId)
+    .eq('gym_id', gymId)
     .single();
+
+  if (!member) {
+    return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
+  }
+
+  // Claim via RPC directly — it's SECURITY DEFINER so it bypasses RLS
+  // and handles all validation (status checks, permissions, point deduction)
+  const { data: claimResult, error: claimErr } = await supabase.rpc('claim_redemption', {
+    p_redemption_id: parsed.redemptionId,
+  });
+
+  if (claimErr) {
+    const msg = claimErr.message || '';
+    // Map known RPC errors to user-friendly messages
+    if (msg.includes('already claimed') || msg.includes('Already claimed')) {
+      return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
+    }
+    if (msg.includes('cancelled')) {
+      return { success: false, message: t('admin.scan.redemptionExpired', 'This redemption has expired or was cancelled') };
+    }
+    if (msg.includes('not found') || msg.includes('Not found')) {
+      // Fallback: try referral_rewards (referral reward choice)
+      const { data: referralReward } = await supabase
+        .from('referral_rewards')
+        .select('id, profile_id, reward_type, reward_value, choice_status')
+        .eq('id', parsed.redemptionId)
+        .eq('gym_id', gymId)
+        .maybeSingle();
+
+      if (referralReward) {
+        if (referralReward.choice_status === 'chosen' || referralReward.choice_status === 'auto_assigned') {
+          return { success: false, message: t('admin.scan.alreadyClaimed', 'This reward was already claimed') };
+        }
+        return {
+          success: true,
+          message: t('admin.scan.referralRewardPending', '{{name}} has a pending referral reward to pick', { name: member.full_name }),
+          memberName: member.full_name,
+          memberId: parsed.memberId,
+          avatarUrl: member.avatar_url,
+          data: { pendingChoice: true },
+        };
+      }
+
+      return { success: false, message: t('admin.scan.redemptionNotFound', 'Redemption not found') };
+    }
+    logger.error('Redemption claim failed:', claimErr);
+    return { success: false, message: t('admin.scan.claimFailed', 'Failed to claim reward') };
+  }
+
+  logAdminAction('claim_reward', 'member', parsed.memberId, { reward: claimResult?.reward_name });
+
+  const rewardName = claimResult?.reward_name || 'Reward';
+  const pointsSpent = claimResult?.points_deducted || 0;
 
   return {
     success: true,
-    message: t('admin.scan.rewardClaimed', '{{name}} claimed: {{reward}}', { name: member?.full_name || 'Member', reward: redemption.reward_name }),
-    memberName: member?.full_name,
+    message: t('admin.scan.rewardClaimed', '{{name}} claimed: {{reward}}', { name: member.full_name, reward: rewardName }),
+    memberName: member.full_name,
     memberId: parsed.memberId,
-    avatarUrl: member?.avatar_url,
-    data: { rewardName: redemption.reward_name, pointsSpent: redemption.points_spent },
-    externalPayload: { action: 'reward', memberId: parsed.memberId, memberExternalId: member?.qr_external_id, memberName: member?.full_name, timestamp: new Date().toISOString(), data: { rewardName: redemption.reward_name, redemptionId: redemption.id } },
+    avatarUrl: member.avatar_url,
+    data: { rewardName, pointsSpent },
+    externalPayload: { action: 'reward', memberId: parsed.memberId, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { rewardName, redemptionId: parsed.redemptionId } },
   };
 }
 
