@@ -32,15 +32,23 @@ const WalletPass = registerPlugin('WalletPass');
 // ── Action icon mapping ──────────────────────────────────────────────────────
 const ACTION_META = {
   workout_completed:    { icon: Dumbbell,      color: 'var(--color-accent)', labelKey: 'workout_completed' },
+  workout:              { icon: Dumbbell,      color: 'var(--color-accent)', labelKey: 'workout_completed' },
   pr_hit:               { icon: Target,        color: 'var(--color-danger)', labelKey: 'pr_hit' },
+  pr:                   { icon: Target,        color: 'var(--color-danger)', labelKey: 'pr_hit' },
   check_in:             { icon: MapPin,         color: 'var(--color-success)', labelKey: 'check_in' },
   streak_day:           { icon: Flame,          color: '#F97316', labelKey: 'streak_day' },
+  streak:               { icon: Flame,          color: '#F97316', labelKey: 'streak_day' },
   challenge_completed:  { icon: Trophy,         color: '#A78BFA', labelKey: 'challenge_completed' },
+  challenge:            { icon: Trophy,         color: '#A78BFA', labelKey: 'challenge_completed' },
+  challenge_joined:     { icon: Trophy,         color: '#A78BFA', labelKey: 'challenge_joined' },
   achievement_unlocked: { icon: Award,          color: 'var(--color-warning)', labelKey: 'achievement_unlocked' },
+  achievement:          { icon: Award,          color: 'var(--color-warning)', labelKey: 'achievement_unlocked' },
   weight_logged:        { icon: Scale,          color: 'var(--color-blue-soft)', labelKey: 'weight_logged' },
   first_weekly_workout: { icon: CalendarCheck,  color: 'var(--color-success)', labelKey: 'first_weekly_workout' },
   streak_7:             { icon: Zap,            color: '#F97316', labelKey: 'streak_7' },
   streak_30:            { icon: Crown,          color: 'var(--color-accent)', labelKey: 'streak_30' },
+  referral:             { icon: Gift,           color: 'var(--color-success)', labelKey: 'referral' },
+  admin_gift:           { icon: Gift,           color: 'var(--color-accent)', labelKey: 'admin_gift' },
 };
 
 // Map reward icon names → lucide components
@@ -1067,7 +1075,8 @@ export default function Rewards() {
 
     if (error) {
       logger.error('Redemption error:', error);
-      setRedeemError(error.message?.includes('Insufficient') ? 'Not enough points' : 'Redemption failed. Please try again.');
+      console.error('redeem_reward full error:', JSON.stringify(error));
+      setRedeemError(error.message || error.details || error.hint || 'Redemption failed. Please try again.');
       setRedeemTarget(null);
       setTimeout(() => setRedeemError(null), 3000);
       return;
@@ -1108,7 +1117,8 @@ export default function Rewards() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl bg-[#EF4444]/15 border border-[#EF4444]/20 backdrop-blur-xl shadow-xl"
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl bg-[#EF4444]/15 border border-[#EF4444]/20 backdrop-blur-xl shadow-xl"
+            style={{ top: 'calc(60px + var(--safe-area-top, env(safe-area-inset-top)))' }}
           >
             <p className="text-[13px] font-semibold text-[#EF4444]">{redeemError}</p>
           </motion.div>

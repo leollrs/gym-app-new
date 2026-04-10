@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw, MessageSquare, Send } from 'lucide-react';
+import { Search, ChevronRight, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, Activity, Snowflake, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { supabase } from '../../lib/supabase';
@@ -75,7 +76,7 @@ async function fetchMembers(gymId, page = 0) {
   const from = page * MEMBERS_PAGE_SIZE;
   const to = from + MEMBERS_PAGE_SIZE - 1;
   const [membersRes, followupRes, sessionsRes, scoredAll] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
+    supabase.from('profiles').select('id, full_name, username, last_active_at, created_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded').eq('gym_id', gymId).eq('role', 'member').order('last_active_at', { ascending: false, nullsFirst: false }).range(from, to),
     supabase.from('churn_risk_scores').select('profile_id, followup_sent_at, computed_at').eq('gym_id', gymId).order('computed_at', { ascending: false }),
     supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', subDays(new Date(), 14).toISOString()).limit(5000),
     fetchMembersWithChurnScores(gymId, supabase).catch((err) => {
@@ -280,6 +281,7 @@ export default function AdminMembers() {
   });
 
   const [copiedId, setCopiedId] = useState(null);
+  const [qrInvite, setQrInvite] = useState(null); // invite object to show QR for
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(null);
   const exportMenuRef = useRef(null);
@@ -833,8 +835,9 @@ export default function AdminMembers() {
                   {visibleMembers.map(m => {
                     const tier = getRiskTier(m.score);
                     return (
-                      <button key={m.id} onClick={() => setSelected(m)}
-                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all duration-200 text-left group">
+                      <div key={m.id} role="button" tabIndex={0} onClick={() => setSelected(m)}
+                        onKeyDown={e => { if (e.key === 'Enter') setSelected(m); }}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all duration-200 text-left group cursor-pointer">
                         <div onClick={e => { e.stopPropagation(); toggleSelect(m.id); }}
                           role="button" tabIndex={0} aria-label={selectedIds.has(m.id) ? 'Deselect member' : 'Select member'}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleSelect(m.id); } }}
@@ -876,7 +879,7 @@ export default function AdminMembers() {
                           </button>
                           <ChevronRight size={14} style={{ color: 'var(--color-text-faint)' }} className="group-hover:translate-x-0.5 transition-transform duration-200" />
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -1011,6 +1014,11 @@ export default function AdminMembers() {
                             <Copy size={12} />
                             {copiedId === inv.id ? k('copied') : k('copy')}
                           </button>
+                          <button onClick={() => setQrInvite(inv)}
+                            title="QR Code"
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+                            <QrCode size={12} />
+                          </button>
                           {status === 'pending' && (
                             <button onClick={() => handleRevokeInvite(inv.id)}
                               title={k('revokeInvite')}
@@ -1087,6 +1095,28 @@ export default function AdminMembers() {
       )}
 
       {showInvite && <InviteModal gymId={gymId} onClose={() => setShowInvite(false)} />}
+
+      {/* QR Code modal for invites */}
+      {qrInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setQrInvite(null)}>
+          <div className="w-full max-w-[320px] p-6 rounded-2xl text-center" onClick={e => e.stopPropagation()}
+            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+            <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{qrInvite.member_name}</p>
+            <p className="text-[22px] font-mono font-bold tracking-[0.2em] mb-4" style={{ color: 'var(--color-accent)' }}>{qrInvite.invite_code}</p>
+            <div className="bg-white p-4 rounded-xl inline-block mb-4">
+              <QRCodeSVG value={`https://tugympr.app/invite/${qrInvite.invite_code}`} size={180} level="H" />
+            </div>
+            <p className="text-[11px] font-mono mb-4 break-all" style={{ color: 'var(--color-text-muted)' }}>
+              tugympr.app/invite/{qrInvite.invite_code}
+            </p>
+            <button onClick={() => setQrInvite(null)}
+              className="px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+              {t('common:close', 'Close')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCreateInvite && (
         <CreateInviteModal

@@ -318,7 +318,7 @@ export default function MemberSettings() {
               </div>
             </div>
             <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
-              <Trans i18nKey="settings.deleteConfirmMessage" components={{ 1: <strong /> }} />
+              <Trans i18nKey="settings.deleteConfirmMessage" ns="pages" components={{ 1: <strong /> }} />
             </p>
             <input
               type="text"

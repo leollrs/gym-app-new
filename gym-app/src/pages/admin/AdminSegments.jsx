@@ -153,7 +153,7 @@ const PREBUILT_SEGMENTS = [
 async function applySegmentFilters(gymId, filters) {
   let query = supabase
     .from('profiles')
-    .select('id, full_name, username, created_at, last_active_at, fitness_level, current_streak, avatar_color, avatar_icon')
+    .select('id, full_name, username, created_at, last_active_at, fitness_level, avatar_type, avatar_value')
     .eq('gym_id', gymId)
     .eq('role', 'member');
 

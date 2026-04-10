@@ -7,6 +7,28 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { validateEmail } from '../lib/validateEmail';
 
+const AREA_CODES = [
+  { code: '+1',   flag: '🇺🇸', label: 'US/CA' },
+  { code: '+1',   flag: '🇵🇷', label: 'PR' },
+  { code: '+52',  flag: '🇲🇽', label: 'MX' },
+  { code: '+57',  flag: '🇨🇴', label: 'CO' },
+  { code: '+34',  flag: '🇪🇸', label: 'ES' },
+  { code: '+44',  flag: '🇬🇧', label: 'UK' },
+  { code: '+55',  flag: '🇧🇷', label: 'BR' },
+  { code: '+56',  flag: '🇨🇱', label: 'CL' },
+  { code: '+58',  flag: '🇻🇪', label: 'VE' },
+  { code: '+54',  flag: '🇦🇷', label: 'AR' },
+  { code: '+51',  flag: '🇵🇪', label: 'PE' },
+  { code: '+593', flag: '🇪🇨', label: 'EC' },
+  { code: '+507', flag: '🇵🇦', label: 'PA' },
+  { code: '+506', flag: '🇨🇷', label: 'CR' },
+  { code: '+502', flag: '🇬🇹', label: 'GT' },
+  { code: '+503', flag: '🇸🇻', label: 'SV' },
+  { code: '+504', flag: '🇭🇳', label: 'HN' },
+  { code: '+505', flag: '🇳🇮', label: 'NI' },
+  { code: '+809', flag: '🇩🇴', label: 'DO' },
+];
+
 let fieldIdCounter = 0;
 const Field = ({ label, icon: Icon, error, suffix, id: propId, ...props }) => {
   const fieldId = propId || `field-${label?.toString().replace(/\s+/g, '-').toLowerCase() || ++fieldIdCounter}`;
@@ -25,7 +47,7 @@ const Field = ({ label, icon: Icon, error, suffix, id: propId, ...props }) => {
           }`}
         />
         {suffix && (
-          <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 z-10">
             {suffix}
           </div>
         )}
@@ -69,6 +91,7 @@ const Signup = () => {
     password: '', confirmPassword: '', gymSlug: inviteSlug,
     referralCode: initialRefCode, phone: '',
   });
+  const [areaCode, setAreaCode] = useState('+1');
   const [errors,      setErrors]      = useState({});
   const [globalError, setGlobalError] = useState('');
   const [loading,     setLoading]     = useState(false);
@@ -128,47 +151,79 @@ const Signup = () => {
 
     setInviteStatus('checking');
     try {
-      const { data, error } = await supabase
-        .from('member_invites')
-        .select('id, invite_code, member_name, email, phone, status, expires_at, gyms!member_invites_gym_id_fkey(id, name, slug)')
-        .eq('invite_code', trimmed)
-        .eq('status', 'pending')
-        .single();
-
-      if (error || !data) {
-        setInviteStatus('invalid');
-        setInviteData(null);
-        return;
-      }
-
-      // Check expiry
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
-        setInviteStatus('invalid');
-        setInviteData(null);
-        return;
-      }
-
-      const gym = data.gyms;
-      setInviteStatus('valid');
-      setInviteData({
-        invite_id: data.id,
-        gym_name: gym?.name || '',
-        gym_slug: gym?.slug || '',
-        member_name: data.member_name || '',
-        email: data.email || '',
-        phone: data.phone || '',
+      // Use SECURITY DEFINER RPC to look up invite codes (bypasses RLS)
+      const { data: lookupResult } = await supabase.rpc('lookup_invite_by_code', {
+        p_code: trimmed,
       });
 
-      // Pre-fill form fields from invite
-      setForm(f => ({
-        ...f,
-        fullName: f.fullName || data.member_name || '',
-        email: f.email || data.email || '',
-        phone: f.phone || data.phone || '',
-        gymSlug: gym?.slug || f.gymSlug,
-      }));
+      if (lookupResult) {
+        // Found in member_invites via RPC
+        // Fetch gym details for the gym_id
+        const { data: gym } = await supabase
+          .from('gyms')
+          .select('id, name, slug')
+          .eq('id', lookupResult.gym_id)
+          .eq('is_active', true)
+          .maybeSingle();
 
-      setGymName(gym?.name || '');
+        setInviteStatus('valid');
+        setInviteData({
+          invite_id: null,
+          gym_name: gym?.name || '',
+          gym_slug: gym?.slug || '',
+          member_name: lookupResult.full_name || '',
+          email: '',
+          phone: '',
+          _source: 'member_invites',
+        });
+
+        setForm(f => ({
+          ...f,
+          fullName: f.fullName || lookupResult.full_name || '',
+          gymSlug: gym?.slug || f.gymSlug,
+        }));
+        setGymName(gym?.name || '');
+        return;
+      }
+
+      // Not in member_invites — try gym_invites via RPC
+      const { data: gymLookup } = await supabase.rpc('lookup_gym_invite_by_code', {
+        p_code: trimmed,
+      });
+
+      if (gymLookup) {
+        const { data: gym } = await supabase
+          .from('gyms')
+          .select('id, name, slug')
+          .eq('id', gymLookup.gym_id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        setInviteStatus('valid');
+        setInviteData({
+          invite_id: gymLookup.id,
+          gym_name: gym?.name || '',
+          gym_slug: gym?.slug || '',
+          member_name: gymLookup.full_name || '',
+          email: gymLookup.email || '',
+          phone: gymLookup.phone || '',
+          _source: 'gym_invites',
+        });
+
+        setForm(f => ({
+          ...f,
+          fullName: f.fullName || gymLookup.full_name || '',
+          email: f.email || gymLookup.email || '',
+          phone: f.phone || gymLookup.phone || '',
+          gymSlug: gym?.slug || f.gymSlug,
+        }));
+        setGymName(gym?.name || '');
+        return;
+      }
+
+      // Not found in either table
+      setInviteStatus('invalid');
+      setInviteData(null);
     } catch {
       setInviteStatus('invalid');
       setInviteData(null);
@@ -365,15 +420,30 @@ const Signup = () => {
         gymSlug,
       });
 
-      // After successful signup, claim the invite if we have one
+      // Save phone number to profile if provided
+      if (form.phone.trim() && signUpResult?.user) {
+        const fullPhone = `${areaCode}${form.phone.trim().replace(/\D/g, '')}`;
+        supabase.from('profiles').update({ phone_number: fullPhone }).eq('id', signUpResult.user.id).then(() => {});
+      }
+
+      // After successful signup, claim the invite to mark it as used
       if (inviteStatus === 'valid' && inviteCode && signUpResult?.user) {
         try {
-          await supabase.rpc('claim_member_invite', {
-            p_invite_code: inviteCode.trim().toUpperCase(),
-            p_profile_id: signUpResult.user.id,
-          });
-        } catch {
-          // Don't block signup if invite claiming fails
+          if (inviteData?._source === 'gym_invites') {
+            const { data: claimResult, error: claimErr } = await supabase.rpc('claim_invite_code', {
+              p_invite_code: inviteCode.trim().toUpperCase(),
+            });
+            if (claimErr) console.warn('claim_invite_code error:', claimErr);
+            else if (claimResult && !claimResult.success) console.warn('claim_invite_code failed:', claimResult.error);
+          } else {
+            const { error: claimErr } = await supabase.rpc('claim_member_invite', {
+              p_invite_code: inviteCode.trim().toUpperCase(),
+              p_profile_id: signUpResult.user.id,
+            });
+            if (claimErr) console.warn('claim_member_invite error:', claimErr);
+          }
+        } catch (err) {
+          console.warn('Invite claim failed:', err);
         }
       }
 
@@ -420,6 +490,25 @@ const Signup = () => {
       .single();
 
     if (refError || !referral) return;
+
+    // Auto-add referrer as friend (accepted friendship)
+    try {
+      await supabase.from('friendships').insert({
+        requester_id: referralData.referrer_id,
+        addressee_id: newUserId,
+        status: 'accepted',
+      });
+    } catch {
+      // Don't block if friendship insert fails (e.g., already friends)
+    }
+
+    // Save referrer info to localStorage so onboarding can pre-fill workout buddy
+    try {
+      localStorage.setItem('referrer_buddy', JSON.stringify({
+        id: referralData.referrer_id,
+        name: referralData.referrer_name,
+      }));
+    } catch {}
 
     const { data: gymData } = await supabase
       .from('gyms')
@@ -647,6 +736,7 @@ const Signup = () => {
                 onChange={set('fullName')}
                 error={errors.fullName}
                 maxLength={100}
+                autoComplete="name"
               />
 
               <Field
@@ -658,6 +748,7 @@ const Signup = () => {
                 onChange={set('username')}
                 error={errors.username}
                 maxLength={30}
+                autoComplete="username"
               />
 
               <Field
@@ -669,6 +760,7 @@ const Signup = () => {
                 onChange={set('email')}
                 error={errors.email}
                 maxLength={254}
+                autoComplete="email"
               />
 
               <Field
@@ -680,6 +772,7 @@ const Signup = () => {
                 onChange={set('password')}
                 error={errors.password}
                 maxLength={128}
+                autoComplete="new-password"
                 suffix={
                   <button
                     type="button"
@@ -700,6 +793,7 @@ const Signup = () => {
                 value={form.confirmPassword}
                 onChange={set('confirmPassword')}
                 error={errors.confirmPassword}
+                autoComplete="new-password"
                 suffix={
                   <button
                     type="button"
@@ -712,16 +806,45 @@ const Signup = () => {
                 }
               />
 
-              {/* Phone number */}
-              <Field
-                label={t('phoneNumber')}
-                icon={Phone}
-                type="tel"
-                placeholder={t('phoneNumberPlaceholder')}
-                value={form.phone}
-                onChange={set('phone')}
-                maxLength={20}
-              />
+              {/* Phone number with area code */}
+              <div>
+                <label htmlFor="signup-phone" className="block text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  {t('phoneNumber')}
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-shrink-0">
+                    <select
+                      value={areaCode}
+                      onChange={e => setAreaCode(e.target.value)}
+                      aria-label="Area code"
+                      className="appearance-none w-[90px] bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-3 pr-7 py-3 text-[14px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors cursor-pointer"
+                      style={{ color: "var(--color-text-primary)" }}
+                    >
+                      {AREA_CODES.map((ac, i) => (
+                        <option key={`${ac.code}-${ac.label}-${i}`} value={ac.code}>
+                          {ac.flag} {ac.code}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+                  </div>
+                  <div className="relative flex-1">
+                    <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
+                    <input
+                      id="signup-phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      placeholder="787 555 1234"
+                      value={form.phone}
+                      onChange={set('phone')}
+                      maxLength={15}
+                      className="w-full bg-[var(--color-bg-input)] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-[14px] placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
+                      style={{ color: "var(--color-text-primary)" }}
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Gym code — only shown in gymcode mode and when NOT coming from invite link */}
               {entryMode === 'gymcode' && !inviteSlug && (

@@ -501,6 +501,8 @@ html:not(.dark) .bg-\[\#1C2540\] > .text-white,
 html:not(.dark) .app-wrapper .text-white:not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-\[\#D4AF37\]"]):not([class*="bg-\[\#F0A500\]"]):not(button > .text-white):not([class*="text-white/"]) {
   color: var(--color-text-primary) !important;
 }
+/* force-white: base color for video overlay containers */
+.force-white { color: #ffffff; }
 
 /* Preserve text-white on accent/status colored backgrounds in light mode */
 html:not(.dark) .bg-\[\#D4AF37\] .text-white,
@@ -549,17 +551,33 @@ html:not(.dark) .border-blue-500\/20 { border-color: rgba(59, 130, 246, 0.15) !i
 
 /* ── text-white/NN opacity variants → theme-aware muted text ─────────── */
 /* These are used for secondary/muted text on dark backgrounds.
-   In light mode they become invisible (white-on-white), so remap to vars. */
-.text-white\/15 { color: var(--color-text-faint)     !important; }
-.text-white\/20 { color: var(--color-text-faint)     !important; }
-.text-white\/30 { color: var(--color-text-subtle)    !important; }
-.text-white\/35 { color: var(--color-text-subtle)    !important; }
-.text-white\/40 { color: var(--color-text-subtle)    !important; }
-.text-white\/50 { color: var(--color-text-muted)     !important; }
-.text-white\/60 { color: var(--color-text-muted)     !important; }
-.text-white\/70 { color: var(--color-text-secondary) !important; }
-.text-white\/80 { color: var(--color-text-secondary) !important; }
-.text-white\/90 { color: var(--color-text-primary)   !important; }
+   In light mode they become invisible (white-on-white), so remap to vars.
+   Excluded inside .force-white containers (video overlays, hero cards). */
+html:not(.dark) .text-white\/15 { color: var(--color-text-faint)     !important; }
+html:not(.dark) .text-white\/20 { color: var(--color-text-faint)     !important; }
+html:not(.dark) .text-white\/30 { color: var(--color-text-subtle)    !important; }
+html:not(.dark) .text-white\/35 { color: var(--color-text-subtle)    !important; }
+html:not(.dark) .text-white\/40 { color: var(--color-text-subtle)    !important; }
+html:not(.dark) .text-white\/50 { color: var(--color-text-muted)     !important; }
+html:not(.dark) .text-white\/60 { color: var(--color-text-muted)     !important; }
+html:not(.dark) .text-white\/70 { color: var(--color-text-secondary) !important; }
+html:not(.dark) .text-white\/80 { color: var(--color-text-secondary) !important; }
+html:not(.dark) .text-white\/90 { color: var(--color-text-primary)   !important; }
+/* Override: keep actual white inside .force-white video overlays.
+   Only target elements with explicit white text classes or no color class at all.
+   Do NOT override text-black (used on gold CTA buttons). */
+html:not(.dark) .force-white .text-white       { color: #ffffff !important; }
+html:not(.dark) .force-white .text-white\/50   { color: rgba(255,255,255,0.5) !important; }
+html:not(.dark) .force-white .text-white\/60   { color: rgba(255,255,255,0.6) !important; }
+html:not(.dark) .force-white .text-white\/70   { color: rgba(255,255,255,0.7) !important; }
+html:not(.dark) .force-white .text-white\/80   { color: rgba(255,255,255,0.8) !important; }
+html:not(.dark) .force-white .text-white\/90   { color: rgba(255,255,255,0.9) !important; }
+html:not(.dark) .force-white [style*="rgba(255"] { color: inherit !important; }
+html:not(.dark) .force-white .text-\[\#D4AF37\] { color: #D4AF37 !important; }
+html:not(.dark) .force-white .text-black { color: #000000 !important; }
+html:not(.dark) .force-white .text-emerald-400 { color: rgb(52, 211, 153) !important; }
+/* Guaranteed white text for exercise names on video overlays — nuclear specificity */
+.exercise-name-white { color: rgba(255, 255, 255, 0.7) !important; }
 
 /* ── bg-black overlay adjustments → theme-aware overlays ─────────────── */
 /* bg-black/XX is used for modal backdrops & overlays. In light mode the

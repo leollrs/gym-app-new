@@ -343,7 +343,10 @@
       "weight_logged": "Weight Log",
       "first_weekly_workout": "Weekly Bonus",
       "streak_7": "7-Day Streak",
-      "streak_30": "30-Day Streak"
+      "streak_30": "30-Day Streak",
+      "challenge_joined": "Challenge Joined",
+      "referral": "Referral Bonus",
+      "admin_gift": "Admin Gift"
     },
     "rewardRedeemed": "Reward Redeemed!",
     "showQrToStaff": "Show this QR code to staff to claim your reward",

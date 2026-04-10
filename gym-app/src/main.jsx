@@ -85,6 +85,16 @@ window.addEventListener('online', () => {
   trackError('network_error', 'Device came back online', { recovered: true });
 });
 
+// On iOS, scroll focused input into view when keyboard opens
+if (isNative) {
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+    }
+  });
+}
+
 // Handle watch messages at app level (routines sync, QR open, etc.)
 onWatchMessage(async (msg) => {
   if (!msg) return;
@@ -273,6 +283,26 @@ if (isNative) {
       } else {
         CapApp.minimizeApp();
       }
+    });
+
+    // Handle deep links / Universal Links (opens app with a URL)
+    CapApp.addListener('appUrlOpen', ({ url }) => {
+      try {
+        const parsed = new URL(url);
+        const path = parsed.pathname;
+        // /invite/CODE → store code and push to signup
+        const inviteMatch = path.match(/\/invite\/([A-Z0-9-]+)$/i);
+        if (inviteMatch) {
+          localStorage.setItem('pendingInviteCode', inviteMatch[1].toUpperCase());
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/signup' } }));
+        }
+        // /friend/CODE → store code for post-login processing
+        const friendMatch = path.match(/\/friend\/([A-Z0-9]+)$/i);
+        if (friendMatch) {
+          localStorage.setItem('pendingFriendCode', friendMatch[1].toUpperCase());
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: '/' } }));
+        }
+      } catch {}
     });
 
     // Handle app state changes (resume/pause)

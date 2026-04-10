@@ -401,7 +401,9 @@ const AuthenticatedRoute = ({ children }) => {
 const PublicRoute = ({ children }) => {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (user && !profile) return <ProfileUnavailableScreen />;
+  // When user just signed in, profile may still be loading — show loading instead
+  // of flashing ProfileUnavailableScreen during the brief fetch window
+  if (user && !profile) return <LoadingScreen />;
   if (user && profile && isSuperAdmin(profile)) return <Navigate to="/platform" replace />;
   if (user && profile && !profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   if (user && profile?.is_onboarded) {
@@ -501,6 +503,16 @@ function App() {
       });
     }
   }, [loading, user?.id, profile?.gym_id, profile?.is_onboarded, navigate]);
+
+  // ── Handle native deep links from Capacitor appUrlOpen ──
+  useEffect(() => {
+    const handler = (e) => {
+      const path = e.detail?.path;
+      if (path) navigate(path, { replace: true });
+    };
+    window.addEventListener('deeplink', handler);
+    return () => window.removeEventListener('deeplink', handler);
+  }, [navigate]);
 
   // ── Deep link handling: /referral/:code, ?ref=:code, /add-friend/:code ──
   useEffect(() => {

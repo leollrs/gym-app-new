@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }) => {
     if (rpcError || !rpcResult) {
       const { data: fallback } = await supabase
         .from('profiles')
-        .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, avatar_type, avatar_value, avatar_color, avatar_design, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience')
+        .select('id, gym_id, full_name, username, role, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience')
         .eq('id', userId)
         .maybeSingle();
       data = fallback;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,16 +18,29 @@ const WorkoutHeroCard = ({
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [videoReady, setVideoReady] = useState(false);
+  const [readyVideos, setReadyVideos] = useState(new Set());
+  const videoRefs = useRef({});
 
-  // Reset video ready state when the current exercise changes
+  // Preload all exercise videos on mount
   useEffect(() => {
-    setVideoReady(false);
-  }, [currentIndex]);
+    exercises.forEach((ex, i) => {
+      if (ex.video && !videoRefs.current[i]) {
+        const v = document.createElement('video');
+        v.src = ex.video;
+        v.preload = 'auto';
+        v.muted = true;
+        v.playsInline = true;
+        v.load();
+        videoRefs.current[i] = v;
+      }
+    });
+  }, [exercises]);
 
-  const handleVideoReady = useCallback(() => {
-    setVideoReady(true);
+  const handleVideoReady = useCallback((idx) => {
+    setReadyVideos(prev => new Set(prev).add(idx));
   }, []);
+
+  const videoReady = readyVideos.has(currentIndex);
 
   // Cycle through exercises
   useEffect(() => {
@@ -55,44 +68,27 @@ const WorkoutHeroCard = ({
       whileTap={{ scale: 0.985 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
     >
-      {/* Background: cycling video/gradient */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentIndex}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.6 }}
-          className="absolute inset-0"
-        >
-          {/* Always render the gradient placeholder */}
-          <div className="w-full h-full" style={{ background: fallbackBg }}>
-            <div
-              className="absolute inset-0 opacity-[0.04]"
-              style={{
-                backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-          </div>
-          {/* Video loads on top and fades in when ready */}
-          {exerciseVideo && (
-            <video
-              key={exerciseVideo}
-              src={exerciseVideo}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              onCanPlay={handleVideoReady}
-              aria-label={exerciseName}
-              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
-              style={{ opacity: videoReady ? 1 : 0 }}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      {/* Background: gradient + all videos stacked (no unmount/remount) */}
+      <div className="absolute inset-0">
+        <div className="w-full h-full" style={{ background: fallbackBg }}>
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+        </div>
+        {/* Render ALL exercise videos simultaneously — toggle visibility via opacity */}
+        {exercises.map((ex, i) => ex.video && (
+          <video
+            key={ex.video}
+            src={ex.video}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            onCanPlay={() => handleVideoReady(i)}
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
+            style={{ opacity: i === currentIndex && readyVideos.has(i) ? 1 : 0 }}
+          />
+        ))}
+      </div>
 
       {/* Dark backdrop — always present so white text is readable */}
       <div className={`absolute inset-0 z-[1] ${hasMedia ? 'bg-black/50' : 'bg-black/40'}`} />
@@ -107,7 +103,7 @@ const WorkoutHeroCard = ({
       )}
 
       {/* Content */}
-      <div className="relative z-10 h-full flex flex-col justify-end p-5">
+      <div className="relative z-10 h-full flex flex-col justify-end p-5 force-white">
         {/* Status badge */}
         {isActive && (
           <div className="absolute top-4 left-5 flex items-center gap-2">

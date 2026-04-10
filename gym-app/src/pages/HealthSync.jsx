@@ -71,7 +71,8 @@ const HealthSync = () => {
         readWeeklyActivitySummary(),
       ]);
       setTodaySteps(steps);
-      setWeeklyCalories(weekly.calories);
+      // If no calorie data from HealthKit, estimate from steps (~0.04 cal/step)
+      setWeeklyCalories(weekly.calories > 0 ? weekly.calories : Math.round(weekly.steps * 0.04));
     } catch {}
     setRefreshing(false);
   }, [connected, available]);

@@ -67,14 +67,14 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
   const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
   const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!codeRef.current) return;
     const svg = codeRef.current.querySelector('svg');
     if (!svg) return;
 
     const canvas = document.createElement('canvas');
     const size = 1024;
-    const width = isBarcode ? size : size;
+    const width = size;
     const height = isBarcode ? 400 : size;
     canvas.width = width;
     canvas.height = height;
@@ -85,17 +85,50 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
     ctx.fillRect(0, 0, width, height);
 
     const svgData = new XMLSerializer().serializeToString(svg);
-    const img = new Image();
-    img.onload = () => {
-      const padding = isBarcode ? 40 : 80;
-      ctx.drawImage(img, padding, padding, width - padding * 2, height - padding * 2);
+    const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+
+    // Load SVG into canvas
+    await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const padding = isBarcode ? 40 : 80;
+        ctx.drawImage(img, padding, padding, width - padding * 2, height - padding * 2);
+        resolve();
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+
+    const pngDataUrl = canvas.toDataURL('image/png');
+    const fileName = `gym-pass-${memberName?.replace(/\s+/g, '-').toLowerCase() || 'code'}.png`;
+
+    // On native: write to temp file then share
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        const base64 = pngDataUrl.split(',')[1];
+        const saved = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+        });
+        await Share.share({
+          title: fileName,
+          url: saved.uri,
+          dialogTitle: t('qrCode.saveImage', 'Save QR Code'),
+        });
+      } catch (err) {
+        if (err.message?.includes('canceled') || err.message?.includes('cancelled')) return;
+      }
+    } else {
+      // Web: download via link click
       const link = document.createElement('a');
-      link.download = `gym-pass-${memberName?.replace(/\s+/g, '-').toLowerCase() || 'code'}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.download = fileName;
+      link.href = pngDataUrl;
       link.click();
-    };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-  }, [memberName, isBarcode]);
+    }
+  }, [memberName, isBarcode, t]);
 
   const handleAddToWallet = useCallback(async () => {
     setWalletLoading(true);

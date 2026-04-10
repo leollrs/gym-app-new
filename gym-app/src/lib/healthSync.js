@@ -80,7 +80,7 @@ export async function checkReadAccess(dataType) {
 }
 
 /**
- * Read the latest weight from Apple Health (last 7 days).
+ * Read the latest weight from Apple Health (last 30 days).
  * Returns { value: number (lbs), date: string } or null.
  */
 export async function readLatestWeight() {
@@ -88,15 +88,31 @@ export async function readLatestWeight() {
     if (!isNative()) return null;
     const result = await Health.readSamples({
       dataType: 'weight',
-      startDate: daysAgo(7).toISOString(),
+      startDate: daysAgo(30).toISOString(),
       endDate: endOfDay().toISOString(),
       limit: 1,
       ascending: false,
     });
     const sample = result?.samples?.[0];
-    if (!sample) return null;
+    if (!sample || !sample.value) return null;
+    const raw = sample.value;
+    const unit = (sample.unit || '').toLowerCase();
+    // Smart unit detection:
+    // - If unit says 'lb' or 'pound', it's already lbs
+    // - If value > 300, likely grams → convert to lbs
+    // - If value > 0 and <= 300, likely kg → convert to lbs
+    let lbs;
+    if (unit.includes('lb') || unit.includes('pound')) {
+      lbs = raw;
+    } else if (raw > 300) {
+      // Grams (e.g., 80000g = 80kg)
+      lbs = (raw / 1000) * 2.20462;
+    } else {
+      // Kg (standard HealthKit unit)
+      lbs = raw * 2.20462;
+    }
     return {
-      value: Math.round((sample.value || 0) * 2.20462 * 10) / 10,
+      value: Math.round(lbs * 10) / 10,
       date: new Date(sample.startDate).toISOString().split('T')[0],
     };
   } catch (e) {
@@ -143,11 +159,18 @@ export async function readWeightHistory(days = 30) {
       ascending: false,
     });
     const samples = result?.samples || [];
-    return samples.map((s) => ({
-      date: new Date(s.startDate).toISOString().split('T')[0],
-      // Health stores weight in kg — convert to lbs
-      value: Math.round((s.value || 0) * 2.20462 * 10) / 10,
-    }));
+    return samples.map((s) => {
+      const raw = s.value || 0;
+      const unit = (s.unit || '').toLowerCase();
+      let lbs;
+      if (unit.includes('lb') || unit.includes('pound')) lbs = raw;
+      else if (raw > 300) lbs = (raw / 1000) * 2.20462;
+      else lbs = raw * 2.20462;
+      return {
+        date: new Date(s.startDate).toISOString().split('T')[0],
+        value: Math.round(lbs * 10) / 10,
+      };
+    });
   } catch (e) {
     logger.warn('readWeightHistory failed:', e);
     return [];
@@ -169,11 +192,28 @@ export async function readHeight() {
       ascending: false,
     });
     const sample = result?.samples?.[0];
-    if (!sample) return null;
-    // Health stores height in meters — convert to inches
-    const inches = Math.round((sample.value || 0) * 39.3701 * 10) / 10;
+    if (!sample || !sample.value) return null;
+    const raw = sample.value;
+    const unit = (sample.unit || '').toLowerCase();
+    // Smart unit detection:
+    // - If unit says 'in' or 'inch', it's already inches
+    // - If value > 3 and <= 100, likely cm → convert to inches (divide by 2.54)
+    // - If value > 100, likely cm (e.g. 178cm)
+    // - If value <= 3, likely meters → convert to inches (* 39.3701)
+    let inches;
+    if (unit.includes('in')) {
+      inches = raw;
+    } else if (raw > 3) {
+      // Centimeters (most common from HealthKit via this plugin)
+      inches = raw / 2.54;
+    } else {
+      // Meters (e.g. 1.78)
+      inches = raw * 39.3701;
+    }
+    // Sanity check: height should be 36-96 inches (3ft-8ft)
+    if (inches < 36 || inches > 96) return null;
     return {
-      value: inches,
+      value: Math.round(inches * 10) / 10,
       date: new Date(sample.startDate).toISOString().split('T')[0],
     };
   } catch (e) {
@@ -184,54 +224,22 @@ export async function readHeight() {
 
 /**
  * Read biological sex from the health store.
- * Returns 'male' | 'female' | null.
+ * NOTE: The @capgo/capacitor-health plugin does NOT support getCharacteristics().
+ * Biological sex must be entered manually by the user.
+ * Returns null (kept for API compatibility).
  */
 export async function readBiologicalSex() {
-  try {
-    if (!isNative()) return null;
-    const result = await Health.getCharacteristics();
-    const sex = result?.biologicalSex;
-    if (sex === 'male' || sex === 'female') return sex;
-    // Some platforms return capitalized or numeric values
-    if (typeof sex === 'string') {
-      const lower = sex.toLowerCase();
-      if (lower.includes('male') && !lower.includes('female')) return 'male';
-      if (lower.includes('female')) return 'female';
-    }
-    return null;
-  } catch (e) {
-    logger.warn('readBiologicalSex failed:', e);
-    return null;
-  }
+  return null;
 }
 
 /**
  * Read date of birth from the health store.
- * Returns { dateOfBirth: string (ISO), age: number } or null.
+ * NOTE: The @capgo/capacitor-health plugin does NOT support getCharacteristics().
+ * Age must be entered manually by the user.
+ * Returns null (kept for API compatibility).
  */
 export async function readDateOfBirth() {
-  try {
-    if (!isNative()) return null;
-    const result = await Health.getCharacteristics();
-    const dob = result?.dateOfBirth;
-    if (!dob) return null;
-    const birthDate = new Date(dob);
-    if (isNaN(birthDate.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    if (age < 5 || age > 120) return null;
-    return {
-      dateOfBirth: birthDate.toISOString().split('T')[0],
-      age,
-    };
-  } catch (e) {
-    logger.warn('readDateOfBirth failed:', e);
-    return null;
-  }
+  return null;
 }
 
 /**

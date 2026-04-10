@@ -12,6 +12,22 @@ import { localizeRoutineName } from '../lib/exerciseName';
 import { useTranslation } from 'react-i18next';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 
+/** Read active draft sessions from localStorage */
+const readActiveDrafts = () => {
+  const sessions = [];
+  try {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith('gym_session_')) continue;
+      const data = JSON.parse(localStorage.getItem(key));
+      if (data?.loggedSets && data?.startedAt && new Date(data.startedAt).getTime() > oneDayAgo) {
+        sessions.push({ routineId: key.replace('gym_session_', ''), ...data });
+      }
+    }
+  } catch { }
+  return sessions;
+};
+
 // Video lookup
 const videoMap = {};
 for (const ex of exerciseLibrary) {
@@ -28,6 +44,7 @@ const QuickStart = () => {
   const [todayRoutine, setTodayRoutine] = useState(null);
   const [todayExercises, setTodayExercises] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeDrafts] = useState(() => readActiveDrafts());
   const [showOther, setShowOther] = useState(false);
   const [cycleIndex, setCycleIndex] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(false);
@@ -48,7 +65,7 @@ const QuickStart = () => {
       const [{ data: routineData }, { data: sessionData }, scheduleRes, progRes] = await Promise.all([
         supabase
           .from('routines')
-          .select('id, name, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name))')
+          .select('id, name, created_at, routine_exercises(id, exercise_id, target_sets, target_reps, position, exercises(name, video_url))')
           .eq('created_by', user.id)
           .eq('is_template', false)
           .order('created_at', { ascending: false }),
@@ -116,34 +133,49 @@ const QuickStart = () => {
       }
 
       // Check if gym is closed today
-      try {
-        const { data: gymHours } = await supabase
-          .from('gym_hours')
-          .select('is_closed')
-          .eq('gym_id', profile?.gym_id)
-          .eq('day_of_week', todayDow)
-          .maybeSingle();
-        if (gymHours?.is_closed) {
-          setIsGymClosed(true);
-        }
-      } catch { /* table may not exist */ }
+      // Only show gym closed / rest day if there's NO scheduled workout for today
+      if (!todayR) {
+        try {
+          const { data: gymHours } = await supabase
+            .from('gym_hours')
+            .select('is_closed')
+            .eq('gym_id', profile?.gym_id)
+            .eq('day_of_week', todayDow)
+            .maybeSingle();
+          if (gymHours?.is_closed) {
+            setIsGymClosed(true);
+          }
+        } catch { /* table may not exist */ }
 
-      // If there's a schedule with entries but nothing for today → rest day
-      const hasAnySchedule = Object.keys(scheduleMap).length > 0;
-      if (!todayR && hasAnySchedule) {
-        setIsRestDay(true);
+        const hasAnySchedule = Object.keys(scheduleMap).length > 0;
+        if (hasAnySchedule) {
+          setIsRestDay(true);
+        }
       }
 
       if (todayR) {
         setTodayRoutine(todayR);
         const exs = (todayR.routine_exercises || [])
           .sort((a, b) => (a.position || 0) - (b.position || 0))
-          .map(ex => ({
-            name: ex.exercises?.name || 'Exercise',
-            sets: ex.target_sets,
-            reps: ex.target_reps,
-            video: videoMap[ex.exercise_id] || null,
-          }));
+          .map(ex => {
+            // Resolve video: DB video_url first, then local videoMap fallback
+            const rawVideo = ex.exercises?.video_url || videoMap[ex.exercise_id] || null;
+            let video = null;
+            if (rawVideo) {
+              if (rawVideo.startsWith('/') || rawVideo.startsWith('http')) {
+                video = rawVideo;
+              } else {
+                const { data } = supabase.storage.from('exercise-videos').getPublicUrl(rawVideo);
+                video = data?.publicUrl || null;
+              }
+            }
+            return {
+              name: ex.exercises?.name || 'Exercise',
+              sets: ex.target_sets,
+              reps: ex.target_reps,
+              video,
+            };
+          });
         setTodayExercises(exs);
 
         // Check if this routine was already completed today
@@ -314,33 +346,24 @@ const QuickStart = () => {
             type="button"
             onClick={() => navigate(`/session/${todayRoutine.id}`)}
             className="relative w-full rounded-2xl overflow-hidden text-left active:scale-[0.98] transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-            style={{ aspectRatio: '4 / 3' }}
+            style={{ aspectRatio: '4 / 3', color: '#ffffff' }}
           >
-            {/* Cycling video/gradient background */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={cycleIndex}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5 }}
-                className="absolute inset-0"
-              >
-                {currentEx.video ? (
-                  <video
-                    src={currentEx.video}
-                    autoPlay loop muted playsInline
-                    aria-label={t('quickStart.exerciseDemo', { name: currentEx.name || 'Exercise' })}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#1a1f35] to-[#0a0f1a]" />
-                )}
-              </motion.div>
-            </AnimatePresence>
+            {/* Background: gradient + all videos stacked (no unmount flash) */}
+            <div className="absolute inset-0">
+              <div className="w-full h-full bg-gradient-to-br from-[#1a1f35] to-[#0a0f1a]" />
+              {todayExercises.map((ex, i) => ex.video && (
+                <video
+                  key={ex.video}
+                  src={ex.video}
+                  autoPlay loop muted playsInline preload="auto"
+                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
+                  style={{ opacity: i === cycleIndex ? 1 : 0 }}
+                />
+              ))}
+            </div>
 
-            {/* Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-black/10 z-[1]" />
+            {/* Overlay — strong enough so white text is always readable */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/40 z-[1]" />
             <div className="absolute top-0 left-0 right-0 h-[2px] z-[2] bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent" />
 
             {/* Exercise dots */}
@@ -361,11 +384,12 @@ const QuickStart = () => {
             )}
 
             {/* Content */}
-            <div className="relative z-10 h-full flex flex-col justify-end p-5">
+            <div className="relative z-10 h-full flex flex-col justify-end p-5 force-white">
               <p className="text-[11px] font-bold uppercase tracking-[0.15em] mb-2 text-[#D4AF37]">
                 {t('quickStart.todaysWorkout')}
               </p>
-              <h2 className="text-[18px] font-black text-white tracking-tight leading-tight truncate">
+              <h2 className="text-[18px] font-black tracking-tight leading-tight truncate"
+                ref={el => { if (el) el.style.setProperty('color', '#ffffff', 'important'); }}>
                 {todayRoutine.name?.replace('Auto: ', '').replace(/ [AB]$/, '')}
               </h2>
 
@@ -377,23 +401,35 @@ const QuickStart = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.2 }}
-                  className="text-[13px] text-white/70 mt-1"
+                  className="text-[13px] mt-1"
+                  ref={el => { if (el) el.style.setProperty('color', 'rgba(255,255,255,0.7)', 'important'); }}
                 >
                   {currentEx.name} — {currentEx.sets}×{currentEx.reps}
                 </motion.p>
               </AnimatePresence>
 
-              <p className="text-[12px] text-white/60 mt-1 mb-4">
+              <p className="text-[12px] mt-1 mb-4" ref={el => { if (el) el.style.setProperty('color', 'rgba(255,255,255,0.6)', 'important'); }}>
                 {todayExercises.length} {t('quickStart.exercises')}
               </p>
 
               {/* CTA */}
-              <div className="w-full py-5 rounded-2xl flex items-center justify-center gap-2.5 bg-[#D4AF37] shadow-[0_4px_24px_rgba(212,175,55,0.3)]">
-                <Play size={20} className="text-black" fill="black" strokeWidth={0} />
-                <span className="text-[14px] font-black tracking-wide uppercase text-black whitespace-nowrap">
-                  {t('quickStart.startWorkout')}
-                </span>
-              </div>
+              {(() => {
+                const draft = activeDrafts.find(d => d.routineId === String(todayRoutine.id));
+                const isResume = !!draft;
+                const draftSets = draft ? Object.values(draft.loggedSets || {}).flat() : [];
+                const completed = draftSets.filter(s => s.completed).length;
+                const total = draftSets.length;
+                return (
+                  <div className={`w-full py-5 rounded-2xl flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(212,175,55,0.3)] ${isResume ? 'bg-emerald-500' : 'bg-[#D4AF37]'}`}>
+                    <Play size={20} className="text-black" fill="black" strokeWidth={0} />
+                    <span className="text-[14px] font-black tracking-wide uppercase text-black whitespace-nowrap">
+                      {isResume
+                        ? `${t('quickStart.resumeWorkout', 'Resume Workout')} · ${completed}/${total}`
+                        : t('quickStart.startWorkout')}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </button>
         ) : (

@@ -53,11 +53,11 @@ struct WorkoutActivityLiveActivity: Widget {
 // MARK: - Lock Screen
 
 private struct LockScreenView: View {
-    @Environment(\.colorScheme) var colorScheme
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        let colors = AdaptiveColors(scheme: colorScheme)
+        // Lock Screen always uses dark styling — light text is unreadable on light wallpapers
+        let colors = AdaptiveColors(scheme: .dark)
         VStack(spacing: 6) {
             LockScreenLabel(context: context, colors: colors)
             LockScreenContent(context: context, colors: colors)
@@ -143,11 +143,10 @@ private struct LockScreenContent: View {
 // MARK: - Dynamic Island
 
 private struct IslandLeading: View {
-    @Environment(\.colorScheme) var colorScheme
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        let colors = AdaptiveColors(scheme: colorScheme)
+        let colors = AdaptiveColors(scheme: .dark)
         if context.state.isPaused {
             (Text("⏸ ").foregroundColor(colors.pause.opacity(0.7))
              + Text(formatElapsed(context.state.elapsedSeconds)).foregroundColor(colors.pause))
@@ -168,11 +167,10 @@ private struct IslandLeading: View {
 }
 
 private struct IslandBottom: View {
-    @Environment(\.colorScheme) var colorScheme
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        let colors = AdaptiveColors(scheme: colorScheme)
+        let colors = AdaptiveColors(scheme: .dark)
         Text("\(context.state.completedSets)/\(context.attributes.totalSets) sets · \(context.state.currentExerciseName)")
             .font(.caption2.weight(.medium))
             .foregroundColor(colors.secondaryText)
@@ -182,11 +180,10 @@ private struct IslandBottom: View {
 }
 
 private struct IslandCenter: View {
-    @Environment(\.colorScheme) var colorScheme
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        let colors = AdaptiveColors(scheme: colorScheme)
+        let colors = AdaptiveColors(scheme: .dark)
         if context.state.isPaused {
             Text("PAUSED")
                 .font(.system(.title3, design: .rounded).weight(.bold))
@@ -210,11 +207,10 @@ private struct IslandCenter: View {
 }
 
 private struct IslandTrailing: View {
-    @Environment(\.colorScheme) var colorScheme
     let context: ActivityViewContext<WorkoutActivityAttributes>
 
     var body: some View {
-        let colors = AdaptiveColors(scheme: colorScheme)
+        let colors = AdaptiveColors(scheme: .dark)
         Text("\(context.state.completedSets)/\(context.attributes.totalSets) sets")
             .font(.system(.caption, design: .rounded).weight(.semibold))
             .foregroundColor(colors.secondaryText)

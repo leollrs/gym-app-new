@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2, UtensilsCrossed, Search, X, AlertTriangle, MapPin, Camera, BarChart3, Shield, ExternalLink } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Dumbbell, Sprout, Zap, Trophy, Flame, Activity, Sparkles, Sunrise, Sun, Moon, Heart, Smartphone, Loader2, UtensilsCrossed, Search, X, AlertTriangle, Camera, BarChart3, Shield, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
-import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight, readBiologicalSex, readDateOfBirth } from '../lib/healthSync';
+import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
 import { MEALS } from '../data/meals';
 import { isMealAllergenSafe, isMealDietaryCompliant } from '../lib/mealPreferences';
+import { getExerciseById } from '../data/exercises';
 import RewardPicker from '../components/RewardPicker';
 
 // ── DATA ───────────────────────────────────────────────────
@@ -63,51 +64,56 @@ const TIME_PREFERENCES = [
   { value: 'evening',   key: 'evening',   subKey: 'eveningSub',   icon: Moon },
 ];
 
-// Returns a pre-selected set of day keys (english full names for DB storage) based on training frequency
-function getDefaultDays(freq) {
+// Returns a pre-selected set of day keys (english full names for DB storage) based on training frequency.
+// closedDays is an optional Set of day names that the gym is closed on.
+function getDefaultDays(freq, closedDays) {
   const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  if (freq <= 1) return ['Monday'];
-  if (freq === 2) return ['Monday', 'Thursday'];
-  if (freq === 3) return ['Monday', 'Wednesday', 'Friday'];
-  if (freq === 4) return ['Monday', 'Wednesday', 'Friday', 'Sunday'];
-  if (freq === 5) return ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday'];
-  if (freq === 6) return allDays.filter(d => d !== 'Sunday');
-  return allDays;
+  const openDays = closedDays ? allDays.filter(d => !closedDays.has(d)) : allDays;
+  // If freq >= open days, return all open days
+  if (freq >= openDays.length) return openDays;
+  // Spread selections evenly across open days
+  const step = openDays.length / freq;
+  const result = [];
+  for (let i = 0; i < freq; i++) {
+    result.push(openDays[Math.round(i * step)]);
+  }
+  return result;
 }
 
 // Map English day names to index for display
 const DAY_NAME_TO_INDEX = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
 
-const TOTAL_STEPS = 10; // invite code step 0, language step 1, data consent step 7, health step 8 (core onboarding steps)
-const TOTAL_STEPS_WITH_PLANS = 12; // includes workout plan (step 10) and meal plan (step 11)
+const CORE_STEPS = 10; // steps 0-9: invite through social
+const TOTAL_STEPS = 12; // steps 0-11: includes program (10) and nutrition (11)
 
 // ── STEP INDICATOR ─────────────────────────────────────────
-const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Injuries', 'Privacy', 'Health', 'Metrics', 'Program', 'Nutrition'];
+const STEP_LABELS = ['Invite', 'Language', 'Level', 'Goals', 'Schedule', 'Equipment', 'Privacy', 'Health', 'Body', 'Social', 'Program', 'Nutrition'];
 
 // Analytics step names (used for PostHog events and DB tracking)
-const STEP_NAMES = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'body_stats', 'data_consent', 'health_sync', 'social'];
+const STEP_NAMES = ['invite', 'language', 'fitness_level', 'goal', 'equipment', 'schedule', 'data_consent', 'health_sync', 'body_stats', 'social', 'program', 'nutrition'];
 
 const StepIndicator = ({ current, total }) => {
-  const labels = total ? STEP_LABELS.slice(0, total) : STEP_LABELS;
+  const count = total || STEP_LABELS.length;
+  const pct = Math.min(((current + 1) / count) * 100, 100);
+  const label = STEP_LABELS[current] || '';
   return (
-    <nav aria-label="Onboarding progress" className="flex items-center justify-between mb-8 px-1">
-      {labels.map((label, i) => (
-        <div key={i} className="flex flex-col items-center gap-1" aria-current={i === current ? 'step' : undefined}>
-          <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
-              i < current ? 'bg-[#D4AF37] text-black' :
-              i === current ? 'bg-[#D4AF37]/20 text-[#D4AF37] ring-2 ring-[#D4AF37]' :
-              'bg-white/[0.04] text-[var(--color-text-muted)]'
-            }`}
-            aria-label={i < current ? `${label} - completed` : i === current ? `${label} - current step` : `${label} - step ${i + 1}`}
-          >
-            {i < current ? <Check size={12} aria-hidden="true" /> : i + 1}
-          </div>
-          <span className={`text-[8px] font-medium tracking-wide ${
-            i <= current ? 'text-[#D4AF37]' : 'text-[var(--color-text-muted)]'
-          }`}>{label}</span>
-        </div>
-      ))}
+    <nav aria-label="Onboarding progress" className="mb-8 px-1">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[12px] font-semibold text-[#D4AF37]">{label}</span>
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          {current + 1} / {count}
+        </span>
+      </div>
+      <div className="w-full h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-[#D4AF37] transition-all duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+          role="progressbar"
+          aria-valuenow={current + 1}
+          aria-valuemin={1}
+          aria-valuemax={count}
+        />
+      </div>
     </nav>
   );
 };
@@ -160,14 +166,49 @@ const Hint = ({ children }) => (
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
 const Onboarding = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, profile } = useAuth();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation(['onboarding', 'common']);
+  const { t, i18n, ready: i18nReady } = useTranslation(['onboarding', 'common']);
   const posthog = usePostHog();
 
-  const [step, setStep]     = useState(0);
+  // Fetch gym hours + equipment for schedule/equipment steps
+  const [gymHours, setGymHours] = useState([]);
+  useEffect(() => {
+    const gymId = profile?.gym_id;
+    if (!gymId) return;
+    supabase.from('gym_hours').select('day_of_week, open_time, close_time, is_closed')
+      .eq('gym_id', gymId)
+      .then(({ data }) => { if (data) setGymHours(data); });
+    // Fetch gym's available equipment to auto-select in onboarding
+    supabase.from('gyms').select('available_equipment').eq('id', gymId).maybeSingle()
+      .then(({ data: gym }) => {
+        if (gym?.available_equipment?.length > 0) {
+          setData(d => {
+            // Only auto-set if user hasn't changed equipment yet (still default)
+            const isDefault = JSON.stringify(d.available_equipment.sort()) === JSON.stringify(['Barbell', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine'].sort());
+            if (isDefault) return { ...d, available_equipment: gym.available_equipment };
+            return d;
+          });
+        }
+      });
+  }, [profile?.gym_id]);
+
+  // Guard: wait for i18n translations to load before rendering
+  if (!i18nReady) return null;
+
+  // ── Restore onboarding draft from localStorage ──
+  const DRAFT_KEY = 'onboarding_draft';
+  const savedDraft = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }, []);
+
+  const [step, setStep]     = useState(savedDraft?.step ?? 0);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [onboardingDone, setOnboardingDone] = useState(false); // prevents redirect during plan/meal screens
 
   // Invite code state
   const [inviteCode, setInviteCode] = useState('');
@@ -176,7 +217,7 @@ const Onboarding = () => {
   const [referredRewardId, setReferredRewardId] = useState(null);
   const [inviteError, setInviteError] = useState('');
 
-  const [data, setData] = useState({
+  const defaultData = {
     language:                   i18n.language || 'en',
     fitness_level:              null,
     primary_goal:               null,
@@ -194,11 +235,40 @@ const Onboarding = () => {
     workout_buddy_username:     '',
     health_linked:              false,
     known_maxes:                { ex_bp: '', ex_sq: '', ex_dl: '', ex_ohp: '' },
-  });
+  };
+
+  const [data, setData] = useState(savedDraft?.data ? { ...defaultData, ...savedDraft.data } : defaultData);
+
+  // Persist draft to localStorage on every change
+  useEffect(() => {
+    if (onboardingDone || step >= 10) return; // don't save after core onboarding done
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, data }));
+    } catch {}
+  }, [step, data, onboardingDone]);
+
+  // Auto-fill workout buddy from referral (set during signup)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('referrer_buddy');
+      if (!raw) return;
+      const buddy = JSON.parse(raw);
+      if (buddy?.name && !data.workout_buddy_username) {
+        setData(d => ({
+          ...d,
+          has_workout_buddy: true,
+          workout_buddy_username: buddy.name,
+        }));
+      }
+      localStorage.removeItem('referrer_buddy');
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generate plan screen state (shown after onboarding completes)
   const [showGeneratePlan, setShowGeneratePlan] = useState(false); // 'ask' | 'generating' | 'done' | false
   const [generateError, setGenerateError] = useState('');
+  const [generatedRoutines, setGeneratedRoutines] = useState([]); // saved routines for preview
+  const [previewRoutineIdx, setPreviewRoutineIdx] = useState(0); // which routine to preview
 
   // Meal plan flow state (shown after workout plan)
   const [showMealPlan, setShowMealPlan] = useState(false); // 'ask' | 'prefs' | 'generating' | 'done' | false
@@ -209,6 +279,7 @@ const Onboarding = () => {
   const [ingredientSearch, setIngredientSearch] = useState('');
   const [generatedMealPlan, setGeneratedMealPlan] = useState(null);
   const [mealPlanMacros, setMealPlanMacros] = useState(null);
+  const [previewDayIdx, setPreviewDayIdx] = useState(0);
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
   const setMax = (exerciseId, value) =>
@@ -239,6 +310,11 @@ const Onboarding = () => {
         .then();
     }
   }, [step, user?.id, posthog]);
+
+  // Scroll to top on step change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step, showGeneratePlan, showMealPlan]);
 
   // Track abandonment on unmount (if onboarding not finished)
   useEffect(() => {
@@ -325,19 +401,46 @@ const Onboarding = () => {
     }));
 
   const toggleTrainingDay = (fullDay) =>
-    setData(d => ({
-      ...d,
-      preferred_training_days: d.preferred_training_days.includes(fullDay)
+    setData(d => {
+      const newDays = d.preferred_training_days.includes(fullDay)
         ? d.preferred_training_days.filter(day => day !== fullDay)
-        : [...d.preferred_training_days, fullDay],
-    }));
+        : [...d.preferred_training_days, fullDay];
+      return {
+        ...d,
+        preferred_training_days: newDays,
+        training_days_per_week: newDays.length || 1, // auto-sync count
+      };
+    });
+
+  // Re-compute default days once gym hours arrive (remove closed days from selection)
+  useEffect(() => {
+    if (gymHours.length === 0) return;
+    const DOW_TO_NAME = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+    const closed = new Set();
+    gymHours.forEach(h => { if (h.is_closed) closed.add(DOW_TO_NAME[h.day_of_week]); });
+    if (closed.size === 0) return;
+    setData(d => {
+      // Remove any closed days from current selection and re-fill
+      const filtered = d.preferred_training_days.filter(day => !closed.has(day));
+      if (filtered.length === d.preferred_training_days.length) return d; // no change needed
+      return { ...d, preferred_training_days: getDefaultDays(d.training_days_per_week, closed) };
+    });
+  }, [gymHours]);
+
+  // Compute closed days set from gym hours (for day selection)
+  const closedDaysSet = useMemo(() => {
+    const DOW_TO_NAME = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+    const closed = new Set();
+    gymHours.forEach(h => { if (h.is_closed) closed.add(DOW_TO_NAME[h.day_of_week]); });
+    return closed;
+  }, [gymHours]);
 
   // When frequency changes on step 3, also reset the pre-selected days
   const setFrequency = (n) => {
     setData(d => ({
       ...d,
       training_days_per_week:  n,
-      preferred_training_days: getDefaultDays(n),
+      preferred_training_days: getDefaultDays(n, closedDaysSet),
     }));
   };
 
@@ -362,13 +465,18 @@ const Onboarding = () => {
         setHealthStatus('linked');
         set('health_linked', true);
 
+        // Persist health connection to profiles + localStorage so settings page sees it
+        localStorage.setItem('tugympr_health_connected', 'true');
+        localStorage.setItem('tugympr_health_settings', JSON.stringify({ syncWeight: true, syncWorkouts: true, importWeight: true }));
+        if (user?.id) {
+          supabase.from('profiles').update({ health_sync_enabled: true }).eq('id', user.id).then(() => {});
+        }
+
         // Read health data to pre-fill body stats (only fill empty fields)
         const prefilled = {};
-        const [weightData, heightData, sexData, dobData] = await Promise.allSettled([
+        const [weightData, heightData] = await Promise.allSettled([
           readLatestWeight(),
           readHeight(),
-          readBiologicalSex(),
-          readDateOfBirth(),
         ]);
 
         setData(prev => {
@@ -382,23 +490,18 @@ const Onboarding = () => {
 
           // Height (inches) — only pre-fill if both feet and inches are empty
           if (heightData.status === 'fulfilled' && heightData.value?.value && !prev.height_feet && !prev.height_inches) {
-            const totalInches = heightData.value.value;
-            updates.height_feet = String(Math.floor(totalInches / 12));
-            updates.height_inches = String(Math.round(totalInches % 12));
-            prefilled.height = true;
+            const totalInches = Math.round(heightData.value.value);
+            const feet = Math.floor(totalInches / 12);
+            const inches = totalInches % 12;
+            if (feet >= 3 && feet <= 8) {
+              updates.height_feet = String(feet);
+              updates.height_inches = String(inches);
+              prefilled.height = true;
+            }
           }
 
-          // Biological sex — only pre-fill if not yet selected
-          if (sexData.status === 'fulfilled' && sexData.value && !prev.sex) {
-            updates.sex = sexData.value;
-            prefilled.sex = true;
-          }
-
-          // Age from date of birth — only pre-fill if empty
-          if (dobData.status === 'fulfilled' && dobData.value?.age && !prev.age) {
-            updates.age = String(dobData.value.age);
-            prefilled.age = true;
-          }
+          // Note: Biological sex and age cannot be read from @capgo/capacitor-health —
+          // the plugin doesn't support getCharacteristics(). Users fill these manually.
 
           return updates;
         });
@@ -441,6 +544,7 @@ const Onboarding = () => {
     if (step === 3) return !!data.primary_goal;
     if (step === 4) return data.available_equipment.length > 0;
     if (step === 5) return data.preferred_training_days.length > 0 && !!data.preferred_training_time;
+    // step 6 = data consent (has its own buttons), step 7 = health, step 8 = body stats
     return true;
   };
 
@@ -526,18 +630,20 @@ const Onboarding = () => {
       // Mark onboarding fully complete for analytics
       await supabase
         .from('profiles')
-        .update({ onboarding_step: TOTAL_STEPS })
+        .update({ onboarding_step: CORE_STEPS })
         .eq('id', user.id);
 
       posthog?.capture('onboarding_step_completed', {
-        step: TOTAL_STEPS - 1,
-        step_name: STEP_NAMES[TOTAL_STEPS - 1],
+        step: CORE_STEPS - 1,
+        step_name: STEP_NAMES[CORE_STEPS - 1],
       });
-      posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
 
-      refreshProfile();
-      // Show the generate plan offer instead of navigating directly
-      setShowGeneratePlan('ask');
+      // Mark locally that onboarding DB writes are done — do NOT call refreshProfile() yet,
+      // because that would set profile.is_onboarded = true and the OnboardingRoute guard
+      // would redirect us away before the Plan/Nutrition screens can render.
+      setOnboardingDone(true);
+      // Advance to step 10 (Program) as a regular onboarding step
+      setStep(10);
     } catch (err) {
       setError(err.message || t('common:somethingWentWrong'));
     } finally {
@@ -605,21 +711,30 @@ const Onboarding = () => {
         routines_count: result.routinesA.length,
       });
 
+      // Save routines for preview
+      setGeneratedRoutines(result.routinesA.map(r => ({
+        name: r.name,
+        exercises: r.exercises.map(ex => {
+          const info = getExerciseById(ex.exerciseId);
+          return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
+        }),
+      })));
+      setPreviewRoutineIdx(0);
       setShowGeneratePlan('done');
     } catch (err) {
       setGenerateError(err.message || t('common:somethingWentWrong'));
-      setShowGeneratePlan('ask');
+      setShowGeneratePlan(false); // back to ask state (step 10 default)
     }
   };
 
   const handleSkipGeneratePlan = () => {
     setShowGeneratePlan(false);
-    setShowMealPlan('ask');
+    setStep(11);
   };
 
   const handlePlanDone = () => {
     setShowGeneratePlan(false);
-    setShowMealPlan('ask');
+    setStep(11);
   };
 
   // ── MEAL PLAN FLOW ───────────────────────────────────────────
@@ -689,7 +804,10 @@ const Onboarding = () => {
     ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const handleSkipMealPlan = () => {
-    navigate('/welcome');
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    refreshProfile();
+    navigate('/', { replace: true });
   };
 
   const handleMealPlanPrefs = () => {
@@ -796,7 +914,10 @@ const Onboarding = () => {
   };
 
   const handleMealPlanDone = () => {
-    navigate('/welcome');
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    refreshProfile();
+    navigate('/', { replace: true });
   };
 
   // Helper to get translated day name abbreviation
@@ -817,10 +938,8 @@ const Onboarding = () => {
           <p className="text-[13px] mt-1" style={{ color: "var(--color-text-subtle)" }}>{t('subtitle')}</p>
         </div>
 
-        {/* Step indicator — shows all steps including program + nutrition */}
-        {!showGeneratePlan && !showMealPlan && <StepIndicator current={step} total={TOTAL_STEPS_WITH_PLANS} />}
-        {showGeneratePlan && <StepIndicator current={TOTAL_STEPS} total={TOTAL_STEPS_WITH_PLANS} />}
-        {showMealPlan && <StepIndicator current={TOTAL_STEPS + 1} total={TOTAL_STEPS_WITH_PLANS} />}
+        {/* Step indicator — unified for all 12 steps */}
+        <StepIndicator current={step} total={TOTAL_STEPS} />
 
         {/* ── STEP 0: INVITE CODE ── */}
         {step === 0 && (
@@ -1110,15 +1229,22 @@ const Onboarding = () => {
               <div className="flex gap-2">
                 {FULL_DAYS_EN.map((dayEN, idx) => {
                   const active = data.preferred_training_days.includes(dayEN);
+                  // Map our index (0=Mon..6=Sun) to gym_hours day_of_week (0=Sun,1=Mon..6=Sat)
+                  const dow = idx === 6 ? 0 : idx + 1;
+                  const hourRow = gymHours.find(h => h.day_of_week === dow);
+                  const isClosed = hourRow?.is_closed === true;
                   return (
                     <button
                       key={dayEN}
                       type="button"
-                      onClick={() => toggleTrainingDay(dayEN)}
-                      aria-label={dayEN}
+                      onClick={() => !isClosed && toggleTrainingDay(dayEN)}
+                      disabled={isClosed}
+                      aria-label={isClosed ? `${dayEN} — ${t('schedule.gymClosed', 'Closed')}` : dayEN}
                       aria-pressed={active}
                       className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all ${
-                        active
+                        isClosed
+                          ? 'bg-red-500/8 border border-red-500/15 text-red-400/50 cursor-not-allowed line-through'
+                          : active
                           ? 'bg-[#D4AF37] text-black'
                           : 'bg-[var(--color-bg-card)] border border-white/[0.06] text-[var(--color-text-subtle)] hover:border-white/14 hover:text-[var(--color-text-muted)]'
                       }`}
@@ -1139,11 +1265,21 @@ const Onboarding = () => {
             </div>
 
             {/* Time preference */}
+            {(() => {
+              // Compute gym open/close range from gym_hours
+              const openHours = gymHours.filter(h => !h.is_closed);
+              const earliestOpen = openHours.length > 0 ? openHours.reduce((min, h) => h.open_time < min ? h.open_time : min, '23:59') : null;
+              const latestClose = openHours.length > 0 ? openHours.reduce((max, h) => h.close_time > max ? h.close_time : max, '00:00') : null;
+              const gymTimeInfo = earliestOpen && latestClose ? ` (${earliestOpen} - ${latestClose})` : '';
+
+              return (
             <div className="mb-7">
               <p className="text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
                 {t('schedule.preferTime')}
               </p>
-              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>{t('schedule.timeHint')}</p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                {t('schedule.timeHint')}{gymTimeInfo && <span className="text-[#D4AF37] font-semibold">{gymTimeInfo}</span>}
+              </p>
               <div className="flex flex-col gap-2">
                 {TIME_PREFERENCES.map(tp => {
                   const active = data.preferred_training_time === tp.value;
@@ -1171,6 +1307,8 @@ const Onboarding = () => {
                 })}
               </div>
             </div>
+              );
+            })()}
 
             {/* Workout buddy prompt */}
             <div>
@@ -1226,8 +1364,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 6: BODY STATS + INJURIES ── */}
-        {step === 6 && (
+        {/* ── STEP 8: BODY STATS + INJURIES ── */}
+        {step === 8 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-semibold truncate mb-1" style={{ color: "var(--color-text-primary)" }}>
               {t('bodyStats.title')} <span className="font-normal text-[15px]" style={{ color: "var(--color-text-muted)" }}>({t('common:optional')})</span>
@@ -1238,10 +1376,9 @@ const Onboarding = () => {
             <div className="mb-5">
               <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.sex')}
-                <HealthBadge visible={healthPrefill.sex} t={t} />
               </label>
               <div className="flex gap-2">
-                {[{ value: 'male', label: t('bodyStats.male') }, { value: 'female', label: t('bodyStats.female') }].map(opt => (
+                {[{ value: 'male', label: t('bodyStats.male') }, { value: 'female', label: t('bodyStats.female') }, { value: 'other', label: t('bodyStats.other', 'Other') }].map(opt => (
                   <button
                     key={opt.value}
                     type="button"
@@ -1264,7 +1401,6 @@ const Onboarding = () => {
             <div className="mb-5">
               <label className="flex items-center text-[12px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
                 {t('bodyStats.age')}
-                <HealthBadge visible={healthPrefill.age} t={t} />
               </label>
               <input
                 type="number"
@@ -1382,8 +1518,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 7: DATA CONSENT / DISCLOSURE ── */}
-        {step === 7 && (
+        {/* ── STEP 6: DATA CONSENT / DISCLOSURE ── */}
+        {step === 6 && (
           <div className="animate-fade-in">
             <div className="flex items-center gap-3 mb-1">
               <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex-shrink-0">
@@ -1406,19 +1542,6 @@ const Onboarding = () => {
                     {i18n.language === 'es' ? 'Salud y Fitness' : 'Health & Fitness'}
                   </p>
                   <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.health')}</p>
-                </div>
-              </div>
-
-              {/* Location */}
-              <div className="flex items-start gap-3.5 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5">
-                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex-shrink-0 mt-0.5">
-                  <MapPin size={16} className="text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--color-text-primary)" }}>
-                    {i18n.language === 'es' ? 'Ubicaci\u00f3n' : 'Location'}
-                  </p>
-                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-subtle)" }}>{t('dataConsent.location')}</p>
                 </div>
               </div>
 
@@ -1505,8 +1628,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── STEP 8: HEALTH INTEGRATION ── */}
-        {step === 8 && (
+        {/* ── STEP 7: HEALTH INTEGRATION ── */}
+        {step === 7 && (
           <div className="animate-fade-in">
             <h2 className="text-[18px] font-semibold truncate mb-1" style={{ color: "var(--color-text-primary)" }}>{t('health.title')}</h2>
             <p className="text-[13px] mb-6" style={{ color: "var(--color-text-subtle)" }}>{t('health.subtitle')}</p>
@@ -1627,6 +1750,32 @@ const Onboarding = () => {
 
             <Hint>{t('social.hint')}</Hint>
 
+            {/* Referral code input */}
+            <div className="mb-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
+                {t('social.referralCode', 'Referral Code')}
+              </p>
+              <p className="text-[12px] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                {t('social.referralCodeHint', 'Were you referred by a friend? Enter their referral code to connect and both earn rewards.')}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={data.workout_buddy_username || ''}
+                  onChange={e => set('workout_buddy_username', e.target.value.toUpperCase())}
+                  placeholder={t('social.referralCodePlaceholder', 'e.g. REF-ALEX')}
+                  maxLength={20}
+                  className="flex-1 bg-[var(--color-bg-input)] border border-white/[0.06] rounded-xl px-4 py-3 text-[14px] font-mono tracking-wider uppercase placeholder-[var(--color-text-muted)] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
+                  style={{ color: "var(--color-text-primary)" }}
+                />
+              </div>
+              {data.workout_buddy_username && (
+                <p className="text-[11px] mt-2 text-center text-emerald-400">
+                  {t('social.referralWillConnect', "You'll be connected as friends and both earn rewards!")}
+                </p>
+              )}
+            </div>
+
             {/* Social feed mockup */}
             <div className="mb-6">
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>
@@ -1702,14 +1851,14 @@ const Onboarding = () => {
         )}
 
         {/* ── Health disclaimer ── */}
-        {step === TOTAL_STEPS - 1 && !showGeneratePlan && !showMealPlan && (
+        {step === CORE_STEPS - 1 && (
           <p className="text-[11px] text-center leading-relaxed mt-4" style={{ color: "var(--color-text-subtle)" }}>
             {t('disclaimer')}
           </p>
         )}
 
-        {/* ── NAV BUTTONS (hidden on invite code step, data consent step, generate plan, and meal plan screens) ── */}
-        {step > 0 && step !== 7 && !showGeneratePlan && !showMealPlan && (
+        {/* ── NAV BUTTONS (hidden on step 0/invite, step 6/consent, steps 10-11/plan+nutrition) ── */}
+        {step > 0 && step !== 6 && step < 10 && (
         <div className="flex gap-3 mt-8">
           <button
             type="button"
@@ -1719,7 +1868,7 @@ const Onboarding = () => {
             <ChevronLeft size={17} /> {t('common:back')}
           </button>
 
-          {step < TOTAL_STEPS - 1 ? (
+          {step < CORE_STEPS - 1 ? (
             <button
               type="button"
               onClick={() => setStep(s => s + 1)}
@@ -1743,19 +1892,19 @@ const Onboarding = () => {
         </div>
         )}
 
-        {/* Skip on body stats or health step (step 7 = data consent has its own buttons) */}
-        {(step === 6 || step === 8) && !showGeneratePlan && !showMealPlan && (
+        {/* Skip on health step (7) or body stats step (8) — step 6 = data consent has its own buttons */}
+        {(step === 7 || step === 8) && (
           <button
             type="button"
             onClick={() => setStep(s => s + 1)}
             className="w-full text-center text-[12px] mt-3 py-2 transition-colors" style={{ color: "var(--color-text-muted)" }}
           >
-            {step === 8 ? t('health.skip') : t('common:skip')}
+            {step === 7 ? t('health.skip') : t('common:skip')}
           </button>
         )}
 
-        {/* ── GENERATE PLAN: Ask screen ── */}
-        {showGeneratePlan === 'ask' && (
+        {/* ── STEP 10: PERSONALIZED WORKOUT PLAN ── */}
+        {step === 10 && showGeneratePlan !== 'generating' && showGeneratePlan !== 'done' && (
           <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/25">
               <Sparkles size={28} className="text-[#D4AF37]" />
@@ -1794,8 +1943,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── GENERATE PLAN: Generating screen ── */}
-        {showGeneratePlan === 'generating' && (
+        {/* ── STEP 10: Generating screen ── */}
+        {step === 10 && showGeneratePlan === 'generating' && (
           <div role="status" aria-live="polite" className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
             <Loader2 size={36} className="text-[#D4AF37] animate-spin" aria-hidden="true" />
             <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
@@ -1804,25 +1953,79 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── GENERATE PLAN: Done screen ── */}
-        {showGeneratePlan === 'done' && (
-          <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
-              <Check size={28} className="text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+        {/* ── STEP 10: Done screen — Routine Preview ── */}
+        {step === 10 && showGeneratePlan === 'done' && (
+          <div className="animate-fade-in py-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Check size={18} className="text-emerald-400" />
+              <h2 className="text-[18px] font-bold" style={{ color: "var(--color-text-primary)" }}>
                 {t('generatePlan.ready')}
               </h2>
-              <p className="text-[14px] leading-relaxed max-w-sm mx-auto" style={{ color: "var(--color-text-subtle)" }}>
-                {t('generatePlan.readyDesc')}
-              </p>
             </div>
-            <button
-              type="button"
-              onClick={handlePlanDone}
-              className="w-full max-w-xs flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all"
-            >
+            <p className="text-[13px] mb-5" style={{ color: "var(--color-text-subtle)" }}>
+              {t('generatePlan.readyDesc')}
+            </p>
+
+            {/* Routine tab navigation with arrows */}
+            {generatedRoutines.length > 1 && (
+              <div className="flex items-center justify-between mb-4">
+                <button type="button" onClick={() => setPreviewRoutineIdx(i => Math.max(0, i - 1))} disabled={previewRoutineIdx === 0}
+                  className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center disabled:opacity-20 transition-opacity">
+                  <ChevronLeft size={16} style={{ color: 'var(--color-text-muted)' }} />
+                </button>
+                <div className="text-center">
+                  <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                    {generatedRoutines[previewRoutineIdx]?.name?.replace('Auto: ', '') || `Day ${previewRoutineIdx + 1}`}
+                  </p>
+                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {previewRoutineIdx + 1} / {generatedRoutines.length}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setPreviewRoutineIdx(i => Math.min(generatedRoutines.length - 1, i + 1))} disabled={previewRoutineIdx === generatedRoutines.length - 1}
+                  className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center disabled:opacity-20 transition-opacity">
+                  <ChevronRight size={16} style={{ color: 'var(--color-text-muted)' }} />
+                </button>
+              </div>
+            )}
+
+            {/* Exercise list for current routine */}
+            {generatedRoutines[previewRoutineIdx] && (
+              <div className="space-y-2 mb-6 max-h-[320px] overflow-y-auto">
+                {generatedRoutines[previewRoutineIdx].exercises.map((ex, i) => (
+                  <div key={i} className="flex items-center gap-3 rounded-xl p-3 border border-white/[0.04]" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+                    <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
+                      <Dumbbell size={15} className="text-[#D4AF37]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {i18n.language === 'es' && ex.name_es ? ex.name_es : ex.name}
+                      </p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {ex.sets} sets × {ex.reps} reps · {ex.restSeconds}s rest
+                      </p>
+                    </div>
+                    {ex.muscle && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/[0.04] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                        {ex.muscle}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Dot indicators */}
+            {generatedRoutines.length > 1 && (
+              <div className="flex justify-center gap-1.5 mb-5">
+                {generatedRoutines.map((_, i) => (
+                  <button key={i} type="button" onClick={() => setPreviewRoutineIdx(i)}
+                    className={`rounded-full transition-all ${i === previewRoutineIdx ? 'w-5 h-1.5 bg-[#D4AF37]' : 'w-1.5 h-1.5 bg-white/20'}`} />
+                ))}
+              </div>
+            )}
+
+            <button type="button" onClick={handlePlanDone}
+              className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all">
               {t('common:continue')} <ChevronRight size={17} />
             </button>
           </div>
@@ -1832,8 +2035,8 @@ const Onboarding = () => {
             MEAL PLAN FLOW (after workout plan)
             ══════════════════════════════════════════════════════ */}
 
-        {/* ── MEAL PLAN: Ask screen ── */}
-        {showMealPlan === 'ask' && (
+        {/* ── STEP 11: MEAL PLAN ── */}
+        {step === 11 && !showMealPlan && (
           <div className="animate-fade-in flex flex-col items-center text-center gap-6 py-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
               <UtensilsCrossed size={28} className="text-emerald-400" />
@@ -1866,8 +2069,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── MEAL PLAN: Dietary Preferences screen ── */}
-        {showMealPlan === 'prefs' && (
+        {/* ── STEP 11: Dietary Preferences screen ── */}
+        {step === 11 && showMealPlan === 'prefs' && (
           <div className="animate-fade-in py-4">
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/25 mb-3">
@@ -2047,7 +2250,7 @@ const Onboarding = () => {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setShowMealPlan('ask')}
+                onClick={() => setShowMealPlan(false)}
                 className="flex items-center gap-1.5 px-5 py-3.5 rounded-xl border border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200 text-[14px] font-semibold"
                 style={{ color: "var(--color-text-primary)" }}
               >
@@ -2065,8 +2268,8 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── MEAL PLAN: Generating screen ── */}
-        {showMealPlan === 'generating' && (
+        {/* ── STEP 11: Generating screen ── */}
+        {step === 11 && showMealPlan === 'generating' && (
           <div role="status" aria-live="polite" className="animate-fade-in flex flex-col items-center text-center gap-6 py-12">
             <Loader2 size={36} className="text-emerald-400 animate-spin" aria-hidden="true" />
             <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
@@ -2075,62 +2278,93 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* ── MEAL PLAN: Done screen ── */}
-        {showMealPlan === 'done' && (
-          <div className="animate-fade-in flex flex-col items-center text-center gap-5 py-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/25">
-              <Check size={28} className="text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-[20px] font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
+        {/* ── STEP 11: Done screen — Meal Plan Preview ── */}
+        {step === 11 && showMealPlan === 'done' && (
+          <div className="animate-fade-in py-4 pb-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Check size={18} className="text-emerald-400" />
+              <h2 className="text-[18px] font-bold" style={{ color: "var(--color-text-primary)" }}>
                 {t('mealPlan.ready')}
               </h2>
-              <p className="text-[14px] leading-relaxed max-w-sm mx-auto mb-2" style={{ color: "var(--color-text-subtle)" }}>
-                {t('mealPlan.readyDesc')}
-              </p>
-              {mealPlanMacros && (
-                <p className="text-[12px] font-medium" style={{ color: "var(--color-text-muted)" }}>
-                  {t('mealPlan.readyMacros', {
-                    calories: mealPlanMacros.calories,
-                    protein: mealPlanMacros.protein,
-                    carbs: mealPlanMacros.carbs,
-                    fat: mealPlanMacros.fat,
-                  })}
-                </p>
-              )}
             </div>
-
-            {/* Preview: 7-day plan summary */}
-            {generatedMealPlan && (
-              <div className="w-full space-y-2 text-left max-h-[240px] overflow-y-auto">
-                {generatedMealPlan.map((day, idx) => (
-                  <div key={idx} className="rounded-xl border border-white/[0.06] px-4 py-3" style={{ backgroundColor: "var(--color-bg-card)" }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[13px] font-bold" style={{ color: "var(--color-text-primary)" }}>
-                        {t('mealPlan.dayLabel', { day: idx + 1 })}
-                      </p>
-                      <p className="text-[11px] font-medium" style={{ color: "var(--color-text-muted)" }}>
-                        {day.totals.calories} cal · {day.totals.protein}g P
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {day.meals.map((meal, mi) => (
-                        <p key={mi} className="text-[12px] truncate" style={{ color: "var(--color-text-subtle)" }}>
-                          {data.language === 'es' && meal.title_es ? meal.title_es : meal.title}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {mealPlanMacros && (
+              <p className="text-[12px] mb-5" style={{ color: "var(--color-text-muted)" }}>
+                {mealPlanMacros.calories} cal · {mealPlanMacros.protein}g P · {mealPlanMacros.carbs}g C · {mealPlanMacros.fat}g F
+              </p>
             )}
 
-            <button
-              type="button"
-              onClick={handleMealPlanDone}
-              className="w-full max-w-xs flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all mt-2"
-            >
-              {t('mealPlan.goToDashboard')} <ChevronRight size={17} />
+            {/* Day navigation with arrows */}
+            {generatedMealPlan && generatedMealPlan.length > 0 && (() => {
+              const dayNames = i18n.language === 'es'
+                ? ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+                : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+              const day = generatedMealPlan[previewDayIdx];
+              if (!day) return null;
+
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <button type="button" onClick={() => setPreviewDayIdx(i => Math.max(0, i - 1))} disabled={previewDayIdx === 0}
+                      className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center disabled:opacity-20 transition-opacity">
+                      <ChevronLeft size={16} style={{ color: 'var(--color-text-muted)' }} />
+                    </button>
+                    <div className="text-center">
+                      <p className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                        {dayNames[previewDayIdx] || `Day ${previewDayIdx + 1}`}
+                      </p>
+                      <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {day.totals?.calories || 0} cal · {day.totals?.protein || 0}g P
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setPreviewDayIdx(i => Math.min(generatedMealPlan.length - 1, i + 1))} disabled={previewDayIdx === generatedMealPlan.length - 1}
+                      className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center disabled:opacity-20 transition-opacity">
+                      <ChevronRight size={16} style={{ color: 'var(--color-text-muted)' }} />
+                    </button>
+                  </div>
+
+                  {/* Meals for this day */}
+                  <div className="space-y-2.5 mb-5 max-h-[340px] overflow-y-auto">
+                    {(day.meals || []).map((meal, mi) => {
+                      const mealData = MEALS.find(m => m.id === meal.id) || meal;
+                      const imageUrl = mealData.image || mealData.image_url || null;
+                      return (
+                        <div key={mi} className="flex items-center gap-3 rounded-xl p-3 border border-white/[0.04]" style={{ backgroundColor: 'var(--color-bg-card)' }}>
+                          <div className="w-14 h-14 rounded-xl bg-white/[0.04] flex-shrink-0 overflow-hidden">
+                            {imageUrl ? (
+                              <img src={imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <UtensilsCrossed size={18} style={{ color: 'var(--color-text-muted)' }} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                              {i18n.language === 'es' && (mealData.title_es || mealData.name_es) ? (mealData.title_es || mealData.name_es) : (mealData.title || mealData.name || `Meal ${mi + 1}`)}
+                            </p>
+                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                              {meal.calories || mealData.calories || 0} cal · {meal.protein || mealData.protein || 0}g P · {meal.carbs || mealData.carbs || 0}g C · {meal.fat || mealData.fat || 0}g F
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dot indicators */}
+                  <div className="flex justify-center gap-1.5 mb-5">
+                    {generatedMealPlan.map((_, i) => (
+                      <button key={i} type="button" onClick={() => setPreviewDayIdx(i)}
+                        className={`rounded-full transition-all ${i === previewDayIdx ? 'w-5 h-1.5 bg-emerald-400' : 'w-1.5 h-1.5 bg-white/20'}`} />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+
+            <button type="button" onClick={handleMealPlanDone}
+              className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#E6C766] text-black font-bold text-[14px] whitespace-nowrap py-3.5 rounded-xl transition-all">
+              {t('mealPlan.goToDashboard', 'Go to Dashboard')} <ChevronRight size={17} />
             </button>
           </div>
         )}

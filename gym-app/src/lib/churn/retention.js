@@ -79,7 +79,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // ── 1. Member profiles ───────────────────────────────────────
   const { data: memberRows, error: membersError } = await supabase
     .from('profiles')
-    .select('id, full_name, username, phone_number, created_at, gym_id, training_frequency')
+    .select('id, full_name, username, phone_number, created_at, gym_id, preferred_training_days')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .order('full_name', { ascending: true });
@@ -474,7 +474,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     const memberData = {
       avgWeeklyVisits,
       prevAvgWeeklyVisits,
-      trainingFrequency: m.training_frequency ?? 3,
+      trainingFrequency: m.preferred_training_days?.length ?? 3,
       tenureMonths,
       totalSessionsFirst90Days: tenureMonths <= 4 ? (sessionsFirst90Map[m.id] ?? null) : null,
       friendCount: friendCountMap[m.id] || 0,

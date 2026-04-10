@@ -2933,8 +2933,9 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       </div>
 
       {/* ── Quick Actions ── */}
-      <div className="px-4 grid grid-cols-3 gap-3 mb-4">
+      <div className="px-4 grid grid-cols-4 gap-2.5 mb-4">
         {[
+          { view: 'plan',     icon: Calendar,          color: '#10B981', label: t('nutrition.myPlan', 'My Plan') },
           { view: 'discover', icon: UtensilsCrossed, color: '#D4AF37', label: t('nutrition.recipes') },
           { view: 'saved',    icon: Bookmark,         color: '#F59E0B', label: t('nutrition.savedRecipes') },
           { view: 'grocery',  icon: ShoppingCart,      color: '#60A5FA', label: t('nutrition.groceryList') },
@@ -3493,11 +3494,210 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   );
 };
 
+// ── MY PLAN VIEW ───────────────────────────────────────────
+const MyPlanView = ({ setView }) => {
+  const { user } = useAuth();
+  const { t, i18n } = useTranslation('pages');
+  const [plan, setPlan] = useState(null);
+  const [macros, setMacros] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [expandedDay, setExpandedDay] = useState(0);
+
+  const dayLabels = useMemo(() => {
+    const days = i18n.language === 'es'
+      ? ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+      : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days;
+  }, [i18n.language]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      setLoading(true);
+      const now = new Date();
+      now.setDate(now.getDate() + weekOffset * 7);
+      const monday = new Date(now);
+      monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+      const weekStart = monday.toISOString().split('T')[0];
+
+      const { data } = await supabase
+        .from('generated_meal_plans')
+        .select('plan_data, macro_targets, week_start')
+        .eq('profile_id', user.id)
+        .eq('is_active', true)
+        .order('week_start', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setPlan(data.plan_data);
+        setMacros(data.macro_targets);
+      }
+      setLoading(false);
+    })();
+  }, [user?.id, weekOffset]);
+
+  const weekLabel = useMemo(() => {
+    if (weekOffset === 0) return t('nutrition.thisWeek', 'This Week');
+    if (weekOffset === -1) return t('nutrition.lastWeek', 'Last Week');
+    if (weekOffset === 1) return t('nutrition.nextWeek', 'Next Week');
+    return `${weekOffset > 0 ? '+' : ''}${weekOffset} ${t('nutrition.weeks', 'weeks')}`;
+  }, [weekOffset, t]);
+
+  if (loading) {
+    return (
+      <div className="px-4 py-6">
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center" aria-label="Go back">
+            <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+          <h2 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.myPlan', 'My Plan')}</h2>
+        </div>
+        <div className="space-y-3">
+          {[1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.04] animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (!plan || !Array.isArray(plan) || plan.length === 0) {
+    return (
+      <div className="px-4 py-6">
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center" aria-label="Go back">
+            <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+          <h2 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.myPlan', 'My Plan')}</h2>
+        </div>
+        <div className="text-center py-12">
+          <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
+            <UtensilsCrossed size={24} className="text-[#D4AF37]" />
+          </div>
+          <p className="text-[15px] font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.noPlanYet', 'No meal plan yet')}</p>
+          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noPlanDesc', 'Generate a plan from your profile settings')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-6 pb-28">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={() => setView('home')} className="w-11 h-11 rounded-xl bg-white/[0.04] flex items-center justify-center" aria-label="Go back">
+          <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+        <div className="flex-1">
+          <h2 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.myPlan', 'My Plan')}</h2>
+          {macros && (
+            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {macros.calories} cal · {macros.protein}g P · {macros.carbs}g C · {macros.fat}g F
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Week navigation */}
+      <div className="flex items-center justify-between mb-5 px-1">
+        <button onClick={() => setWeekOffset(w => w - 1)} className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center" aria-label="Previous week">
+          <ChevronLeft size={16} style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+        <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{weekLabel}</p>
+        <button onClick={() => setWeekOffset(w => w + 1)} className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center" aria-label="Next week">
+          <ChevronRight size={16} style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+      </div>
+
+      {/* Day cards */}
+      <div className="space-y-3">
+        {plan.map((day, idx) => {
+          const isExpanded = expandedDay === idx;
+          const totals = day.totals || {};
+          const meals = day.meals || [];
+
+          return (
+            <div key={idx} className="rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: isExpanded ? 'rgba(212,175,55,0.3)' : 'var(--color-border-subtle)' }}>
+              {/* Day header */}
+              <button
+                type="button"
+                onClick={() => setExpandedDay(isExpanded ? -1 : idx)}
+                className="w-full flex items-center justify-between px-4 py-3.5 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[12px] font-bold ${isExpanded ? 'bg-[#D4AF37]/15 text-[#D4AF37]' : 'bg-white/[0.04]'}`}
+                    style={{ color: isExpanded ? undefined : 'var(--color-text-muted)' }}>
+                    {dayLabels[idx]?.slice(0, 2)}
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{dayLabels[idx]}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {totals.calories || 0} cal · {totals.protein || 0}g P
+                    </p>
+                  </div>
+                </div>
+                {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--color-text-muted)' }} /> : <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />}
+              </button>
+
+              {/* Meals (expanded) */}
+              {isExpanded && meals.length > 0 && (
+                <div className="px-4 pb-4 space-y-2.5">
+                  {meals.map((meal, mi) => {
+                    const mealData = MEALS.find(m => m.id === meal.id) || meal;
+                    const imageUrl = mealData.image || mealData.image_url || null;
+                    return (
+                      <div key={mi} className="flex items-center gap-3 rounded-xl p-3 bg-white/[0.03] border border-white/[0.04]">
+                        {/* Food image */}
+                        <div className="w-14 h-14 rounded-xl bg-white/[0.04] flex-shrink-0 overflow-hidden">
+                          {imageUrl ? (
+                            <img src={imageUrl} alt={mealData.name || ''} className="w-full h-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <UtensilsCrossed size={18} style={{ color: 'var(--color-text-muted)' }} />
+                            </div>
+                          )}
+                        </div>
+                        {/* Meal info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                            {(i18n.language === 'es' && mealData.name_es) || mealData.name || `Meal ${mi + 1}`}
+                          </p>
+                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                            {meal.calories || mealData.calories || 0} cal · {meal.protein || mealData.protein || 0}g P · {meal.carbs || mealData.carbs || 0}g C · {meal.fat || mealData.fat || 0}g F
+                          </p>
+                          {mealData.category && (
+                            <span className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] mt-1">
+                              {mealData.category}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Day total bar */}
+                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] mt-1">
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.dayTotal', 'Day Total')}</span>
+                    <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      {totals.calories || 0} cal · {totals.protein || 0}g P · {totals.carbs || 0}g C · {totals.fat || 0}g F
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ── BOTTOM NAV ──────────────────────────────────────────────
 const NutritionNav = ({ view, setView }) => {
   const { t } = useTranslation('pages');
   const tabs = [
     { id: 'home',     Icon: Flame,      label: t('nutrition.navTrack', 'Track')    },
+    { id: 'plan',     Icon: Calendar,   label: t('nutrition.myPlan', 'My Plan')   },
     { id: 'discover', Icon: Search,     label: t('nutrition.navDiscover', 'Discover') },
     { id: 'saved',    Icon: Bookmark,   label: t('nutrition.navSaved', 'Saved')    },
     { id: 'grocery',  Icon: ShoppingCart, label: t('nutrition.navGrocery', 'Grocery') },
@@ -4159,6 +4359,7 @@ export default function Nutrition({ embedded = false }) {
         {view !== 'home' && embedded && createPortal(
           <div className="fixed inset-0 z-[60] bg-[var(--color-bg-primary)] overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl">
+              {view === 'plan'     && <MyPlanView setView={setView} />}
               {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
               {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
               {view === 'grocery'  && (
@@ -4179,6 +4380,7 @@ export default function Nutrition({ embedded = false }) {
         {/* Sub-views: when standalone, render inline as before */}
         {view !== 'home' && !embedded && (
           <>
+            {view === 'plan'     && <MyPlanView setView={setView} />}
             {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
             {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
             {view === 'grocery'  && (

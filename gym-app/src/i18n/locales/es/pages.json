@@ -343,7 +343,10 @@
       "weight_logged": "Peso Registrado",
       "first_weekly_workout": "Bono Semanal",
       "streak_7": "Racha de 7 Días",
-      "streak_30": "Racha de 30 Días"
+      "streak_30": "Racha de 30 Días",
+      "challenge_joined": "Reto Unido",
+      "referral": "Bono de Referido",
+      "admin_gift": "Regalo del Admin"
     },
     "rewardRedeemed": "¡Recompensa Canjeada!",
     "showQrToStaff": "Muestra este código QR al personal para reclamar tu recompensa",

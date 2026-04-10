@@ -746,6 +746,20 @@ const Dashboard = () => {
     });
   }, [selectedRoutineExercises]);
 
+  // Preload exercise videos into cache so hero card loads instantly
+  useEffect(() => {
+    const videos = allExercisesWithMedia.filter(ex => ex.video).map(ex => ex.video);
+    if (videos.length === 0) return;
+    videos.forEach(url => {
+      // Use link preload for the first video (visible immediately)
+      // and fetch for the rest to warm the service worker cache
+      const link = document.querySelector(`link[href="${url}"]`);
+      if (!link) {
+        fetch(url, { mode: 'no-cors' }).catch(() => {});
+      }
+    });
+  }, [allExercisesWithMedia]);
+
   const hasRoutines = allRoutines.length > 0;
 
   // Level / XP — use actual points from reward_points table
@@ -947,40 +961,7 @@ const Dashboard = () => {
                 </section>
               )}
 
-              {/* ════════════════════════════════════════════════
-                  2c. IN-PROGRESS WORKOUTS — Resume banners (above hero)
-                 ════════════════════════════════════════════════ */}
-              {/* Workout draft resume banners */}
-              {isToday && allActiveDrafts.length > 0 && (
-                <section className="mb-3">
-                  {allActiveDrafts.map(draft => {
-                    const draftSets = Object.values(draft.loggedSets || {}).flat();
-                    const completed = draftSets.filter(s => s.completed).length;
-                    const total = draftSets.length;
-                    return (
-                      <Link
-                        key={draft.routineId}
-                        to={`/session/${draft.routineId}`}
-                        className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border mb-1.5 active:scale-[0.98] transition-transform"
-                        style={{ backgroundColor: 'color-mix(in srgb, #60A5FA 8%, var(--color-bg-card))', borderColor: 'color-mix(in srgb, #60A5FA 25%, transparent)' }}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-[#60A5FA]/15 flex items-center justify-center flex-shrink-0">
-                          <Play size={16} fill="#60A5FA" className="text-[#60A5FA]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                            {draft.routineName || t('dashboard.workout')}
-                          </p>
-                          <p className="text-[11px] text-[#60A5FA]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                            {completed}/{total} {t('dashboard.sets')} · {t('dashboard.tapToResume')}
-                          </p>
-                        </div>
-                        <ChevronRight size={14} className="text-[#60A5FA]" />
-                      </Link>
-                    );
-                  })}
-                </section>
-              )}
+              {/* Resume banners removed — the hero card already shows resume state */}
 
               {/* ════════════════════════════════════════════════
                   3. HERO CARD — Elevated, primary CTA

@@ -61,6 +61,10 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   const [referrals, setReferrals] = useState([]);
   const [referralCount, setReferralCount] = useState(0);
 
+  // Invite code for this member
+  const [memberInvite, setMemberInvite] = useState(null); // { invite_code, created_at, used_at }
+  const [inviteCopied, setInviteCopied] = useState(false);
+
   const [memberStatus, setMemberStatus] = useState(member.membership_status ?? 'active');
   const [memberStatusUpdatedAt, setMemberStatusUpdatedAt] = useState(member.membership_status_updated_at ?? null);
   const [statusReason, setStatusReason] = useState('');
@@ -142,6 +146,35 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
         supabase.from('referrals').select('id, referred_id, status, created_at, profiles!referrals_referred_id_fkey(full_name)').eq('referrer_id', member.id).eq('gym_id', gymId).order('created_at', { ascending: false }).limit(50),
       ]);
       if (refProfileRes.data?.referral_code) setReferralCode(refProfileRes.data.referral_code);
+
+      // Fetch the invite code used by this member (check both tables)
+      const { data: inviteRow } = await supabase
+        .from('gym_invites')
+        .select('invite_code, created_at, used_at')
+        .eq('gym_id', gymId)
+        .eq('used_by', member.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (inviteRow) {
+        setMemberInvite(inviteRow);
+      } else {
+        // Also check member_invites table (alternative invite system)
+        const { data: memberInviteRow } = await supabase
+          .from('member_invites')
+          .select('invite_code, created_at, claimed_at')
+          .eq('claimed_by', member.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (memberInviteRow) {
+          setMemberInvite({
+            invite_code: memberInviteRow.invite_code,
+            created_at: memberInviteRow.created_at,
+            used_at: memberInviteRow.claimed_at,
+          });
+        }
+      }
 
       // Fetch phone_number separately (column may not exist yet pre-migration)
       try {
@@ -554,6 +587,71 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                 <Save size={12} />
                 {infoSaving ? t('admin.memberDetail.saving', 'Saving…') : infoSaved ? t('admin.memberDetail.saved', 'Saved!') : t('admin.memberDetail.saveInfo', 'Save Info')}
               </button>
+
+              {/* Invite / Registration info */}
+              {(() => {
+                const hasLoggedIn = !!member.is_onboarded;
+                return (
+                  <div className="bg-[#0F172A] border border-white/6 rounded-xl p-3 mt-3">
+                    <p className="text-[11px] font-medium text-[#6B7280] mb-1.5">{t('admin.memberDetail.inviteCode', 'Invite Code')}</p>
+                    {memberInvite ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[14px] font-mono font-bold text-[#D4AF37]">{memberInvite.invite_code}</p>
+                            <p className="text-[10px] text-[#6B7280] mt-0.5">
+                              {memberInvite.used_at
+                                ? `${t('admin.memberDetail.registeredOn', 'Registered')} ${format(new Date(memberInvite.used_at), 'MMM d, yyyy', dateFnsLocale)}`
+                                : `${t('admin.memberDetail.createdOn', 'Created')} ${format(new Date(memberInvite.created_at), 'MMM d, yyyy', dateFnsLocale)}`}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(memberInvite.invite_code).catch(() => {});
+                              setInviteCopied(true);
+                              setTimeout(() => setInviteCopied(false), 2000);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] transition-colors">
+                            {inviteCopied ? <Check size={12} className="text-[#10B981]" /> : <Copy size={12} />}
+                            {inviteCopied ? t('admin.memberDetail.copied', 'Copied') : t('admin.memberDetail.copy', 'Copy')}
+                          </button>
+                        </div>
+                        <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          hasLoggedIn
+                            ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25'
+                            : 'bg-[#F59E0B]/12 text-[#F59E0B] border border-[#F59E0B]/25'
+                        }`}>
+                          {hasLoggedIn
+                            ? t('admin.memberDetail.alreadyRegistered', 'Already Registered')
+                            : t('admin.memberDetail.pendingRegistration', 'Pending — Not yet logged in')}
+                        </span>
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                            {hasLoggedIn
+                              ? t('admin.memberDetail.directSignup', 'Direct signup')
+                              : t('admin.memberDetail.profileCreated', 'Profile created by admin')}
+                          </p>
+                          <p className="text-[10px] text-[#6B7280] mt-0.5">
+                            {t('admin.memberDetail.noInviteUsed', 'No invite code was used')}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          hasLoggedIn
+                            ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/25'
+                            : 'bg-[#F59E0B]/12 text-[#F59E0B] border border-[#F59E0B]/25'
+                        }`}>
+                          {hasLoggedIn
+                            ? t('admin.memberDetail.alreadyRegistered', 'Already Registered')
+                            : t('admin.memberDetail.notRegistered', 'Not Registered')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

@@ -32,8 +32,8 @@ export default function InviteModal({ gymId, onClose }) {
   const inviteCode = result?.invite_code || '';
   const inviteUrl = inviteCode ? `https://tugympr.app/invite/${inviteCode}` : '';
 
-  const [sendMethod, setSendMethod] = useState(null); // 'email' | 'phone' | null
-  const canSubmit = name.trim() && email.trim() && phone.trim();
+  const [sendMethod, setSendMethod] = useState('email'); // 'email' | 'phone'
+  const canSubmit = name.trim() && (email.trim() || phone.trim());
 
   const handleGenerate = async () => {
     if (!canSubmit) return;
@@ -53,8 +53,24 @@ export default function InviteModal({ gymId, onClose }) {
         name: name.trim(),
         has_email: !!email.trim(),
         has_phone: !!phone.trim(),
+        send_method: sendMethod,
       });
-      posthog?.capture('admin_member_invited', { method: 'invite_link' });
+      posthog?.capture('admin_member_invited', { method: sendMethod || 'invite_link' });
+
+      // Auto-send via selected method after code is generated
+      const code = data?.invite_code || '';
+      const url = code ? `https://tugympr.app/invite/${code}` : '';
+      setTimeout(() => {
+        if (sendMethod === 'email' && email.trim()) {
+          const subject = encodeURIComponent(k('emailSubject') || "You're invited to join the gym!");
+          const body = encodeURIComponent(`${k('emailBody') || 'Use this code to join'}: ${code}\n\n${url}`);
+          window.open(`mailto:${email.trim()}?subject=${subject}&body=${body}`, '_self');
+        } else if (sendMethod === 'phone' && phone.trim()) {
+          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const body = encodeURIComponent(`${k('smsText') || k('shareText') || "You're invited to join the gym! Use this code"}: ${code} ${url}`);
+          window.open(`sms:${phone.trim()}${isIOS ? '&' : '?'}body=${body}`, '_self');
+        }
+      }, 500); // slight delay to let the result render first
     } catch (err) {
       logger.error('InviteModal: generate failed:', err);
       setError(err.message || 'Something went wrong');
@@ -109,7 +125,9 @@ export default function InviteModal({ gymId, onClose }) {
     const body = encodeURIComponent(
       `${k('smsText') || k('shareText') || 'You\'re invited to join the gym! Use this code'}: ${inviteCode} ${inviteUrl}`
     );
-    window.open(`sms:${cleanPhone}?body=${body}`, '_blank');
+    // iOS uses &body= separator, Android uses ?body=
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    window.open(`sms:${cleanPhone}${isIOS ? '&' : '?'}body=${body}`, '_self');
   };
 
   const handleAnother = () => {
@@ -153,7 +171,7 @@ export default function InviteModal({ gymId, onClose }) {
           {/* Email */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.email', 'Correo electrónico')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+              {t('admin.inviteModal.email', 'Correo electrónico')}
             </label>
             <input
               type="email"
@@ -168,7 +186,7 @@ export default function InviteModal({ gymId, onClose }) {
           {/* Phone */}
           <div>
             <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.inviteModal.phone', 'Teléfono')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+              {t('admin.inviteModal.phone', 'Teléfono')}
             </label>
             <input
               type="tel"
