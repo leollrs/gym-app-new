@@ -196,7 +196,7 @@ export default function TrainerClientNotes() {
           .limit(1),
         supabase
           .from('streak_cache')
-          .select('current_streak, last_workout_date')
+          .select('current_streak_days, last_activity_date')
           .eq('profile_id', clientId)
           .maybeSingle(),
         supabase
@@ -782,9 +782,9 @@ export default function TrainerClientNotes() {
         )}
         {/* Status badges */}
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          {streak && streak.current_streak >= 7 && (
+          {streak && streak.current_streak_days >= 7 && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
-              {streak.current_streak} {t('trainerNotes.dayStreak')}
+              {streak.current_streak_days} {t('trainerNotes.dayStreak')}
             </span>
           )}
           {onboarding?.fitness_level && (
@@ -856,7 +856,7 @@ export default function TrainerClientNotes() {
         </div>
         <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
           <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.streak')}</p>
-          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{streak ? streak.current_streak : 0} <span className="text-[11px] font-normal text-[var(--color-text-muted)]">{t('trainerNotes.strip.days')}</span></p>
+          <p className="text-[13px] sm:text-[14px] font-semibold text-[var(--color-text-primary)]">{streak ? streak.current_streak_days : 0} <span className="text-[11px] font-normal text-[var(--color-text-muted)]">{t('trainerNotes.strip.days')}</span></p>
         </div>
         <div className="bg-[var(--color-bg-card)] rounded-xl border border-[var(--color-border-subtle)] px-3 py-2.5">
           <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">{t('trainerNotes.strip.totalWorkouts')}</p>

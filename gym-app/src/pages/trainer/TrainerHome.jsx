@@ -136,9 +136,9 @@ export default function TrainerDashboard() {
           .limit(10),
         supabase
           .from('streak_cache')
-          .select('profile_id, current_streak')
+          .select('profile_id, current_streak_days')
           .in('profile_id', clientIds)
-          .gte('current_streak', 7),
+          .gte('current_streak_days', 7),
       ]);
 
       if (weekRes.error) logger.error('TrainerDashboard: failed to load week sessions:', weekRes.error);
@@ -562,11 +562,11 @@ export default function TrainerDashboard() {
                         <span className="font-medium">{name}</span>
                       </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">
-                        {t('trainerDashboard.streakDays', { count: s.current_streak })}
+                        {t('trainerDashboard.streakDays', { count: s.current_streak_days })}
                       </p>
                     </div>
                     <span className="text-[11px] font-bold text-orange-400">
-                      {s.current_streak}d
+                      {s.current_streak_days}d
                     </span>
                   </div>
                 );

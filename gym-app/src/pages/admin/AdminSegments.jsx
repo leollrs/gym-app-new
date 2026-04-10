@@ -166,12 +166,8 @@ async function applySegmentFilters(gymId, filters) {
   if (filters.fitness_level?.length) {
     query = query.in('fitness_level', filters.fitness_level);
   }
-  if (filters.streak_lt != null) {
-    query = query.lt('current_streak', filters.streak_lt);
-  }
-  if (filters.streak_gt != null) {
-    query = query.gt('current_streak', filters.streak_gt);
-  }
+  // Note: streak filtering requires join to streak_cache table
+  // These filters are applied client-side after fetch if needed
 
   const { data: members, error } = await query.order('full_name').limit(500);
   if (error) {

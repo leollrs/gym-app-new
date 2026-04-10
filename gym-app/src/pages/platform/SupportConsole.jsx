@@ -174,7 +174,7 @@ export default function SupportConsole() {
         .gte('checked_in_at', thirtyDaysAgo),
       supabase
         .from('streak_cache')
-        .select('current_streak')
+        .select('current_streak_days')
         .eq('profile_id', member.id)
         .single(),
       supabase
@@ -196,7 +196,7 @@ export default function SupportConsole() {
       totalVolume,
       recentSessions: sessionsLast30,
       checkIns30d: checkInsRes.count || 0,
-      currentStreak: streakRes.data?.current_streak || 0,
+      currentStreak: streakRes.data?.current_streak_days || 0,
       churnScore: churnRes.data?.score ?? null,
       churnTier: churnRes.data?.risk_tier || null,
     });
