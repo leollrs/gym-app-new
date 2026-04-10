@@ -244,7 +244,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
             )}
           </div>
           <p className={`mt-4 font-mono font-bold text-black/70 text-center select-all ${isBarcode ? 'text-[18px] tracking-[0.25em]' : 'text-[14px] tracking-widest'}`}>
-            {payload}
+            {payload.startsWith('gym-referral:') ? payload.split(':').pop() : payload.startsWith('gym-reward:') ? payload.split(':').pop()?.substring(0, 8) + '...' : payload}
           </p>
         </div>
 

@@ -867,6 +867,57 @@ const MemberPurchasesTab = ({ gymId, t, dateFnsLocale }) => {
       setSelectedMember(memberData);
       setMemberSearch('');
       showToast(`${t('admin.store.member', 'Member')}: ${memberData.full_name} - ${t('admin.store.selectProduct', 'select a product')}`, 'info');
+    } else if (parsed.type === 'reward_redemption') {
+      // Member is cashing in a reward — mark as claimed
+      if (parsed.gymId !== gymId) {
+        showToast(t('admin.store.wrongGym', 'QR code is for a different gym'), 'error');
+        return;
+      }
+      const { data: redemption, error: fetchErr } = await supabase
+        .from('reward_redemptions')
+        .select('id, profile_id, reward_name, points_spent, status, profiles!reward_redemptions_profile_id_fkey(full_name)')
+        .eq('id', parsed.redemptionId)
+        .eq('gym_id', gymId)
+        .single();
+
+      if (fetchErr || !redemption) {
+        showToast(t('admin.store.redemptionNotFound', 'Redemption not found'), 'error');
+        return;
+      }
+      if (redemption.status === 'claimed') {
+        showToast(t('admin.store.alreadyClaimed', 'This reward was already claimed'), 'info');
+        return;
+      }
+      if (redemption.status === 'expired') {
+        showToast(t('admin.store.redemptionExpired', 'This redemption has expired'), 'error');
+        return;
+      }
+
+      // Mark as claimed and deduct points
+      const { error: claimErr } = await supabase
+        .from('reward_redemptions')
+        .update({ status: 'claimed', claimed_at: new Date().toISOString() })
+        .eq('id', parsed.redemptionId);
+
+      if (claimErr) {
+        showToast(claimErr.message || t('admin.store.claimFailed', 'Failed to claim reward'), 'error');
+        return;
+      }
+
+      // Deduct points from total (they were "held" while pending, now actually spent)
+      const { data: currentPts } = await supabase
+        .from('reward_points')
+        .select('total_points')
+        .eq('profile_id', redemption.profile_id)
+        .single();
+      if (currentPts) {
+        await supabase
+          .from('reward_points')
+          .update({ total_points: Math.max(0, (currentPts.total_points || 0) - redemption.points_spent) })
+          .eq('profile_id', redemption.profile_id);
+      }
+
+      showToast(`${redemption.profiles?.full_name || 'Member'} — ${redemption.reward_name} (${redemption.points_spent} pts) ${t('admin.store.rewardClaimed', 'claimed!')}`, 'success');
     }
   };
 

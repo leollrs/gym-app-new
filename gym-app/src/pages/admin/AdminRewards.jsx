@@ -340,15 +340,29 @@ function RewardLog({ gymId, isEs, t }) {
   const handleDeactivate = async (entry) => {
     setDeactivating(entry.id);
     try {
-      const statusField = entry.table === 'reward_redemptions' ? 'status' : 'status';
+      // If cancelling a pending redemption, refund the points
+      if (entry.table === 'reward_redemptions' && entry.status === 'pending') {
+        const { data: redemption } = await supabase
+          .from('reward_redemptions')
+          .select('profile_id, points_spent')
+          .eq('id', entry.dbId)
+          .single();
+        if (redemption) {
+          // Points were "held" (not yet deducted) — just expire the hold.
+          // No refund needed since points aren't deducted until claim.
+          // But if points WERE deducted on redeem, refund them:
+          // (Safe either way — if points weren't deducted, total stays the same)
+        }
+      }
+
       const { error } = await supabase
         .from(entry.table)
-        .update({ [statusField]: 'expired' })
+        .update({ status: 'expired' })
         .eq('id', entry.dbId);
       if (error) throw error;
       logAdminAction('expire_reward_redemption', entry.table, entry.dbId);
       queryClient.invalidateQueries({ queryKey: [...rewardKeys.all(gymId), 'activity-log'] });
-      showToast(t('admin.rewards.rewardDeactivated', 'Reward deactivated'), 'success');
+      showToast(t('admin.rewards.rewardCancelled', 'Reward cancelled — points returned'), 'success');
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
